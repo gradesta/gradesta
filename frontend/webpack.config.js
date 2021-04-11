@@ -34,4 +34,8 @@ module.exports = {
         path: path.resolve(__dirname, 'build/js/dist')
     },
     mode: "development",
+    watchOptions: {
+        ignored: '**/node_modules',
+        ignored: ".*",
+    }
 }
