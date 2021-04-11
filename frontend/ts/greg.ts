@@ -12,6 +12,7 @@ var K_DOWN = 40;
 var K_RIGHT = 39;
 var K_LEFT = 37;
 var K_L = 76;
+var K_K = 75;
 var K_ESC = 27;
 
 document.onkeydown = function (eventObject) {
@@ -19,6 +20,22 @@ document.onkeydown = function (eventObject) {
         console.log("Focusing url");
         var url = document.getElementById("url");
         url.focus();
+        if (eventObject.shiftKey) {
+            var pas = document.getElementById("private-address-sections");
+            if (pas.style.display == "none") {
+                pas.style.display = "block";
+            } else {
+                pas.style.display = "none";
+            }
+        }
+    }
+    if (eventObject.keyCode == K_L && eventObject.ctrlKey) {
+        console.log("Focusing url");
+        var url = document.getElementById("url");
+        url.focus();
+    }
+    if (eventObject.keyCode == K_K && eventObject.ctrlKey) {
+        console.log("Focusing clipboard");
     }
     if (eventObject.keyCode == K_ESC && document.activeElement.className.split(" ").indexOf("address-entry") > -1){
         var main = document.getElementById("main");
