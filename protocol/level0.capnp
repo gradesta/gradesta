@@ -146,10 +146,10 @@ struct Message {
   vertexStates               @2 :List(VertexState);
   updateStatuses             @3 :List(UpdateStatus);
 ### From client
-  vertexMessagesFromClient   @3 :List(VertexMessage);
-  portUpdates                @4 :List(PortUpdate);
-  dataUpdates                @5 :List(DataUpdate);
-  placeCursor                @6 :List(Cursor);
-  moveCursor                 @7 :List(CursorMovement);
-  deselect                   @8 :List(Int64);
+  vertexMessagesFromClient   @4 :List(VertexMessage);
+  portUpdates                @5 :List(PortUpdate);
+  dataUpdates                @6 :List(DataUpdate);
+  placeCursor                @7 :List(Cursor);
+  moveCursor                 @8 :List(CursorMovement);
+  deselect                   @9 :List(Int64);
 }
