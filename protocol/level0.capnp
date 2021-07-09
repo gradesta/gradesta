@@ -91,6 +91,12 @@ struct Port {
   # Each port has a direction. Directions are important for walk trees which are
   # defined in a higher level of the API.
   direction     @0 :Int64;
+  # Ordinarilly there are only 4 directions -1, 1 (up/down), -2, and 2(left, right)
+  # however other directions are allowed by the protocal and may be used, for example
+  # by a version control system to link to a previous version of a cell
+  # or by a citation system to link to a source. In these cases it is typical to refer
+  # direction 3 to a context menu with these choices rather than creating new ports
+  # for every single purpose.
   connectedVertex :union {
     disconnected @1 :Void;
     vertex       @2 :UInt64;
