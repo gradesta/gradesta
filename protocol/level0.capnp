@@ -57,13 +57,17 @@ struct VertexMessage {
 }
 
 struct PortUpdate {
-  updateId      @0 :UInt64;
+  # Updates origionating from the service have negative ids
+  # updates origionating from the client have positive ids
+  updateId      @0 :Int64;
   vertexId      @1 :UInt64;
   port          @2 :Port;
 }
 
 struct DataUpdate {
-  updateId      @0 :UInt64;
+  # Updates origionating from the service have negative ids
+  # updates origionating from the client have positive ids
+  updateId      @0 :Int64;
   vertexId      @1 :UInt64;
   mime          @2 :Text;
   data          @3 :Data;
@@ -99,8 +103,9 @@ struct Port {
   # for every single purpose.
   connectedVertex :union {
     disconnected @1 :Void;
-    vertex       @2 :UInt64;
-    symlink      @3 :Address;
+    closed       @2 :Void;
+    vertex       @3 :UInt64;
+    symlink      @4 :Address;
   }
 }
 
@@ -109,13 +114,12 @@ struct Vertex {
   instanceId    @1 :UInt64;
   # view is an IPFS link to javascript used for viewing and intracting with data
   view          @2 :Text;
+  # Blank string for unencrypted, otherwise a GNUPG public key.
+  clientSideEncrypted @3 :Text;
 }
 
 struct VertexState {
   instanceId    @0 :UInt64;
-  ports         @1 :List(Port);
-  mime          @2 :Text;
-  data          @3 :Data;
   # Status is similart to in HTTP.
   # 200 is OK
   # 404 is not found
@@ -139,17 +143,26 @@ struct UpdateStatus {
 }
 
 
+struct ForClient {
+  vertexMessages   @0 :List(VertexMessage);
+  vertexes         @1 :List(Vertex);
+  vertexStates     @2 :List(VertexState);
+  updateStatuses   @3 :List(UpdateStatus);
+  portUpdates      @4 :List(PortUpdate);
+  dataUpdates      @5 :List(DataUpdate);
+}
+
+struct ForService {
+  vertexMessages   @0 :List(VertexMessage);
+  portUpdates      @1 :List(PortUpdate);
+  dataUpdates      @2 :List(DataUpdate);
+  placeCursor      @3 :List(Cursor);
+  moveCursor       @4 :List(CursorMovement);
+  deselect         @5 :List(Int64);
+}
+
+
 struct Message {
-### From service
-  vertexMessagesFromService  @0 :List(VertexMessage);
-  vertexes                   @1 :List(Vertex);
-  vertexStates               @2 :List(VertexState);
-  updateStatuses             @3 :List(UpdateStatus);
-### From client
-  vertexMessagesFromClient   @4 :List(VertexMessage);
-  portUpdates                @5 :List(PortUpdate);
-  dataUpdates                @6 :List(DataUpdate);
-  placeCursor                @7 :List(Cursor);
-  moveCursor                 @8 :List(CursorMovement);
-  deselect                   @9 :List(Int64);
+  forClient        @0 :ForClient;
+  forService       @1 :ForService;
 }
