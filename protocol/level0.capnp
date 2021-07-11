@@ -130,8 +130,8 @@ struct VertexState {
   # There is no way for clients to create cells in gradesta.
   # But a service can provide phantom cells, which can become real when the
   # client interacts with them.
-  status        @4 :UInt64;
-  reaped        @5 :Bool;
+  status        @1 :UInt64;
+  reaped        @2 :Bool;
 }
 
 struct UpdateStatus {
