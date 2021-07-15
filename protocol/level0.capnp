@@ -17,12 +17,12 @@ struct Address {
   # of fields in the Address dictionary:
   #  One type is user-visible/user-friendly
   #    It appears in the gradesta equivalent of the address bar
-  userFields       @2 :List(AddressField);
+  user             @2 :List(AddressField);
   #  A seccond type is also public, but hidden from view of the user
   #  by default (though of course is user accessible and is not secret)
   #  fields of the second state are also copied when the address is copied
   #  and sent to a different user
-  internalFields   @3 :List(AddressField);
+  internal         @3 :List(AddressField);
   #  The third type is secret and belongs to the user alone. It is not
   #  copied when the user copies the address. It is used to store various forms
   #  of credentials.
@@ -32,7 +32,7 @@ struct Address {
   #  credential system which is more user friendly ( because users do not need
   #  to remember indiviual passwords ) and more secure ( becuase users do not need
   #  to remember individual passwords )
-  credentialFields @4 :List(AddressField);
+  credential       @4 :List(AddressField);
 }
 
 # Field values are stored as Text. This means that adresses can be easilly serialized
@@ -117,17 +117,17 @@ struct Port {
 }
 
 struct Vertex {
-  address       @0 :Address;
-  instanceId    @1 :UInt64;
+  address              @0 :Address;
+  instanceId           @1 :UInt64;
   # view is an IPFS link to javascript used for viewing and intracting with data
   # This is an IPFS directory. It can also contain documentation for the vertex's
   # messaging API. In the future other types of frontends besides javascript may
   # be supported.
   # The entry to the javascript should be found in the path:
   # webview/js/index.js
-  view          @2 :Text;
+  view                 @2 :Text;
   # Blank string for unencrypted, otherwise a GNUPG public key.
-  clientSideEncrypted @3 :Text;
+  clientsideEncryption @3 :Text;
 }
 
 struct VertexState {
