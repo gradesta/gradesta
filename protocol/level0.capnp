@@ -113,6 +113,11 @@ struct Vertex {
   address       @0 :Address;
   instanceId    @1 :UInt64;
   # view is an IPFS link to javascript used for viewing and intracting with data
+  # This is an IPFS directory. It can also contain documentation for the vertex's
+  # messaging API. In the future other types of frontends besides javascript may
+  # be supported.
+  # The entry to the javascript should be found in the path:
+  # webview/js/index.js
   view          @2 :Text;
   # Blank string for unencrypted, otherwise a GNUPG public key.
   clientSideEncrypted @3 :Text;
