@@ -76,15 +76,22 @@ struct DataUpdate {
 # One of the main design goals of gradesta is the ability to support arbitrarily
 # large graphs. This wouldn't be possible if the service automatically served
 # all vertexes at once. Instead, vertexes are selected using cursors.
-struct Cursor {
-  selectionId   @0 :Int64;
-  address       @1 :Address;
+struct CursorPlacement {
+  cursorId      @0 :UInt64;
+  # The vertex that the cursor is on will be selected.
+  selectionId   @1 :Int64;
+  address       @2 :Address;
 }
 
-# Cursors can be used to select regions of a graph by "moving" them around from one
+struct Cursor {
+  cursorId      @0 :UInt64;
+  vertexId      @1 :UInt64;
+}
+
+# Selections can be expanded by going through vertex ports
 # vertex or another by making steps in directions. Each vertex which is stepped into
 # is added to the selection.
-struct CursorMovement {
+struct SelectionExpansion {
   selectionId   @0 :Int64;
   veretexId     @1 :Int64;
   direction     @2 :Int64;
@@ -155,14 +162,15 @@ struct ForClient {
   updateStatuses   @3 :List(UpdateStatus);
   portUpdates      @4 :List(PortUpdate);
   dataUpdates      @5 :List(DataUpdate);
+  cursors          @6 :List(Cursor);
 }
 
 struct ForService {
   vertexMessages   @0 :List(VertexMessage);
   portUpdates      @1 :List(PortUpdate);
   dataUpdates      @2 :List(DataUpdate);
-  placeCursor      @3 :List(Cursor);
-  moveCursor       @4 :List(CursorMovement);
+  placeCursor      @3 :List(CursorPlacement);
+  expandSelection  @4 :List(SelectionExpansion);
   deselect         @5 :List(Int64);
 }
 
