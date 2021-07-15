@@ -3,8 +3,53 @@ import os
 import sys
 import pathlib
 import capnp
+import asyncio
 
 import level0_capnp
+
+level0 = level0_capnp
+
+
+def to_addr_field(k, v):
+    af = level0.AddressField()
+    af.name = k
+    af.value = v
+    return af
+
+
+def address_fields_to_dict(address_fields):
+    d = {}
+    for field in address_fields:
+        d[field.name] = field.value
+    return d
+
+
+class Address:
+    def __init__(self, capnp=None, dic=None):
+        if capnp:
+            self.capnp = capnp
+        if dic:
+            c = level0.Address()
+            c.host = dic.get("host", "")
+            c.service = dic.get("service", "")
+            c.user = [to_addr_field(k, v) for k, v in dic.get("user", {}).items()]
+            c.internal = [to_addr_field(k, v) for k, v in dic.get("internal", {}).items()]
+            c.credential = [to_addr_field(k, v) for k, v in dic.get("credential", {}).items()]
+            self.capnp = c
+
+    def __getitem__(self, key):
+        if key == "host":
+            return self.capnp.host
+        if key == "service":
+            return self.capnp.service
+        if key == "internal":
+            return address_fields_to_dict(self.capnp.internal)
+        if key == "user":
+            return address_fields_to_dict(self.capnp.user)
+        if key == "credentials":
+            return address_fields_to_dict(self.capnp.credentials)
+        raise KeyError(key)
+
 
 
 class Vertex:
@@ -12,39 +57,53 @@ class Vertex:
         self.service = service
         self.address = address
         self.id = id
+        self.__updateId = -1
 
     def reap(self):
-        vs = level0_capnp.VertexState(instanceId = self.id, reaped=True)
+        vs = level0.VertexState(instanceId = self.id, reaped=True)
         self.service.queued_vertex_states.append(vs)
         del self.service.vertexes[self.id]
 
-    def write(self, data):
-        sys.stderr.write("Received message for vertex {} but write method for that vertex is not implemented. Message data was {}.".format(self.id, data))
+    def load(self):
+        updates = level0.ForClient()
+        futures = set()
+        v = level0.Vertex()
+        v.address = self.address.capnp
+        v.instanceId = self.id
+        v.view = self.view
+        v.clientsideEncryption = self.clientside_encryption
+        updates.init("vertexes", 1)
+        updates.vertexes[0] = v
+        vs = level0.VertexState()
+        vs.instanceId = self.id
+        vs.status = 200
+        vs.reaped = False
+        updates.init("vertexStates", 1)
+        updates.vertexStates[0] = vs
+        return updates, futures
 
-    def __attribute_error__(self, attr):
-        sys.stderr.write("Error: No {attr} set for vertex {vid}.".format(attr=attr, vid=self.id))
+    def recv(self, event):
+        updates = level0.ForClient()
+        futures = set()
+        return updates, futures
 
     @property
-    def javascript(self):
-        self.__attribute_error__("javascript")
+    def view(self):
+        return ""
 
     @property
-    def status(self):
-        self.__attribute_error__("status")
+    def clientside_encryption(self):
+        return ""
 
-    @property
-    def ports(self):
-        self.__attribute_error__("ports")
+    def data_update(self, mime, data):
+        du = level0.DataUpdate()
+        du.updateId = self.__updateId
+        self.__updateId -= 1
+        du.vertexId = self.id
+        du.mime = mime
+        du.data = data
+        return du
 
-    @property
-    def data(self):
-        self.__attribute_error__("data")
-
-    def queue_state(self):
-        ports = [port.capnp() for port in self.ports]
-        vs = level0_capnp.VertexState(
-            ports)
-        self.service.queued_vertex_states.append()
 
 class Port:
     def __init__(self, vertex):
@@ -152,7 +211,7 @@ class Actor:
         return r
 
     def create_vertex(self, id, address):
-        return Vertex(self, id, address)
+        return self.vertex_class(self, id, address)
 
     def set_cursor(self, cursor):
         vid = self.load_vertex(cursor.address)
