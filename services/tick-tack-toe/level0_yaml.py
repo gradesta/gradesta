@@ -109,8 +109,7 @@ def load_expand_selection(yml):
     return se
 
 
-def load_for_client(y):
-    fc = level0.ForClient()
+def load_for_client(y, fc):
     loadList(load_vertex_message, "vertexMessages", fc, y)
     loadList(load_vertex, "vertexes", fc, y)
     loadList(load_vertex_state, "vertexeStates", fc, y)
@@ -118,31 +117,28 @@ def load_for_client(y):
     loadList(load_port_update, "portUpdates", fc, y)
     loadList(load_data_update, "dataUpdates", fc, y)
     loadList(load_cursor, "cursors", fc, y)
-    return fc
 
 
 def load_deselect(yml):
     return yml
 
 
-def load_for_service(y):
-    fc = level0.ForClient()
-    loadList(load_vertex_message, "vertexMessages", fc, y)
-    loadList(load_port_update, "portUpdates", fc, y)
-    loadList(load_data_update, "dataUpdates", fc, y)
-    loadList(load_place_cursor, "cursorPlacement", fc, y)
-    loadList(load_expand_selection, "selectionExpansion", fc, y)
-    loadList(load_deselect, "deselect", fc, y)
-    return fc
+def load_for_service(y, fs):
+    loadList(load_vertex_message, "vertexMessages", fs, y)
+    loadList(load_port_update, "portUpdates", fs, y)
+    loadList(load_data_update, "dataUpdates", fs, y)
+    loadList(load_place_cursor, "cursorPlacement", fs, y)
+    loadList(load_expand_selection, "selectionExpansion", fs, y)
+    loadList(load_deselect, "deselect", fs, y)
 
 
 def to_capnp(fdi, fdo):
     y = yaml.load(fdi)
     m = level0.Message()
     if "forClient" in y:
-        m.forClient = load_for_client(y["forClient"])
+        load_for_client(y["forClient"], m.forClient)
     if "forService" in y:
-        m.forService = load_for_service(y["forService"])
+        load_for_service(y["forService"], m.forService)
 
 
 if __name__ == "__main__":
