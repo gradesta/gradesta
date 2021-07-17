@@ -5,9 +5,7 @@ import pathlib
 import capnp
 import asyncio
 
-import level0_capnp
-
-level0 = level0_capnp
+import level0_capnp as level0
 
 
 def to_addr_field(k, v):

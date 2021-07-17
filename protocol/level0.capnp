@@ -56,14 +56,6 @@ struct VertexMessage {
   data          @1 :Data;
 }
 
-struct PortUpdate {
-  # Updates origionating from the service have negative ids
-  # updates origionating from the client have positive ids
-  updateId      @0 :Int64;
-  vertexId      @1 :UInt64;
-  port          @2 :Port;
-}
-
 struct DataUpdate {
   # Updates origionating from the service have negative ids
   # updates origionating from the client have positive ids
@@ -98,7 +90,12 @@ struct SelectionExpansion {
 }
 
 # Vertexes have ports. These ports can either be connected or disconnected.
-struct Port {
+struct PortUpdate {
+  # Updates origionating from the service have negative ids
+  # updates origionating from the client have positive ids
+  updateId      @0 :Int64;
+  # Vertex from wence the port connects
+  vertexId      @1 :UInt64;
   # Each port has a direction. Directions are important for walk trees which are
   # defined in a higher level of the API.
   direction     @0 :Int64;
