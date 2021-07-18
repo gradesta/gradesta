@@ -1,0 +1,6 @@
+forClient:
+  dataUpdates:
+  - data: Hello world
+    mime: text/plain
+    updateId: 1
+    vertexId: 1

@@ -98,7 +98,7 @@ struct PortUpdate {
   vertexId      @1 :UInt64;
   # Each port has a direction. Directions are important for walk trees which are
   # defined in a higher level of the API.
-  direction     @0 :Int64;
+  direction     @2 :Int64;
   # Ordinarilly there are only 4 directions -1, 1 (up/down), -2, and 2(left, right)
   # however other directions are allowed by the protocal and may be used, for example
   # by a version control system to link to a previous version of a cell
@@ -106,10 +106,10 @@ struct PortUpdate {
   # direction 3 to a context menu with these choices rather than creating new ports
   # for every single purpose.
   connectedVertex :union {
-    disconnected @1 :Void;
-    closed       @2 :Void;
-    vertex       @3 :UInt64;
-    symlink      @4 :Address;
+    disconnected @3 :Void;
+    closed       @4 :Void;
+    vertex       @5 :UInt64;
+    symlink      @6 :Address;
   }
 }
 
