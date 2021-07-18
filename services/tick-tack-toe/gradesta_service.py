@@ -32,7 +32,7 @@ class Address:
             c.service = dic.get("service", "")
             c.user = [to_addr_field(k, v) for k, v in dic.get("user", {}).items()]
             c.internal = [to_addr_field(k, v) for k, v in dic.get("internal", {}).items()]
-            c.credential = [to_addr_field(k, v) for k, v in dic.get("credential", {}).items()]
+            c.credentials = [to_addr_field(k, v) for k, v in dic.get("credentials", {}).items()]
             self.capnp = c
 
     def __getitem__(self, key):
