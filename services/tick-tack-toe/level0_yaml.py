@@ -156,6 +156,8 @@ def to_yaml(fdi, fdo):
 
 
 def compare(fd1, fd2):
+    fd1 = ensure_yaml(fd1)
+    fd2 = ensure_yaml(fd2)
     from deepdiff import DeepDiff
     t1 = yaml.safe_load(fd1)
     t2 = yaml.safe_load(fd2)
@@ -201,8 +203,6 @@ if __name__ == "__main__":
             if args.command == "2yaml":
                 to_yaml(fdi, fdo)
             if args.command == "compare":
-                fd1 = ensure_yaml(fdi)
-                fd2 = ensure_yaml(fdo)
-                differences = compare(fd1, fd2)
+                differences = compare(fdi, fdo)
                 if differences:
                     sys.exit(str(differences))
