@@ -1,0 +1,40 @@
+forClient:
+  vertexMessages:
+    - vertexId: 1
+      data: Foo
+    - vertexId: 2
+      data: Bar
+  vertexes:
+    - address:
+        host: example.com
+        service: tick-tack-toe
+        user:
+          foo: bar
+          lol: baz
+        internal:
+          "_foo_": "_boo"
+          xyz: hij
+        credentials:
+          gpg_pub: abcdefg
+      instanceId: 1
+      view: "ipfs://lolkdfsdf"
+      clientsideEncryption: "pubkey---kkfdsldsfsf"
+  vertexStates:
+    - instanceId: 1
+      status: 200
+      reaped: false
+  updateStatuses:
+    - updateId: 1
+      status: 200
+      explanation:
+        host: example.com
+        service: lol-bar
+        user:
+          foo: bar
+        internal:
+          lol: baz
+        credentials:
+          gpg_pub: argfkdlsjfsd
+  portUpdates: []
+  dataUpdates: []
+  cursors: []

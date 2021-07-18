@@ -32,7 +32,7 @@ struct Address {
   #  credential system which is more user friendly ( because users do not need
   #  to remember indiviual passwords ) and more secure ( becuase users do not need
   #  to remember individual passwords )
-  credential       @4 :List(AddressField);
+  credentials      @4 :List(AddressField);
 }
 
 # Field values are stored as Text. This means that adresses can be easilly serialized

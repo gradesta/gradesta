@@ -11,7 +11,11 @@ import level0_capnp as level0
 
 def loadList(loader, field, target, node):
     if field in node:
-        lst = [loader(item) for item in node[field]]
+        try:
+            items = node[field].items()
+        except AttributeError:
+            items = node[field]
+        lst = [loader(item) for item in items]
         target.init(field, len(lst))
         i = 0
         for item in lst:
@@ -28,6 +32,7 @@ def load_address_field(yml):
     af = level0.AddressField()
     af.name = yml[0]
     af.value = yml[1]
+    return af
 
 
 def load_address(yml, address):
@@ -35,7 +40,7 @@ def load_address(yml, address):
     address.service=yml["service"]
     loadList(load_address_field, "user", address, yml)
     loadList(load_address_field, "internal", address, yml)
-    loadList(load_address_field, "credential", address, yml)
+    loadList(load_address_field, "credentials", address, yml)
 
 
 def load_vertex_message(yml):
@@ -47,7 +52,7 @@ def load_vertex_message(yml):
 
 def load_vertex(yml):
     v = level0.Vertex()
-    v.address = load_address(yml["address"])
+    load_address(yml["address"], v.address)
     set_attrs(v, yml, ["instanceId", "view", "clientsideEncryption"])
     return v
 
@@ -61,7 +66,7 @@ def load_vertex_state(yml):
 def load_update_status(yml):
     us = level0.UpdateStatus()
     set_attrs(us, yml, ["updateId", "status"])
-    us.explanation = load_address()
+    load_address(yml["explanation"], us.explanation)
     return us
 
 
@@ -152,6 +157,24 @@ def to_yaml(fdi, fdo):
     try_decode_datas("forClient", "vertexMessages")
     try_decode_datas("forService", "dataUpdates")
     try_decode_datas("forService", "vertexMessages")
+    def decode_address(l1, l2, key):
+        def decode_address_fields(afs):
+            afd = {}
+            for af in afs:
+                afd[af["name"]] = af["value"]
+            return afd
+        try:
+            for struct in d[l1][l2]:
+                try:
+                    struct[key]["user"] = decode_address_fields(struct[key]["user"])
+                    struct[key]["internal"] = decode_address_fields(struct[key]["internal"])
+                    struct[key]["credentials"] = decode_address_fields(struct[key]["credentials"])
+                except ValueError:
+                    pass
+        except KeyError:
+            pass
+    decode_address("forClient", "updateStatuses", "explanation")
+    decode_address("forClient", "vertexes", "address")
     fdo.write(yaml.dump(d, default_flow_style=False).encode("utf8"))
 
 
