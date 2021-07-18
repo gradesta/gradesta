@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 import argparse
 import base64
 import capnp
@@ -94,6 +94,7 @@ def load_data_update(yml):
 def load_cursor(yml):
     c = level0.Cursor()
     set_attrs(c, yml, ["cursorId", "vertexId"])
+    return c
 
 
 def load_place_cursor(yml):
