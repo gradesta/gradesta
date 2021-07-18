@@ -72,7 +72,7 @@ def load_update_status(yml):
 
 def load_port_update(yml):
     pu = level0.PortUpdate()
-    set_attrs(pu, yml, ["updateId", "vertexId"])
+    set_attrs(pu, yml, ["updateId", "vertexId", "direction"])
     try:
         if yml["connectedVertex"] == "disconnected":
             pu.connectedVertex.disconnected = None
@@ -112,7 +112,7 @@ def load_expand_selection(yml):
 def load_for_client(y, fc):
     loadList(load_vertex_message, "vertexMessages", fc, y)
     loadList(load_vertex, "vertexes", fc, y)
-    loadList(load_vertex_state, "vertexeStates", fc, y)
+    loadList(load_vertex_state, "vertexStates", fc, y)
     loadList(load_update_status, "updateStatuses", fc, y)
     loadList(load_port_update, "portUpdates", fc, y)
     loadList(load_data_update, "dataUpdates", fc, y)
