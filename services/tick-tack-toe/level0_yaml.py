@@ -73,13 +73,14 @@ def load_update_status(yml):
 def load_port_update(yml):
     pu = level0.PortUpdate()
     set_attrs(pu, yml, ["updateId", "vertexId"])
-    if yml["connectedVertex"] == "disconnected":
-        pu.connectedVertex.disconnected = None
-    elif yml["connectedVertex"] == "closed":
-        pu.connectedVertex.closed = None
-    elif "symlink" in yml["connectedVertex"]:
-        load_address(yml["connectedVertex"]["symlink"], pu.connectedVertex.init("symlink"))
-    else:
+    try:
+        if yml["connectedVertex"] == "disconnected":
+            pu.connectedVertex.disconnected = None
+        elif yml["connectedVertex"] == "closed":
+            pu.connectedVertex.closed = None
+        elif "symlink" in yml["connectedVertex"]:
+            load_address(yml["connectedVertex"]["symlink"], pu.connectedVertex.init("symlink"))
+    except TypeError:
         pu.connectedVertex.vertex = yml["connectedVertex"]
     return pu
 
@@ -157,24 +158,63 @@ def to_yaml(fdi, fdo):
     try_decode_datas("forClient", "vertexMessages")
     try_decode_datas("forService", "dataUpdates")
     try_decode_datas("forService", "vertexMessages")
-    def decode_address(l1, l2, key):
+    def decode_address(l1, l2, key, l3=None):
         def decode_address_fields(afs):
             afd = {}
             for af in afs:
                 afd[af["name"]] = af["value"]
             return afd
         try:
-            for struct in d[l1][l2]:
+            for struct_ in d[l1][l2]:
                 try:
-                    struct[key]["user"] = decode_address_fields(struct[key]["user"])
-                    struct[key]["internal"] = decode_address_fields(struct[key]["internal"])
-                    struct[key]["credentials"] = decode_address_fields(struct[key]["credentials"])
+                    struct = struct_[key]
+                    if l3 is not None:
+                        if l3 not in struct:
+                            continue
+                        struct = struct[l3]
+                    try:
+                        struct["user"] = decode_address_fields(struct["user"])
+                    except KeyError:
+                        pass
+                    try:
+                        struct["internal"] = decode_address_fields(struct["internal"])
+                    except KeyError:
+                        pass
+                    try:
+                        struct["credentials"] = decode_address_fields(struct["credentials"])
+                    except KeyError:
+                        pass
                 except ValueError:
                     pass
         except KeyError:
             pass
     decode_address("forClient", "updateStatuses", "explanation")
     decode_address("forClient", "vertexes", "address")
+    decode_address("forClient", "portUpdates", "connectedVertex", l3="symlink")
+    decode_address("forService", "portUpdates", "connectedVertex", l3="symlink")
+    def decode_port_updates(top_level):
+        if top_level in d and "portUpdates" in d[top_level]:
+            for update in d[top_level]["portUpdates"]:
+                if "connectedVertex" in update:
+                    try:
+                        if "closed" in update["connectedVertex"]:
+                            update["connectedVertex"] = "closed"
+                    except TypeError:
+                        pass
+                    try:
+                        if "disconnected" in update["connectedVertex"]:
+                            update["connectedVertex"] = "disconnected"
+                    except TypeError:
+                        pass
+                    try:
+                        if "vertex" in update["connectedVertex"]:
+                            update["connectedVertex"] = update["connectedVertex"]["vertex"]
+                    except TypeError:
+                        pass
+    decode_port_updates("forClient")
+    decode_port_updates("forClient")
+    decode_port_updates("forClient")
+    decode_port_updates("forService")
     fdo.write(yaml.dump(d, default_flow_style=False).encode("utf8"))
 
 

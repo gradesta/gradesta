@@ -35,6 +35,43 @@ forClient:
           lol: baz
         credentials:
           gpg_pub: argfkdlsjfsd
-  portUpdates: []
+  portUpdates:
+    - updateId: 1
+      vertexId: 2
+      direction: -1
+      connectedVertex: disconnected
+    - updateId: 2
+      vertexId: 2
+      direction: 1
+      connectedVertex: closed
+    - updateId: 3
+      vertexId: 2
+      direction: -2
+      connectedVertex: 3
+    - updateId: 4
+      vertexId: 2
+      direction: 2
+      connectedVertex:
+        symlink:
+          host: example.com
+          service: blah
+          user:
+            abc: defg
+    - updateId: 5
+      vertexId: 3
+      direction: 2
+      connectedVertex:
+        symlink:
+          host: example.com
+          service: blah
+          user:
+            ar: defg
+            ef: adf
+          internal:
+            cg: af
+            el: L3
+          credentials:
+            gpg_pub: alreaAdfs
+            aes_hint: kljdsfsd
   dataUpdates: []
   cursors: []
