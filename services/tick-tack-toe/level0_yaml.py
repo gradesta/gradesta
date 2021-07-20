@@ -128,8 +128,8 @@ def load_for_service(y, fs):
     loadList(load_vertex_message, "vertexMessages", fs, y)
     loadList(load_port_update, "portUpdates", fs, y)
     loadList(load_data_update, "dataUpdates", fs, y)
-    loadList(load_place_cursor, "cursorPlacement", fs, y)
-    loadList(load_expand_selection, "selectionExpansion", fs, y)
+    loadList(load_place_cursor, "placeCursor", fs, y)
+    loadList(load_expand_selection, "expandSelection", fs, y)
     loadList(load_deselect, "deselect", fs, y)
 
 
@@ -193,6 +193,7 @@ def to_yaml(fdi, fdo):
     decode_address("forClient", "vertexes", "address")
     decode_address("forClient", "portUpdates", "connectedVertex", l3="symlink")
     decode_address("forService", "portUpdates", "connectedVertex", l3="symlink")
+    decode_address("forService", "placeCursor", "address")
     def decode_port_updates(top_level):
         if top_level in d and "portUpdates" in d[top_level]:
             for update in d[top_level]["portUpdates"]:
@@ -225,9 +226,9 @@ def compare(fd1, fd2):
     from deepdiff import DeepDiff
     t1 = yaml.safe_load(fd1)
     t2 = yaml.safe_load(fd2)
-    print(t1)
+    print(yaml.dump(t1))
     print("---")
-    print(t2)
+    print(yaml.dump(t2))
     print("---")
     return DeepDiff(t1, t2, verbose_level=0, view='tree')
 

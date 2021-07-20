@@ -91,3 +91,82 @@ forClient:
       vertexId: 2
     - cursorId: 2
       vertexId: 3
+forService:
+  vertexMessages:
+    - vertexId: 1
+      data: Foo
+    - vertexId: 2
+      data: Bar
+  portUpdates:
+    - updateId: 1
+      vertexId: 2
+      direction: -1
+      connectedVertex: disconnected
+    - updateId: 2
+      vertexId: 2
+      direction: 1
+      connectedVertex: closed
+    - updateId: 3
+      vertexId: 2
+      direction: -2
+      connectedVertex: 3
+    - updateId: 4
+      vertexId: 2
+      direction: 2
+      connectedVertex:
+        symlink:
+          host: example.com
+          service: blah
+          user:
+            abc: defg
+    - updateId: 5
+      vertexId: 3
+      direction: 2
+      connectedVertex:
+        symlink:
+          host: example.com
+          service: blah
+          user:
+            ar: defg
+            ef: adf
+          internal:
+            cg: af
+            el: L3
+          credentials:
+            gpg_pub: alreaAdfs
+            aes_hint: kljdsfsd
+  dataUpdates:
+    - updateId: 1
+      vertexId: 1
+      mime: text/plain
+      data: Hello World
+    - updateId: 2
+      vertexId: 2
+      mime: image/gif
+      data:  !!binary |
+       R0lGODlhDAAMAIQAAP//9/X17unp5WZmZgAAAOfn515eXvPz7Y6OjuDg4J+fn5
+       OTk6enp56enmlpaWNjY6Ojo4SEhP/++f/++f/++f/++f/++f/++f/++f/++f/+
+       +f/++f/++f/++f/++f/++SH+Dk1hZGUgd2l0aCBHSU1QACwAAAAADAAMAAAFLC
+       AgjoEwnuNAFOhpEMTRiggcz4BNJHrv/zCFcLiwMWYNG84BwwEeECcgggoBADs=
+  placeCursor:
+    - cursorId: 1
+      selectionId: 1
+      address:
+        host: example.com
+        service: blah
+        user:
+          ar: defg
+          ef: adf
+        internal:
+          cg: af
+          el: L3
+        credentials:
+          gpg_pub: alreaAdfs
+          aes_hint: kljdsfsd
+  expandSelection:
+    - selectionId: 1
+      vertexId: 1
+      direction: 2
+  deselect:
+    - 1
+    - 2

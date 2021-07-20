@@ -85,7 +85,7 @@ struct Cursor {
 # is added to the selection.
 struct SelectionExpansion {
   selectionId   @0 :Int64;
-  veretexId     @1 :Int64;
+  vertexId     @1 :Int64;
   direction     @2 :Int64;
 }
 
