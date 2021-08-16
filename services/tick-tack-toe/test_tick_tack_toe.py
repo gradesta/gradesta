@@ -5,12 +5,7 @@ from tick_tack_toe import Board
 
 @pytest.fixture
 def middle_board():
-    return Board(None, 0,
-        gradesta_service.Address(dic = {
-            "internal": {
-            "state": "x o\no x\n x "
-        }
-    }))
+    return Board(None, 0, "gradesta://example.com/en/tick-tack-toe/board/x o.o x. x ")
 
 def test_load(middle_board):
     u, f = middle_board.load()

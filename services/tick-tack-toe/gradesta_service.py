@@ -22,34 +22,6 @@ def address_fields_to_dict(address_fields):
     return d
 
 
-class Address:
-    def __init__(self, string=None, dic=None):
-        if capnp:
-            self.capnp = capnp
-        if dic:
-            c = level0.Address()
-            c.host = dic.get("host", "")
-            c.service = dic.get("service", "")
-            c.user = [to_addr_field(k, v) for k, v in dic.get("user", {}).items()]
-            c.internal = [to_addr_field(k, v) for k, v in dic.get("internal", {}).items()]
-            c.credentials = [to_addr_field(k, v) for k, v in dic.get("credentials", {}).items()]
-            self.capnp = c
-
-    def __getitem__(self, key):
-        if key == "host":
-            return self.capnp.host
-        if key == "service":
-            return self.capnp.service
-        if key == "internal":
-            return address_fields_to_dict(self.capnp.internal)
-        if key == "user":
-            return address_fields_to_dict(self.capnp.user)
-        if key == "credentials":
-            return address_fields_to_dict(self.capnp.credentials)
-        raise KeyError(key)
-
-
-
 class Vertex:
     def __init__(self, service, id, address):
         self.service = service
@@ -66,10 +38,12 @@ class Vertex:
         updates = level0.ForClient()
         futures = set()
         v = level0.Vertex()
-        v.address = self.address.capnp
+        a = level0.Address()
+        a.address = self.address
+        a.identity = 0
+        v.address = a
         v.instanceId = self.id
         v.view = self.view
-        v.clientsideEncryption = self.clientside_encryption
         updates.init("vertexes", 1)
         updates.vertexes[0] = v
         vs = level0.VertexState()

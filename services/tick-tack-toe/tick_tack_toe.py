@@ -9,7 +9,7 @@ class Board(gradesta_service.Vertex):
         u.init("dataUpdates", 1)
         u.dataUpdates[0] = self.data_update(
             "text/plain",
-            self.address["internal"]["state"].encode("utf-8")
+            self.address.split("/")[6].replace(".", "\n")
         )
         return u, f
 
