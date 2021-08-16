@@ -1,14 +1,8 @@
 forClient:
-  vertexMessages:
-    - vertexId: 1
-      data: Foo
-    - vertexId: 2
-      data: Bar
   vertexes:
-    - address: "gradesta://example.com/tick-tack-toe/foo/bar?lol=emma#baf"
+    - address: ["gradesta://example.com/en/tick-tack-toe/foo/bar?lol=emma#baf", 0]
       instanceId: 1
       view: "ipfs://lolkdfsdf"
-      clientsideEncryption: "pubkey---kkfdsldsfsf"
   vertexStates:
     - instanceId: 1
       status: 200
@@ -16,15 +10,20 @@ forClient:
   updateStatuses:
     - updateId: 1
       status: 200
-      explanation:
-        host: example.com
-        service: lol-bar
-        user:
-          foo: bar
-        internal:
-          lol: baz
-        credentials:
-          gpg_pub: argfkdlsjfsd
+      explanation: ["gradesta://example.com/en/tick-tack-toe/foo/baz?arg=val#baf", 0]
+  dataUpdates:
+    - updateId: 1
+      vertexId: 1
+      mime: text/plain
+      data: Hello World
+    - updateId: 2
+      vertexId: 2
+      mime: image/gif
+      data:  !!binary |
+       R0lGODlhDAAMAIQAAP//9/X17unp5WZmZgAAAOfn515eXvPz7Y6OjuDg4J+fn5
+       OTk6enp56enmlpaWNjY6Ojo4SEhP/++f/++f/++f/++f/++f/++f/++f/++f/+
+       +f/++f/++f/++f/++f/++SH+Dk1hZGUgd2l0aCBHSU1QACwAAAAADAAMAAAFLC
+       AgjoEwnuNAFOhpEMTRiggcz4BNJHrv/zCFcLiwMWYNG84BwwEeECcgggoBADs=
   portUpdates:
     - updateId: 1
       vertexId: 2
@@ -42,25 +41,21 @@ forClient:
       vertexId: 2
       direction: 2
       connectedVertex:
-        symlink: "gradesta://example.com/blah/ar/defg/axm"
+        symlink: ["gradesta://example.com/en/tick-tack-toe/baf/baz?arg=val#baf", 0]
     - updateId: 5
       vertexId: 3
       direction: 2
       connectedVertex:
-        symlink: "gradesta://example.com/blah/ar/defg/fe"
-  dataUpdates:
-    - updateId: 1
-      vertexId: 1
-      mime: text/plain
-      data: Hello World
-    - updateId: 2
+        symlink: ["gradesta://example.com/en/tick-tack-toe/alr/amre", 0]
+  encryptionUpdates:
+    - updateId: 6
       vertexId: 2
-      mime: image/gif
-      data:  !!binary |
-       R0lGODlhDAAMAIQAAP//9/X17unp5WZmZgAAAOfn515eXvPz7Y6OjuDg4J+fn5
-       OTk6enp56enmlpaWNjY6Ojo4SEhP/++f/++f/++f/++f/++f/++f/++f/++f/+
-       +f/++f/++f/++f/++f/++SH+Dk1hZGUgd2l0aCBHSU1QACwAAAAADAAMAAAFLC
-       AgjoEwnuNAFOhpEMTRiggcz4BNJHrv/zCFcLiwMWYNG84BwwEeECcgggoBADs=
+      keys: "klfjdlskj fkdlsjfsd lkjfldksjfs"
+  vertexMessages:
+    - vertexId: 1
+      data: Foo
+    - vertexId: 2
+      data: Bar
   cursors:
     - cursorId: 1
       vertexId: 2
@@ -89,18 +84,18 @@ forService:
       vertexId: 2
       direction: 2
       connectedVertex:
-        symlink: "gradesta://example.com/blah/abc/defg"
+        symlink: ["gradesta://example.com/en/tick-tack-toe/alr/amre", 0]
     - updateId: 5
       vertexId: 3
       direction: 2
       connectedVertex:
-        symlink: "gradesta://example.com/blah/ar/defg"
+        symlink: ["gradesta://example.com/en/tick-tack-toe/alr/amre", 0]
   dataUpdates:
-    - updateId: 1
+    - updateId: 6
       vertexId: 1
       mime: text/plain
       data: Hello World
-    - updateId: 2
+    - updateId: 7
       vertexId: 2
       mime: image/gif
       data:  !!binary |
@@ -108,10 +103,14 @@ forService:
        OTk6enp56enmlpaWNjY6Ojo4SEhP/++f/++f/++f/++f/++f/++f/++f/++f/+
        +f/++f/++f/++f/++f/++SH+Dk1hZGUgd2l0aCBHSU1QACwAAAAADAAMAAAFLC
        AgjoEwnuNAFOhpEMTRiggcz4BNJHrv/zCFcLiwMWYNG84BwwEeECcgggoBADs=
+  encryptionUpdates:
+    - updateId: 8
+      vertexId: 2
+      keys: "abc kjlj klfjdlskj fkdlsjfsd lkjfldksjfs"
   placeCursor:
     - cursorId: 1
       selectionId: 1
-      address: "gradesta://example.com/service/lol/"
+      address: ["gradesta://example.com/en/tick-tack-toe/alr/aščmre/🌍/😃", 0]
   expandSelection:
     - selectionId: 1
       vertexId: 1
