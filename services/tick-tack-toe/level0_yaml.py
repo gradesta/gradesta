@@ -28,21 +28,6 @@ def set_attrs(capnp, yml, attrs):
         capnp.__setattr__(attr, yml[attr])
 
 
-def load_address_field(yml):
-    af = level0.AddressField()
-    af.name = yml[0]
-    af.value = yml[1]
-    return af
-
-
-def load_address(yml, address):
-    address.host=yml["host"]
-    address.service=yml["service"]
-    loadList(load_address_field, "user", address, yml)
-    loadList(load_address_field, "internal", address, yml)
-    loadList(load_address_field, "credentials", address, yml)
-
-
 def load_vertex_message(yml):
     vm = level0.VertexMessage()
     vm.vertexId = yml["vertexId"]
@@ -52,8 +37,7 @@ def load_vertex_message(yml):
 
 def load_vertex(yml):
     v = level0.Vertex()
-    load_address(yml["address"], v.address)
-    set_attrs(v, yml, ["instanceId", "view", "clientsideEncryption"])
+    set_attrs(v, yml, ["instanceId", "view", "address"])
     return v
 
 
@@ -65,8 +49,7 @@ def load_vertex_state(yml):
 
 def load_update_status(yml):
     us = level0.UpdateStatus()
-    set_attrs(us, yml, ["updateId", "status"])
-    load_address(yml["explanation"], us.explanation)
+    set_attrs(us, yml, ["updateId", "status", "explanation"])
     return us
 
 
@@ -79,7 +62,7 @@ def load_port_update(yml):
         elif yml["connectedVertex"] == "closed":
             pu.connectedVertex.closed = None
         elif "symlink" in yml["connectedVertex"]:
-            load_address(yml["connectedVertex"]["symlink"], pu.connectedVertex.init("symlink"))
+            pu.connectedVertex.symlink = yml["connectedVertex"]["symlink"]
     except TypeError:
         pu.connectedVertex.vertex = yml["connectedVertex"]
     return pu
@@ -99,8 +82,7 @@ def load_cursor(yml):
 
 def load_place_cursor(yml):
     cp = level0.CursorPlacement()
-    set_attrs(cp, yml, ["cursorId", "selectionId"])
-    load_address(yml["address"], cp.address)
+    set_attrs(cp, yml, ["cursorId", "selectionId", "address"])
     return cp
 
 
@@ -159,41 +141,6 @@ def to_yaml(fdi, fdo):
     try_decode_datas("forClient", "vertexMessages")
     try_decode_datas("forService", "dataUpdates")
     try_decode_datas("forService", "vertexMessages")
-    def decode_address(l1, l2, key, l3=None):
-        def decode_address_fields(afs):
-            afd = {}
-            for af in afs:
-                afd[af["name"]] = af["value"]
-            return afd
-        try:
-            for struct_ in d[l1][l2]:
-                try:
-                    struct = struct_[key]
-                    if l3 is not None:
-                        if l3 not in struct:
-                            continue
-                        struct = struct[l3]
-                    try:
-                        struct["user"] = decode_address_fields(struct["user"])
-                    except KeyError:
-                        pass
-                    try:
-                        struct["internal"] = decode_address_fields(struct["internal"])
-                    except KeyError:
-                        pass
-                    try:
-                        struct["credentials"] = decode_address_fields(struct["credentials"])
-                    except KeyError:
-                        pass
-                except ValueError:
-                    pass
-        except KeyError:
-            pass
-    decode_address("forClient", "updateStatuses", "explanation")
-    decode_address("forClient", "vertexes", "address")
-    decode_address("forClient", "portUpdates", "connectedVertex", l3="symlink")
-    decode_address("forService", "portUpdates", "connectedVertex", l3="symlink")
-    decode_address("forService", "placeCursor", "address")
     def decode_port_updates(top_level):
         if top_level in d and "portUpdates" in d[top_level]:
             for update in d[top_level]["portUpdates"]:

@@ -23,7 +23,7 @@ def address_fields_to_dict(address_fields):
 
 
 class Address:
-    def __init__(self, capnp=None, dic=None):
+    def __init__(self, string=None, dic=None):
         if capnp:
             self.capnp = capnp
         if dic:

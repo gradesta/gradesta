@@ -5,17 +5,7 @@ forClient:
     - vertexId: 2
       data: Bar
   vertexes:
-    - address:
-        host: example.com
-        service: tick-tack-toe
-        user:
-          foo: bar
-          lol: baz
-        internal:
-          "_foo_": "_boo"
-          xyz: hij
-        credentials:
-          gpg_pub: abcdefg
+    - address: "gradesta://example.com/tick-tack-toe/foo/bar?lol=emma#baf"
       instanceId: 1
       view: "ipfs://lolkdfsdf"
       clientsideEncryption: "pubkey---kkfdsldsfsf"
@@ -52,27 +42,12 @@ forClient:
       vertexId: 2
       direction: 2
       connectedVertex:
-        symlink:
-          host: example.com
-          service: blah
-          user:
-            abc: defg
+        symlink: "gradesta://example.com/blah/ar/defg/axm"
     - updateId: 5
       vertexId: 3
       direction: 2
       connectedVertex:
-        symlink:
-          host: example.com
-          service: blah
-          user:
-            ar: defg
-            ef: adf
-          internal:
-            cg: af
-            el: L3
-          credentials:
-            gpg_pub: alreaAdfs
-            aes_hint: kljdsfsd
+        symlink: "gradesta://example.com/blah/ar/defg/fe"
   dataUpdates:
     - updateId: 1
       vertexId: 1
@@ -114,27 +89,12 @@ forService:
       vertexId: 2
       direction: 2
       connectedVertex:
-        symlink:
-          host: example.com
-          service: blah
-          user:
-            abc: defg
+        symlink: "gradesta://example.com/blah/abc/defg"
     - updateId: 5
       vertexId: 3
       direction: 2
       connectedVertex:
-        symlink:
-          host: example.com
-          service: blah
-          user:
-            ar: defg
-            ef: adf
-          internal:
-            cg: af
-            el: L3
-          credentials:
-            gpg_pub: alreaAdfs
-            aes_hint: kljdsfsd
+        symlink: "gradesta://example.com/blah/ar/defg"
   dataUpdates:
     - updateId: 1
       vertexId: 1
@@ -151,18 +111,7 @@ forService:
   placeCursor:
     - cursorId: 1
       selectionId: 1
-      address:
-        host: example.com
-        service: blah
-        user:
-          ar: defg
-          ef: adf
-        internal:
-          cg: af
-          el: L3
-        credentials:
-          gpg_pub: alreaAdfs
-          aes_hint: kljdsfsd
+      address: "gradesta://example.com/service/lol/"
   expandSelection:
     - selectionId: 1
       vertexId: 1
