@@ -35,9 +35,16 @@ def load_vertex_message(yml):
     return vm
 
 
+def load_address(yml):
+    a = level0.Address()
+    set_attrs(a, yml, ["address", "identity"])
+    return a
+
+
 def load_vertex(yml):
     v = level0.Vertex()
-    set_attrs(v, yml, ["instanceId", "view", "address"])
+    set_attrs(v, yml, ["instanceId", "view"])
+    v.address = load_address(yml["address"])
     return v
 
 
@@ -49,7 +56,8 @@ def load_vertex_state(yml):
 
 def load_update_status(yml):
     us = level0.UpdateStatus()
-    set_attrs(us, yml, ["updateId", "status", "explanation"])
+    set_attrs(us, yml, ["updateId", "status"])
+    us.explanation = load_address(yml["explanation"])
     return us
 
 
@@ -62,7 +70,7 @@ def load_port_update(yml):
         elif yml["connectedVertex"] == "closed":
             pu.connectedVertex.closed = None
         elif "symlink" in yml["connectedVertex"]:
-            pu.connectedVertex.symlink = yml["connectedVertex"]["symlink"]
+            pu.connectedVertex.symlink = load_address(yml["connectedVertex"]["symlink"])
     except TypeError:
         pu.connectedVertex.vertex = yml["connectedVertex"]
     return pu
@@ -74,6 +82,12 @@ def load_data_update(yml):
     return du
 
 
+def load_encryption_update(yml):
+    eu = level0.EncryptionUpdate()
+    set_attrs(eu, yml, ["updateId", "vertexId", "keys"])
+    return eu
+
+
 def load_cursor(yml):
     c = level0.Cursor()
     set_attrs(c, yml, ["cursorId", "vertexId"])
@@ -82,7 +96,8 @@ def load_cursor(yml):
 
 def load_place_cursor(yml):
     cp = level0.CursorPlacement()
-    set_attrs(cp, yml, ["cursorId", "selectionId", "address"])
+    set_attrs(cp, yml, ["cursorId", "selectionId"])
+    cp.address = load_address(yml["address"])
     return cp
 
 
@@ -99,6 +114,7 @@ def load_for_client(y, fc):
     loadList(load_update_status, "updateStatuses", fc, y)
     loadList(load_port_update, "portUpdates", fc, y)
     loadList(load_data_update, "dataUpdates", fc, y)
+    loadList(load_encryption_update, "encryptionUpdates", fc, y)
     loadList(load_cursor, "cursors", fc, y)
 
 
@@ -110,6 +126,7 @@ def load_for_service(y, fs):
     loadList(load_vertex_message, "vertexMessages", fs, y)
     loadList(load_port_update, "portUpdates", fs, y)
     loadList(load_data_update, "dataUpdates", fs, y)
+    loadList(load_encryption_update, "encryptionUpdates", fs, y)
     loadList(load_place_cursor, "placeCursor", fs, y)
     loadList(load_expand_selection, "expandSelection", fs, y)
     loadList(load_deselect, "deselect", fs, y)

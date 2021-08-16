@@ -1,6 +1,8 @@
 forClient:
   vertexes:
-    - address: ["gradesta://example.com/en/tick-tack-toe/foo/bar?lol=emma#baf", 0]
+    - address:
+        address: "gradesta://example.com/en/tick-tack-toe/foo/bar?lol=emma#baf"
+        identity: 0
       instanceId: 1
       view: "ipfs://lolkdfsdf"
   vertexStates:
@@ -10,7 +12,9 @@ forClient:
   updateStatuses:
     - updateId: 1
       status: 200
-      explanation: ["gradesta://example.com/en/tick-tack-toe/foo/baz?arg=val#baf", 0]
+      explanation:
+        address: "gradesta://example.com/en/tick-tack-toe/foo/baz?arg=val#baf"
+        identity: 0
   dataUpdates:
     - updateId: 1
       vertexId: 1
@@ -41,12 +45,16 @@ forClient:
       vertexId: 2
       direction: 2
       connectedVertex:
-        symlink: ["gradesta://example.com/en/tick-tack-toe/baf/baz?arg=val#baf", 0]
+        symlink:
+          address: "gradesta://example.com/en/tick-tack-toe/baf/baz?arg=val#baf"
+          identity: 0
     - updateId: 5
       vertexId: 3
       direction: 2
       connectedVertex:
-        symlink: ["gradesta://example.com/en/tick-tack-toe/alr/amre", 0]
+        symlink:
+          address: "gradesta://example.com/en/tick-tack-toe/alr/amre"
+          identity: 0
   encryptionUpdates:
     - updateId: 6
       vertexId: 2
@@ -84,12 +92,16 @@ forService:
       vertexId: 2
       direction: 2
       connectedVertex:
-        symlink: ["gradesta://example.com/en/tick-tack-toe/alr/amre", 0]
+        symlink:
+          address: "gradesta://example.com/en/tick-tack-toe/alr/amre"
+          identity: 0
     - updateId: 5
       vertexId: 3
       direction: 2
       connectedVertex:
-        symlink: ["gradesta://example.com/en/tick-tack-toe/alr/amre", 0]
+        symlink:
+          address: "gradesta://example.com/en/tick-tack-toe/alr/amre"
+          identity: 0
   dataUpdates:
     - updateId: 6
       vertexId: 1
@@ -110,7 +122,9 @@ forService:
   placeCursor:
     - cursorId: 1
       selectionId: 1
-      address: ["gradesta://example.com/en/tick-tack-toe/alr/aščmre/🌍/😃", 0]
+      address:
+        address: "gradesta://example.com/en/tick-tack-toe/alr/aščmre/🌍/😃"
+        identity: 0
   expandSelection:
     - selectionId: 1
       vertexId: 1
