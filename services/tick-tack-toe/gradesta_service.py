@@ -34,7 +34,7 @@ class Vertex:
         self.service.queued_vertex_states.append(vs)
         del self.service.vertexes[self.id]
 
-    def load(self):
+    def load(self, data_mime=None, data=None, up=None, down=None, left=None, right=None, other_dims=None):
         updates = level0.ForClient()
         futures = set()
         v = level0.Vertex()
@@ -52,6 +52,9 @@ class Vertex:
         vs.reaped = False
         updates.init("vertexStates", 1)
         updates.vertexStates[0] = vs
+        if data is not None and data_mime is not None:
+            updates.init("dataUpdates", 1)
+            updates.dataUpdates[0] = self.data_update(data_mime, data)
         return updates, futures
 
     def recv(self, event):
@@ -61,10 +64,6 @@ class Vertex:
 
     @property
     def view(self):
-        return ""
-
-    @property
-    def clientside_encryption(self):
         return ""
 
     def data_update(self, mime, data):
