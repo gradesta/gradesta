@@ -145,6 +145,7 @@ def to_capnp(fdi, fdo):
 def to_yaml(fdi, fdo):
     m = level0.Message.read(fdi)
     d = m.to_dict()
+
     def try_decode_datas(l1, l2):
         try:
             for struct in d[l1][l2]:
@@ -154,10 +155,12 @@ def to_yaml(fdi, fdo):
                     pass
         except KeyError:
             pass
+
     try_decode_datas("forClient", "dataUpdates")
     try_decode_datas("forClient", "vertexMessages")
     try_decode_datas("forService", "dataUpdates")
     try_decode_datas("forService", "vertexMessages")
+
     def decode_port_updates(top_level):
         if top_level in d and "portUpdates" in d[top_level]:
             for update in d[top_level]["portUpdates"]:
@@ -174,9 +177,12 @@ def to_yaml(fdi, fdo):
                         pass
                     try:
                         if "vertex" in update["connectedVertex"]:
-                            update["connectedVertex"] = update["connectedVertex"]["vertex"]
+                            update["connectedVertex"] = update["connectedVertex"][
+                                "vertex"
+                            ]
                     except TypeError:
                         pass
+
     decode_port_updates("forClient")
     decode_port_updates("forClient")
     decode_port_updates("forClient")
@@ -188,13 +194,15 @@ def compare(fd1, fd2):
     fd1 = ensure_yaml(fd1)
     fd2 = ensure_yaml(fd2)
     from deepdiff import DeepDiff
+
     t1 = yaml.safe_load(fd1)
     t2 = yaml.safe_load(fd2)
     print(yaml.dump(t1))
     print("---")
     print(yaml.dump(t2))
     print("---")
-    return DeepDiff(t1, t2, verbose_level=0, view='tree')
+    return DeepDiff(t1, t2, verbose_level=0, view="tree")
+
 
 def ensure_yaml(fd):
     if fd.name.endswith(".yml") or fd.name.endswith(".yaml"):
@@ -205,17 +213,18 @@ def ensure_yaml(fd):
         fdo.seek(0)
         return fdo
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="""
-    Convert gradesta level0 messages from yaml to capnp or compare them.
-    """)
-    parser.add_argument('command', metavar='command', type=str,
-                        help='command [2capnp, 2yaml, compare]')
-    parser.add_argument('input', metavar='input', type=str,
-                        help='input file')
-    parser.add_argument('out', metavar='out', type=str,
-                        help='output file')
 
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="""
+    Convert gradesta level0 messages from yaml to capnp or compare them.
+    """
+    )
+    parser.add_argument(
+        "command", metavar="command", type=str, help="command [2capnp, 2yaml, compare]"
+    )
+    parser.add_argument("input", metavar="input", type=str, help="input file")
+    parser.add_argument("out", metavar="out", type=str, help="output file")
 
     args = parser.parse_args()
 

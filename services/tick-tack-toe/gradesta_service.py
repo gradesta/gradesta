@@ -30,11 +30,20 @@ class Vertex:
         self.__updateId = -1
 
     def reap(self):
-        vs = level0.VertexState(instanceId = self.id, reaped=True)
+        vs = level0.VertexState(instanceId=self.id, reaped=True)
         self.service.queued_vertex_states.append(vs)
         del self.service.vertexes[self.id]
 
-    def load(self, data_mime=None, data=None, up=None, down=None, left=None, right=None, other_dims=None):
+    def load(
+        self,
+        data_mime=None,
+        data=None,
+        up=None,
+        down=None,
+        left=None,
+        right=None,
+        other_dims=None,
+    ):
         updates = level0.ForClient()
         futures = set()
         v = level0.Vertex()
@@ -55,6 +64,18 @@ class Vertex:
         if data is not None and data_mime is not None:
             updates.init("dataUpdates", 1)
             updates.dataUpdates[0] = self.data_update(data_mime, data)
+        portUpdates = []
+        directions = {
+            "up": -1,
+            "down": 1,
+            "left": -2,
+            "right": 2,
+        }
+        for direction, val in directions.items():
+            custom_direction_value = eval(direction)
+            if custom_direction_value is not None:
+                portUpdates.append(self.port_update(val, **custom_direction_value))
+
         return updates, futures
 
     def recv(self, event):
@@ -74,6 +95,30 @@ class Vertex:
         du.mime = mime
         du.data = data
         return du
+
+    def port_update(
+        self, direction, closed=False, disconnected=False, vertexId=False, symlink=False
+    ):
+        assert (
+            len([x for x in [closed, disconnected, vertexId, symlink] if x == False])
+            == 3
+        )
+        pu = level0.PortUpdate()
+        pu.updateId = self.__updateId
+        self.__updateId -= 1
+        pu.vertexId = self.id
+        pu.direction = direction
+        if closed:
+            pu.connectedVertex.closed = None
+        if disconnected:
+            pu.connectedVertex.disconnected = None
+        if vertexId:
+            pu.connectedVertex.vertex = vertexId
+        if symlink:
+            pu.connectedVertex.init("symlink")
+            pu.connectedVertex.symlink.address = symlink.address
+            pu.connectedVertex.identity = symlink.identity
+        return pu
 
 
 class Port:
@@ -106,14 +151,18 @@ class Selections:
                 if not vertex_selections:
                     self.service.vertexes[vertex].reap()
         except KeyError:
-            sys.stderr.write("Received deselect command for non-existant selection {}.\n".format(selection))
+            sys.stderr.write(
+                "Received deselect command for non-existant selection {}.\n".format(
+                    selection
+                )
+            )
         del self.selections[selection]
 
 
 class Actor:
     def __init__(self):
         self.vertex_counter = 0
-        services_dir=os.path.expanduser("~/.cache/gradesta/services/sockets")
+        services_dir = os.path.expanduser("~/.cache/gradesta/services/sockets")
         pathlib.Path(services_dir).mkdir(parents=True, exist_ok=True)
 
         context = zmq.Context()
@@ -149,10 +198,10 @@ class Actor:
 
     def send_queued(self):
         mfs = level0_capnp.Message(
-            messages = self.queued_messages,
-            vertexes = self.queued_vertexes,
-            vertexStates = self.queued_vertex_states,
-            level1Messages = self.queued_level1_messages,
+            messages=self.queued_messages,
+            vertexes=self.queued_vertexes,
+            vertexStates=self.queued_vertex_states,
+            level1Messages=self.queued_level1_messages,
         )
         socket.send(mfs.to_bytes())
         self.reset_queue()
@@ -167,7 +216,11 @@ class Actor:
         try:
             self.vertexes[vm.vertexId].write(vm.data)
         except KeyError:
-            sys.stderr.write("Received message for vertex id {} but vertex does not exist.\n".format(vm.vertexId))
+            sys.stderr.write(
+                "Received message for vertex id {} but vertex does not exist.\n".format(
+                    vm.vertexId
+                )
+            )
 
     def load_vertex(self, address):
         for vertex in self.vertexes:
@@ -192,8 +245,18 @@ class Actor:
         try:
             vertex = self.vertexes[cm.vertexId]
         except KeyError:
-             sys.stderr.write("Received move cursor command for non-existant vertex {}.\n".format(cm.vertexId))
+            sys.stderr.write(
+                "Received move cursor command for non-existant vertex {}.\n".format(
+                    cm.vertexId
+                )
+            )
         try:
-            self.selections.select(cm.selectionId, vertex.ports[cm.direction].get_vertex().id)
+            self.selections.select(
+                cm.selectionId, vertex.ports[cm.direction].get_vertex().id
+            )
         except KeyError:
-            sys.stderr.write("Received move cursor command for vertex {} in non-existant direction {}.\n".format(cm.vertexId, cm.direction))
+            sys.stderr.write(
+                "Received move cursor command for vertex {} in non-existant direction {}.\n".format(
+                    cm.vertexId, cm.direction
+                )
+            )

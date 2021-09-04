@@ -4,6 +4,7 @@ import tempfile
 
 import level0_yaml
 
+
 def to_capnp_and_back(file):
     fd2 = tempfile.TemporaryFile()
     with open(file, "rb") as fd1:
@@ -16,8 +17,10 @@ def to_capnp_and_back(file):
         fd1.seek(0)
         assert level0_yaml.compare(fd1, fd3) == {}
 
+
 def test_data_update_to_capnp_and_back():
     to_capnp_and_back("./example_yaml/hello_world_data_update.yml")
+
 
 def test_all_fields_to_capnp_and_back():
     to_capnp_and_back("./example_yaml/all_fields.yaml")

@@ -12,6 +12,7 @@ Cython = "^0.29.23"
 pyzmq = "^22.0.3"
 deepdiff = "^5.5.0"
 PyYAML = "^5.4.1"
+black = "^21.8b0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.4"

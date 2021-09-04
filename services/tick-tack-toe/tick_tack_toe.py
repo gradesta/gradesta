@@ -7,7 +7,8 @@ class Board(gradesta_service.Vertex):
     def load(self):
         return super().load(
             data_mime="text/plain",
-            data=self.address.split("/")[6].replace(".", "\n")
+            data=self.address.split("/")[6].replace(".", "\n"),
+            up=self.stage_cell(up_addr),
         )
 
 
