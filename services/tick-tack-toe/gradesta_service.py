@@ -22,6 +22,14 @@ def address_fields_to_dict(address_fields):
     return d
 
 
+class Cell:
+    pass
+
+
+class Page:
+    pass
+
+
 class Vertex:
     def __init__(self, service, id, address):
         self.service = service
