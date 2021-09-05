@@ -44,3 +44,9 @@ def test_previous_move():
     assert m.place("X") == "x o.o x. X "
     assert m.left() == "x o.o x.   /next/4"
     assert m.draw() == "x o\no x\n X "
+
+
+def test_board():
+    b = Board("x o.o x. x ")
+    assert b.path == ""
+    assert b.draw() == "x o\no x\n x "

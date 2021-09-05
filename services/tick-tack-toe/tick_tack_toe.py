@@ -10,7 +10,7 @@ class Board(gradesta_service.Cell):
     path: str = ""
 
     def draw(self):
-        self.pieces.replace(".", "\n")
+        return self.pieces.replace(".", "\n")
 
 
 @dataclass
