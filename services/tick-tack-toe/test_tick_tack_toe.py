@@ -1,7 +1,7 @@
 import pytest
 import gradesta_service
 
-from tick_tack_toe import Board, NextMove, PreviousMove
+from tick_tack_toe import Board, NextMove, PreviousMove, BoardsAndMoves
 
 
 @pytest.fixture
@@ -50,3 +50,13 @@ def test_board():
     b = Board("x o.o x. x ")
     assert b.path == ""
     assert b.draw() == "x o\no x\n x "
+
+
+def test_boards_and_moves():
+    bnm = BoardsAndMoves("x o.o x. x ")
+    assert len(bnm.prev_moves()) == 3
+    assert [m.move for m in bnm.prev_moves()] == [1, 2, 3]
+    assert len(bnm.next_moves()) == 4
+    assert [m.move for m in bnm.next_moves()] == [1, 2, 3, 4]
+    assert len(list(bnm.cells())) == 8
+    assert [c[0] for c in bnm.cells()] == ["P", "P", "P", "B", "N", "N", "N", "N"]

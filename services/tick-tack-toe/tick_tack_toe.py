@@ -1,6 +1,5 @@
 #!/usr/bin/python3
 import gradesta_service
-import asyncio
 from dataclasses import dataclass
 
 
@@ -105,7 +104,19 @@ N
 .
 """
 
-    def vertexes(self):
+    def prev_moves(self):
+        xs = self.pieces.count("x")
+        os = self.pieces.count("o")
+        num_prev_moves = max(xs, os)
+        return [
+            PreviousMove(self.pieces, move) for move in range(1, num_prev_moves + 1)
+        ]
+
+    def next_moves(self):
+        num_next_moves = self.pieces.count(" ")
+        return [NextMove(self.pieces, move) for move in range(1, num_next_moves + 1)]
+
+    def cells(self):
         for prev_move in self.prev_moves():
             yield ("P", prev_move)
         yield ("B", Board(self.pieces))
