@@ -18,15 +18,43 @@ class Move(gradesta_service.Cell):
     pieces: str
     move: int
 
+    def draw(self):
+        return self.place(self.marker()).replace(".", "\n")
+
 
 @dataclass
 class PreviousMove(Move):
     @property
     def path(self):
-        return "prev/" + self.move
+        return "prev/{}".format(self.move)
+
+    def whos_move(self):
+        xs = self.pieces.count("x")
+        os = self.pieces.count("o")
+        if os > xs:
+            return "o"
+        else:
+            return "x"
 
     def marker(self):
         return self.whos_move().upper()
+
+    def place(self, marker):
+        ps = list(self.pieces)
+        i = 0
+        placed = 0
+        while True:
+            if ps[i] == self.whos_move():
+                placed += 1
+            if placed == self.move:
+                ps[i] = marker
+                return "".join(ps)
+            i += 1
+
+    def left(self):
+        placed = self.place(self.marker())
+        which_move = placed.split(self.marker())[0].count(" ") + 1
+        return "{pieces}/next/{move}".format(pieces=self.place(" "), move=which_move)
 
 
 class NextMove(Move):
@@ -53,9 +81,6 @@ class NextMove(Move):
                 ps[i] = marker
                 return "".join(ps)
             i += 1
-
-    def draw(self):
-        return self.place(self.marker()).replace(".", "\n")
 
     def right(self):
         placed = self.place(self.marker())

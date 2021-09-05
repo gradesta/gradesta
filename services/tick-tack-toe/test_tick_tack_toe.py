@@ -1,7 +1,7 @@
 import pytest
 import gradesta_service
 
-from tick_tack_toe import Board, NextMove
+from tick_tack_toe import Board, NextMove, PreviousMove
 
 
 @pytest.fixture
@@ -32,3 +32,15 @@ oöx\n\
     )
     assert nm.right() == "x o.oox. x /prev/3"
     assert nm.marker() == "ö"
+
+
+def test_previous_move():
+    m = PreviousMove("x o.o x. x ", 1)
+    assert m.path == "prev/1"
+    assert m.whos_move() == "x"
+    assert m.marker() == "X"
+    assert m.place("X") == "X o.o x. x "
+    m.move = 3
+    assert m.place("X") == "x o.o x. X "
+    assert m.left() == "x o.o x.   /next/4"
+    assert m.draw() == "x o\no x\n X "
