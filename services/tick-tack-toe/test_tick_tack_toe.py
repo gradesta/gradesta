@@ -55,8 +55,11 @@ def test_board():
 def test_boards_and_moves():
     bnm = BoardsAndMoves("x o.o x. x ")
     assert len(bnm.prev_moves()) == 3
-    assert [m.move for m in bnm.prev_moves()] == [1, 2, 3]
+    assert [m.move for m in bnm.prev_moves()] == [1,2,3]
     assert len(bnm.next_moves()) == 4
-    assert [m.move for m in bnm.next_moves()] == [1, 2, 3, 4]
+    assert [m.move for m in bnm.next_moves()] == [1,2,3,4]
     assert len(list(bnm.cells())) == 8
     assert [c[0] for c in bnm.cells()] == ["P", "P", "P", "B", "N", "N", "N", "N"]
+    start = BoardsAndMoves("   .   .   ")
+    assert len(start.prev_moves()) == 0
+    assert len(start.next_moves()) == 9
