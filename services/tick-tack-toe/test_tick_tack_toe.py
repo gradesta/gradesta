@@ -1,7 +1,7 @@
 import pytest
 import gradesta_service
 
-from tick_tack_toe import Board, NextMove, PreviousMove, BoardsAndMoves
+from tick_tack_toe import Board, NextMove, PreviousMove, BoardsAndMoves, who_won
 
 
 @pytest.fixture
@@ -50,6 +50,8 @@ def test_board():
     b = Board("x o.o x. x ")
     assert b.path == ""
     assert b.draw() == "x o\no x\n x "
+    xwins = Board("xxx.o o.   ")
+    assert xwins.draw() == "X wins!\nxxx\no o\n   "
 
 
 def test_boards_and_moves():
@@ -63,3 +65,12 @@ def test_boards_and_moves():
     start = BoardsAndMoves("   .   .   ")
     assert len(start.prev_moves()) == 0
     assert len(start.next_moves()) == 9
+    xwins = BoardsAndMoves("x o. x .o x")
+    assert len(xwins.prev_moves()) == 3
+    assert len(xwins.next_moves()) == 0
+
+
+def test_who_won():
+    assert "x" == who_won("xxx.   .oo ")
+    assert "o" == who_won("xxo. o .oxx")
+    assert None == who_won("xxo.o x.   ")

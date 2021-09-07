@@ -2,6 +2,26 @@
 import gradesta_service
 from dataclasses import dataclass
 
+from typing import Optional
+
+
+def who_won(board: Optional[str]):
+    """
+    Returns "x" if x won, "o" if o won and None if the win condition has not been met.
+    """
+    def check_letter(letter: str):
+        if letter * 3 in board:
+            return letter
+        if board[5] == letter:
+            if board[0] == board[10] == letter:
+                return letter
+            if board[2] == board[8] == letter:
+                return letter
+        return None
+    x = check_letter("x")
+    o = check_letter("o")
+    return x or o
+
 
 @dataclass
 class Board(gradesta_service.Cell):
@@ -9,7 +29,11 @@ class Board(gradesta_service.Cell):
     path: str = ""
 
     def draw(self):
-        return self.pieces.replace(".", "\n")
+        winner = who_won(self.pieces)
+        head = ""
+        if winner:
+            head = "{} wins!\n".format(winner.upper())
+        return head + self.pieces.replace(".", "\n")
 
 
 @dataclass
@@ -113,6 +137,8 @@ N
         ]
 
     def next_moves(self):
+        if who_won(self.pieces) is not None:
+            return []
         num_next_moves = self.pieces.count(" ")
         return [NextMove(self.pieces, move) for move in range(1, num_next_moves + 1)]
 
