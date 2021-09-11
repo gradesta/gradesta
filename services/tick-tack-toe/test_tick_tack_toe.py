@@ -6,23 +6,28 @@ from tick_tack_toe import Board, NextMove, PreviousMove, BoardsAndMoves, who_won
 
 @pytest.fixture
 def middle_board():
-    return Board("x o.o x. x ")
+    return Board(1, "x o.o x. x ")
 
 
 def test_resolve(middle_board):
-    bnm = BoardsAndMoves("x o.o x. x ")
+    bnm = BoardsAndMoves(1, "x o.o x. x ")
     board = bnm.resolve("")
     assert board.draw() == "x o\no x\n x "
     ttt = TickTackToe()
-    board1 = ttt.resolve("x o.o x. x /")
+    board1 = ttt.resolve("x o.o x. x /", 1)
     assert board1.draw() == "x o\no x\n x "
+    board2 = ttt.resolve("x o.o x. x /", 1)
+    assert board1 == board2
+    board3 = ttt.resolve("x o.o x. x /", 2)
+    assert board2 != board3
+
     #assert u.dataUpdates[0].data == "x o\no x\n x ".encode("utf8")
     #assert u.portUpdates[0].direction == -1
     #assert u.portUpdates[1].direction == 1
 
 
 def test_next_move():
-    nm = NextMove("x o.o x. x ", 1)
+    nm = NextMove(1, "x o.o x. x ", 1)
     assert nm.whos_move() == "o"
     assert nm.path == "next/1"
     assert nm.place("ö") == "xöo.o x. x "
@@ -39,7 +44,7 @@ oöx\n\
 
 
 def test_previous_move():
-    m = PreviousMove("x o.o x. x ", 1)
+    m = PreviousMove(1, "x o.o x. x ", 1)
     assert m.path == "prev/1"
     assert m.whos_move() == "x"
     assert m.marker() == "X"
@@ -51,25 +56,25 @@ def test_previous_move():
 
 
 def test_board():
-    b = Board("x o.o x. x ")
+    b = Board(1, "x o.o x. x ")
     assert b.path == ""
     assert b.draw() == "x o\no x\n x "
-    xwins = Board("xxx.o o.   ")
+    xwins = Board(1, "xxx.o o.   ")
     assert xwins.draw() == "X wins!\nxxx\no o\n   "
 
 
 def test_boards_and_moves():
-    bnm = BoardsAndMoves("x o.o x. x ")
+    bnm = BoardsAndMoves(1, "x o.o x. x ")
     assert len(bnm.prev_moves()) == 3
     assert [m.move for m in bnm.prev_moves()] == [1,2,3]
     assert len(bnm.next_moves()) == 4
     assert [m.move for m in bnm.next_moves()] == [1,2,3,4]
     assert len(list(bnm.cells())) == 8
     assert [c[0] for c in bnm.cells()] == ["P", "P", "P", "B", "N", "N", "N", "N"]
-    start = BoardsAndMoves("   .   .   ")
+    start = BoardsAndMoves(1, "   .   .   ")
     assert len(start.prev_moves()) == 0
     assert len(start.next_moves()) == 9
-    xwins = BoardsAndMoves("x o. x .o x")
+    xwins = BoardsAndMoves(1, "x o. x .o x")
     assert len(xwins.prev_moves()) == 3
     assert len(xwins.next_moves()) == 0
 

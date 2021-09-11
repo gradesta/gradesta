@@ -4,9 +4,11 @@ import sys
 import pathlib
 import capnp
 import asyncio
+from dataclasses import dataclass
 
 import level0_capnp as level0
 from paths import match_path
+from cell_reference_db import CellReferenceDB
 
 from typing import Tuple, DefaultDict, Optional
 
@@ -25,11 +27,14 @@ def address_fields_to_dict(address_fields):
     return d
 
 
+@dataclass
 class Cell:
-    pass
+    identity: int
 
 
+@dataclass
 class Page:
+    identity: int
     def resolve(self, path):
         for ctype, cell in self.cells():
             if cell.path == path:
@@ -174,6 +179,10 @@ class Selections:
 
 
 class Actor:
+    def __init__(self):
+        self.db = CellReferenceDB()
+        self.cells: DefaultDict[int, Cell] = {}
+
     def start(self):
         self.vertex_counter = 0
         services_dir = os.path.expanduser("~/.cache/gradesta/services/sockets")
@@ -275,8 +284,13 @@ class Actor:
                 )
             )
 
-    def resolve(self, path):
-        for pattern, page in self.pages.items():
-            match = match_path(path, pattern)
-            if match is not None:
-                return page(**match[0]).resolve(match[1])
+    def resolve(self, path: str, identity: int) -> Cell:
+        cid, created = self.db.lookup_cell(path, identity)
+        if created or cid not in self.cells:
+            for pattern, page in self.pages.items():
+                match = match_path(path, pattern)
+                if match is not None:
+                    cell = page(identity, **match[0]).resolve(match[1])
+                    self.cells[cid] = cell
+                    return cell
+        return self.cells[cid]

@@ -133,19 +133,19 @@ N
         os = self.pieces.count("o")
         num_prev_moves = max(xs, os)
         return [
-            PreviousMove(self.pieces, move) for move in range(1, num_prev_moves + 1)
+            PreviousMove(self.identity, self.pieces, move) for move in range(1, num_prev_moves + 1)
         ]
 
     def next_moves(self):
         if who_won(self.pieces) is not None:
             return []
         num_next_moves = self.pieces.count(" ")
-        return [NextMove(self.pieces, move) for move in range(1, num_next_moves + 1)]
+        return [NextMove(self.identity, self.pieces, move) for move in range(1, num_next_moves + 1)]
 
     def cells(self):
         for prev_move in self.prev_moves():
             yield ("P", prev_move)
-        yield ("B", Board(self.pieces))
+        yield ("B", Board(self.identity, self.pieces))
         for next_move in self.next_moves():
             yield ("N", next_move)
 

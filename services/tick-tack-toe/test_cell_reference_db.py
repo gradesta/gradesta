@@ -6,7 +6,7 @@ def test_cell_reference_db():
     crdb = CellReferenceDB()
     instance0 = crdb.new_instance("foo", 1)
     assert instance0 == 0
-    assert crdb.lookup_cell("foo", 1) == instance0
+    assert crdb.lookup_cell("foo", 1) == (instance0, False)
     assert crdb.lookup_cell_address(instance0) == ("foo", 1)
     cell1 = crdb.add_reference(instance0, "bar", 1)
     assert cell1 == 1

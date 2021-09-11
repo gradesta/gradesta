@@ -60,7 +60,7 @@ class CellReferenceDB:
         self.__reference_table.add((referrer, refered))
 
     def add_reference(self, referrer: int, cell_address: str, identity: int) -> int:
-        refered = self.lookup_cell(cell_address, identity)
+        refered, _ = self.lookup_cell(cell_address, identity)
         self.add_reference_by_id(referrer, refered)
         return refered
 
@@ -78,20 +78,20 @@ class CellReferenceDB:
         return True
 
     def remove_reference(self, referrer: int, cell_address: str, identity: int) -> int:
-        refered = self.lookup_cell(cell_address, identity)
+        refered, _ = self.lookup_cell(cell_address, identity)
         self.remove_reference_by_id(referrer, refered)
         return refered
 
-    def lookup_cell(self, cell_address: str, identity: int) -> int:
+    def lookup_cell(self, cell_address: str, identity: int) -> Tuple[int, bool]:
         """
-        Given an address and identity return the cell's id. If no cell id is registered for that address yet, then create one.
+        Given an address and identity return the cell's id. If no cell id is registered for that address yet, then create one. The second element of the returned tuple is true if a new cell was created.
         """
         try:
-            return self.__address_table[(cell_address, identity)]
+            return (self.__address_table[(cell_address, identity)], False)
         except KeyError:
             self.__cell_id_counter += 1
             self.__address_table[(cell_address, identity)] = self.__cell_id_counter
-            return self.__cell_id_counter
+            return (self.__cell_id_counter, True)
 
     def lookup_cell_address(self, cell_id: int) -> Optional[Tuple[str, int]]:
         """
