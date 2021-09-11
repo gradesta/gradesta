@@ -1,7 +1,7 @@
 import pytest
 import gradesta_service
 
-from tick_tack_toe import Board, NextMove, PreviousMove, BoardsAndMoves, who_won
+from tick_tack_toe import Board, NextMove, PreviousMove, BoardsAndMoves, who_won, TickTackToe
 
 
 @pytest.fixture
@@ -9,12 +9,16 @@ def middle_board():
     return Board("x o.o x. x ")
 
 
-def test_load(middle_board):
-    pass
-    # u, f = middle_board.load()
-    # assert u.dataUpdates[0].data == "x o\no x\n x ".encode("utf8")
-    # assert u.portUpdates[0].direction == -1
-    # assert u.portUpdates[1].direction == 1
+def test_resolve(middle_board):
+    bnm = BoardsAndMoves("x o.o x. x ")
+    board = bnm.resolve("")
+    assert board.draw() == "x o\no x\n x "
+    ttt = TickTackToe()
+    board1 = ttt.resolve("x o.o x. x /")
+    assert board1.draw() == "x o\no x\n x "
+    #assert u.dataUpdates[0].data == "x o\no x\n x ".encode("utf8")
+    #assert u.portUpdates[0].direction == -1
+    #assert u.portUpdates[1].direction == 1
 
 
 def test_next_move():

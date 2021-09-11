@@ -152,4 +152,4 @@ N
 
 class TickTackToe(gradesta_service.Actor):
     service_name = "tick-tack-toe"
-    pages = {"<pieces>/", BoardsAndMoves}
+    pages = {"<pieces>/": BoardsAndMoves}

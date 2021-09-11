@@ -7,6 +7,8 @@ import asyncio
 
 import level0_capnp as level0
 
+from typing import Tuple, DefaultDict, Optional
+
 
 def to_addr_field(k, v):
     af = level0.AddressField()
@@ -27,7 +29,10 @@ class Cell:
 
 
 class Page:
-    pass
+    def resolve(self, path):
+        for ctype, cell in self.cells():
+            if cell.path == path:
+                return cell
 
 
 class Vertex:
@@ -168,7 +173,7 @@ class Selections:
 
 
 class Actor:
-    def __init__(self):
+    def start(self):
         self.vertex_counter = 0
         services_dir = os.path.expanduser("~/.cache/gradesta/services/sockets")
         pathlib.Path(services_dir).mkdir(parents=True, exist_ok=True)
@@ -268,3 +273,24 @@ class Actor:
                     cm.vertexId, cm.direction
                 )
             )
+
+    def resolve(self, path):
+        for pattern, page in self.pages.items():
+            match = match_path(path, pattern)
+            if match is not None:
+                return page(**match[0]).resolve(match[1])
+
+
+def match_path(path: str, pattern: str) -> Optional[Tuple[DefaultDict[str, str], str]]:
+    """
+    Returns None if paths don't match otherwise returns a tuple with the a dict of path_vars and the remaining path segment.
+    """
+    segs = os.path.split(path)
+    patt_segs = os.path.split(pattern)
+    path_vars = {}
+    for (s, patts) in zip(segs, patt_segs):
+        if patts.startswith("<") and patts.endswith(">"):
+            path_vars[patts[1:-1]] = s
+        elif s != patts:
+            return None
+    return path_vars, "/".join(segs[len(patt_segs):])
