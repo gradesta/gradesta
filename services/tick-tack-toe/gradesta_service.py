@@ -4,13 +4,14 @@ import sys
 import pathlib
 import capnp
 import asyncio
+from concurrent.futures import *
 from dataclasses import dataclass
 
 import level0_capnp as level0
 from paths import match_path
 from cell_reference_db import CellReferenceDB
 
-from typing import Tuple, DefaultDict, Optional
+from typing import *
 
 
 def to_addr_field(k, v):
@@ -27,93 +28,107 @@ def address_fields_to_dict(address_fields):
     return d
 
 
-@dataclass
-class Cell:
-    identity: int
+def forClientTemplate() -> DefaultDict[str, List[any]]:
+    fc = {}
+    fields = [
+        "vertexMessages",
+        "vertexes",
+        "vertexStates",
+        "updateStatuses",
+        "portUpdates",
+        "dataUpdates",
+        "encryptionUpdates",
+        "cursors",
+    ]
+    for f in fields:
+        fc[f] = []
+    return fc
 
 
 @dataclass
-class Page:
-    identity: int
-    def resolve(self, path):
-        for ctype, cell in self.cells():
-            if cell.path == path:
-                return cell
-
-
-class Vertex:
-    def __init__(self, service, id, address):
-        self.service = service
-        self.address = address
-        self.id = id
-        self.__updateId = -1
-
-    def reap(self):
-        vs = level0.VertexState(instanceId=self.id, reaped=True)
-        self.service.queued_vertex_states.append(vs)
-        del self.service.vertexes[self.id]
+class ProtocolPage:
+    actor: "Actor"
+    address: str
+    page: "Page"
 
     def load(
-        self,
-        data_mime=None,
-        data=None,
-        up=None,
-        down=None,
-        left=None,
-        right=None,
-        other_dims=None,
-    ):
-        updates = level0.ForClient()
-        futures = set()
-        v = level0.Vertex()
-        a = level0.Address()
-        a.address = self.address
-        a.identity = 0
-        v.address = a
-        v.instanceId = self.id
-        v.view = self.view
-        updates.init("vertexes", 1)
-        updates.vertexes[0] = v
-        vs = level0.VertexState()
-        vs.instanceId = self.id
-        vs.status = 200
-        vs.reaped = False
-        updates.init("vertexStates", 1)
-        updates.vertexStates[0] = vs
-        if data is not None and data_mime is not None:
-            updates.init("dataUpdates", 1)
-            updates.dataUpdates[0] = self.data_update(data_mime, data)
-        portUpdates = []
+            self, paths: List[str]
+    ) -> Tuple[DefaultDict[str, List[any]], Set[Future]]:
+        updates: DefaultDict[str, List[any]] = forClientTemplate()
+        futures: Set[Future] = set()
         directions = {
             "up": -1,
             "down": 1,
             "left": -2,
             "right": 2,
         }
-        for direction, val in directions.items():
-            custom_direction_value = eval(direction)
-            if custom_direction_value is not None:
-                portUpdates.append(self.port_update(val, **custom_direction_value))
+        for path in paths:
+            cell = self.page.resolve(path)
+            pcell = ProtocolCell(self, cell)
+            v = level0.Vertex()
+            a = level0.Address()
+            a.address = self.address + cell.path
+            a.identity = cell.identity
+            v.address = a
+            v.instanceId = pcell.cid
+            v.view = cell.view
+            updates["vertexes"].append(v)
+            vs = level0.VertexState()
+            vs.instanceId = pcell.cid
+            vs.status = 200
+            vs.reaped = False
+            updates["vertexStates"].append(vs)
+            du = pcell.data_update()
+            if du is not None:
+                updates["dataUpdates"].append(du)
+            for direction, val in directions.items():
+                try:
+                    custom_direction_value = eval("cell." + direction + "()")
+                except AttributeError:
+                    custom_direction_value = None
+                if custom_direction_value is not None:
+                    updates["portUpdates"].append(pcell.port_update(val, **custom_direction_value))
 
         return updates, futures
 
-    def recv(self, event):
-        updates = level0.ForClient()
-        futures = set()
-        return updates, futures
+
+@dataclass
+class Page:
+    identity: int
+
+    def resolve(self, path):
+        for ctype, cell in self.cells():
+            if cell.path == path:
+                return cell
+
+
+@dataclass
+class ProtocolCell:
+    page: 'ProtocolPage'
+    cell: 'Cell'
 
     @property
-    def view(self):
-        return ""
+    def cid(self):
+        return self.page.actor.crdb.lookup_cell(self.address, self.cell.identity)[0]
 
-    def data_update(self, mime, data):
-        du = level0.DataUpdate()
-        du.updateId = self.__updateId
-        self.__updateId -= 1
-        du.vertexId = self.id
-        du.mime = mime
-        du.data = data
-        return du
+    @property
+    def address(self):
+        return self.page.address + self.cell.path
+
+
+    def data_update(self):
+        data = self.cell.draw()
+        if type(data) is str:
+            data = data.encode("utf8")
+        data_mime = self.cell.data_mime()
+        if data is not None and data_mime is not None:
+            du = level0.DataUpdate()
+            du.updateId = next(self.page.actor.updateCounter)
+            du.vertexId = self.cid
+            du.mime = data_mime
+            du.data = data
+            return du
+
 
     def port_update(
         self, direction, closed=False, disconnected=False, vertexId=False, symlink=False
@@ -123,9 +138,8 @@ class Vertex:
             == 3
         )
         pu = level0.PortUpdate()
-        pu.updateId = self.__updateId
-        self.__updateId -= 1
-        pu.vertexId = self.id
+        pu.updateId = next(self.page.actor.updateCounter)
+        pu.vertexId = self.cid
         pu.direction = direction
         if closed:
             pu.connectedVertex.closed = None
@@ -140,12 +154,35 @@ class Vertex:
         return pu
 
 
-class Port:
-    def __init__(self, vertex):
-        self.vertex = vertex
+@dataclass
+class Cell:
+    identity: int
 
-    def get_vertex(self):
-        return self.vertex
+    def data_mime(self):
+        return "text/plain"
+
+
+    @property
+    def view(self):
+        return ""
+
+
+class Vertex:
+    def __init__(self, service, id, address):
+        self.service = service
+        self.address = address
+        self.id = id
+        self.__updateId = -1
+
+    def reap(self):
+        vs = level0.VertexState(instanceId=self.id, reaped=True)
+        self.service.queued_vertex_states.append(vs)
+        del self.service.vertexes[self.id]
+
+    def recv(self, event):
+        updates = level0.ForClient()
+        futures = set()
+        return updates, futures
 
 
 class Selections:
@@ -180,8 +217,15 @@ class Selections:
 
 class Actor:
     def __init__(self):
-        self.db = CellReferenceDB()
+        self.crdb = CellReferenceDB()
         self.cells: DefaultDict[int, Cell] = {}
+        self.address = "^en/tick-tack-toe/"
+        def update_counter():
+            uc = 0
+            while True:
+                uc -= 1
+                yield uc
+        self.updateCounter: Iterator[int] = update_counter()
 
     def start(self):
         self.vertex_counter = 0
@@ -285,7 +329,7 @@ class Actor:
             )
 
     def resolve(self, path: str, identity: int) -> Cell:
-        cid, created = self.db.lookup_cell(path, identity)
+        cid, created = self.crdb.lookup_cell(path, identity)
         if created or cid not in self.cells:
             for pattern, page in self.pages.items():
                 match = match_path(path, pattern)

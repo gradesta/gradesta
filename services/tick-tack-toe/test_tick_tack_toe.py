@@ -1,19 +1,23 @@
 import pytest
 import gradesta_service
 
-from tick_tack_toe import Board, NextMove, PreviousMove, BoardsAndMoves, who_won, TickTackToe
+from tick_tack_toe import (
+    Board,
+    NextMove,
+    PreviousMove,
+    BoardsAndMoves,
+    who_won,
+    TickTackToe,
+)
+
+from cell_reference_db import CellReferenceDB
 
 
-@pytest.fixture
-def middle_board():
-    return Board(1, "x o.o x. x ")
-
-
-def test_resolve(middle_board):
+def test_resolve():
+    ttt = TickTackToe()
     bnm = BoardsAndMoves(1, "x o.o x. x ")
     board = bnm.resolve("")
     assert board.draw() == "x o\no x\n x "
-    ttt = TickTackToe()
     board1 = ttt.resolve("x o.o x. x /", 1)
     assert board1.draw() == "x o\no x\n x "
     board2 = ttt.resolve("x o.o x. x /", 1)
@@ -21,9 +25,15 @@ def test_resolve(middle_board):
     board3 = ttt.resolve("x o.o x. x /", 2)
     assert board2 != board3
 
-    #assert u.dataUpdates[0].data == "x o\no x\n x ".encode("utf8")
-    #assert u.portUpdates[0].direction == -1
-    #assert u.portUpdates[1].direction == 1
+
+def test_load():
+    ttt = TickTackToe()
+    bnm = BoardsAndMoves(1, "x o.o x. x ")
+    pbnm = gradesta_service.ProtocolPage(ttt, "^en/tick-tack-toe/x o.o x. x /", bnm)
+    u, fs = pbnm.load([""])
+    assert u["dataUpdates"][0].data == "x o\no x\n x ".encode("utf8")
+    # assert u["portUpdates"][0].direction == -1
+    # assert u["portUpdates"][1].direction == 1
 
 
 def test_next_move():
@@ -64,11 +74,12 @@ def test_board():
 
 
 def test_boards_and_moves():
+    ttt = TickTackToe()
     bnm = BoardsAndMoves(1, "x o.o x. x ")
     assert len(bnm.prev_moves()) == 3
-    assert [m.move for m in bnm.prev_moves()] == [1,2,3]
+    assert [m.move for m in bnm.prev_moves()] == [1, 2, 3]
     assert len(bnm.next_moves()) == 4
-    assert [m.move for m in bnm.next_moves()] == [1,2,3,4]
+    assert [m.move for m in bnm.next_moves()] == [1, 2, 3, 4]
     assert len(list(bnm.cells())) == 8
     assert [c[0] for c in bnm.cells()] == ["P", "P", "P", "B", "N", "N", "N", "N"]
     start = BoardsAndMoves(1, "   .   .   ")

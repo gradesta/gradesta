@@ -2,13 +2,14 @@
 import gradesta_service
 from dataclasses import dataclass
 
-from typing import Optional
+from typing import *
 
 
 def who_won(board: Optional[str]):
     """
     Returns "x" if x won, "o" if o won and None if the win condition has not been met.
     """
+
     def check_letter(letter: str):
         if letter * 3 in board:
             return letter
@@ -18,6 +19,7 @@ def who_won(board: Optional[str]):
             if board[2] == board[8] == letter:
                 return letter
         return None
+
     x = check_letter("x")
     o = check_letter("o")
     return x or o
@@ -25,7 +27,7 @@ def who_won(board: Optional[str]):
 
 @dataclass
 class Board(gradesta_service.Cell):
-    pieces: str
+    pieces: str = ""
     path: str = ""
 
     def draw(self):
@@ -38,8 +40,8 @@ class Board(gradesta_service.Cell):
 
 @dataclass
 class Move(gradesta_service.Cell):
-    pieces: str
-    move: int
+    pieces: str = ""
+    move: int = 0
 
     def draw(self):
         return self.place(self.marker()).replace(".", "\n")
@@ -133,16 +135,20 @@ N
         os = self.pieces.count("o")
         num_prev_moves = max(xs, os)
         return [
-            PreviousMove(self.identity, self.pieces, move) for move in range(1, num_prev_moves + 1)
+            PreviousMove(self.identity, self.pieces, move)
+            for move in range(1, num_prev_moves + 1)
         ]
 
     def next_moves(self):
         if who_won(self.pieces) is not None:
             return []
         num_next_moves = self.pieces.count(" ")
-        return [NextMove(self.identity, self.pieces, move) for move in range(1, num_next_moves + 1)]
+        return [
+            NextMove(self.identity, self.pieces, move)
+            for move in range(1, num_next_moves + 1)
+        ]
 
-    def cells(self):
+    def cells(self) -> Tuple[str, gradesta_service.Cell]:
         for prev_move in self.prev_moves():
             yield ("P", prev_move)
         yield ("B", Board(self.identity, self.pieces))
