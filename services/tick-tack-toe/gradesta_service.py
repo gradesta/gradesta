@@ -51,9 +51,7 @@ class ProtocolPage:
     address: str
     page: "Page"
 
-    def load(
-            self, paths: List[str]
-    ) -> Tuple[DefaultDict[str, List[any]], Set[Future]]:
+    def load(self, paths: List[str]) -> Tuple[DefaultDict[str, List[any]], Set[Future]]:
         updates: DefaultDict[str, List[any]] = forClientTemplate()
         futures: Set[Future] = set()
         directions = {
@@ -87,7 +85,9 @@ class ProtocolPage:
                 except AttributeError:
                     custom_direction_value = None
                 if custom_direction_value is not None:
-                    updates["portUpdates"].append(pcell.port_update(val, **custom_direction_value))
+                    updates["portUpdates"].append(
+                        pcell.port_update(val, **custom_direction_value)
+                    )
 
         return updates, futures
 
@@ -104,8 +104,8 @@ class Page:
 
 @dataclass
 class ProtocolCell:
-    page: 'ProtocolPage'
-    cell: 'Cell'
+    page: "ProtocolPage"
+    cell: "Cell"
 
     @property
     def cid(self):
@@ -114,7 +114,6 @@ class ProtocolCell:
     @property
     def address(self):
         return self.page.address + self.cell.path
-
 
     def data_update(self):
         data = self.cell.draw()
@@ -128,7 +127,6 @@ class ProtocolCell:
             du.mime = data_mime
             du.data = data
             return du
-
 
     def port_update(
         self, direction, closed=False, disconnected=False, vertexId=False, symlink=False
@@ -160,7 +158,6 @@ class Cell:
 
     def data_mime(self):
         return "text/plain"
-
 
     @property
     def view(self):
@@ -220,11 +217,13 @@ class Actor:
         self.crdb = CellReferenceDB()
         self.cells: DefaultDict[int, Cell] = {}
         self.address = "^en/tick-tack-toe/"
+
         def update_counter():
             uc = 0
             while True:
                 uc -= 1
                 yield uc
+
         self.updateCounter: Iterator[int] = update_counter()
 
     def start(self):

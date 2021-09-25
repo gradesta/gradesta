@@ -124,10 +124,10 @@ class BoardsAndMoves(gradesta_service.Page):
 
     geometry = """
 P
-.
+*
 B
 N
-.
+*
 """
 
     def prev_moves(self):
