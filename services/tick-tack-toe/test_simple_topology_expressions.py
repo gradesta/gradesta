@@ -18,6 +18,22 @@ D
 """
 
 
+def test_np_topology(top1):
+    assert numpy_topology(top1)[1][0] == "A"
+
+
+def test_get_connections1(stream, top1):
+    assert get_connections(top1, stream) == set(
+        [
+            (0, 1, 1),
+            (1, 2, 1),
+            (2, 3, 1),
+            (3, 4, 1),
+            (4, 5, 1),
+        ]
+    )
+
+
 @fixture
 def top2():
     return """
@@ -27,30 +43,14 @@ C*
 """
 
 
-def test_np_topology(top1):
-    assert numpy_topology(top1)[1][0] == "A"
-
-
-def test_get_connections1(stream, top1):
-    assert get_connections(top1, stream) == set(
-        [
-            (0, 1),
-            (1, 2),
-            (2, 3),
-            (3, 4),
-            (4, 5),
-        ]
-    )
-
-
 def test_get_connections2(stream, top2):
     assert get_connections(top2, stream) == set(
         [
-            (0, 5),
-            (0, 1),
-            (1, 2),
-            (2, 3),
-            (3, 4),
+            (0, 5, 2),
+            (0, 1, 1),
+            (1, 2, 1),
+            (2, 3, 2),
+            (3, 4, 2),
         ]
     )
 

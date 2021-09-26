@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import level0_capnp as level0
 from paths import match_path
 from cell_reference_db import CellReferenceDB
+import simple_topology_expressions
 
 from typing import *
 
@@ -60,22 +61,13 @@ class ProtocolPage:
             "left": -2,
             "right": 2,
         }
+        cells = set()
         for path in paths:
             cell = self.page.resolve(path)
             pcell = ProtocolCell(self, cell)
-            v = level0.Vertex()
-            a = level0.Address()
-            a.address = self.address + cell.path
-            a.identity = cell.identity
-            v.address = a
-            v.instanceId = pcell.cid
-            v.view = cell.view
-            updates["vertexes"].append(v)
-            vs = level0.VertexState()
-            vs.instanceId = pcell.cid
-            vs.status = 200
-            vs.reaped = False
-            updates["vertexStates"].append(vs)
+            cells.add(pcell.cid)
+            updates["vertexes"].append(pcell.vertex())
+            updates["vertexStates"].append(pcell.vertexState())
             du = pcell.data_update()
             if du is not None:
                 updates["dataUpdates"].append(du)
@@ -88,8 +80,20 @@ class ProtocolPage:
                     updates["portUpdates"].append(
                         pcell.port_update(val, **custom_direction_value)
                     )
+        for (pcell1, pcell2, dim) in self.connections():
+            if pcell1.cid in cells:
+                updates["portUpdates"].append(
+                    pcell1.port_update(dim, vertexId=pcell2.cid)
+                )
 
         return updates, futures
+
+    def connections(self) -> Iterator[Tuple["ProtocolCell", "ProtocolCell", int]]:
+        connections = self.page.connections()
+        for (cell1, cell2, dim) in connections:
+            pcell1 = ProtocolCell(self, cell1)
+            pcell2 = ProtocolCell(self, cell2)
+            yield (pcell1, pcell2, dim)
 
 
 @dataclass
@@ -100,6 +104,17 @@ class Page:
         for ctype, cell in self.cells():
             if cell.path == path:
                 return cell
+
+    def connections(self) -> Iterator[Tuple["Cell", "Cell", int]]:
+        cells = list(self.cells())
+        connections = simple_topology_expressions.get_connections(
+            self.layout, [a for (a, b) in cells]
+        )
+        for (index1, index2, dim) in connections:
+            (_, cell1) = cells[index1]
+            (_, cell2) = cells[index2]
+            yield (cell1, cell2, dim)
+            yield (cell2, cell1, -dim)
 
 
 @dataclass
@@ -129,10 +144,15 @@ class ProtocolCell:
             return du
 
     def port_update(
-        self, direction, closed=False, disconnected=False, vertexId=False, symlink=False
+        self,
+        direction: int,
+        closed: bool = False,
+        disconnected: bool = False,
+        vertexId: Union[bool, int] = False,
+        symlink: Union[bool, Tuple[str, int]] = False,
     ):
         assert (
-            len([x for x in [closed, disconnected, vertexId, symlink] if x == False])
+            len([x for x in [closed, disconnected, vertexId, symlink] if x is False])
             == 3
         )
         pu = level0.PortUpdate()
@@ -147,9 +167,26 @@ class ProtocolCell:
             pu.connectedVertex.vertex = vertexId
         if symlink:
             pu.connectedVertex.init("symlink")
-            pu.connectedVertex.symlink.address = symlink.address
-            pu.connectedVertex.identity = symlink.identity
+            pu.connectedVertex.symlink.address = symlink[0]
+            pu.connectedVertex.symlink.identity = symlink[1]
         return pu
+
+    def vertex(self):
+        v = level0.Vertex()
+        a = level0.Address()
+        a.address = self.address
+        a.identity = self.cell.identity
+        v.address = a
+        v.instanceId = self.cid
+        v.view = self.cell.view
+        return v
+
+    def vertexState(self):
+        vs = level0.VertexState()
+        vs.instanceId = self.cid
+        vs.status = 200
+        vs.reaped = False
+        return vs
 
 
 @dataclass

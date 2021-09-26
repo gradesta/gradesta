@@ -13,9 +13,13 @@ def get_connections(topology, stream):
     topology = numpy_topology(topology)
     connections = set()
     for row in topology:
-        connections = connections.union(get_connections_1D(row, stream))
+        connections = connections.union(
+            [(a, b, 2) for (a, b) in get_connections_1D(row, stream)]
+        )
     for col in np.rot90(topology):
-        connections = connections.union(get_connections_1D(col, stream))
+        connections = connections.union(
+            [(a, b, 1) for (a, b) in get_connections_1D(col, stream)]
+        )
     return connections
 
 
@@ -33,6 +37,8 @@ def get_connections_1D(top, stream):
                 while stream[stream_index] == tripple[0]:
                     connections.add((stream_index - 1, stream_index))
                     stream_index += 1
+                    if stream_index >= len(stream):
+                        break
                 if len(tripple) == 3 and tripple[2].isalpha():
                     connections.add((stream_index - 1, stream.index(tripple[2])))
     return connections

@@ -32,8 +32,18 @@ def test_load():
     pbnm = gradesta_service.ProtocolPage(ttt, "^en/tick-tack-toe/x o.o x. x /", bnm)
     u, fs = pbnm.load([""])
     assert u["dataUpdates"][0].data == "x o\no x\n x ".encode("utf8")
-    # assert u["portUpdates"][0].direction == -1
-    # assert u["portUpdates"][1].direction == 1
+    assert len(u["portUpdates"]) == 2
+    assert u["portUpdates"][0].direction == 1
+    assert u["portUpdates"][1].direction == -1
+    updates, fs = pbnm.load(["next/2"])
+    assert updates["dataUpdates"][0].data == "x o\noöx\n x ".encode("utf8")
+    assert len(updates["portUpdates"]) == 3
+    left = [l for l in updates["portUpdates"] if l.direction == 2][0]
+    assert left.connectedVertex.symlink.address == "x o.oox. x /prev/3"
+    up = [l for l in updates["portUpdates"] if l.direction == -1][0]
+    assert type(up.connectedVertex.vertex) == int
+    down = [l for l in updates["portUpdates"] if l.direction == 1][0]
+    assert type(down.connectedVertex.vertex) == int
 
 
 def test_next_move():
@@ -49,7 +59,7 @@ def test_next_move():
 oöx\n\
  x "
     )
-    assert nm.right() == "x o.oox. x /prev/3"
+    assert nm.right() == {"symlink": ("x o.oox. x /prev/3", 1)}
     assert nm.marker() == "ö"
 
 
@@ -61,7 +71,7 @@ def test_previous_move():
     assert m.place("X") == "X o.o x. x "
     m.move = 3
     assert m.place("X") == "x o.o x. X "
-    assert m.left() == "x o.o x.   /next/4"
+    assert m.left() == {"symlink": ("x o.o x.   /next/4", 1)}
     assert m.draw() == "x o\no x\n X "
 
 

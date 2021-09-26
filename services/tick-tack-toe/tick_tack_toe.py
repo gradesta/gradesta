@@ -79,7 +79,12 @@ class PreviousMove(Move):
     def left(self):
         placed = self.place(self.marker())
         which_move = placed.split(self.marker())[0].count(" ") + 1
-        return "{pieces}/next/{move}".format(pieces=self.place(" "), move=which_move)
+        return {
+            "symlink": (
+                "{pieces}/next/{move}".format(pieces=self.place(" "), move=which_move),
+                self.identity,
+            )
+        }
 
 
 class NextMove(Move):
@@ -110,9 +115,14 @@ class NextMove(Move):
     def right(self):
         placed = self.place(self.marker())
         which_move = placed.split(self.marker())[0].count(self.whos_move()) + 1
-        return "{pieces}/prev/{move}".format(
-            pieces=self.place(self.whos_move()), move=which_move
-        )
+        return {
+            "symlink": (
+                "{pieces}/prev/{move}".format(
+                    pieces=self.place(self.whos_move()), move=which_move
+                ),
+                self.identity,
+            )
+        }
 
     def marker(self):
         return "ẍ" if self.whos_move() == "x" else "ö"
@@ -122,7 +132,7 @@ class NextMove(Move):
 class BoardsAndMoves(gradesta_service.Page):
     pieces: str
 
-    geometry = """
+    layout = """
 P
 *
 B
@@ -148,7 +158,7 @@ N
             for move in range(1, num_next_moves + 1)
         ]
 
-    def cells(self) -> Tuple[str, gradesta_service.Cell]:
+    def cells(self) -> Iterator[Tuple[str, gradesta_service.Cell]]:
         for prev_move in self.prev_moves():
             yield ("P", prev_move)
         yield ("B", Board(self.identity, self.pieces))
