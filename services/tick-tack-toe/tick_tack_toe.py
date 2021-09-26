@@ -27,20 +27,18 @@ def who_won(board: Optional[str]):
 
 @dataclass
 class Board(gradesta_service.Cell):
-    pieces: str = ""
     path: str = ""
 
     def draw(self):
-        winner = who_won(self.pieces)
+        winner = who_won(self.page.pieces)
         head = ""
         if winner:
-            head = "{} wins!\n".format(winner.upper())
-        return head + self.pieces.replace(".", "\n")
+            head = self.fmt("{} wins!\n", winner.upper())
+        return head + self.page.pieces.replace(".", "\n")
 
 
 @dataclass
 class Move(gradesta_service.Cell):
-    pieces: str = ""
     move: int = 0
 
     def draw(self):
@@ -51,11 +49,11 @@ class Move(gradesta_service.Cell):
 class PreviousMove(Move):
     @property
     def path(self):
-        return "prev/{}".format(self.move)
+        return self.fmt("Previous/{}", self.move)
 
     def whos_move(self):
-        xs = self.pieces.count("x")
-        os = self.pieces.count("o")
+        xs = self.page.pieces.count("x")
+        os = self.page.pieces.count("o")
         if os > xs:
             return "o"
         else:
@@ -65,7 +63,7 @@ class PreviousMove(Move):
         return self.whos_move().upper()
 
     def place(self, marker):
-        ps = list(self.pieces)
+        ps = list(self.page.pieces)
         i = 0
         placed = 0
         while True:
@@ -81,16 +79,16 @@ class PreviousMove(Move):
         which_move = placed.split(self.marker())[0].count(" ") + 1
         return {
             "symlink": (
-                "{pieces}/next/{move}".format(pieces=self.place(" "), move=which_move),
-                self.identity,
+                self.fmt("{pieces}/Next/{move}", pieces=self.place(" "), move=which_move),
+                self.page.identity,
             )
         }
 
 
 class NextMove(Move):
     def whos_move(self):
-        xs = self.pieces.count("x")
-        os = self.pieces.count("o")
+        xs = self.page.pieces.count("x")
+        os = self.page.pieces.count("o")
         if os > xs:
             return "x"
         else:
@@ -98,10 +96,10 @@ class NextMove(Move):
 
     @property
     def path(self):
-        return "next/{}".format(self.move)
+        return self.fmt("Next/{}", self.move)
 
     def place(self, marker):
-        ps = list(self.pieces)
+        ps = list(self.page.pieces)
         i = 0
         empties = 0
         while True:
@@ -117,10 +115,10 @@ class NextMove(Move):
         which_move = placed.split(self.marker())[0].count(self.whos_move()) + 1
         return {
             "symlink": (
-                "{pieces}/prev/{move}".format(
+                self.fmt("{pieces}/Previous/{move}",
                     pieces=self.place(self.whos_move()), move=which_move
                 ),
-                self.identity,
+                self.page.identity,
             )
         }
 
@@ -145,7 +143,7 @@ N
         os = self.pieces.count("o")
         num_prev_moves = max(xs, os)
         return [
-            PreviousMove(self.identity, self.pieces, move)
+            PreviousMove(self, move)
             for move in range(1, num_prev_moves + 1)
         ]
 
@@ -154,14 +152,14 @@ N
             return []
         num_next_moves = self.pieces.count(" ")
         return [
-            NextMove(self.identity, self.pieces, move)
+            NextMove(self, move)
             for move in range(1, num_next_moves + 1)
         ]
 
     def cells(self) -> Iterator[Tuple[str, gradesta_service.Cell]]:
         for prev_move in self.prev_moves():
             yield ("P", prev_move)
-        yield ("B", Board(self.identity, self.pieces))
+        yield ("B", Board(self))
         for next_move in self.next_moves():
             yield ("N", next_move)
 

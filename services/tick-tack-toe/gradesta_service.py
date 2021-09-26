@@ -11,22 +11,9 @@ import level0_capnp as level0
 from paths import match_path
 from cell_reference_db import CellReferenceDB
 import simple_topology_expressions
+from gradesta_locales import Localizer
 
 from typing import *
-
-
-def to_addr_field(k, v):
-    af = level0.AddressField()
-    af.name = k
-    af.value = v
-    return af
-
-
-def address_fields_to_dict(address_fields):
-    d = {}
-    for field in address_fields:
-        d[field.name] = field.value
-    return d
 
 
 def forClientTemplate() -> DefaultDict[str, List[any]]:
@@ -99,6 +86,7 @@ class ProtocolPage:
 @dataclass
 class Page:
     identity: int
+    localizer: Localizer
 
     def resolve(self, path):
         for ctype, cell in self.cells():
@@ -124,7 +112,7 @@ class ProtocolCell:
 
     @property
     def cid(self):
-        return self.page.actor.crdb.lookup_cell(self.address, self.cell.identity)[0]
+        return self.page.actor.crdb.lookup_cell(self.address, self.cell.page.identity)[0]
 
     @property
     def address(self):
@@ -175,7 +163,7 @@ class ProtocolCell:
         v = level0.Vertex()
         a = level0.Address()
         a.address = self.address
-        a.identity = self.cell.identity
+        a.identity = self.cell.page.identity
         v.address = a
         v.instanceId = self.cid
         v.view = self.cell.view
@@ -191,7 +179,10 @@ class ProtocolCell:
 
 @dataclass
 class Cell:
-    identity: int
+    page: "Page"
+
+    def fmt(self, *args, **kwargs):
+        return self.page.localizer.fmt(*args, **kwargs)
 
     def data_mime(self):
         return "text/plain"
@@ -199,19 +190,6 @@ class Cell:
     @property
     def view(self):
         return ""
-
-
-class Vertex:
-    def __init__(self, service, id, address):
-        self.service = service
-        self.address = address
-        self.id = id
-        self.__updateId = -1
-
-    def reap(self):
-        vs = level0.VertexState(instanceId=self.id, reaped=True)
-        self.service.queued_vertex_states.append(vs)
-        del self.service.vertexes[self.id]
 
     def recv(self, event):
         updates = level0.ForClient()
@@ -253,7 +231,6 @@ class Actor:
     def __init__(self):
         self.crdb = CellReferenceDB()
         self.cells: DefaultDict[int, Cell] = {}
-        self.address = "^en/tick-tack-toe/"
 
         def update_counter():
             uc = 0
@@ -366,11 +343,12 @@ class Actor:
 
     def resolve(self, path: str, identity: int) -> Cell:
         cid, created = self.crdb.lookup_cell(path, identity)
+        localizer = Localizer(self.service_name)
         if created or cid not in self.cells:
             for pattern, page in self.pages.items():
                 match = match_path(path, pattern)
                 if match is not None:
-                    cell = page(identity, **match[0]).resolve(match[1])
+                    cell = page(identity, localizer, **match[0]).resolve(match[1])
                     self.cells[cid] = cell
                     return cell
         return self.cells[cid]
