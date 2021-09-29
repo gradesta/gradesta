@@ -50,7 +50,10 @@ While most software Gradesta will produce is Free Open Source Software, there is
 Core Value 5: That's not all
 ---------------------------------
 
-This document only includes values that are likely to differ from those of other businesses. Other values such as legality, safe workplaces, preventing harassment ect. also apply.
+This document only includes values that are likely to differ from those of other businesses. Other values such as legality, safe workplaces, preventing harassment ect. also apply. These values are intentionally excluded from this document in order to reduce its length, however they are no less important to us. Just to recap some of the basics:
 
-
-
+1. Singling out or excluding coworkers on the basis of their race, religion, gender, sexual orientation, or politics should be avoided so as to create a safe and welcoming work environment for everyone (This covers sexual harassment).
+2. Workers should be hired, paid and promoted fairly. Hiring, promotions and compensation should be analyzed on an annual basis in order to uncover and address systematic bias.
+3. Workers from other, less wealthy, countries should not be seen as "cheep labor", or hired as such. They should be seen as equal peers and paid accordingly.
+4. Religious workers should not be required to work on their holy days.
+5. That's not all. If you work for us and you see something you find unethical you are free to share your concerns with me (Timothy Hobbs) and you will not by punished for doing so with one big caveat: if you raise concerns about an ethical issue and we do not agree on a resolution, you must not intentionally disrupt the workplace or publicly defame us in order to pressure the company.
