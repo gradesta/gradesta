@@ -4,7 +4,7 @@ struct Address {
   # addresses are strings with no maximum length. They can include utf-8 emoji's.
   # They have five or six segments.
   # There form is:
-  # gradesta://<host or path to unix socket>(:port)/<locale>/<service name>/<service specific vertex address>?<query>#<state to be passed to view>
+  # gradesta://<host or path to unix socket>(:)(port)/<locale>/<service name>/<service specific vertex path>?<query>#<state to be passed to view>
   # the anchor after the # is cut off by the client and not actually sent to the service
   # Unlike on the web, guis should default to url DECODING the strings so instead of showing
   # Each segment may contain any valid utf-8 character except newline, `/` and `:`.
@@ -15,12 +15,25 @@ struct Address {
   # must also be valid addresses.
   # Addresses should be urlencoded when copied to the clipboard but should not be urlencoded on the wire.
   # PS: Of course the host/path segment must be a valid hostname or path and hostnames typically don't contain emojis ;)
-  address              @0 :Text;
+
+  # service address contains the first part of the vertex address
+  # gradesta://<host or path to unix socket>(:)(port)/<locale>/<service name>/
+  serviceAddress              @0 :Text;
+}
+
+struct Path {
+  # A path to a vertex.
+  # The path contains the second half of the the vertex address.
+  # From
+  # gradesta://<host or path to unix socket>(:)(port)/<locale>/<service name>/<service specific vertex path>?<query>#<state to be passed to view>
+  # The path contains
+  # <service specific vertex path>?<query>#<state to be passed to view>
+  path                 @0 :Text;
   identity             @1 :UInt64; # The id of the identity. Identities are gnupg derived and are specified at level1 of the protocol
 }
 
 struct Vertex {
-  address              @0 :Address;
+  path                 @0 :Path;
   instanceId           @1 :UInt64;
   # view is an IPFS link to javascript used for viewing and intracting with data
   # This is an IPFS directory. It can also contain documentation for the vertex's
@@ -78,33 +91,9 @@ struct PortUpdate {
   connectedVertex :union {
     disconnected @3 :Void;
     closed       @4 :Void;
-    vertex       @5 :UInt64;
+    vertex       @5 :Path;
     symlink      @6 :Address;
   }
-}
-
-# One of the main design goals of gradesta is the ability to support arbitrarily
-# large graphs. This wouldn't be possible if the service automatically served
-# all vertexes at once. Instead, vertexes are selected using cursors.
-struct CursorPlacement {
-  cursorId      @0 :UInt64;
-  # The vertex that the cursor is on will be selected.
-  selectionId   @1 :Int64;
-  address       @2 :Address;
-}
-
-struct Cursor {
-  cursorId      @0 :UInt64;
-  vertexId      @1 :UInt64;
-}
-
-# Selections can be expanded by going through vertex ports
-# vertex or another by making steps in directions. Each vertex which is stepped into
-# is added to the selection.
-struct SelectionExpansion {
-  selectionId   @0 :Int64;
-  vertexId      @1 :Int64;
-  direction     @2 :Int64;
 }
 
 struct VertexState {
@@ -139,7 +128,6 @@ struct ForClient {
   portUpdates       @4 :List(PortUpdate);
   dataUpdates       @5 :List(DataUpdate);
   encryptionUpdates @6 :List(EncryptionUpdate);
-  cursors           @7 :List(Cursor);
 }
 
 struct ForService {
@@ -147,9 +135,8 @@ struct ForService {
   portUpdates       @1 :List(PortUpdate);
   dataUpdates       @2 :List(DataUpdate);
   encryptionUpdates @3 :List(EncryptionUpdate);
-  placeCursor       @4 :List(CursorPlacement);
-  expandSelection   @5 :List(SelectionExpansion);
-  deselect          @6 :List(Int64);
+  select            @4 :List(Path);
+  deselect          @5 :List(Int64); # Vertex ids
 }
 
 struct Message {
