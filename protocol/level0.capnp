@@ -1,5 +1,10 @@
 @0xa838a0f012aecc79;
 
+# This is level 0 of the Gradesta protocol
+# The purpose of level 0 is to provide the absolute minimal required functionality.
+# If you want to add new functionality, add it to level 1.
+# You should consider this document to be read only.
+
 struct Address {
   # addresses are strings with no maximum length. They can include utf-8 emoji's.
   # They have five or six segments.
@@ -19,6 +24,7 @@ struct Address {
   # service address contains the first part of the vertex address
   # gradesta://<host or path to unix socket>(:)(port)/<locale>/<service name>/
   serviceAddress              @0 :Text;
+  path                        @1 :Path;
 }
 
 struct Path {

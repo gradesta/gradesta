@@ -35,16 +35,41 @@ def load_vertex_message(yml):
     return vm
 
 
+def parse_address(address):
+    parts = address.split(":")
+    subparts = parts[-1].split("/")
+    host = ":".join(parts[0:-1])
+    if not ":" in host:
+        host += ":"
+    plsn_len = 3
+    if subparts[0:2] == ["", ""]:
+        plsn_len += 2
+    portLocaleAndServiceName = "/".join(subparts[:plsn_len])
+    serviceAddress = host + portLocaleAndServiceName
+    path = "/".join(subparts[plsn_len:])
+    return serviceAddress, path
+
+
 def load_address(yml):
-    a = level0.Address()
-    set_attrs(a, yml, ["address", "identity"])
-    return a
+    addr = level0.Address()
+    serviceAddress, path = parse_address(yml["address"])
+    addr.serviceAddress = serviceAddress
+    addr.path = level0.Path()
+    addr.path.path = path
+    addr.path.identity = yml["identity"]
+    return addr
+
+
+def load_path(yml):
+    path = level0.Path()
+    set_attrs(path, yml, ["path", "identity"])
+    return path
 
 
 def load_vertex(yml):
     v = level0.Vertex()
     set_attrs(v, yml, ["instanceId", "view"])
-    v.address = load_address(yml["address"])
+    v.path = load_path(yml["path"])
     return v
 
 
@@ -64,15 +89,14 @@ def load_update_status(yml):
 def load_port_update(yml):
     pu = level0.PortUpdate()
     set_attrs(pu, yml, ["updateId", "vertexId", "direction"])
-    try:
-        if yml["connectedVertex"] == "disconnected":
-            pu.connectedVertex.disconnected = None
-        elif yml["connectedVertex"] == "closed":
-            pu.connectedVertex.closed = None
-        elif "symlink" in yml["connectedVertex"]:
-            pu.connectedVertex.symlink = load_address(yml["connectedVertex"]["symlink"])
-    except TypeError:
-        pu.connectedVertex.vertex = yml["connectedVertex"]
+    if yml["connectedVertex"] == "disconnected":
+        pu.connectedVertex.disconnected = None
+    elif yml["connectedVertex"] == "closed":
+        pu.connectedVertex.closed = None
+    elif "symlink" in yml["connectedVertex"]:
+        pu.connectedVertex.symlink = load_address(yml["connectedVertex"]["symlink"])
+    elif "path" in yml["connectedVertex"]:
+        pu.connectedVertex.vertex = load_path(yml["connectedVertex"])
     return pu
 
 
@@ -88,25 +112,6 @@ def load_encryption_update(yml):
     return eu
 
 
-def load_cursor(yml):
-    c = level0.Cursor()
-    set_attrs(c, yml, ["cursorId", "vertexId"])
-    return c
-
-
-def load_place_cursor(yml):
-    cp = level0.CursorPlacement()
-    set_attrs(cp, yml, ["cursorId", "selectionId"])
-    cp.address = load_address(yml["address"])
-    return cp
-
-
-def load_expand_selection(yml):
-    se = level0.SelectionExpansion()
-    set_attrs(se, yml, ["selectionId", "vertexId", "direction"])
-    return se
-
-
 def load_for_client(y, fc):
     loadList(load_vertex_message, "vertexMessages", fc, y)
     loadList(load_vertex, "vertexes", fc, y)
@@ -115,7 +120,6 @@ def load_for_client(y, fc):
     loadList(load_port_update, "portUpdates", fc, y)
     loadList(load_data_update, "dataUpdates", fc, y)
     loadList(load_encryption_update, "encryptionUpdates", fc, y)
-    loadList(load_cursor, "cursors", fc, y)
 
 
 def load_deselect(yml):
@@ -127,8 +131,7 @@ def load_for_service(y, fs):
     loadList(load_port_update, "portUpdates", fs, y)
     loadList(load_data_update, "dataUpdates", fs, y)
     loadList(load_encryption_update, "encryptionUpdates", fs, y)
-    loadList(load_place_cursor, "placeCursor", fs, y)
-    loadList(load_expand_selection, "expandSelection", fs, y)
+    loadList(load_path, "select", fs, y)
     loadList(load_deselect, "deselect", fs, y)
 
 
@@ -161,10 +164,18 @@ def to_yaml(fdi, fdo):
     try_decode_datas("forService", "dataUpdates")
     try_decode_datas("forService", "vertexMessages")
 
+    def scrub_address(address):
+        address["address"] = address["serviceAddress"] + "/" + address["path"]["path"]
+        address["identity"] = address["path"]["identity"]
+        del address["path"]
+        del address["serviceAddress"]
+
     def decode_port_updates(top_level):
         if top_level in d and "portUpdates" in d[top_level]:
             for update in d[top_level]["portUpdates"]:
                 if "connectedVertex" in update:
+                    if "symlink" in update["connectedVertex"]:
+                        scrub_address(update["connectedVertex"]["symlink"])
                     try:
                         if "closed" in update["connectedVertex"]:
                             update["connectedVertex"] = "closed"
@@ -184,9 +195,12 @@ def to_yaml(fdi, fdo):
                         pass
 
     decode_port_updates("forClient")
-    decode_port_updates("forClient")
-    decode_port_updates("forClient")
     decode_port_updates("forService")
+
+    if "forClient" in d and "updateStatuses" in d["forClient"]:
+        for us in d["forClient"]["updateStatuses"]:
+            scrub_address(us["explanation"])
+
     fdo.write(yaml.dump(d, default_flow_style=False).encode("utf8"))
 
 

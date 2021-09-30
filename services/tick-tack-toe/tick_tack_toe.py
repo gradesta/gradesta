@@ -79,7 +79,9 @@ class PreviousMove(Move):
         which_move = placed.split(self.marker())[0].count(" ") + 1
         return {
             "symlink": (
-                self.fmt("{pieces}/Next/{move}", pieces=self.place(" "), move=which_move),
+                self.fmt(
+                    "{pieces}/Next/{move}", pieces=self.place(" "), move=which_move
+                ),
                 self.page.identity,
             )
         }
@@ -115,8 +117,10 @@ class NextMove(Move):
         which_move = placed.split(self.marker())[0].count(self.whos_move()) + 1
         return {
             "symlink": (
-                self.fmt("{pieces}/Previous/{move}",
-                    pieces=self.place(self.whos_move()), move=which_move
+                self.fmt(
+                    "{pieces}/Previous/{move}",
+                    pieces=self.place(self.whos_move()),
+                    move=which_move,
                 ),
                 self.page.identity,
             )
@@ -142,19 +146,13 @@ N
         xs = self.pieces.count("x")
         os = self.pieces.count("o")
         num_prev_moves = max(xs, os)
-        return [
-            PreviousMove(self, move)
-            for move in range(1, num_prev_moves + 1)
-        ]
+        return [PreviousMove(self, move) for move in range(1, num_prev_moves + 1)]
 
     def next_moves(self):
         if who_won(self.pieces) is not None:
             return []
         num_next_moves = self.pieces.count(" ")
-        return [
-            NextMove(self, move)
-            for move in range(1, num_next_moves + 1)
-        ]
+        return [NextMove(self, move) for move in range(1, num_next_moves + 1)]
 
     def cells(self) -> Iterator[Tuple[str, gradesta_service.Cell]]:
         for prev_move in self.prev_moves():

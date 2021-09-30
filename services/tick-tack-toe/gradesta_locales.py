@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+
 @dataclass
 class Localizer:
     service_name: str

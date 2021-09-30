@@ -112,11 +112,17 @@ class ProtocolCell:
 
     @property
     def cid(self):
-        return self.page.actor.crdb.lookup_cell(self.address, self.cell.page.identity)[0]
+        return self.page.actor.crdb.lookup_cell(self.address, self.cell.page.identity)[
+            0
+        ]
 
     @property
     def address(self):
         return self.page.address + self.cell.path
+
+    @property
+    def path(self):
+        return self.page.page.path + self.cell.path
 
     def data_update(self):
         data = self.cell.draw()
@@ -136,8 +142,8 @@ class ProtocolCell:
         direction: int,
         closed: bool = False,
         disconnected: bool = False,
-        vertexId: Union[bool, int] = False,
-        symlink: Union[bool, Tuple[str, int]] = False,
+        vertex: Union[bool, Tuple[str, int]] = False,
+        symlink: Union[bool, Tuple[str, Tuple[str, int]]] = False,
     ):
         assert (
             len([x for x in [closed, disconnected, vertexId, symlink] if x is False])
@@ -155,16 +161,18 @@ class ProtocolCell:
             pu.connectedVertex.vertex = vertexId
         if symlink:
             pu.connectedVertex.init("symlink")
-            pu.connectedVertex.symlink.address = symlink[0]
-            pu.connectedVertex.symlink.identity = symlink[1]
+            pu.connectedVertex.symlink.serviceAddress = symlink[0]
+            pu.connectedVertex.symlink.path = level0.Path()
+            pu.connectedVertex.symlink.path.path = symlink[1][0]
+            pu.connectedVertex.symlink.path.identity = symlink[1][1]
         return pu
 
     def vertex(self):
         v = level0.Vertex()
-        a = level0.Address()
-        a.address = self.address
-        a.identity = self.cell.page.identity
-        v.address = a
+        p = level0.Path()
+        p.path = self.path
+        p.identity = self.cell.page.identity
+        v.path = p
         v.instanceId = self.cid
         v.view = self.cell.view
         return v
@@ -281,7 +289,6 @@ class Actor:
             messages=self.queued_messages,
             vertexes=self.queued_vertexes,
             vertexStates=self.queued_vertex_states,
-            level1Messages=self.queued_level1_messages,
         )
         socket.send(mfs.to_bytes())
         self.reset_queue()
@@ -290,7 +297,6 @@ class Actor:
         self.queued_messages = []
         self.queued_vertexes = []
         self.queued_vertex_states = []
-        self.queued_level1_messages = []
 
     def recv_vertex_message(self, vm):
         try:

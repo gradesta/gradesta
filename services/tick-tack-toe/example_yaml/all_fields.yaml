@@ -1,7 +1,7 @@
 forClient:
   vertexes:
-    - address:
-        address: "gradesta://example.com/en/tick-tack-toe/foo/bar?lol=emma#baf"
+    - path:
+        path: "foo/bar?lol=emma#baf"
         identity: 0
       instanceId: 1
       view: "ipfs://lolkdfsdf"
@@ -40,7 +40,9 @@ forClient:
     - updateId: 3
       vertexId: 2
       direction: -2
-      connectedVertex: 3
+      connectedVertex:
+        path: "foo/bar/"
+        identity: 1
     - updateId: 4
       vertexId: 2
       direction: 2
@@ -64,11 +66,6 @@ forClient:
       data: Foo
     - vertexId: 2
       data: Bar
-  cursors:
-    - cursorId: 1
-      vertexId: 2
-    - cursorId: 2
-      vertexId: 3
 forService:
   vertexMessages:
     - vertexId: 1
@@ -87,7 +84,9 @@ forService:
     - updateId: 3
       vertexId: 2
       direction: -2
-      connectedVertex: 3
+      connectedVertex:
+        path: "lol/egg/"
+        identity: 3
     - updateId: 4
       vertexId: 2
       direction: 2
@@ -119,16 +118,9 @@ forService:
     - updateId: 8
       vertexId: 2
       keys: "abc kjlj klfjdlskj fkdlsjfsd lkjfldksjfs"
-  placeCursor:
-    - cursorId: 1
-      selectionId: 1
-      address:
-        address: "gradesta://example.com/en/tick-tack-toe/alr/aščmre/🌍/😃"
-        identity: 0
-  expandSelection:
-    - selectionId: 1
-      vertexId: 1
-      direction: 2
+  select:
+    - path: "foo/bar"
+      identity: 1
   deselect:
     - 1
     - 2
