@@ -169,10 +169,10 @@ class ProtocolCell:
 
     def vertex(self):
         v = level0.Vertex()
-        p = level0.Path()
-        p.path = self.path
-        p.identity = self.cell.page.identity
-        v.path = p
+        a = level0.Address()
+        a. = self.path
+        a.identity = self.cell.page.identity
+        v.address = a
         v.instanceId = self.cid
         v.view = self.cell.view
         return v
@@ -262,26 +262,17 @@ class Actor:
         print("Connecting to socket {}".format(socket_path))
         socket.bind(socket_path)
 
-        self.vertexes = {}
-        self.selections = Selections(self)
-        self.reset_queue()
-
         while True:
             message = level0_capnp.Message.from_bytes(socket.recv())
-            for vm in message.vertexMessagesFromService:
-                self.recv_vertex_message_from_service(vm)
-            for v in message.vertexes:
-                self.init_vertex()
-            for vm in vertexMessagesFromClient:
-                self.recv_vertex_message_from_client(vm)
-            for vm in message.vertexMessagesFromClient:
-                self.recv_vertex_message_from_client(vm)
-            for cursor in message.setCursor:
-                self.set_cursor(cursor)
-            for cm in message.moveCursor:
-                self.move_cursor(cm)
-            for selection in message.deselect:
-                self.selections.deselect(selection)
+            fs = message.forService
+            cell_message_types = {
+                "vertexMessages": (lambda c: c.recv),
+                "portUpdates": (lambda c: c.recv_port_update),
+                "dataUpdates": (lambda c: c.recv_data_update),
+                "encryptionUpdates": (lambda c: c.recv_encryption_update),
+            }
+            for cmv, call in cell_message_types.items():
+                call(self.cells[eval("fs.{cmv}.vertexId".format(cmv=cmv))])(eval("fs.{cmv}".format(cmv=cmv)))
             self.send_queued()
 
     def send_queued(self):
