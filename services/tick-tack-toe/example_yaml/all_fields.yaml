@@ -1,7 +1,7 @@
 forClient:
   vertexes:
-    - path:
-        path: "foo/bar?lol=emma#baf"
+    - address:
+        address: "gradesta://example.com/en/tick-tack-toe/fool/baz?arg=val"
         identity: 0
       instanceId: 1
       view: "ipfs://lolkdfsdf"
@@ -13,7 +13,7 @@ forClient:
     - updateId: 1
       status: 200
       explanation:
-        address: "gradesta://example.com/en/tick-tack-toe/foo/baz?arg=val#baf"
+        address: "gradesta://example.com/en/tick-tack-toe/foo/baz?arg=val"
         identity: 0
   dataUpdates:
     - updateId: 1
@@ -41,14 +41,14 @@ forClient:
       vertexId: 2
       direction: -2
       connectedVertex:
-        path: "foo/bar/"
+        address: "gradesta://example.com/en/tick-tack-toe/baf/baz?arg=val"
         identity: 1
     - updateId: 4
       vertexId: 2
       direction: 2
       connectedVertex:
         symlink:
-          address: "gradesta://example.com/en/tick-tack-toe/baf/baz?arg=val#baf"
+          address: "gradesta://example.com/en/tick-tack-toe/baf/baz?arg=val"
           identity: 0
     - updateId: 5
       vertexId: 3
@@ -85,7 +85,7 @@ forService:
       vertexId: 2
       direction: -2
       connectedVertex:
-        path: "lol/egg/"
+        address: "gradesta://example.com/en/tick-tack-toe/lol/egg"
         identity: 3
     - updateId: 4
       vertexId: 2
@@ -119,7 +119,7 @@ forService:
       vertexId: 2
       keys: "abc kjlj klfjdlskj fkdlsjfsd lkjfldksjfs"
   select:
-    - path: "foo/bar"
+    - address: "gradesta://example.com/en/tick-tack-toe/afelr/amre"
       identity: 1
   deselect:
     - 1

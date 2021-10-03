@@ -9,7 +9,7 @@ struct Address {
   # addresses are strings with no maximum length. They can include utf-8 emoji's.
   # They have five or six segments.
   # There form is:
-  # gradesta://<host or path to unix socket>(:)(port)/<locale>/<service name>/<service specific vertex path>?<query>#<state to be passed to view>
+  # gradesta://<host>(:port)/<locale>/<service name>/<service specific vertex path>?<query>#<state to be passed to view>
   # the anchor after the # is cut off by the client and not actually sent to the service
   # Unlike on the web, guis should default to url DECODING the strings so instead of showing
   # Each segment may contain any valid utf-8 character except newline, `/` and `:`.
@@ -19,27 +19,27 @@ struct Address {
   # `gradesta://example.com/en-us/foo/bar/baz` and `gradesta://example.com/en-us/foo/bar`
   # must also be valid addresses.
   # Addresses should be urlencoded when copied to the clipboard but should not be urlencoded on the wire.
+  # It is also possible to refer to unix sockets in the form
+  # /path/to/unix/socket:<locale>/<service name>/vertex/path?qarg=foo
   # PS: Of course the host/path segment must be a valid hostname or path and hostnames typically don't contain emojis ;)
 
-  # service address contains the first part of the vertex address
-  # gradesta://<host or path to unix socket>(:)(port)/<locale>/<service name>/
-  serviceAddress              @0 :Text;
-  path                        @1 :Path;
+  socket            @0 :Text;
+  # socket is  either gradesta://example.com:<port-number>
+             # or     gradesta://example.com
+             # or     /path/to/unix/socket
+             # can also be `^` if the socket is a standard local gradsta manager service
+  locale            @1 :Text;
+  serviceName       @2 :Text;
+  vertexPath        @3 :List(Text);
+  qargs             @4 :List(Text); # Names of quargs
+  qvals             @5 :List(Text); # Values of quargs
+  # qargs and qvals can be zipped together to get the pairs you want.
+  identity          @6 :UInt64; # The id of the identity. Identities are gnupg derived and are specified at level1 of the protocol
 }
 
-struct Path {
-  # A path to a vertex.
-  # The path contains the second half of the the vertex address.
-  # From
-  # gradesta://<host or path to unix socket>(:)(port)/<locale>/<service name>/<service specific vertex path>?<query>#<state to be passed to view>
-  # The path contains
-  # <service specific vertex path>?<query>#<state to be passed to view>
-  path                 @0 :Text;
-  identity             @1 :UInt64; # The id of the identity. Identities are gnupg derived and are specified at level1 of the protocol
-}
 
 struct Vertex {
-  path                 @0 :Path;
+  address              @0 :Address;
   instanceId           @1 :UInt64;
   # view is an IPFS link to javascript used for viewing and intracting with data
   # This is an IPFS directory. It can also contain documentation for the vertex's
@@ -97,7 +97,7 @@ struct PortUpdate {
   connectedVertex :union {
     disconnected @3 :Void;
     closed       @4 :Void;
-    vertex       @5 :Path;
+    vertex       @5 :Address;
     symlink      @6 :Address;
   }
 }
@@ -141,7 +141,7 @@ struct ForService {
   portUpdates       @1 :List(PortUpdate);
   dataUpdates       @2 :List(DataUpdate);
   encryptionUpdates @3 :List(EncryptionUpdate);
-  select            @4 :List(Path);
+  select            @4 :List(Address);
   deselect          @5 :List(Int64); # Vertex ids
 }
 
