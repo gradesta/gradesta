@@ -5,6 +5,7 @@ import capnp
 import io
 import yaml
 import sys
+import parse_address
 
 import level0_capnp as level0
 
@@ -35,41 +36,16 @@ def load_vertex_message(yml):
     return vm
 
 
-def parse_address(address):
-    parts = address.split(":")
-    subparts = parts[-1].split("/")
-    host = ":".join(parts[0:-1])
-    if not ":" in host:
-        host += ":"
-    plsn_len = 3
-    if subparts[0:2] == ["", ""]:
-        plsn_len += 2
-    portLocaleAndServiceName = "/".join(subparts[:plsn_len])
-    serviceAddress = host + portLocaleAndServiceName
-    path = "/".join(subparts[plsn_len:])
-    return serviceAddress, path
-
-
 def load_address(yml):
-    addr = level0.Address()
-    serviceAddress, path = parse_address(yml["address"])
-    addr.serviceAddress = serviceAddress
-    addr.path = level0.Path()
-    addr.path.path = path
-    addr.path.identity = yml["identity"]
+    addr = parse_address.parse_address(yml["address"])
+    addr.identity = yml["identity"]
     return addr
-
-
-def load_path(yml):
-    path = level0.Path()
-    set_attrs(path, yml, ["path", "identity"])
-    return path
 
 
 def load_vertex(yml):
     v = level0.Vertex()
     set_attrs(v, yml, ["instanceId", "view"])
-    v.path = load_path(yml["path"])
+    v.address = load_address(yml["address"])
     return v
 
 
@@ -95,8 +71,8 @@ def load_port_update(yml):
         pu.connectedVertex.closed = None
     elif "symlink" in yml["connectedVertex"]:
         pu.connectedVertex.symlink = load_address(yml["connectedVertex"]["symlink"])
-    elif "path" in yml["connectedVertex"]:
-        pu.connectedVertex.vertex = load_path(yml["connectedVertex"])
+    elif "address" in yml["connectedVertex"]:
+        pu.connectedVertex.vertex = load_address(yml["connectedVertex"])
     return pu
 
 
@@ -131,7 +107,7 @@ def load_for_service(y, fs):
     loadList(load_port_update, "portUpdates", fs, y)
     loadList(load_data_update, "dataUpdates", fs, y)
     loadList(load_encryption_update, "encryptionUpdates", fs, y)
-    loadList(load_path, "select", fs, y)
+    loadList(load_address, "select", fs, y)
     loadList(load_deselect, "deselect", fs, y)
 
 
@@ -165,10 +141,12 @@ def to_yaml(fdi, fdo):
     try_decode_datas("forService", "vertexMessages")
 
     def scrub_address(address):
-        address["address"] = address["serviceAddress"] + "/" + address["path"]["path"]
-        address["identity"] = address["path"]["identity"]
-        del address["path"]
-        del address["serviceAddress"]
+        address["address"] = parse_address.from_dict_to_string(address)
+        for key in ["socket", "locale", "serviceName", "vertexPath", "qargs", "qvals"]:
+            try:
+                del address[key]
+            except KeyError:
+                pass
 
     def decode_port_updates(top_level):
         if top_level in d and "portUpdates" in d[top_level]:
@@ -191,15 +169,25 @@ def to_yaml(fdi, fdo):
                             update["connectedVertex"] = update["connectedVertex"][
                                 "vertex"
                             ]
+                            scrub_address(update["connectedVertex"])
                     except TypeError:
                         pass
 
     decode_port_updates("forClient")
     decode_port_updates("forService")
 
-    if "forClient" in d and "updateStatuses" in d["forClient"]:
-        for us in d["forClient"]["updateStatuses"]:
-            scrub_address(us["explanation"])
+    if "forClient" in d:
+        if "updateStatuses" in d["forClient"]:
+            for us in d["forClient"]["updateStatuses"]:
+                scrub_address(us["explanation"])
+        if "vertexes" in d["forClient"]:
+            for v in d["forClient"]["vertexes"]:
+                scrub_address(v["address"])
+
+    if "forService" in d:
+        if "select" in d["forService"]:
+            for s in d["forService"]["select"]:
+                scrub_address(s)
 
     fdo.write(yaml.dump(d, default_flow_style=False).encode("utf8"))
 

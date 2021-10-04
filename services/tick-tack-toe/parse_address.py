@@ -46,15 +46,19 @@ def parse_path(path: str, capnp_addr: level0.Address):
         vp[n] = path[n+2]
 
 def to_string(address: level0.Address) -> str:
-    string = [address.socket]
-    if address.socket.startswith("gradesta://"):
+    return from_dict_to_string(address.to_dict())
+
+def from_dict_to_string(address: DefaultDict[str, any]):
+    socket = address["socket"]
+    string = [socket]
+    if socket.startswith("gradesta://"):
         string.append("/")
-    if  address.socket.startswith("/"):
+    if  socket.startswith("/"):
         string.append(":")
-    string.append("/".join([address.locale, address.serviceName] + list(address.vertexPath)))
-    if len(address.qargs) > 0:
+    string.append("/".join([address["locale"], address["serviceName"]] + list(address["vertexPath"])))
+    if "qargs" in address and len(address["qargs"]) > 0:
         string.append("?")
-        for qa, qv in zip(address.qargs, address.qvals):
+        for qa, qv in zip(address["qargs"], address["qvals"]):
             string += [qa, "=", qv, "&"]
         string = string[:-1]
     return "".join(string)

@@ -16,23 +16,6 @@ from gradesta_locales import Localizer
 from typing import *
 
 
-def forClientTemplate() -> DefaultDict[str, List[any]]:
-    fc = {}
-    fields = [
-        "vertexMessages",
-        "vertexes",
-        "vertexStates",
-        "updateStatuses",
-        "portUpdates",
-        "dataUpdates",
-        "encryptionUpdates",
-        "cursors",
-    ]
-    for f in fields:
-        fc[f] = []
-    return fc
-
-
 @dataclass
 class ProtocolPage:
     actor: "Actor"
