@@ -2,7 +2,7 @@ import capnp
 import level0_capnp as level0
 
 
-class CapnpMutable(dict):
+class CapnpMutable:
     def __init__(self, cls, primitive_fields=None):
         r = super().__init__()
         self.obj = cls()
@@ -15,16 +15,16 @@ class CapnpMutable(dict):
             type(self.obj.__getattribute__(field)) == capnp.lib.capnp._DynamicListBuilder
         ]
         for field in self.fields:
-            self[field] = self.obj.init_resizable_list(field)
+            self.__setattr__(field, self.obj.init_resizable_list(field))
         for primitive_field in self.primitive_fields:
-            self[primitive_field] = []
+            self.__setattr__(primitive_field, [])
         return r
 
     def serialize(self):
         for field in self.fields:
-            self[field].finish()
+            self.__getattribute__(field).finish()
         for primitive_field in self.primitive_fields:
-            plst = self[primitive_field]
+            plst = self.__getattribute__(primitive_field)
             plst_dest = self.obj.init(primitive_field, len(plst))
             for i in range(0, len(plst)):
                 plst_dest[i] = plst[i]
