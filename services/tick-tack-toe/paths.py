@@ -1,6 +1,6 @@
 import os
 
-from typing import Tuple, DefaultDict, Optional
+from typing import Tuple, DefaultDict, Optional, List
 
 
 def match_path(path: List[str], pattern: str) -> Optional[Tuple[DefaultDict[str, str], str]]:
