@@ -9,6 +9,8 @@ import parse_address
 
 import level0_capnp as level0
 
+from typing import *
+
 
 def loadList(loader, field, target, node):
     if field in node:
@@ -111,19 +113,23 @@ def load_for_service(y, fs):
     loadList(load_deselect, "deselect", fs, y)
 
 
-def to_capnp(fdi, fdo):
-    y = yaml.safe_load(fdi)
+def from_dict_to_capnp(d: DefaultDict[str, any]) -> level0.Message:
     m = level0.Message()
-    if "forClient" in y:
-        load_for_client(y["forClient"], m.forClient)
-    if "forService" in y:
-        load_for_service(y["forService"], m.forService)
-    m.write(fdo)
+    if "forClient" in d:
+        load_for_client(d["forClient"], m.forClient)
+    if "forService" in d:
+        load_for_service(d["forService"], m.forService)
+    return m
 
 
-def to_yaml(fdi, fdo):
-    m = level0.Message.read(fdi)
-    d = m.to_dict()
+
+def to_capnp(fdi, fdo=None) -> level0.Message:
+    y = yaml.safe_load(fdi)
+    return from_dict_to_string(y)
+
+
+def to_dict(message: level0.Message) -> DefaultDict[str, any]:
+    d = message.to_dict()
 
     def try_decode_datas(l1, l2):
         try:
@@ -188,17 +194,27 @@ def to_yaml(fdi, fdo):
         if "select" in d["forService"]:
             for s in d["forService"]["select"]:
                 scrub_address(s)
+    return d
+
+
+def to_yaml(fdi, fdo):
+    m = level0.Message.read(fdi)
+    d = to_dict(m)
 
     fdo.write(yaml.dump(d, default_flow_style=False).encode("utf8"))
 
 
-def compare(fd1, fd2):
+def compare_files(fd1, fd2):
     fd1 = ensure_yaml(fd1)
     fd2 = ensure_yaml(fd2)
     from deepdiff import DeepDiff
 
     t1 = yaml.safe_load(fd1)
     t2 = yaml.safe_load(fd2)
+    return compare(t1, t2)
+
+
+def compare(t1, t2):
     print(yaml.dump(t1))
     print("---")
     print(yaml.dump(t2))
@@ -243,6 +259,6 @@ if __name__ == "__main__":
             if args.command == "2yaml":
                 to_yaml(fdi, fdo)
             if args.command == "compare":
-                differences = compare(fdi, fdo)
+                differences = compare_files(fdi, fdo)
                 if differences:
                     sys.exit(str(differences))

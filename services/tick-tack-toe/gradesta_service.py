@@ -3,8 +3,8 @@ import os
 import sys
 import pathlib
 import capnp
-import asyncio
-from concurrent.futures import *
+#import asyncio
+#from concurrent.futures import *
 from dataclasses import dataclass
 
 import level0_capnp as level0
@@ -23,6 +23,7 @@ from typing import *
 class ProtocolPage:
     actor: "Actor"
     page: "Page"
+    path: List[str]
 
 
     def load(self, path: str, cid: int, address: level0.Address) -> "ProtocolCell":
@@ -66,7 +67,7 @@ class ProtocolPage:
         for (cell1, cell2, dim) in self.page.connections():
             if cell1.path == path:
                 def load_connected_address(connected_address):
-                    connected_path = cell2.path.split("/")
+                    connected_path = self.path + cell2.path.split("/")
                     connected_address.socket = address.socket
                     connected_address.locale = address.locale
                     connected_address.serviceName = address.serviceName
@@ -212,17 +213,26 @@ class Actor:
         services_dir = os.path.expanduser("~/.cache/gradesta/services/sockets")
         pathlib.Path(services_dir).mkdir(parents=True, exist_ok=True)
 
-        context = zmq.Context()
-        socket = context.socket(zmq.REP)
-        socket_path = "ipc://{services_dir}/{service_name}".format(
+        self.context = zmq.Context()
+        self.push_socket = self.context.socket(zmq.PUSH)
+        push_socket_path = "ipc://{services_dir}/{service_name}.push".format(
             services_dir=services_dir,
             service_name=self.service_name,
         )
-        print("Connecting to socket {}".format(socket_path))
-        socket.bind(socket_path)
-
+        print("Connecting to push socket {}".format(push_socket_path))
+        self.push_socket.bind(push_socket_path)
+        pull_socket_path = "ipc://{services_dir}/{service_name}.pull".format(
+            services_dir=services_dir,
+            service_name=self.service_name,
+        )
+        print("Connecting to pull socket {}".format(pull_socket_path))
+        self.pull_socket = self.context.socket(zmq.PULL)
+        self.pull_socket.bind(pull_socket_path)
         while True:
-            message = level0_capnp.Message.from_bytes(socket.recv())
+            print("Waiting for a message from the client.")
+            message = self.pull_socket.recv()
+            print("Message recieved")
+            message = level0.Message.from_bytes(message)
             fs = message.forService
             cell_message_types = {
                 "vertexMessages": (lambda c: c.recv),
@@ -233,11 +243,12 @@ class Actor:
             for address in fs.select:
                 self.load_vertex(address)
             for cmv, call in cell_message_types.items():
-                call(self.cells[eval("fs.{cmv}.vertexId".format(cmv=cmv))])(eval("fs.{cmv}".format(cmv=cmv)))
+                for update in eval("fs.{cmv}".format(cmv=cmv)):
+                    call(self.cells[update.vertexId])(update)
             self.send_queued()
 
     def send_queued(self):
-        socket.send(self.queued_message.serialize().to_bytes())
+        self.push_socket.send(self.queued_message.serialize().to_bytes())
         self.reset_queue()
 
     def reset_queue(self):
@@ -248,13 +259,17 @@ class Actor:
         localizer = Localizer(self.service_name)
         if created or cid not in self.cells:
             for pattern, page_cls in self.pages.items():
-                match, path = match_path(address.vertexPath, pattern)
+                print("Matching path ", address, " to pattern ", pattern)
+                match = match_path(address.vertexPath, pattern)
                 if match is not None:
+                    match, path, cellPath = match
                     page = page_cls(address.identity, localizer, **match)
-                    protocol_page = ProtocolPage(self, page)
-                    pcell = protocol_page.load(path, cid, address)
+                    protocol_page = ProtocolPage(self, page, path)
+                    pcell = protocol_page.load(cellPath, cid, address)
                     self.cells[cid] = pcell
                     return pcell
+                else:
+                    pass # TODO stage 404 vertex state.
         else:
             return self.cells[cid]
 

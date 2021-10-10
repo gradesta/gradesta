@@ -164,4 +164,9 @@ N
 
 class TickTackToe(gradesta_service.Actor):
     service_name = "tick-tack-toe"
-    pages = {"<pieces>/": BoardsAndMoves}
+    pages = {"<pieces>": BoardsAndMoves}
+
+
+if __name__ == "__main__":
+    ttt = TickTackToe()
+    ttt.start()

@@ -28,9 +28,12 @@ def get_connections_1D(top, stream):
     for tripple in threes_and_twos(top):
         first = None
         if tripple[0].isalpha():
-            first = stream.index(tripple[0])
-            if tripple[1].isalpha():
-                connections.add((first, stream.index(tripple[1])))
+            try:
+                first = stream.index(tripple[0])
+                if tripple[1].isalpha():
+                    connections.add((first, stream.index(tripple[1])))
+            except ValueError:
+                pass
         if tripple[1] == "*":
             if first is not None:
                 stream_index = first + 1
