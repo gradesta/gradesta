@@ -200,7 +200,6 @@ def to_dict(message: level0.Message) -> DefaultDict[str, any]:
 def to_yaml(fdi, fdo):
     m = level0.Message.read(fdi)
     d = to_dict(m)
-
     fdo.write(yaml.dump(d, default_flow_style=False).encode("utf8"))
 
 

@@ -242,6 +242,9 @@ class Actor:
             }
             for address in fs.select:
                 self.load_vertex(address)
+            for cid in fs.deselect:
+                # TODO cancel futures
+                del self.cells[cid]
             for cmv, call in cell_message_types.items():
                 for update in eval("fs.{cmv}".format(cmv=cmv)):
                     call(self.cells[update.vertexId])(update)

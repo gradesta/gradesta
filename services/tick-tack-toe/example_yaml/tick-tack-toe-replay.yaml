@@ -13,3 +13,25 @@ send:
         identity: 1
 ---
 drop: 1
+---
+send:
+  forService:
+    select:
+      - address: "gradesta://example.com/en/tick-tack-toe/   .   .   /Next/1"
+        identity: 1
+---
+drop: 1
+---
+send:
+  forService:
+    deselect: [1]
+---
+drop: 1
+---
+send:
+  forService:
+    select:
+      - address: "gradesta://example.com/en/tick-tack-toe/   .   .   /Next/1"
+        identity: 1
+---
+drop: 1
