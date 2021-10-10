@@ -72,7 +72,7 @@ with open(args.replay) as fd:
             diff = level0.yaml.compare(move["expect"], myml)
             if diff:
                 print(FAIL)
-                print(myml)
+                print(yaml.dump(myml))
                 print(ENDC)
         if "drop" in move:
             for n in range(0, move["drop"]):
@@ -80,7 +80,7 @@ with open(args.replay) as fd:
                 message = level0.Message.from_bytes(push_socket.recv())
                 print(OKGREEN)
                 myml = level0_yaml.to_dict(message)
-                print(myml)
+                print(yaml.dump(myml))
                 print(ENDC)
         if "send" in move:
             message = level0_yaml.from_dict_to_capnp(move["send"]).to_bytes()
