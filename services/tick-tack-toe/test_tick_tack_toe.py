@@ -1,5 +1,8 @@
 import pytest
 import gradesta_service
+import parse_address
+import capnp
+import level0_capnp as level0
 
 from tick_tack_toe import (
     Board,
@@ -19,37 +22,44 @@ def localizer():
     return Localizer("en", "tick-tack-toe")
 
 
-def test_resolve(localizer):
+def test_load_vertex(localizer):
     ttt = TickTackToe()
     bnm = BoardsAndMoves(1, localizer, "x o.o x. x ")
     board = bnm.resolve("")
     assert board.draw() == "x o\no x\n x "
-    board1 = ttt.resolve("x o.o x. x /", 1)
-    assert board1.draw() == "x o\no x\n x "
-    board2 = ttt.resolve("x o.o x. x /", 1)
+    b1a = parse_address.parse_address("gradesta://example.com/en/tick-tack-toe/x o.o x. x /")
+    b1a.identity = 1
+    board1 = ttt.load_vertex(b1a)
+    assert board1.cell.draw() == "x o\no x\n x "
+    board2 = ttt.load_vertex(b1a)
     assert board1 == board2
-    board3 = ttt.resolve("x o.o x. x /", 2)
+    b3a = parse_address.parse_address("gradesta://example.com/en/tick-tack-toe/x o.o x. x /")
+    b3a.identity = 2
+    board3 = ttt.load_vertex(b3a)
     assert board2 != board3
 
 
 def test_load(localizer):
     ttt = TickTackToe()
     bnm = BoardsAndMoves(1, localizer, "x o.o x. x ")
-    pbnm = gradesta_service.ProtocolPage(ttt, "^en/tick-tack-toe/x o.o x. x /", bnm)
-    u, fs = pbnm.load([""])
-    assert u["dataUpdates"][0].data == "x o\no x\n x ".encode("utf8")
-    assert len(u["portUpdates"]) == 2
-    assert u["portUpdates"][0].direction == 1
-    assert u["portUpdates"][1].direction == -1
-    updates, fs = pbnm.load(["Next/2"])
-    assert updates["dataUpdates"][0].data == "x o\noöx\n x ".encode("utf8")
-    assert len(updates["portUpdates"]) == 3
-    left = [l for l in updates["portUpdates"] if l.direction == 2][0]
-    assert left.connectedVertex.symlink.address == "x o.oox. x /Previous/3"
-    up = [l for l in updates["portUpdates"] if l.direction == -1][0]
-    assert type(up.connectedVertex.vertex) == int
-    down = [l for l in updates["portUpdates"] if l.direction == 1][0]
-    assert type(down.connectedVertex.vertex) == int
+    pbnm = gradesta_service.ProtocolPage(ttt, bnm)
+    _ = pbnm.load("", 1, parse_address.parse_address("gradesta://example.com/en/tick-tack-toe/x o.o x. x /"))
+    qmfc = ttt.queued_message.forClient
+    assert qmfc.dataUpdates[0].data == "x o\no x\n x ".encode("utf8")
+    assert len(qmfc.portUpdates) == 2
+    assert qmfc.portUpdates[0].direction == 1
+    assert qmfc.portUpdates[1].direction == -1
+    ttt.reset_queue()
+    _ = pbnm.load("Next/2", 2,  parse_address.parse_address("gradesta://example.com/en/tick-tack-toe/x o.o x. x /Next/2"))
+    qmfc = ttt.queued_message.forClient
+    assert qmfc.dataUpdates[0].data == "x o\noöx\n x ".encode("utf8")
+    assert len(qmfc.portUpdates) == 3
+    left = [l for l in qmfc.portUpdates if l.direction == 2][0]
+    assert "/".join(left.connectedVertex.symlink.vertexPath) == "x o.oox. x /Previous/3"
+    up = [l for l in qmfc.portUpdates if l.direction == -1][0]
+    assert type(up.connectedVertex.vertex) == capnp.lib.capnp._DynamicStructBuilder
+    down = [l for l in qmfc.portUpdates if l.direction == 1][0]
+    assert type(down.connectedVertex.vertex) == capnp.lib.capnp._DynamicStructBuilder
 
 
 def test_next_move(localizer):

@@ -1,4 +1,8 @@
 from dataclasses import dataclass, field
+import capnp
+import level0_capnp as level0
+
+import parse_address
 
 from typing import DefaultDict, Set, Optional, Tuple
 
@@ -11,33 +15,36 @@ class CellReferenceDB:
 
     __path_table: DefaultDict[Tuple[str, int], int] = field(
         default_factory=dict
-    )  # [(path, identity), cell_id]
+    )  # [address, cell_id]
     __id_table: DefaultDict[int, Tuple[str, int]] = field(
         default_factory=dict
-    )  # [cell_id, [(path, identity)]]
+    )  # [cell_id, address]
     __cell_id_counter: int = -1
 
-    def lookup_cell(self, cell_path: str, identity: int) -> Tuple[int, bool]:
+    def lookup_cell(self, address: level0.Address) -> Tuple[int, bool]:
         """
         Given an path and identity return the cell's id. If no cell id is registered for that path yet, then create one. The second element of the returned tuple is true if a new cell was created.
         """
+        address = (parse_address.to_string(address), address.identity)
         try:
-            return (self.__path_table[(cell_path, identity)], False)
+            return (self.__path_table[address], False)
         except KeyError:
             self.__cell_id_counter += 1
-            self.__path_table[(cell_path, identity)] = self.__cell_id_counter
-            self.__id_table[self.__cell_id_counter] = (cell_path, identity)
+            self.__path_table[address] = self.__cell_id_counter
+            self.__id_table[self.__cell_id_counter] = address
             return (self.__cell_id_counter, True)
 
-    def lookup_cell_path(self, cell_id: int) -> Optional[Tuple[str, int]]:
+    def lookup_cell_path(self, cell_id: int) -> Optional[level0.Address]:
         """
         Given a cell_id return it's path and identity.
         """
-        for ((path, identity), loop_cell_id) in self.__path_table.items():
+        for ((address, identity), loop_cell_id) in self.__path_table.items():
             if cell_id == loop_cell_id:
-                return (path, identity)
+                address = parse_address.parse_address(address)
+                address.identity = identity
+                return address
 
     def clear_cell(self, cell_id: int):
-        path = self.__id_table[cell_id]
-        del self.__path_table[path]
+        address = self.__id_table[cell_id]
+        del self.__path_table[address]
         del self.__id_table[cell_id]

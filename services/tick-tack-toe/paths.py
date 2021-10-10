@@ -14,4 +14,5 @@ def match_path(path: List[str], pattern: str) -> Optional[Tuple[DefaultDict[str,
             path_vars[patts[1:-1]] = s
         elif s != patts:
             return None
-    return path_vars, "/".join(path[len(patt_segs) :])
+    remainder = list(path)[len(patt_segs):]
+    return path_vars, "/".join(remainder)

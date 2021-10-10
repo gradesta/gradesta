@@ -12,6 +12,9 @@ from paths import match_path
 from cell_reference_db import CellReferenceDB
 import simple_topology_expressions
 from gradesta_locales import Localizer
+from level0_yaml import to_capnp
+import parse_address
+import level0_extras
 
 from typing import *
 
@@ -19,51 +22,61 @@ from typing import *
 @dataclass
 class ProtocolPage:
     actor: "Actor"
-    address: str
     page: "Page"
 
-    def load(self, paths: List[str]) -> Tuple[DefaultDict[str, List[any]], Set[Future]]:
-        updates: DefaultDict[str, List[any]] = forClientTemplate()
-        futures: Set[Future] = set()
+
+    def load(self, path: str, cid: int, address: level0.Address) -> "ProtocolCell":
         directions = {
             "up": -1,
             "down": 1,
             "left": -2,
             "right": 2,
         }
-        cells = set()
-        for path in paths:
-            cell = self.page.resolve(path)
-            pcell = ProtocolCell(self, cell)
-            cells.add(pcell.cid)
-            updates["vertexes"].append(pcell.vertex())
-            updates["vertexStates"].append(pcell.vertexState())
-            du = pcell.data_update()
-            if du is not None:
-                updates["dataUpdates"].append(du)
-            for direction, val in directions.items():
-                try:
-                    custom_direction_value = eval("cell." + direction + "()")
-                except AttributeError:
-                    custom_direction_value = None
-                if custom_direction_value is not None:
-                    updates["portUpdates"].append(
-                        pcell.port_update(val, **custom_direction_value)
-                    )
-        for (pcell1, pcell2, dim) in self.connections():
-            if pcell1.cid in cells:
-                updates["portUpdates"].append(
-                    pcell1.port_update(dim, vertexId=pcell2.cid)
-                )
+        cell = self.page.resolve(path)
+        pcell = ProtocolCell(page=self, cell=cell, address=address)
+        pcell.queue_vertex()
+        pcell.queue_vertex_state()
+        pcell.queue_data_update()
+        for direction, val in directions.items():
+            try:
+                custom_direction_value = eval("cell." + direction + "()")
+            except AttributeError:
+                custom_direction_value = None
+            if custom_direction_value is not None:
+                if "symlink" in custom_direction_value:
+                    if type(custom_direction_value["symlink"]) == tuple:
+                        path_str, sym_identity = custom_direction_value["symlink"]
+                        def load_symlink(symlink):
+                            sym_path = path_str.split("/")
+                            symlink.socket = address.socket
+                            symlink.locale = address.locale
+                            symlink.serviceName = address.locale
+                            vp = symlink.init("vertexPath", len(sym_path))
+                            for n in range(0, len(sym_path)):
+                                vp[n] = sym_path[n]
+                                symlink.identity = sym_identity
+                                # TODO quargs
+                        custom_direction_value["symlinkLoader"] = load_symlink
+                        del custom_direction_value["symlink"]
+                    else:
+                        import pdb;pdb.set_trace()
 
-        return updates, futures
+                pcell.queue_port_update(val, **custom_direction_value)
 
-    def connections(self) -> Iterator[Tuple["ProtocolCell", "ProtocolCell", int]]:
-        connections = self.page.connections()
-        for (cell1, cell2, dim) in connections:
-            pcell1 = ProtocolCell(self, cell1)
-            pcell2 = ProtocolCell(self, cell2)
-            yield (pcell1, pcell2, dim)
+        for (cell1, cell2, dim) in self.page.connections():
+            if cell1.path == path:
+                def load_connected_address(connected_address):
+                    connected_path = cell2.path.split("/")
+                    connected_address.socket = address.socket
+                    connected_address.locale = address.locale
+                    connected_address.serviceName = address.serviceName
+                    vp = connected_address.init("vertexPath", len(connected_path))
+                    for n in range(0, len(connected_path)):
+                        vp[n] = connected_path[n]
+                        # TODO decide what to do with quargs
+                    connected_address.identity = address.identity
+                pcell.queue_port_update(dim, vertexLoader=load_connected_address)
+        return pcell
 
 
 @dataclass
@@ -92,47 +105,44 @@ class Page:
 class ProtocolCell:
     page: "ProtocolPage"
     cell: "Cell"
+    address: level0.Address
 
     @property
     def cid(self):
-        return self.page.actor.crdb.lookup_cell(self.address, self.cell.page.identity)[
+        return self.page.actor.crdb.lookup_cell(self.address)[
             0
         ]
-
-    @property
-    def address(self):
-        return self.page.address + self.cell.path
 
     @property
     def path(self):
         return self.page.page.path + self.cell.path
 
-    def data_update(self):
+    def queue_data_update(self):
         data = self.cell.draw()
         if type(data) is str:
             data = data.encode("utf8")
         data_mime = self.cell.data_mime()
         if data is not None and data_mime is not None:
-            du = level0.DataUpdate()
+            du = self.page.actor.queued_message.forClient.dataUpdates.add()
             du.updateId = next(self.page.actor.updateCounter)
             du.vertexId = self.cid
             du.mime = data_mime
             du.data = data
             return du
 
-    def port_update(
+    def queue_port_update(
         self,
         direction: int,
         closed: bool = False,
         disconnected: bool = False,
-        vertex: Union[bool, Tuple[str, int]] = False,
-        symlink: Union[bool, Tuple[str, Tuple[str, int]]] = False,
+        vertexLoader: Union[bool, Callable[[level0.Address], None]] = False,
+        symlinkLoader: Union[bool, Callable[[level0.Address], None]] = False,
     ):
         assert (
-            len([x for x in [closed, disconnected, vertexId, symlink] if x is False])
+            len([x for x in [closed, disconnected, vertexLoader, symlinkLoader] if x is False])
             == 3
         )
-        pu = level0.PortUpdate()
+        pu = self.page.actor.queued_message.forClient.portUpdates.add()
         pu.updateId = next(self.page.actor.updateCounter)
         pu.vertexId = self.cid
         pu.direction = direction
@@ -140,28 +150,23 @@ class ProtocolCell:
             pu.connectedVertex.closed = None
         if disconnected:
             pu.connectedVertex.disconnected = None
-        if vertexId:
-            pu.connectedVertex.vertex = vertexId
-        if symlink:
-            pu.connectedVertex.init("symlink")
-            pu.connectedVertex.symlink.serviceAddress = symlink[0]
-            pu.connectedVertex.symlink.path = level0.Path()
-            pu.connectedVertex.symlink.path.path = symlink[1][0]
-            pu.connectedVertex.symlink.path.identity = symlink[1][1]
+        if vertexLoader:
+            v = pu.connectedVertex.init("vertex")
+            vertexLoader(v)
+        if symlinkLoader:
+            symlink = pu.connectedVertex.init("symlink")
+            symlinkLoader(symlink)
         return pu
 
-    def vertex(self):
-        v = level0.Vertex()
-        a = level0.Address()
-        a. = self.path
-        a.identity = self.cell.page.identity
-        v.address = a
+    def queue_vertex(self):
+        v = self.page.actor.queued_message.forClient.vertexes.add()
+        v.address = self.address
         v.instanceId = self.cid
         v.view = self.cell.view
         return v
 
-    def vertexState(self):
-        vs = level0.VertexState()
+    def queue_vertex_state(self):
+        vs = self.page.actor.queued_message.forClient.vertexStates.add()
         vs.instanceId = self.cid
         vs.status = 200
         vs.reaped = False
@@ -188,40 +193,10 @@ class Cell:
         return updates, futures
 
 
-class Selections:
-    def __init__(self, service):
-        self.service = service
-        self.selections = {}
-        self.vertexes = {}
-
-    def select(self, selection, vertex):
-        if selection not in self.selections:
-            self.selections[selection] = set()
-        self.selections[selection].add(vertex)
-        if vertex not in self.vertexes:
-            self.vertexes[vertex] = set()
-        self.vertexes[vertex].add(selection)
-
-    def deselect(self, selection):
-        try:
-            for vertex in self.selections[selection]:
-                vertex_selections = self.vertexes[vertex]
-                vertex_selections.remove(selection)
-                if not vertex_selections:
-                    self.service.vertexes[vertex].reap()
-        except KeyError:
-            sys.stderr.write(
-                "Received deselect command for non-existant selection {}.\n".format(
-                    selection
-                )
-            )
-        del self.selections[selection]
-
-
 class Actor:
     def __init__(self):
         self.crdb = CellReferenceDB()
-        self.cells: DefaultDict[int, Cell] = {}
+        self.cells: DefaultDict[int, ProtocolCell] = {}
 
         def update_counter():
             uc = 0
@@ -230,9 +205,10 @@ class Actor:
                 yield uc
 
         self.updateCounter: Iterator[int] = update_counter()
+        self.vertex_counter = 0
+        self.reset_queue()
 
     def start(self):
-        self.vertex_counter = 0
         services_dir = os.path.expanduser("~/.cache/gradesta/services/sockets")
         pathlib.Path(services_dir).mkdir(parents=True, exist_ok=True)
 
@@ -254,81 +230,36 @@ class Actor:
                 "dataUpdates": (lambda c: c.recv_data_update),
                 "encryptionUpdates": (lambda c: c.recv_encryption_update),
             }
+            for address in fs.select:
+                self.load_vertex(address)
             for cmv, call in cell_message_types.items():
                 call(self.cells[eval("fs.{cmv}.vertexId".format(cmv=cmv))])(eval("fs.{cmv}".format(cmv=cmv)))
             self.send_queued()
 
     def send_queued(self):
-        mfs = level0_capnp.Message(
-            messages=self.queued_messages,
-            vertexes=self.queued_vertexes,
-            vertexStates=self.queued_vertex_states,
-        )
-        socket.send(mfs.to_bytes())
+        socket.send(self.queued_message.serialize().to_bytes())
         self.reset_queue()
 
     def reset_queue(self):
-        self.queued_messages = []
-        self.queued_vertexes = []
-        self.queued_vertex_states = []
+        self.queued_message = level0_extras.MessageMutable()
 
-    def recv_vertex_message(self, vm):
-        try:
-            self.vertexes[vm.vertexId].write(vm.data)
-        except KeyError:
-            sys.stderr.write(
-                "Received message for vertex id {} but vertex does not exist.\n".format(
-                    vm.vertexId
-                )
-            )
+    def load_vertex(self, address: level0.Address) -> ProtocolCell:
+        cid, created = self.crdb.lookup_cell(address)
+        localizer = Localizer(self.service_name)
+        if created or cid not in self.cells:
+            for pattern, page_cls in self.pages.items():
+                match, path = match_path(address.vertexPath, pattern)
+                if match is not None:
+                    page = page_cls(address.identity, localizer, **match)
+                    protocol_page = ProtocolPage(self, page)
+                    pcell = protocol_page.load(path, cid, address)
+                    self.cells[cid] = pcell
+                    return pcell
+        else:
+            return self.cells[cid]
 
-    def load_vertex(self, address):
-        for vertex in self.vertexes:
-            if address == vertex.address:
-                return vertex.id
-        id = self.next_id()
-        self.vertexes[id] = create_vertex(id, address)
 
     def next_id(self):
         r = self.vertex_counter
         self.vertex_counter += 1
         return r
-
-    def create_vertex(self, id, address):
-        return self.vertex_class(self, id, address)
-
-    def set_cursor(self, cursor):
-        vid = self.load_vertex(cursor.address)
-        self.selections.select(cursor.selectionId, vid)
-
-    def move_cursor(self, cm):
-        try:
-            vertex = self.vertexes[cm.vertexId]
-        except KeyError:
-            sys.stderr.write(
-                "Received move cursor command for non-existant vertex {}.\n".format(
-                    cm.vertexId
-                )
-            )
-        try:
-            self.selections.select(
-                cm.selectionId, vertex.ports[cm.direction].get_vertex().id
-            )
-        except KeyError:
-            sys.stderr.write(
-                "Received move cursor command for vertex {} in non-existant direction {}.\n".format(
-                    cm.vertexId, cm.direction
-                )
-            )
-
-    def resolve(self, path: str, identity: int) -> Cell:
-        cid, created = self.crdb.lookup_cell(path, identity)
-        localizer = Localizer(self.service_name)
-        if created or cid not in self.cells:
-            for pattern, page in self.pages.items():
-                match = match_path(path, pattern)
-                if match is not None:
-                    cell = page(identity, localizer, **match[0]).resolve(match[1])
-                    self.cells[cid] = cell
-                    return cell
-        return self.cells[cid]
