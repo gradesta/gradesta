@@ -11,13 +11,18 @@ def who_won(board: Optional[str]):
     """
 
     def check_letter(letter: str):
+        # Horizontals
         if letter * 3 in board:
             return letter
+        # Diagonals
         if board[5] == letter:
             if board[0] == board[10] == letter:
                 return letter
             if board[2] == board[8] == letter:
                 return letter
+        # Verticals
+        if [letter] * 3 in [[m[i] for m in board.split(".")] for i in range(0,3)]:
+            return letter
         return None
 
     x = check_letter("x")
