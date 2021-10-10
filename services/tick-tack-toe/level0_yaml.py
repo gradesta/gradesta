@@ -194,6 +194,19 @@ def to_dict(message: level0.Message) -> DefaultDict[str, any]:
         if "select" in d["forService"]:
             for s in d["forService"]["select"]:
                 scrub_address(s)
+    # Clean out empty sections
+    for mt in ["forClient", "forService"]:
+        dels = []
+        for k,l in d[mt].items():
+            if l == []:
+                dels.append(k)
+        for del_ in dels:
+            del d[mt][del_]
+        dels = []
+        if d[mt] == {}:
+            dels.append(mt)
+        for del_ in dels:
+            del d[del_]
     return d
 
 
