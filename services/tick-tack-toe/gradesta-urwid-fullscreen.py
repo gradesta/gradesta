@@ -34,7 +34,7 @@ loop=asyncio.get_event_loop()
 
 cid = None
 cells = {}
-mode = "yaml"
+mode = "data"
 
 def get_cell(address: level0.Address):
     global cid
