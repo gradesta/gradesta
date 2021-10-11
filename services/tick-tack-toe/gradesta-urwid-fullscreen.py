@@ -56,8 +56,10 @@ def show_or_exit(key):
         raise urwid.ExitMainLoop()
     if key in ("y"):
         mode = "yaml"
+        redraw()
     if key in ("d"):
         mode = "data"
+        redraw()
     dims = {
         "h": -2,
         "j": 1,
@@ -77,19 +79,23 @@ def show_or_exit(key):
             elif pu.connectedVertex.which() == "symlink":
                 get_cell(pu.connectedVertex.symlink)
 
+def redraw():
+    if cid is not None:
+        cell = cells[cid]
+        if mode == "yaml":
+            txt.set_text(str(cell))
+        elif mode == "data":
+            txt.set_text(cell.data.data.decode("utf8"))
+
+
+txt = urwid.Text("Loading...")
 def build_widgets():
-    txt = urwid.Text("Loading...")
     def update_cell(widget_ref):
         widget = widget_ref()
         if not widget:
             return
 
-        if cid is not None:
-            cell = cells[cid]
-            if mode == "yaml":
-                txt.set_text(str(cell))
-            elif mode == "data":
-                txt.set_text(cell.data.data.decode("utf8"))
+        redraw()
 
         msg_future = push_socket.recv()
 
