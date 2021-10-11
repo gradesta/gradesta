@@ -126,7 +126,7 @@ class ProtocolCell:
         if data is not None and data_mime is not None:
             du = self.page.actor.queued_message.forClient.dataUpdates.add()
             du.updateId = next(self.page.actor.updateCounter)
-            du.vertexId = self.cid
+            du.instanceId = self.cid
             du.mime = data_mime
             du.data = data
             return du
@@ -145,7 +145,7 @@ class ProtocolCell:
         )
         pu = self.page.actor.queued_message.forClient.portUpdates.add()
         pu.updateId = next(self.page.actor.updateCounter)
-        pu.vertexId = self.cid
+        pu.instanceId = self.cid
         pu.direction = direction
         if closed:
             pu.connectedVertex.closed = None
@@ -247,7 +247,7 @@ class Actor:
                 del self.cells[cid]
             for cmv, call in cell_message_types.items():
                 for update in eval("fs.{cmv}".format(cmv=cmv)):
-                    call(self.cells[update.vertexId])(update)
+                    call(self.cells[update.instanceId])(update)
             self.send_queued()
 
     def send_queued(self):

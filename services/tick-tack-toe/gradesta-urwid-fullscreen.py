@@ -113,13 +113,13 @@ def build_widgets():
                 cell = init_cell(vs.instanceId)
                 cell.vertexState = cell
             for du in fc.dataUpdates:
-                cell = init_cell(du.vertexId)
+                cell = init_cell(du.instanceId)
                 cell.data = du
             for pu in fc.portUpdates:
-                cell = init_cell(pu.vertexId)
+                cell = init_cell(pu.instanceId)
                 cell.ports[pu.direction] = pu
             for eu in fc.encryptionUpdates:
-                cell = init_cell(eu.vertexId)
+                cell = init_cell(eu.instanceId)
                 cell.encryption = eu
             update_cell(widget_ref)
 

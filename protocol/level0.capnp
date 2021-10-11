@@ -54,7 +54,7 @@ struct Vertex {
 # data and are not specified at this level of the protocol. This level of the
 # protocol only specifies the routing of messages to vertexes.
 struct VertexMessage {
-  vertexId      @0 :UInt64;
+  instanceId      @0 :UInt64;
   data          @1 :Data;
 }
 
@@ -62,7 +62,7 @@ struct DataUpdate {
   # Updates origionating from the service have negative ids
   # updates origionating from the client have positive ids
   updateId      @0 :Int64;
-  vertexId      @1 :UInt64;
+  instanceId      @1 :UInt64;
   mime          @2 :Text;
   data          @3 :Data;
 }
@@ -71,7 +71,7 @@ struct EncryptionUpdate {
   # Updates origionating from the service have negative ids
   # updates origionating from the client have positive ids
   updateId      @0 :Int64;
-  vertexId      @1 :UInt64;
+  instanceId      @1 :UInt64;
   # Blank string for unencrypted, otherwise a list of GNUPG public keys signed by a trusted key.
   # Each public key is then used to encrypt a shared private key ( specific to this vertex ) which is used to encrypt all message data and vertex data.
   # A vertex's data and messages are considered to be end to end encrypted if the keys Text is signed by a trusted key and the messages and data are correctly encrypted by the secret key.
@@ -84,7 +84,7 @@ struct PortUpdate {
   # updates origionating from the client have positive ids
   updateId      @0 :Int64;
   # Vertex from wence the port connects
-  vertexId      @1 :UInt64;
+  instanceId      @1 :UInt64;
   # Each port has a direction. Directions are important for walk trees which are
   # defined in a higher level of the API.
   direction     @2 :Int64;

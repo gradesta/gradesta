@@ -33,7 +33,7 @@ def set_attrs(capnp, yml, attrs):
 
 def load_vertex_message(yml):
     vm = level0.VertexMessage()
-    vm.vertexId = yml["vertexId"]
+    vm.instanceId = yml["instanceId"]
     vm.data = yml["data"]
     return vm
 
@@ -66,7 +66,7 @@ def load_update_status(yml):
 
 def load_port_update(yml):
     pu = level0.PortUpdate()
-    set_attrs(pu, yml, ["updateId", "vertexId", "direction"])
+    set_attrs(pu, yml, ["updateId", "instanceId", "direction"])
     if yml["connectedVertex"] == "disconnected":
         pu.connectedVertex.disconnected = None
     elif yml["connectedVertex"] == "closed":
@@ -80,13 +80,13 @@ def load_port_update(yml):
 
 def load_data_update(yml):
     du = level0.DataUpdate()
-    set_attrs(du, yml, ["updateId", "vertexId", "mime", "data"])
+    set_attrs(du, yml, ["updateId", "instanceId", "mime", "data"])
     return du
 
 
 def load_encryption_update(yml):
     eu = level0.EncryptionUpdate()
-    set_attrs(eu, yml, ["updateId", "vertexId", "keys"])
+    set_attrs(eu, yml, ["updateId", "instanceId", "keys"])
     return eu
 
 

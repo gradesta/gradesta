@@ -17,11 +17,11 @@ forClient:
         identity: 0
   dataUpdates:
     - updateId: 1
-      vertexId: 1
+      instanceId: 1
       mime: text/plain
       data: Hello World
     - updateId: 2
-      vertexId: 2
+      instanceId: 2
       mime: image/gif
       data:  !!binary |
        R0lGODlhDAAMAIQAAP//9/X17unp5WZmZgAAAOfn515eXvPz7Y6OjuDg4J+fn5
@@ -30,28 +30,28 @@ forClient:
        AgjoEwnuNAFOhpEMTRiggcz4BNJHrv/zCFcLiwMWYNG84BwwEeECcgggoBADs=
   portUpdates:
     - updateId: 1
-      vertexId: 2
+      instanceId: 2
       direction: -1
       connectedVertex: disconnected
     - updateId: 2
-      vertexId: 2
+      instanceId: 2
       direction: 1
       connectedVertex: closed
     - updateId: 3
-      vertexId: 2
+      instanceId: 2
       direction: -2
       connectedVertex:
         address: "gradesta://example.com/en/tick-tack-toe/baf/baz?arg=val"
         identity: 1
     - updateId: 4
-      vertexId: 2
+      instanceId: 2
       direction: 2
       connectedVertex:
         symlink:
           address: "gradesta://example.com/en/tick-tack-toe/baf/baz?arg=val"
           identity: 0
     - updateId: 5
-      vertexId: 3
+      instanceId: 3
       direction: 2
       connectedVertex:
         symlink:
@@ -59,43 +59,43 @@ forClient:
           identity: 0
   encryptionUpdates:
     - updateId: 6
-      vertexId: 2
+      instanceId: 2
       keys: "klfjdlskj fkdlsjfsd lkjfldksjfs"
   vertexMessages:
-    - vertexId: 1
+    - instanceId: 1
       data: Foo
-    - vertexId: 2
+    - instanceId: 2
       data: Bar
 forService:
   vertexMessages:
-    - vertexId: 1
+    - instanceId: 1
       data: Foo
-    - vertexId: 2
+    - instanceId: 2
       data: Bar
   portUpdates:
     - updateId: 1
-      vertexId: 2
+      instanceId: 2
       direction: -1
       connectedVertex: disconnected
     - updateId: 2
-      vertexId: 2
+      instanceId: 2
       direction: 1
       connectedVertex: closed
     - updateId: 3
-      vertexId: 2
+      instanceId: 2
       direction: -2
       connectedVertex:
         address: "gradesta://example.com/en/tick-tack-toe/lol/egg"
         identity: 3
     - updateId: 4
-      vertexId: 2
+      instanceId: 2
       direction: 2
       connectedVertex:
         symlink:
           address: "gradesta://example.com/en/tick-tack-toe/alr/amre"
           identity: 0
     - updateId: 5
-      vertexId: 3
+      instanceId: 3
       direction: 2
       connectedVertex:
         symlink:
@@ -103,11 +103,11 @@ forService:
           identity: 0
   dataUpdates:
     - updateId: 6
-      vertexId: 1
+      instanceId: 1
       mime: text/plain
       data: Hello World
     - updateId: 7
-      vertexId: 2
+      instanceId: 2
       mime: image/gif
       data:  !!binary |
        R0lGODlhDAAMAIQAAP//9/X17unp5WZmZgAAAOfn515eXvPz7Y6OjuDg4J+fn5
@@ -116,7 +116,7 @@ forService:
        AgjoEwnuNAFOhpEMTRiggcz4BNJHrv/zCFcLiwMWYNG84BwwEeECcgggoBADs=
   encryptionUpdates:
     - updateId: 8
-      vertexId: 2
+      instanceId: 2
       keys: "abc kjlj klfjdlskj fkdlsjfsd lkjfldksjfs"
   select:
     - address: "gradesta://example.com/en/tick-tack-toe/afelr/amre"
