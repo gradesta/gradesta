@@ -37,11 +37,9 @@ def get_connections_1D(top, stream):
         if tripple[1] == "*":
             if first is not None:
                 stream_index = first + 1
-                while stream[stream_index] == tripple[0]:
+                while stream_index < len(stream) and stream[stream_index] == tripple[0]:
                     connections.add((stream_index - 1, stream_index))
                     stream_index += 1
-                    if stream_index >= len(stream):
-                        break
                 if len(tripple) == 3 and tripple[2].isalpha():
                     connections.add((stream_index - 1, stream.index(tripple[2])))
     return connections
