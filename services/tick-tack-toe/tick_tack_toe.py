@@ -151,7 +151,8 @@ N
         xs = self.pieces.count("x")
         os = self.pieces.count("o")
         num_prev_moves = max(xs, os)
-        return [PreviousMove(self, move) for move in range(1, num_prev_moves + 1)]
+        prev_moves = [PreviousMove(self, move) for move in range(1, num_prev_moves + 1)]
+        return [pm for pm in prev_moves if who_won(pm.place(" ")) is None]
 
     def next_moves(self):
         if who_won(self.pieces) is not None:
