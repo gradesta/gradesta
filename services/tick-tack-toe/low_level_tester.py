@@ -50,14 +50,10 @@ UNDERLINE = '\033[4m'
 #######################################################š
 
 context = zmq.Context()
-push_socket = context.socket(zmq.PULL)
-pull_socket = context.socket(zmq.PUSH)
-push_socket_path = args.socket+".push"
-print("Connecting to", push_socket_path)
-push_socket.connect(push_socket_path)
-pull_socket_path = args.socket+".pull"
-print("Connecting to", pull_socket_path)
-pull_socket.connect(pull_socket_path)
+socket = context.socket(zmq.PAIR)
+socket_path = args.socket
+print("Connecting to", socket_path)
+socket.connect(socket_path)
 with open(args.replay) as fd:
     replay = yaml.load_all(fd)
     for move in replay:
@@ -67,7 +63,7 @@ with open(args.replay) as fd:
             print(OKGREEN)
             print(move["expect"])
             print(ENDC)
-            message = level0_capnp.Message.from_bytes(push_socket.recv())
+            message = level0_capnp.Message.from_bytes(socket.recv())
             myml = level0_yaml.to_yaml(message)
             diff = level0.yaml.compare(move["expect"], myml)
             if diff:
@@ -77,7 +73,7 @@ with open(args.replay) as fd:
         if "drop" in move:
             for n in range(0, move["drop"]):
                 print("Dropping message ", n, " of ", move["drop"])
-                message = level0.Message.from_bytes(push_socket.recv())
+                message = level0.Message.from_bytes(socket.recv())
                 print(OKGREEN)
                 myml = level0_yaml.to_dict(message)
                 print(yaml.dump(myml))
@@ -88,5 +84,5 @@ with open(args.replay) as fd:
             print(OKGREEN)
             print(yaml.dump(move["send"]))
             print(ENDC)
-            pull_socket.send(message)
+            socket.send(message)
             print("Sent")

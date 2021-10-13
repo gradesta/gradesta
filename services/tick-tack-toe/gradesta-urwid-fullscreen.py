@@ -22,14 +22,10 @@ parser.add_argument("socket", metavar="socket", type=str, help="socket to connec
 args = parser.parse_args()
 
 context = zmq.asyncio.Context()
-push_socket = context.socket(zmq.PULL)
-pull_socket = context.socket(zmq.PUSH)
-push_socket_path = args.socket+".push"
-print("Connecting to", push_socket_path)
-push_socket.connect(push_socket_path)
-pull_socket_path = args.socket+".pull"
-print("Connecting to", pull_socket_path)
-pull_socket.connect(pull_socket_path)
+socket = context.socket(zmq.PAIR)
+socket_path = args.socket
+print("Connecting to", socket_path)
+socket.connect(socket_path)
 loop=asyncio.get_event_loop()
 
 cid = None
@@ -45,7 +41,7 @@ def get_cell(address: level0.Address):
         deselects = m.forService.init("deselect", 1)
         deselects[0] = cid
         del cells[cid]
-    pull_socket.send(m.to_bytes())
+    socket.send(m.to_bytes())
 
 get_cell(parse_address.parse_address("gradesta://example.com/en/tick-tack-toe/   .   .   "))
 
@@ -97,7 +93,7 @@ def build_widgets():
 
         redraw()
 
-        msg_future = push_socket.recv()
+        msg_future = socket.recv()
 
         # Schedule us to update the clock again in one second
         def process_message(msgf):

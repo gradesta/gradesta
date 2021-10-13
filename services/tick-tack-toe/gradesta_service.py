@@ -214,23 +214,16 @@ class Actor:
         pathlib.Path(services_dir).mkdir(parents=True, exist_ok=True)
 
         self.context = zmq.Context()
-        self.push_socket = self.context.socket(zmq.PUSH)
-        push_socket_path = "ipc://{services_dir}/{service_name}.push".format(
+        self.socket = self.context.socket(zmq.PAIR)
+        socket_path = "ipc://{services_dir}/{service_name}".format(
             services_dir=services_dir,
             service_name=self.service_name,
         )
-        print("Connecting to push socket {}".format(push_socket_path))
-        self.push_socket.bind(push_socket_path)
-        pull_socket_path = "ipc://{services_dir}/{service_name}.pull".format(
-            services_dir=services_dir,
-            service_name=self.service_name,
-        )
-        print("Connecting to pull socket {}".format(pull_socket_path))
-        self.pull_socket = self.context.socket(zmq.PULL)
-        self.pull_socket.bind(pull_socket_path)
+        print("Binding socket {}".format(socket_path))
+        self.socket.bind(socket_path)
         while True:
             print("Waiting for a message from the client.")
-            message = self.pull_socket.recv()
+            message = self.socket.recv()
             print("Message recieved")
             message = level0.Message.from_bytes(message)
             fs = message.forService
@@ -251,7 +244,7 @@ class Actor:
             self.send_queued()
 
     def send_queued(self):
-        self.push_socket.send(self.queued_message.serialize().to_bytes())
+        self.socket.send(self.queued_message.serialize().to_bytes())
         self.reset_queue()
 
     def reset_queue(self):
