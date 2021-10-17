@@ -11,7 +11,7 @@ struct Address {
   # There form is:
   # gradesta://<host>(:port)/<locale>/<service name>/<service specific vertex path>?<query>#<state to be passed to view>
   # the anchor after the # is cut off by the client and not actually sent to the service
-  # Unlike on the web, guis should default to url DECODING the strings so instead of showing
+  # Unlike on the web, guis should default to url DECODING the strings so instead of showing %C5%A1 garbage they should show the actual symbols.
   # Each segment may contain any valid utf-8 character except newline, `/` and `:`.
   # The service specific address may contain `/`. If it does contain `/` then prefix substrings
   # of the address when using `/` as a separator must also be valid addresses. That means
@@ -35,6 +35,17 @@ struct Address {
   qvals             @5 :List(Text); # Values of quargs
   # qargs and qvals can be zipped together to get the pairs you want.
   identity          @6 :UInt64; # The id of the identity. Identities are gnupg derived and are specified at level1 of the protocol
+}
+
+struct Time {
+  time_tai_secs    @2 :Int64; # Actual number of seconds since 00:00:00 1.1.1970 None of that leap second nonsense, we're interested in linear time.
+  time_tai_ns      @3 :Int32; # Nanosecond part of time
+  # Note, it can be quite a problem to find the correct TAI time.
+  # These fields are somewhat optional. The protocol functions without them set.
+  # Prefer in this order:
+  #  1. TAI time.
+  #  2. Linear UNIX time (no leapseconds while the program is running)
+  #  3. Non-linear UNIX time
 }
 
 
@@ -134,6 +145,7 @@ struct ForClient {
   portUpdates       @4 :List(PortUpdate);
   dataUpdates       @5 :List(DataUpdate);
   encryptionUpdates @6 :List(EncryptionUpdate);
+  time              @7 Time;
 }
 
 struct ForService {
@@ -142,7 +154,8 @@ struct ForService {
   dataUpdates       @2 :List(DataUpdate);
   encryptionUpdates @3 :List(EncryptionUpdate);
   select            @4 :List(Address);
-  deselect          @5 :List(Int64); # Vertex ids
+  deselect          @5 :List(Int64); # Instance ids
+  time              @6 Time;
 }
 
 struct Message {
