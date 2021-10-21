@@ -145,7 +145,8 @@ struct ForClient {
   portUpdates       @4 :List(PortUpdate);
   dataUpdates       @5 :List(DataUpdate);
   encryptionUpdates @6 :List(EncryptionUpdate);
-  time              @7 Time;
+  timestamp         @7 :List(Time);
+  # timestamp is sent as a list, but it is really just an optional value.
 }
 
 struct ForService {
@@ -155,10 +156,23 @@ struct ForService {
   encryptionUpdates @3 :List(EncryptionUpdate);
   select            @4 :List(Address);
   deselect          @5 :List(Int64); # Instance ids
-  time              @6 Time;
+  timestamp         @6 :List(Time);
 }
 
 struct Message {
   forClient        @0 :ForClient;
   forService       @1 :ForService;
 }
+
+
+# Heartbeating
+# ------------
+# We copy, and use, websocket's PingPong method for heart beating.
+# This means that the service sends a ping message when it starts
+# to feal like the client might no longer be active. If it does
+# not get a Pong or other response within a given short amount of time
+# the service will free the resources associated with that client.
+# In our case a Ping using websockets is a literall ping.
+# Otherwise, any time we get an otherwise empty ForClient message
+# that has a timestamp set, this is considered a Ping and the
+# client should respond immediately with a Pong (an empty ForService message with the timestamp set)
