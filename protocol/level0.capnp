@@ -1,28 +1,18 @@
 @0xa838a0f012aecc79;
 
 # This is level 0 of the Gradesta protocol
+
 # The purpose of level 0 is to provide the absolute minimal required functionality.
+
 # If you want to add new functionality, add it to level 1.
+
+# While this source file is licensed under the LGPLv3,
 # You should consider this document to be read only.
+# Changes to level 0 of the protocol are not welcome.
+# The reason for this is not animosity towards others,
+#  but due to a desire to maintain compatibility as widely as possible.
 
 struct Address {
-  # addresses are strings with no maximum length. They can include utf-8 emoji's.
-  # They have five or six segments.
-  # There form is:
-  # gradesta://<host>(:port)/<locale>/<service name>/<service specific vertex path>?<query>#<state to be passed to view>
-  # the anchor after the # is cut off by the client and not actually sent to the service
-  # Unlike on the web, guis should default to url DECODING the strings so instead of showing %C5%A1 garbage they should show the actual symbols.
-  # Each segment may contain any valid utf-8 character except newline, `/` and `:`.
-  # The service specific address may contain `/`. If it does contain `/` then prefix substrings
-  # of the address when using `/` as a separator must also be valid addresses. That means
-  # if `gradesta://example.com/en-us/foo/bar/baz/baf` is a valid address:
-  # `gradesta://example.com/en-us/foo/bar/baz` and `gradesta://example.com/en-us/foo/bar`
-  # must also be valid addresses.
-  # Addresses should be urlencoded when copied to the clipboard but should not be urlencoded on the wire.
-  # It is also possible to refer to unix sockets in the form
-  # /path/to/unix/socket:<locale>/<service name>/vertex/path?qarg=foo
-  # PS: Of course the host/path segment must be a valid hostname or path and hostnames typically don't contain emojis ;)
-
   socket            @0 :Text;
   # socket is  either gradesta://example.com:<port-number>
              # or     gradesta://example.com
@@ -163,16 +153,3 @@ struct Message {
   forClient        @0 :ForClient;
   forService       @1 :ForService;
 }
-
-
-# Heartbeating
-# ------------
-# We copy, and use, websocket's PingPong method for heart beating.
-# This means that the service sends a ping message when it starts
-# to feal like the client might no longer be active. If it does
-# not get a Pong or other response within a given short amount of time
-# the service will free the resources associated with that client.
-# In our case a Ping using websockets is a literall ping.
-# Otherwise, any time we get an otherwise empty ForClient message
-# that has a timestamp set, this is considered a Ping and the
-# client should respond immediately with a Pong (an empty ForService message with the timestamp set)
