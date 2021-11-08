@@ -6,3 +6,11 @@ protocol/level0.aux
 protocol/level0.fls
 protocol/level0.log
 protocol/level0.fdb_latexmk
+docs/gradesta-level-0.pdf
+protocol/level0.capnp
+protocol/python/gradesta_level0/level0_capnp_cython.cpp
+protocol/python/gradesta_level0/build/*
+protocol/python/gradesta_level0/level0.capnp.c++
+protocol/python/gradesta_level0/level0.capnp.cpp
+protocol/python/gradesta_level0/level0.capnp.h
+protocol/python/gradesta_level0/setup_capnp.py

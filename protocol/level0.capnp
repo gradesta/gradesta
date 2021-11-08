@@ -28,8 +28,8 @@ struct Address {
 }
 
 struct Time {
-  time_tai_secs    @2 :Int64; # Actual number of seconds since 00:00:00 1.1.1970 None of that leap second nonsense, we're interested in linear time.
-  time_tai_ns      @3 :Int32; # Nanosecond part of time
+  timeTaiSecs    @0 :Int64; # Actual number of seconds since 00:00:00 1.1.1970 None of that leap second nonsense, we're interested in linear time.
+  timeTaiNs      @1 :Int32; # Nanosecond part of time
   # Note, it can be quite a problem to find the correct TAI time.
   # These fields are somewhat optional. The protocol functions without them set.
   # Prefer in this order:

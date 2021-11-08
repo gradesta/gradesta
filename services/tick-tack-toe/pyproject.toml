@@ -15,6 +15,7 @@ PyYAML = "^5.4.1"
 black = "^21.8b0"
 numpy = "^1.21.2"
 urwid = "^2.1.2"
+zmq = "^0.0.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.4"

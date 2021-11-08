@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "gradestalib"
+version = "0.1.0"
+description = ""
+authors = ["Timothy Hobbs <timothy@hobbs.cz>"]
+license = "LGPLv3"
+
+[tool.poetry.dependencies]
+python = ">=3.7,<3.11"
+pytest = "^6.2.5"
+pycapnp = "^1.1.0"
+numpy = "^1.21.3"
+Jinja2 = "^3.0.2"
+Cython = "^0.29.24"
+PyYAML = "^6.0"
+deepdiff = "^5.6.0"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
