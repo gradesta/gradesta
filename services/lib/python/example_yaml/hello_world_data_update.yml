@@ -1,6 +1,0 @@
-forClient:
-  dataUpdates:
-  - data: Hello world
-    mime: text/plain
-    updateId: 1
-    instanceId: 1
