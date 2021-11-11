@@ -10,8 +10,8 @@ from gradesta.level0 import *
 from gradesta.paths import match_path
 from gradesta.cell_reference_db import CellReferenceDB
 import gradesta.simple_topology_expressions
-from gradesta.gradesta_locales import Localizer
-from gradesta.level0_yaml import to_capnp
+from gradesta.locales import Localizer
+from gradesta.level0.yaml import to_capnp
 import gradesta.parse_address as parse_address
 
 from typing import *
@@ -242,7 +242,9 @@ class Actor:
             self.send_queued()
 
     def send_queued(self):
-        self.socket.send(self.queued_message.serialize().to_bytes())
+        gm = self.queued_message.serialize()
+        print("Sending queued message.", gm.to_dict())
+        self.socket.send(gm.to_bytes())
         self.reset_queue()
 
     def reset_queue(self):

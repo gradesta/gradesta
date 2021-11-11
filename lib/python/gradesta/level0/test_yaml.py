@@ -2,7 +2,7 @@ import pytest
 import io
 import tempfile
 
-import level0_yaml
+import gradesta.level0.yaml as level0_yaml
 
 
 def to_capnp_and_back(file):

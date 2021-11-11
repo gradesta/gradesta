@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-from gradestalib import gradesta_service
+from gradesta import service
 from dataclasses import dataclass
 
 from typing import *
@@ -31,7 +31,7 @@ def who_won(board: Optional[str]):
 
 
 @dataclass
-class Board(gradesta_service.Cell):
+class Board(service.Cell):
     path: str = ""
 
     def draw(self):
@@ -43,7 +43,7 @@ class Board(gradesta_service.Cell):
 
 
 @dataclass
-class Move(gradesta_service.Cell):
+class Move(service.Cell):
     move: int = 0
 
     def draw(self):
@@ -136,7 +136,7 @@ class NextMove(Move):
 
 
 @dataclass
-class BoardsAndMoves(gradesta_service.Page):
+class BoardsAndMoves(service.Page):
     pieces: str
 
     layout = """
@@ -160,7 +160,7 @@ N
         num_next_moves = self.pieces.count(" ")
         return [NextMove(self, move) for move in range(1, num_next_moves + 1)]
 
-    def cells(self) -> Iterator[Tuple[str, gradesta_service.Cell]]:
+    def cells(self) -> Iterator[Tuple[str, service.Cell]]:
         for prev_move in self.prev_moves():
             yield ("P", prev_move)
         yield ("B", Board(self))
@@ -168,11 +168,11 @@ N
             yield ("N", next_move)
 
 
-class TickTackToe(gradesta_service.Actor):
+class TickTackToe(service.Actor):
     service_name = "tick-tack-toe"
     pages = {"<pieces>": BoardsAndMoves}
 
 
-if __name__ == "__main__":
+def main():
     ttt = TickTackToe()
     ttt.start()

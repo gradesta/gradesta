@@ -49,6 +49,7 @@ class MessageMutable:
         m.forClient = self.forClient.serialize()
         m.forService = self.forService.serialize()
         return m
+
 class CapnpMutable:
     def __init__(self, cls, primitive_fields=None):
         r = super().__init__()
