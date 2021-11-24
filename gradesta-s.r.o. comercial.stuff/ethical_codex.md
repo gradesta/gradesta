@@ -3,7 +3,7 @@ DRAFT!!!!
 The Gradesta Ethical Codex
 -------------------------------
 
-This Ethical codex applies to Commercial ventures run under the Gradesta brand. It does not have any effect on the application of Gradesta open source licenses, or the ability of third parties to use Gradesta software in any way that they desire.
+This Ethical codex applies to Commercial ventures run under the Gradesta brand. It does not have any effect on the application of Gradesta open source licenses or the ability of third parties to use Gradesta software in any way that they desire.
 
 Core Value 1: Consent
 -------------------------
@@ -20,7 +20,7 @@ We do not engage in or facilitate non-consensual transactions (commercial or oth
 
 5. Conscientious objection: Should a worker find a particular task to be ethically objectionable and there is another task that they are equally capable of fulfilling which they do not find to be objectionable. They should be able to choose the other task or project without repercussions.
 
-6. Business Transparency: Our customers should always know our business model and how we make money. We make money by providing value to our customers, not through trickery.
+6. Business Transparency: In order for our customers to provide informed consent when engaging in business with us, our customers should always know our business model and how we make money. We make money by providing value to our customers, not through trickery.
 
 Core Value 2: Environment, Habitat, and Biodiversity
 --------------------------------------------------------------
