@@ -208,13 +208,13 @@ class Actor:
         self.reset_queue()
 
     def start(self):
-        services_dir = os.path.expanduser("~/.cache/gradesta/services/sockets")
-        pathlib.Path(services_dir).mkdir(parents=True, exist_ok=True)
+        service_dir = os.path.expanduser(f"~/.cache/gradesta/services/{self.service_name}/")
+        pathlib.Path(service_dir).mkdir(parents=True, exist_ok=True)
 
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.PAIR)
-        socket_path = "ipc://{services_dir}/{service_name}".format(
-            services_dir=services_dir,
+        socket_path = "ipc://{service_dir}/PAIR.zmq".format(
+            service_dir=service_dir,
             service_name=self.service_name,
         )
         print("Binding socket {}".format(socket_path))
