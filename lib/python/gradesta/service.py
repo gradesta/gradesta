@@ -44,7 +44,7 @@ class ProtocolPage:
             if custom_direction_value is not None:
                 if "symlink" in custom_direction_value:
                     if type(custom_direction_value["symlink"]) == tuple:
-                        path_str, sym_identity = custom_direction_value["symlink"]
+                        path_str, sym_session = custom_direction_value["symlink"]
                         def load_symlink(symlink):
                             sym_path = path_str.split("/")
                             symlink.socket = address.socket
@@ -53,7 +53,7 @@ class ProtocolPage:
                             vp = symlink.init("vertexPath", len(sym_path))
                             for n in range(0, len(sym_path)):
                                 vp[n] = sym_path[n]
-                                symlink.identity = sym_identity
+                                symlink.session = sym_session
                                 # TODO quargs
                         custom_direction_value["symlinkLoader"] = load_symlink
                         del custom_direction_value["symlink"]
@@ -73,14 +73,14 @@ class ProtocolPage:
                     for n in range(0, len(connected_path)):
                         vp[n] = connected_path[n]
                         # TODO decide what to do with quargs
-                    connected_address.identity = address.identity
+                    connected_address.session = address.session
                 pcell.queue_port_update(dim, vertexLoader=load_connected_address)
         return pcell
 
 
 @dataclass
 class Page:
-    identity: int
+    session: int
     localizer: Localizer
 
     def resolve(self, path):
@@ -259,7 +259,7 @@ class Actor:
                 match = match_path(address.vertexPath, pattern)
                 if match is not None:
                     match, path, cellPath = match
-                    page = page_cls(address.identity, localizer, **match)
+                    page = page_cls(address.session, localizer, **match)
                     protocol_page = ProtocolPage(self, page, path)
                     pcell = protocol_page.load(cellPath, cid, address)
                     self.cells[cid] = pcell

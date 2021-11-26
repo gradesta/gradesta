@@ -24,7 +24,7 @@ struct Address {
   qargs             @4 :List(Text); # Names of quargs
   qvals             @5 :List(Text); # Values of quargs
   # qargs and qvals can be zipped together to get the pairs you want.
-  identity          @6 :UInt64; # The id of the identity. Identities are gnupg derived and are specified at level1 of the protocol
+  session          @6 :UInt64; # The id of the session.
 }
 
 struct Time {

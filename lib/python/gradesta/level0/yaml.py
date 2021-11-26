@@ -39,7 +39,7 @@ def load_vertex_message(yml):
 
 def load_address(yml):
     addr = parse_address.parse_address(yml["address"])
-    addr.identity = yml["identity"]
+    addr.session = yml["session"]
     return addr
 
 

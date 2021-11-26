@@ -28,13 +28,13 @@ def test_load_vertex(localizer):
     board = bnm.resolve("")
     assert board.draw() == "x o\no x\n x "
     b1a = parse_address.parse_address("gradesta://example.com/en/tick-tack-toe/x o.o x. x /")
-    b1a.identity = 1
+    b1a.session = 1
     board1 = ttt.load_vertex(b1a)
     assert board1.cell.draw() == "x o\no x\n x "
     board2 = ttt.load_vertex(b1a)
     assert board1 == board2
     b3a = parse_address.parse_address("gradesta://example.com/en/tick-tack-toe/x o.o x. x /")
-    b3a.identity = 2
+    b3a.session = 2
     board3 = ttt.load_vertex(b3a)
     assert board2 != board3
 

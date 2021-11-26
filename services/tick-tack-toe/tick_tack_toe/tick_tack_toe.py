@@ -87,7 +87,7 @@ class PreviousMove(Move):
                 self.fmt(
                     "{pieces}/Next/{move}", pieces=self.place(" "), move=which_move
                 ),
-                self.page.identity,
+                self.page.session,
             )
         }
 
@@ -127,7 +127,7 @@ class NextMove(Move):
                     pieces=self.place(self.whos_move()),
                     move=which_move,
                 ),
-                self.page.identity,
+                self.page.session,
             )
         }
 

@@ -22,9 +22,9 @@ class CellReferenceDB:
 
     def lookup_cell(self, address: level0.Address) -> Tuple[int, bool]:
         """
-        Given an path and identity return the cell's id. If no cell id is registered for that path yet, then create one. The second element of the returned tuple is true if a new cell was created.
+        Given an path and session return the cell's id. If no cell id is registered for that path yet, then create one. The second element of the returned tuple is true if a new cell was created.
         """
-        address = (parse_address.to_string(address), address.identity)
+        address = (parse_address.to_string(address), address.session)
         try:
             return (self.__path_table[address], False)
         except KeyError:
@@ -35,12 +35,12 @@ class CellReferenceDB:
 
     def lookup_cell_path(self, cell_id: int) -> Optional[level0.Address]:
         """
-        Given a cell_id return it's path and identity.
+        Given a cell_id return it's path and session.
         """
-        for ((address, identity), loop_cell_id) in self.__path_table.items():
+        for ((address, session), loop_cell_id) in self.__path_table.items():
             if cell_id == loop_cell_id:
                 address = parse_address.parse_address(address)
-                address.identity = identity
+                address.session = session
                 return address
 
     def clear_cell(self, cell_id: int):

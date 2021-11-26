@@ -2,7 +2,7 @@ send:
   forService:
     select:
       - address: "gradesta://example.com/en/tick-tack-toe/   .   .   /"
-        identity: 1
+        session: 1
 ---
 drop: 1
 ---
@@ -10,7 +10,7 @@ send:
   forService:
     select:
       - address: "gradesta://example.com/en/tick-tack-toe/   .   .   /Next/1"
-        identity: 1
+        session: 1
 ---
 drop: 1
 ---
@@ -18,7 +18,7 @@ send:
   forService:
     select:
       - address: "gradesta://example.com/en/tick-tack-toe/   .   .   /Next/1"
-        identity: 1
+        session: 1
 ---
 drop: 1
 ---
@@ -32,6 +32,6 @@ send:
   forService:
     select:
       - address: "gradesta://example.com/en/tick-tack-toe/   .   .   /Next/1"
-        identity: 1
+        session: 1
 ---
 drop: 1
