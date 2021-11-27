@@ -90,7 +90,7 @@ If you need to make functional changes to code in the `finished` folder, you mus
 For example, if you wanted to add the ability to add a `max_items` argument to the `map` function.
 Rather than modifying the `map` function,
 you should COPY the `map` function with a new name `map2` and give `map2` the extra argument.
-If the old code in the `finished` folder is no longer used or needed, it may be moved to the `archive`.
+If the old code in the `finished` folder is no longer used or needed or publicly exported, it may be moved to the `archive`.
 Code that requires the old function, however, should not be updated to use the new function.
 Is is worse to change an old, tested and audited code path than to duplicate code.
 
@@ -157,6 +157,15 @@ The `feature` dir has three subdirs:
 
 
 Feature requests can be moved to the `work_table` directory by adding an implementation to the `work_table` directory. They can also be moved to the `work_table` by a maintainer.
+
+So here is the "full flow":
+
+```
+╭───────────╮   ╭────────────╮   ╭──────────────╮   ╭──────────╮   ╭─────────╮
+│ blackhole │ → │ work_table │ → │ aging_cellar │ → │ finished │ → │ archive │
+╰───────────╯   ╰────────────╯   ╰──────────────╯   ╰──────────╯   ╰─────────╯
+```
+
 
 
 Code Conventions
