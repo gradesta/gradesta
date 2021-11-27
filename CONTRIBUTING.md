@@ -155,3 +155,12 @@ The `feature` dir has three subdirs:
 
 Feature requests can be moved to the `work_table` directory by adding an implementation to the `work_table` directory. They can also be moved to the `work_table` by a maintainer.
 
+
+Code Conventions
+-------------------
+
+The Kaban Flow system described above works best with simple data structures and functions.
+It is more or less incompatible with object oriented programming.
+You don't want to keep a class on the `work_table` forever
+just because you keep on adding methods to it.
+Functions are much more self-sufficient and work much better with this system.
