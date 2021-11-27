@@ -18,6 +18,6 @@ setup(
         "zmq",
     ],
     setup_requires=['pytest-runner', 'black'],
-    tests_require=['pytest'],
+    tests_require=['pytest', 'pytest-cov'],
     classifiers=['License :: OSI Approved ::  GNU Lesser General Public License v3 or later (LGPLv3+)'],
 )

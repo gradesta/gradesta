@@ -2,6 +2,7 @@
 __pycache__
 .#*
 .~*
+*.coverage
 protocol/level0.aux
 protocol/level0.fls
 protocol/level0.log
