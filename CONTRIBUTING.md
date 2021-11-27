@@ -61,6 +61,7 @@ and that code has %100 test coverage
 and that code is fully documented (every function, interface, and datastructure)
 it can be moved to the `aging_cellar`.
 Code can only be moved on if all its imports are moved with it or are already there.
+The process of isolating a unit of code into a single file with all tests and documentation and moving it to the `aging_cellar` is reffered to as "packing".
 Finished and aging code cannot depend on code on the `work_table`
 and finished code cannot depend on code in the `aging_cellar`.
 
