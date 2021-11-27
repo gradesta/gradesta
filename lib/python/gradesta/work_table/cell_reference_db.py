@@ -1,7 +1,8 @@
 from dataclasses import dataclass, field
-from gradesta.level0 import level0
+from .level0 import capnp
+level0 = capnp.level0
 
-import gradesta.parse_address as parse_address
+from . import parse_address
 
 from typing import DefaultDict, Set, Optional, Tuple
 

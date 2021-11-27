@@ -6,13 +6,13 @@ import pathlib
 #from concurrent.futures import *
 from dataclasses import dataclass
 
-from gradesta.level0 import *
-from gradesta.paths import match_path
-from gradesta.cell_reference_db import CellReferenceDB
-import gradesta.simple_topology_expressions
-from gradesta.locales import Localizer
-from gradesta.level0.yaml import to_capnp
-import gradesta.parse_address as parse_address
+from .level0.capnp import *
+from .paths import match_path
+from .cell_reference_db import CellReferenceDB
+from . import simple_topology_expressions
+from .locales import Localizer
+from .level0.yaml import to_capnp
+from . import parse_address
 
 from typing import *
 
@@ -90,7 +90,7 @@ class Page:
 
     def connections(self) -> Iterator[Tuple["Cell", "Cell", int]]:
         cells = list(self.cells())
-        connections = gradesta.simple_topology_expressions.get_connections(
+        connections = simple_topology_expressions.get_connections(
             self.layout, [a for (a, b) in cells]
         )
         for (index1, index2, dim) in connections:

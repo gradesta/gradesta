@@ -5,8 +5,9 @@ import io
 import yaml
 import sys
 
-import gradesta.parse_address as parse_address
-from gradesta.level0 import level0
+from .. import parse_address
+from . import capnp
+level0 = capnp.level0
 
 from typing import *
 

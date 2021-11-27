@@ -1,4 +1,5 @@
-from gradesta.level0 import level0
+from .level0 import capnp
+level0 = capnp.level0
 from dataclasses import dataclass, field
 from typing import *
 

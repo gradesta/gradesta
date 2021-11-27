@@ -5,12 +5,13 @@ import asyncio
 import zmq.asyncio
 import argparse
 import capnp
-from gradesta.level0 import level0
-import gradesta.level0.yaml as level0_yaml
-import gradesta.parse_address as parse_address
+from gradesta import level0__capnp
+level0 = level0__capnp.level0
+from gradesta import level0__yaml
+from gradesta import parse_address
+from gradesta import vertex as gradesta_vertex
 import yaml
 import weakref
-import gradesta.vertex as gradesta_vertex
 from dataclasses import dataclass
 
 @dataclass

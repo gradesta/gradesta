@@ -1,6 +1,7 @@
 from typing import *
 
-from gradesta.level0 import level0
+from .level0 import capnp
+level0 = capnp.level0
 
 
 class InvalidAddress(Exception):
