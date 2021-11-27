@@ -60,6 +60,9 @@ Once that code has no changes in 5 days according to `git blame`
 and that code has %100 test coverage
 and that code is fully documented (every function, interface, and datastructure)
 it can be moved to the `aging_cellar`.
+Code can only be moved on if all its imports are moved with it or are already there.
+Finished and aging code cannot depend on code on the `work_table`
+and finished code cannot depend on code in the `aging_cellar`.
 
 Once code is 5 days old, fully tested and documented it can be moved to the `aging_cellar`.
 If you want to make changes to code in the `aging_cellar` you must move it back to the `work_table` and restart the process.
@@ -82,7 +85,7 @@ List of names, one per line.
 */
 ```
 
-If you need to make functional changes to code in the `finished` folder, you must COPY that code to the `work_table` and give the symbols a new name.
+If you need to make functional changes to code in the `finished` folder, you must COPY that code to the `work_table` and give the symbols a new name and REMOVE the "Auditors" section.
 For example, if you wanted to add the ability to add a `max_items` argument to the `map` function.
 Rather than modifying the `map` function,
 you should COPY the `map` function with a new name `map2` and give `map2` the extra argument.
