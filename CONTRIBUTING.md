@@ -143,10 +143,12 @@ The `bug` dir has two subdirs:
 - `reproduced` which contains bugs that have happened to multiple people and ideally have an explanation on how to reproduce them
 - `unclear-unreproduced` which contains all other bugs
 
-The `feature` dir has two subdirs:
+The `feature` dir has three subdirs:
 
-- `roadmap` contains feature requests that the maintainers want too.
-- `wonderland` contains all other feature requests.
+- `roadmap` contains feature requests that the maintainers want too
+- `rejected` contains rejected feature requests along with a polite and sufficient explanation as to why the request was rejected
+- `wonderland` contains all other feature requests
+
 
 Feature requests can be moved to the `work_table` directory by adding an implementation to the `work_table` directory. They can also be moved to the `work_table` by a maintainer.
 
