@@ -127,6 +127,8 @@ Issues should be either closed (if there is no way they will ever be fixed), or 
 
 Issues are stored in the code repo as markdown files.
 
+Pull requests that work with issues are tagged `roadmap`.
+
 Next to the `work_table`, `aging_cellar`, `finished` and `archive` directories, there is a `blackhole` directory.
 Both the `blackhole` directory and the `work_table` directory contain issues.
 Only maintainers can put issues onto the `work_table` but anyone can solve an issue in the `blackhole` directory with a `new-code` or `security` commit.
@@ -136,6 +138,11 @@ The `blackhole` directory has two subdirectories:
 - `bug` which contains bugs. Bugs can be moved to the `work_table` directory by anyone by adding a failing test to the `work_table` directory.
 - `feature`
 
+The `bug` dir has two subdirs:
+
+- `reproduced` which contains bugs that have happened to multiple people and ideally have an explanation on how to reproduce them
+- `unclear-unreproduced` which contains all other bugs
+
 The `feature` dir has two subdirs:
 
 - `roadmap` contains feature requests that the maintainers want too.
@@ -143,4 +150,3 @@ The `feature` dir has two subdirs:
 
 Feature requests can be moved to the `work_table` directory by adding an implementation to the `work_table` directory. They can also be moved to the `work_table` by a maintainer.
 
-Pull requests that work with issues are tagged `roadmap`.
