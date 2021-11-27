@@ -118,7 +118,9 @@ Flow is important
 
 Rather than having PRs open for a long time, they should be merged or closed quickly.
 Even if new code isn't perfect we should quickly put it on the work_table.
-We can always clean it up later if no one pitches in to polish it.
+We can always clean it up later (deleted) if no one pitches in to polish it.
+Code is deleted from the `work_table` because no one polishes it,
+it can always be submitted again with more tests and better docs.
 If PRs don't follow the rules, they should be closed immediately with a polite explanation.
 A new PR can always be opened.
 PRs should always be tagged by type.
