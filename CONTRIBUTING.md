@@ -101,6 +101,7 @@ There are various types of PRs:
 - `security`: May change code anywhere including `finished`
 - `polish`: May only change code on `work_table` to add tests/documentation.
 - `clean`: May only remove untested/undocumented code from `work_table`
+- `roadmap`: Explained later
 
 There are two phases of development: `open` and `freeze`.
 
@@ -109,4 +110,37 @@ If a maintainer declares a freeze, `new-code` PRs are no longer accepted until t
 
 A freeze ends only once there is no longer ANY code in `work_table`.
 
+Flow is important
+--------------------
 
+Rather than having PRs open for a long time, they should be merged or closed quickly.
+Even if new code isn't perfect we should quickly put it on the work_table.
+We can always clean it up later if no one pitches in to polish it.
+If PRs don't follow the rules, they should be closed immediately with a polite explanation.
+A new PR can always be opened.
+PRs should always be tagged by type.
+
+Issue flow is also important
+----------------------------------
+
+Issues should be either closed (if there is no way they will ever be fixed), or moved to the code repo.
+
+Issues are stored in the code repo as markdown files.
+
+Next to the `work_table`, `aging_cellar`, `finished` and `archive` directories, there is a `blackhole` directory.
+Both the `blackhole` directory and the `work_table` directory contain issues.
+Only maintainers can put issues onto the `work_table` but anyone can solve an issue in the `blackhole` directory with a `new-code` or `security` commit.
+
+The `blackhole` directory has two subdirectories:
+
+- `bug` which contains bugs. Bugs can be moved to the `work_table` directory by anyone by adding a failing test to the `work_table` directory.
+- `feature`
+
+The `feature` dir has two subdirs:
+
+- `roadmap` contains feature requests that the maintainers want too.
+- `wonderland` contains all other feature requests.
+
+Feature requests can be moved to the `work_table` directory by adding an implementation to the `work_table` directory. They can also be moved to the `work_table` by a maintainer.
+
+Pull requests that work with issues are tagged `roadmap`.
