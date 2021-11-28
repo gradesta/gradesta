@@ -6,7 +6,7 @@ import yaml
 import sys
 
 from .. import parse_address
-from . import capnp
+from ...ageing_cellar.level0 import capnp
 level0 = capnp.level0
 
 from typing import *
