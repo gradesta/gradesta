@@ -44,12 +44,12 @@ Code Kaban Flow
 
 We use a kaban like flow for writing code.
 
-Code flows from the `work_table` to the `aging_cellar` to the `finished` folder to the `archive` folder.
+Code flows from the `work_table` to the `ageing_cellar` to the `finished` folder to the `archive` folder.
 
 ```
-╭────────────╮   ╭──────────────╮   ╭──────────╮   ╭─────────╮
-│ work_table │ → │ aging_cellar │ → │ finished │ → │ archive │
-╰────────────╯   ╰──────────────╯   ╰──────────╯   ╰─────────╯
+╭────────────╮   ╭───────────────╮   ╭──────────╮   ╭─────────╮
+│ work_table │ → │ ageing_cellar │ → │ finished │ → │ archive │
+╰────────────╯   ╰───────────────╯   ╰──────────╯   ╰─────────╯
 ```
 
 We believe that code can be finished, at which point it should not be changed except in extreme
@@ -59,16 +59,16 @@ New code is always added to the `work_table` for a given subproject.
 Once that code has no changes in 5 days according to `git blame`
 and that code has %100 test coverage
 and that code is fully documented (every function, interface, and datastructure)
-it can be moved to the `aging_cellar`.
+it can be moved to the `ageing_cellar`.
 Code can only be moved on if all its imports are moved with it or are already there.
-The process of isolating a unit of code into a single file with all tests and documentation and moving it to the `aging_cellar` is reffered to as "packing".
-Finished and aging code cannot depend on code on the `work_table`
-and finished code cannot depend on code in the `aging_cellar`.
+The process of isolating a unit of code into a single file with all tests and documentation and moving it to the `ageing_cellar` is reffered to as "packing".
+Finished and ageing code cannot depend on code on the `work_table`
+and finished code cannot depend on code in the `ageing_cellar`.
 
-Once code is 5 days old, fully tested and documented it can be moved to the `aging_cellar`.
-If you want to make changes to code in the `aging_cellar` you must move it back to the `work_table` and restart the process.
+Once code is 5 days old, fully tested and documented it can be moved to the `ageing_cellar`.
+If you want to make changes to code in the `ageing_cellar` you must move it back to the `work_table` and restart the process.
 
-Once code has been in the `aging_cellar` for 7 months according to `git blame` it can be moved to the `finished` folder.
+Once code has been in the `ageing_cellar` for 7 months according to `git blame` it can be moved to the `finished` folder.
 
 Finished code should have the following comment added to the top:
 
@@ -99,9 +99,9 @@ How PRs are processed
 
 There are various types of PRs:
 
-- `new-code`: Can change only `work_table` and `aging_cellar` folders and move code from `finished` to `archive`
+- `new-code`: Can change only `work_table` and `ageing_cellar` folders and move code from `finished` to `archive`
 - `audit`: Can only add names to the `Auditors` sections of code in the `finished` folder
-- `flow`: May only move code from `work_table` to `aging_cellar` or from `aging_cellar` to `finished`
+- `flow`: May only move code from `work_table` to `ageing_cellar` or from `ageing_cellar` to `finished`
 - `security`: May change code anywhere including `finished`
 - `polish`: May only change code on `work_table` to add tests/documentation.
 - `clean`: May only remove untested/undocumented code from `work_table`
@@ -135,7 +135,7 @@ Issues are stored in the code repo as markdown files.
 
 Pull requests that work with issues are tagged `roadmap`.
 
-Next to the `work_table`, `aging_cellar`, `finished` and `archive` directories, there is a `blackhole` directory.
+Next to the `work_table`, `ageing_cellar`, `finished` and `archive` directories, there is a `blackhole` directory.
 Both the `blackhole` directory and the `work_table` directory contain issues.
 Only maintainers can put issues onto the `work_table` but anyone can solve an issue in the `blackhole` directory with a `new-code` or `security` commit.
 
@@ -161,9 +161,9 @@ Feature requests can be moved to the `work_table` directory by adding an impleme
 So here is the "full flow":
 
 ```
-╭───────────╮   ╭────────────╮   ╭──────────────╮   ╭──────────╮   ╭─────────╮
-│ blackhole │ → │ work_table │ → │ aging_cellar │ → │ finished │ → │ archive │
-╰───────────╯   ╰────────────╯   ╰──────────────╯   ╰──────────╯   ╰─────────╯
+╭───────────╮   ╭────────────╮   ╭───────────────╮   ╭──────────╮   ╭─────────╮
+│ blackhole │ → │ work_table │ → │ ageing_cellar │ → │ finished │ → │ archive │
+╰───────────╯   ╰────────────╯   ╰───────────────╯   ╰──────────╯   ╰─────────╯
 ```
 
 
