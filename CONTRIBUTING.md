@@ -206,3 +206,10 @@ List of top level project files and directories
  - `archive_public` - Old finished code that is publicly interfaced but who's use is not recommended
  - `blackhole` - Directory with issues
  - `recall_log.md`- list of security and critical error recalls against finished code
+ 
+CONTRIBUTING.md Copyright and License
+---------------------------------------------
+
+This `CONTRIBUTING.md` document is copyright 2021 Timothy Hobbs <https://hobbs.cz>
+
+You may use it in accordance to the [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) license
