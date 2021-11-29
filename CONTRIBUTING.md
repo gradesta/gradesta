@@ -39,7 +39,7 @@ with a new name that doesn't conflict with the old protocol,
 and which in no way interferes with the functioning of applications written for the old protocol,
 then it is to constantly refactor an existing protocol.
 
-Code Kaban Flow
+Kaban Code Flow
 ------------------
 
 We use a kaban like flow for writing code.
