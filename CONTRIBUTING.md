@@ -50,6 +50,10 @@ Code flows from the `work_table` to the `ageing_cellar` to the `finished` folder
 ╭────────────╮   ╭───────────────╮   ╭──────────╮   ╭─────────╮
 │ work_table │ → │ ageing_cellar │ → │ finished │ → │ archive │
 ╰────────────╯   ╰───────────────╯   ╰──────────╯   ╰─────────╯
+                                           │
+                                           │     ╭────────────────╮
+                                           ╰───▸ │ public_archive │
+                                                 ╰────────────────╯
 ```
 
 We believe that code can be finished, at which point it should not be changed except in extreme
@@ -91,6 +95,7 @@ For example, if you wanted to add the ability to add a `max_items` argument to t
 Rather than modifying the `map` function,
 you should COPY the `map` function with a new name `map2` and give `map2` the extra argument.
 If the old code in the `finished` folder is no longer used or needed or publicly exported, it may be moved to the `archive`.
+Finished code that IS publicly exported, but no longer recommended for use may be moved to the `public_archive`.
 Code that requires the old function, however, should not be updated to use the new function.
 Is is worse to change an old, tested and audited code path than to duplicate code.
 
@@ -164,6 +169,11 @@ So here is the "full flow":
 ╭───────────╮   ╭────────────╮   ╭───────────────╮   ╭──────────╮   ╭─────────╮
 │ blackhole │ → │ work_table │ → │ ageing_cellar │ → │ finished │ → │ archive │
 ╰───────────╯   ╰────────────╯   ╰───────────────╯   ╰──────────╯   ╰─────────╯
+                                                          │
+                                                          │     ╭────────────────╮
+                                                          ╰───▸ │ public_archive │
+                                                                ╰────────────────╯
+
 ```
 
 
