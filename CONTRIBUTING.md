@@ -65,7 +65,7 @@ and that code has %100 test coverage
 and that code is fully documented (every function, interface, and datastructure)
 it can be moved to the `ageing_cellar`.
 Code can only be moved on if all its imports are moved with it or are already there.
-The process of isolating a unit of code into a single file with all tests and documentation and moving it to the `ageing_cellar` is reffered to as "packing".
+The process of isolating a unit of code into a single file with all tests and documentation and moving it to the `ageing_cellar` is referred to as "packing".
 Finished and ageing code cannot depend on code on the `work_table`
 and finished code cannot depend on code in the `ageing_cellar`.
 
@@ -203,7 +203,7 @@ List of top level project files and directories
  - `aging_cellar` - Fully tested and documented code that has not yet been set in stone
  - `finished` - Fully tested and documented code who's functionality has stood the test of time and is set in stone
  - `archive` - Old finished code that is no longer used
- - `archive_public` - Old finished code that is publicly interfaced but who's use is not recommended
+ - `public_archive` - Old finished code that is publicly interfaced but who's use is not recommended
  - `blackhole` - Directory with issues
  - `recall_log.md`- list of security and critical error recalls against finished code
  
