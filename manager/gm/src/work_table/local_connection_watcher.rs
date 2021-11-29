@@ -36,3 +36,17 @@ Once this step is completed, the ready status will be sent to `stdout`.
 
 
 */
+
+/*
+Work Table notes:
+
+https://docs.rs/notify/4.0.17/notify/index.html
+https://doc.rust-lang.org/std/path/struct.PathBuf.html
+https://docs.rs/libzmq/0.2.5/libzmq/poll/struct.Poller.html#example
+https://doc.rust-lang.org/book/ch16-01-threads.html
+
+Very basic way to get all connected gradesta sockets...
+
+cat /proc/net/unix | grep PAIR
+
+*/
