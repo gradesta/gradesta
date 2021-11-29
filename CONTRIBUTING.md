@@ -98,10 +98,12 @@ If you need to make functional changes to code in the `finished` folder, you mus
 For example, if you wanted to add the ability to add a `max_items` argument to the `map` function.
 Rather than modifying the `map` function,
 you should COPY the `map` function with a new name `map2` and give `map2` the extra argument.
+Code that requires the old function, however, should not be updated to use the new function without good reason.
+Is is worse to change an old, tested and audited code path than to duplicate code.
+
 If the old code in the `finished` folder is no longer used or needed or publicly exported, it may be moved to the `archive`.
 Finished code that IS publicly exported, but no longer recommended for use may be moved to the `public_archive`.
-Code that requires the old function, however, should not be updated to use the new function.
-Is is worse to change an old, tested and audited code path than to duplicate code.
+When code is moved to the `public_archive` a note should be added to its documentation, explaining that it is no longer recommended, why it is no longer recommended, and the recommended alternatives.
 
 How PRs are processed
 -------------------------
