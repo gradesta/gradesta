@@ -78,8 +78,12 @@ Finished code should have the following comment added to the top:
 
 ```
 /*
-COMPLETE: Do not change except for security fixes
+COMPLETE: Do not change except for security fixes and critical errors
+
 COMPLETION DATE: YYYY-MM-DD
+
+RECALL LOG:
+List of all changes by date (most recent comming first) of security and critical error fixes.
 
 Authors:
 List of names taken from a careful examination of git blame, one per line.
@@ -107,7 +111,7 @@ There are various types of PRs:
 - `new-code`: Can change only `work_table` and `ageing_cellar` folders and move code from `finished` to `archive`
 - `audit`: Can only add names to the `Auditors` sections of code in the `finished` folder
 - `flow`: May only move code from `work_table` to `ageing_cellar` or from `ageing_cellar` to `finished`
-- `security`: May change code anywhere including `finished`
+- `recall-secuirty` and `recall-error`: May change code anywhere including `finished`. Must list changes in `recall_log.md`
 - `polish`: May only change code on `work_table` to add tests/documentation.
 - `clean`: May only remove untested/undocumented code from `work_table`
 - `roadmap`: Explained later
@@ -142,7 +146,7 @@ Pull requests that work with issues are tagged `roadmap`.
 
 Next to the `work_table`, `ageing_cellar`, `finished` and `archive` directories, there is a `blackhole` directory.
 Both the `blackhole` directory and the `work_table` directory contain issues.
-Only maintainers can put issues onto the `work_table` but anyone can solve an issue in the `blackhole` directory with a `new-code` or `security` commit.
+Only maintainers can put issues onto the `work_table` but anyone can solve an issue in the `blackhole` directory with a `new-code` or `recall-security` or `recall-error` commit.
 
 The `blackhole` directory has two subdirectories:
 
@@ -186,3 +190,19 @@ It is more or less incompatible with object oriented programming.
 You don't want to keep a class on the `work_table` forever
 just because you keep on adding methods to it.
 Functions are much more self-sufficient and work much better with this system.
+
+Recalls
+--------
+
+In case a finished piece of code is found to cause a security flaw or has a critical error it may be recalled. When code is recalled, the error is fixed and the recall is logged in `recall_log.md`. Each recall is given an Id in the format YYYY-MM-<one-word-descriptor>. A critical error is one that affects existing users and is not related to the support of a new platform or use-case. Besides critical errors and security flaws finished code should never be changed, only ever replaced. In some rare instances, for example when an encryption algorithm is found to be broken and is no longer capable of securely encrypting data, code may be recalled without a fix. In this case, the code file remains with a description of the recall but the code is removed.
+
+List of top level project files and directories
+---------------------------------------------------------
+
+ - `work_table` - Directory containing actively worked on code
+ - `aging_cellar` - Fully tested and documented code that has not yet been set in stone
+ - `finished` - Fully tested and documented code who's functionality has stood the test of time and is set in stone
+ - `archive` - Old finished code that is no longer used
+ - `archive_public` - Old finished code that is publicly interfaced but who's use is not recommended
+ - `blackhole` - Directory with issues
+ - `recall_log.md`- list of security and critical error recalls against finished code
