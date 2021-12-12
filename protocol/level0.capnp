@@ -55,7 +55,7 @@ struct Vertex {
 # data and are not specified at this level of the protocol. This level of the
 # protocol only specifies the routing of messages to vertexes.
 struct VertexMessage {
-  instanceId      @0 :UInt64;
+  instanceId    @0 :UInt64;
   data          @1 :Data;
 }
 
@@ -63,7 +63,7 @@ struct DataUpdate {
   # Updates origionating from the service have negative ids
   # updates origionating from the client have positive ids
   updateId      @0 :Int64;
-  instanceId      @1 :UInt64;
+  instanceId    @1 :UInt64;
   mime          @2 :Text;
   data          @3 :Data;
 }
