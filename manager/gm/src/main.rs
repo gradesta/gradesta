@@ -1,3 +1,5 @@
+mod work_table;
+/*
 extern crate notify;
 
 use notify::DebouncedEvent::Create;
@@ -50,7 +52,7 @@ fn main() {
     let matches = App::new("Gradesta manager")
         .version("0.0")
         .author("Timothy Hobbs <goodnight@gradesta.com>")
-        .about("Manager for gradesta protocol")
+        .about("Manage and route messages between gradesta protocol services. Provides the meta namespace. Evaluates walk trees.")
         .get_matches();
 
     let mut socket_dir = String::from("");
@@ -65,3 +67,4 @@ fn main() {
     };
     watch(socket_dir);
 }
+*/
