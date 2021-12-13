@@ -17,7 +17,6 @@ pub fn organize_socket_dir(
 ) -> Result<Vec<(path::PathBuf, Vec<ofiles::Pid>)>, String> {
     let mut active_sockets: Vec<(path::PathBuf, Vec<ofiles::Pid>)> = Vec::new();
     let mut unexpected_files: Vec<String> = Vec::new();
-    let mut permission_and_read_failures: Vec<path::PathBuf> = Vec::new();
 
     let top_dir: path::PathBuf = path::PathBuf::from(sockets_dir);
 
