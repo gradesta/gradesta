@@ -72,7 +72,7 @@ pub fn organize_socket_dir(
             )))?;
         }
     }
-    if unexpected_files.len() >= 0 {
+    if unexpected_files.len() > 0 {
         let unexpected_files_s = Itertools::join(&mut unexpected_files.iter(), "\n");
         return Err(format!(
             "Unexpected files in socket dir \n{}",
@@ -84,8 +84,30 @@ pub fn organize_socket_dir(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    extern crate tempdir;
+    use std::fs;
     #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
+
+    fn test_clear_empty_socket_dir() {
+        use tempdir::TempDir;
+        let tmp_dir = TempDir::new("test_sockets_dir").unwrap();
+        let empty_socket_dir = tmp_dir.path().join("empty-socket-dir");
+        fs::create_dir(empty_socket_dir.clone()).unwrap();
+        print!("Created empty socket dir: {}\n", empty_socket_dir.as_path().display());
+        let mut contains = false;
+        for entry_r in fs::read_dir(tmp_dir.path()).unwrap() {
+            let entry = entry_r.unwrap();
+            print!("Found {}\n", entry.file_name().into_string().unwrap());
+            if entry.file_name() == "empty-socket-dir" {
+                contains = true;
+            } else {
+                assert!(false);
+            }
+        }
+        assert!(contains);
+        let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
+        organize_socket_dir(&temp_dir_path).unwrap();
+        assert_eq!(fs::read_dir(tmp_dir).unwrap().count(), 0);
     }
 }

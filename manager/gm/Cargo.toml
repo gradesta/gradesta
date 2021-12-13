@@ -12,3 +12,6 @@ notify = "4.0.17"
 ofiles = "0.2.0"
 nix = "0.23.0"
 itertools = "0.10.3"
+
+[dev-dependencies]
+tempdir = "0.3.7"
