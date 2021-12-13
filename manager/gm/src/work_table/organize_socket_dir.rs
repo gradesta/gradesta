@@ -54,14 +54,14 @@ pub fn organize_socket_dir(
             if entry1.file_name() == "PAIR.zmq" {
                 // https://docs.rs/ofiles/0.2.0/ofiles/fn.opath.html
                 let pids = ofiles::opath(socket_dir.clone()).or_else(|err| Err(err.to_string()))?;
-                if pids.len() >= 0 {
+                if pids.len() > 0 {
                     active_sockets.push((socket.clone(), pids));
                     empty = false;
                 } else {
                     fs::remove_file(socket).or_else(|err| Err(err.to_string()))?;
                 }
             } else {
-                unexpected_files.push(socket_dir.as_path().display().to_string());
+                unexpected_files.push(entry1.path().display().to_string());
                 empty = false;
             }
         }
@@ -87,14 +87,17 @@ mod tests {
     use super::*;
     extern crate tempdir;
     use std::fs;
-    #[test]
 
+    #[test]
     fn test_clear_empty_socket_dir() {
         use tempdir::TempDir;
         let tmp_dir = TempDir::new("test_sockets_dir").unwrap();
         let empty_socket_dir = tmp_dir.path().join("empty-socket-dir");
         fs::create_dir(empty_socket_dir.clone()).unwrap();
-        print!("Created empty socket dir: {}\n", empty_socket_dir.as_path().display());
+        print!(
+            "Created empty socket dir: {}\n",
+            empty_socket_dir.as_path().display()
+        );
         let mut contains = false;
         for entry_r in fs::read_dir(tmp_dir.path()).unwrap() {
             let entry = entry_r.unwrap();
@@ -109,5 +112,40 @@ mod tests {
         let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
         organize_socket_dir(&temp_dir_path).unwrap();
         assert_eq!(fs::read_dir(tmp_dir).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn test_fail_on_dirty_socket_dir() {
+        use tempdir::TempDir;
+        let tmp_dir = TempDir::new("test_sockets_dir").unwrap();
+        let dirty_socket_dir = tmp_dir.path().join("dirty-socket-dir");
+        fs::create_dir(dirty_socket_dir.clone()).unwrap();
+        fs::File::create(dirty_socket_dir.join("mess")).unwrap();
+        print!(
+            "Created dirty socket dir: {}\n",
+            dirty_socket_dir.as_path().display()
+        );
+        let mut contains = false;
+        for entry_r in fs::read_dir(tmp_dir.path()).unwrap() {
+            let entry = entry_r.unwrap();
+            print!("Found {}\n", entry.file_name().into_string().unwrap());
+            if entry.file_name() == "dirty-socket-dir" {
+                contains = true;
+            } else {
+                assert!(false);
+            }
+        }
+        assert!(contains);
+        let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
+        match organize_socket_dir(&temp_dir_path) {
+            Ok(_) => assert!(false),
+            Err(error) => assert_eq!(
+                error,
+                format!(
+                    "Unexpected files in socket dir \n{}/mess",
+                    dirty_socket_dir.as_path().display()
+                )
+            ),
+        }
     }
 }
