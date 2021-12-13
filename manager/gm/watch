@@ -1,0 +1,6 @@
+#!/bin/bash
+# Note: Needs
+#
+# cargo install cargo-watch
+# cargo install cargo-tarpaulin
+cargo watch --why -x 'tarpaulin --out Lcov --skip-clean'
