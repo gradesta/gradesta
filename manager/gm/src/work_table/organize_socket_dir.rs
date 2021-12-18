@@ -21,7 +21,14 @@ pub fn organize_socket_dir(
     let top_dir: path::PathBuf = path::PathBuf::from(sockets_dir);
 
     // https://natclark.com/tutorials/rust-list-all-files/
-    for entry_r in fs::read_dir(top_dir).or(Err(format!("Could not read dir {}", sockets_dir)))? {
+    let entries = fs::read_dir(top_dir).or_else(|err| {
+        Err(format!(
+            "Could not read dir {} \n {}",
+            sockets_dir,
+            err.to_string()
+        ))
+    })?;
+    for entry_r in entries {
         let entry = entry_r.or_else(|err| {
             Err(format!(
                 "Could not read dir {}\n {}",
@@ -65,9 +72,10 @@ pub fn organize_socket_dir(
             }
         }
         if empty {
-            fs::remove_dir(socket_dir.clone()).or(Err(format!(
-                "Could not remove dir {}",
-                socket_dir.as_path().display()
+            fs::remove_dir(socket_dir.clone()).or_else( |err| Err(format!(
+                "Could not remove dir {}\n{}",
+                socket_dir.as_path().display(),
+                err.to_string(),
             )))?;
         }
     }
@@ -109,7 +117,63 @@ mod tests {
         }
         assert!(contains);
         let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
-        organize_socket_dir(&temp_dir_path).unwrap();
+        match organize_socket_dir(&temp_dir_path) {
+            Ok(dirs) => assert_eq!(dirs.len(), 0),
+            Err(_) => assert!(false),
+        };
+        assert_eq!(fs::read_dir(tmp_dir).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn test_unreadable_socket_dir() {
+        use std::fs::set_permissions;
+        use std::fs::Permissions;
+        use std::os::unix::fs::PermissionsExt;
+        use tempdir::TempDir;
+        let tmp_dir = TempDir::new("test_sockets_dir").unwrap();
+        let no_permissions: Permissions = Permissions::from_mode(0o000);
+        set_permissions(tmp_dir.path(), no_permissions).unwrap();
+        let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
+        match organize_socket_dir(&temp_dir_path) {
+            Ok(_) => assert!(false),
+            Err(e) => assert_eq!(
+                e,
+                format!(
+                    "Could not read dir {} \n Permission denied (os error 13)",
+                    temp_dir_path
+                )
+            ),
+        };
+        // re-enable writing so we can clean up.
+        let normal_permissions: Permissions = Permissions::from_mode(0o644);
+        set_permissions(tmp_dir.path(), normal_permissions).unwrap();
+        assert_eq!(fs::read_dir(tmp_dir).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn test_unreadable_empty_socket_dir() {
+        use std::fs::set_permissions;
+        use std::fs::Permissions;
+        use std::os::unix::fs::PermissionsExt;
+        use tempdir::TempDir;
+        let tmp_dir = TempDir::new("test_sockets_dir").unwrap();
+        let empty_socket_dir = tmp_dir.path().join("empty-socket-dir");
+        fs::create_dir(empty_socket_dir.clone()).unwrap();
+        let no_permissions: Permissions = Permissions::from_mode(0o000);
+        set_permissions(empty_socket_dir.clone(), no_permissions).unwrap();
+        let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
+        match organize_socket_dir(&temp_dir_path) {
+            Ok(_) => assert!(false),
+            Err(e) => assert_eq!(
+                e,
+                format!(
+                    "Could not read directory {}\nPermission denied (os error 13)",
+                    empty_socket_dir.as_os_str().to_str().unwrap().to_owned()
+                )
+            ),
+        };
+        let normal_permissions: Permissions = Permissions::from_mode(0o644);
+        set_permissions(empty_socket_dir.clone(), normal_permissions).unwrap();
         assert_eq!(fs::read_dir(tmp_dir).unwrap().count(), 0);
     }
 
