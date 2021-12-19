@@ -125,7 +125,7 @@ mod tests {
     }
 
     #[test]
-    fn test_unreadable_socket_dir() {
+    fn test_unreadable_sockets_dir() {
         use std::fs::set_permissions;
         use std::fs::Permissions;
         use std::os::unix::fs::PermissionsExt;
@@ -151,7 +151,7 @@ mod tests {
     }
 
     #[test]
-    fn test_unreadable_empty_socket_dir() {
+    fn test_unreadable_socket_dir() {
         use std::fs::set_permissions;
         use std::fs::Permissions;
         use std::os::unix::fs::PermissionsExt;
@@ -175,6 +175,41 @@ mod tests {
         let normal_permissions: Permissions = Permissions::from_mode(0o644);
         set_permissions(empty_socket_dir.clone(), normal_permissions).unwrap();
         assert_eq!(fs::read_dir(tmp_dir).unwrap().count(), 0);
+    }
+
+
+    #[test]
+    fn test_unwriteable_empty_socket_dir() {
+        use std::fs::set_permissions;
+        use std::fs::Permissions;
+        use std::os::unix::fs::PermissionsExt;
+        use tempdir::TempDir;
+        let tmp_dir = TempDir::new("test_sockets_dir").unwrap();
+        let empty_socket_dir = tmp_dir.path().join("empty-socket-dir");
+        fs::create_dir(empty_socket_dir.clone()).unwrap();
+        // To trigger a write error when removing an empty socket dir
+        // we set permissions on the parent as this is the easiest way to trigger
+        // that condition.
+        // https://github.com/rust-lang/rust/issues/92087
+        let ro_permissions: Permissions = Permissions::from_mode(0o544);
+        match set_permissions(tmp_dir.path(), ro_permissions) {
+            Ok(_) => assert!(true),
+            Err(_) => assert!(false),
+        };
+        let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
+        match organize_socket_dir(&temp_dir_path) {
+            Ok(_) => assert!(false),
+            Err(e) => assert_eq!(
+                e,
+                format!(
+                    "Could not remove dir {}\nPermission denied (os error 13)",
+                    empty_socket_dir.as_os_str().to_str().unwrap().to_owned()
+                )
+            ),
+        };
+        let normal_permissions: Permissions = Permissions::from_mode(0o644);
+        set_permissions(tmp_dir.path(), normal_permissions).unwrap();
+        assert_eq!(fs::read_dir(tmp_dir).unwrap().count(), 1);
     }
 
     #[test]
