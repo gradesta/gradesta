@@ -38,7 +38,7 @@ with a new name that doesn't conflict with the old protocol,
 and which in no way interferes with the functioning of applications written for the old protocol,
 then it is to constantly refactor an existing protocol.
 
-Kaban Code Flow
+Kanban Code Flow
 ------------------
 
-Rather than a more traditional software development approach we use the [Kaban Code Flow model](./kcf/README.md)
+Rather than a more traditional software development approach we use the [Kanban Code Flow model](./kcf/README.md)

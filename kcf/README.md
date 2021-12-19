@@ -1,7 +1,7 @@
-Kaban Code Flow
+Kanban Code Flow
 ------------------
 
-We use a kaban like flow for writing code.
+We use a kanban like flow for writing code.
 
 Code flows from the `work_table` to the `ageing_cellar` to the `finished` folder to the `archive` folder.
 
@@ -146,7 +146,7 @@ So here is the "full flow":
 Code Conventions
 -------------------
 
-The Kaban Flow system described above works best with simple data structures and functions.
+The Kanban Flow system described above works best with simple data structures and functions.
 It is more or less incompatible with object oriented programming.
 You don't want to keep a class on the `work_table` forever
 just because you keep on adding methods to it.
@@ -168,7 +168,7 @@ List of top level project files and directories
  - `blackhole` - Directory with issues
  - `recall_log.md`- list of security and critical error recalls against finished code
  
-A Template for KCF (Kaban Code Flow) projects can be found in the `template` directory.
+A Template for KCF (Kanban Code Flow) projects can be found in the `template` directory.
  
 CONTRIBUTING.md Copyright and License
 ---------------------------------------------

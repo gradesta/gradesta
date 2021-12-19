@@ -1,7 +1,7 @@
 Tips for KCF programmers
 -----------------------------
 
-Writing code for a Kaban Code Flow requires you to write differently than you are probably used to.
+Writing code for a Kanban Code Flow requires you to write differently than you are probably used to.
 
 Code needs to be broken up into descrete chunks which do not need to change over time.
 
