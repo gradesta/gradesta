@@ -3,4 +3,4 @@
 #
 # cargo install cargo-watch
 # cargo install cargo-tarpaulin
-cargo watch --why -x 'tarpaulin --out Lcov --skip-clean'
+cargo watch --why -x 'tarpaulin --out Lcov --skip-clean --ignore-tests'
