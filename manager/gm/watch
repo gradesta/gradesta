@@ -4,4 +4,4 @@
 # cargo install cargo-watch
 # cargo install cargo-tarpaulin
 export RUST_BACKTRACE=1
-cargo watch --why -x 'tarpaulin --out Lcov --skip-clean --ignore-tests'
+cargo watch --why -x 'tarpaulin --out Lcov --skip-clean'

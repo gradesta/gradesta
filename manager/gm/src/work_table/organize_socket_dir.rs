@@ -35,10 +35,8 @@ pub fn organize_socket_dir(
         // The only possible error here from glibc's standpoint is EBADF which is irrelivant as we just got
         // a valid FD from glibc.
         let entry = entry_r.unwrap();
-        test_channels::report(&format!(
-            "Reading first level dir entry. {}",
-            entry.path().to_string_lossy()
-        ));
+        let report_str = format!("Reading first level dir entry. {}", entry.path().to_string_lossy());
+        test_channels::report(&report_str);
         let socket_dir: path::PathBuf = entry.path();
         if !socket_dir.is_dir() {
             continue;
@@ -118,14 +116,14 @@ mod tests {
             if entry.file_name() == "empty-socket-dir" {
                 contains = true;
             } else {
-                assert!(false);
+                unreachable!();
             }
         }
         assert!(contains);
         let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
         match organize_socket_dir(&temp_dir_path) {
             Ok(dirs) => assert_eq!(dirs.len(), 0),
-            Err(_) => assert!(false),
+            Err(_) => unreachable!(),
         };
         assert_eq!(fs::read_dir(&tmp_dir).unwrap().count(), 0);
         tmp_dir.close().unwrap();
@@ -142,7 +140,7 @@ mod tests {
         set_permissions(tmp_dir.path(), no_permissions).unwrap();
         let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
         match organize_socket_dir(&temp_dir_path) {
-            Ok(_) => assert!(false),
+            Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
                 e,
                 format!(
@@ -160,9 +158,6 @@ mod tests {
 
     #[test]
     fn test_interrupted_socket_dir_listing() {
-        use std::fs::set_permissions;
-        use std::fs::Permissions;
-        use std::os::unix::fs::PermissionsExt;
         use tempdir::TempDir;
         use test_channels::for_tests::*;
         let tmp_dir = TempDir::new("test_sockets_dir3").unwrap();
@@ -181,7 +176,7 @@ mod tests {
         });
 
         match organize_socket_dir(&temp_dir_path) {
-            Ok(_) => assert!(false),
+            Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
                 e,
                 format!(
@@ -209,7 +204,7 @@ mod tests {
         set_permissions(empty_socket_dir.clone(), no_permissions).unwrap();
         let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
         match organize_socket_dir(&temp_dir_path) {
-            Ok(_) => assert!(false),
+            Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
                 e,
                 format!(
@@ -247,11 +242,11 @@ mod tests {
         let ro_permissions: Permissions = Permissions::from_mode(0o544);
         match set_permissions(tmp_dir.path(), ro_permissions) {
             Ok(_) => assert!(true),
-            Err(_) => assert!(false),
+            Err(_) => unreachable!(),
         };
         let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
         match organize_socket_dir(&temp_dir_path) {
-            Ok(_) => assert!(false),
+            Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
                 e,
                 format!(
@@ -284,13 +279,13 @@ mod tests {
             if entry.file_name() == "dirty-socket-dir" {
                 contains = true;
             } else {
-                assert!(false);
+                unreachable!();
             }
         }
         assert!(contains);
         let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
         match organize_socket_dir(&temp_dir_path) {
-            Ok(_) => assert!(false),
+            Ok(_) => unreachable!(),
             Err(error) => assert_eq!(
                 error,
                 format!(

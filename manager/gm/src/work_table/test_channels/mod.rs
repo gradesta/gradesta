@@ -6,7 +6,6 @@ pub fn report_to_custom_socket(socket_path: &str) {}
 #[cfg(test)]
 pub fn report_to_custom_socket(message: &str, socket_path: &str) {
     use std::path;
-    use zmq;
     if !path::Path::new(socket_path).exists() {
         return; // Fall through if we're not expecting anything so that non-expectant tests work.
     }
