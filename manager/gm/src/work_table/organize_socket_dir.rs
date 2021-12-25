@@ -1,10 +1,10 @@
 extern crate itertools;
 extern crate ofiles;
 
+use super::test_channels;
 use itertools::Itertools;
 use std::fs;
 use std::path;
-use super::test_channels;
 
 /// 1. Deletes any left over directories from socket dir
 /// 2. Deletes any left over/non-connected sockets from socket dir
@@ -35,6 +35,10 @@ pub fn organize_socket_dir(
         // The only possible error here from glibc's standpoint is EBADF which is irrelivant as we just got
         // a valid FD from glibc.
         let entry = entry_r.unwrap();
+        test_channels::report(&format!(
+            "Reading first level dir entry. {}",
+            entry.path().to_string_lossy()
+        ));
         let socket_dir: path::PathBuf = entry.path();
         if !socket_dir.is_dir() {
             continue;
@@ -72,11 +76,13 @@ pub fn organize_socket_dir(
             }
         }
         if empty {
-            fs::remove_dir(socket_dir.clone()).or_else( |err| Err(format!(
-                "Could not remove dir {}\n{}",
-                socket_dir.as_path().display(),
-                err.to_string(),
-            )))?;
+            fs::remove_dir(socket_dir.clone()).or_else(|err| {
+                Err(format!(
+                    "Could not remove dir {}\n{}",
+                    socket_dir.as_path().display(),
+                    err.to_string(),
+                ))
+            })?;
         }
     }
     if unexpected_files.len() > 0 {
@@ -98,7 +104,7 @@ mod tests {
     #[test]
     fn test_clear_empty_socket_dir() {
         use tempdir::TempDir;
-        let tmp_dir = TempDir::new("test_sockets_dir").unwrap();
+        let tmp_dir = TempDir::new("test_sockets_dir1").unwrap();
         let empty_socket_dir = tmp_dir.path().join("empty-socket-dir");
         fs::create_dir(empty_socket_dir.clone()).unwrap();
         print!(
@@ -131,7 +137,7 @@ mod tests {
         use std::fs::Permissions;
         use std::os::unix::fs::PermissionsExt;
         use tempdir::TempDir;
-        let tmp_dir = TempDir::new("test_sockets_dir").unwrap();
+        let tmp_dir = TempDir::new("test_sockets_dir2").unwrap();
         let no_permissions: Permissions = Permissions::from_mode(0o000);
         set_permissions(tmp_dir.path(), no_permissions).unwrap();
         let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
@@ -153,12 +159,50 @@ mod tests {
     }
 
     #[test]
+    fn test_interrupted_socket_dir_listing() {
+        use std::fs::set_permissions;
+        use std::fs::Permissions;
+        use std::os::unix::fs::PermissionsExt;
+        use tempdir::TempDir;
+        use test_channels::for_tests::*;
+        let tmp_dir = TempDir::new("test_sockets_dir3").unwrap();
+        let socket_dir = tmp_dir.path().join("socket-dir");
+        fs::create_dir(socket_dir.clone()).unwrap();
+        fs::write(socket_dir.join("PAIR.zmq"), "foo").unwrap();
+        let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
+        use std::thread;
+        let channel = open_test_channel();
+        let tmp_dir_path_thread = tmp_dir.path().to_owned();
+        let handle = thread::spawn(move || {
+            expect(&"Reading second level dir entry.", &channel);
+            fs::remove_dir_all(tmp_dir_path_thread.join("socket-dir")).unwrap();
+            send_continue(&channel);
+            clear_expectations(channel);
+        });
+
+        match organize_socket_dir(&temp_dir_path) {
+            Ok(_) => assert!(false),
+            Err(e) => assert_eq!(
+                e,
+                format!(
+                    "Error looking up socket information for socket {}/PAIR.zmq\nENOENT: No such file or directory.",
+                    socket_dir.as_os_str().to_str().unwrap().to_owned()
+                )
+            ),
+        };
+        test_channels::report("END");
+        assert_eq!(fs::read_dir(&tmp_dir).unwrap().count(), 0);
+        tmp_dir.close().unwrap();
+        handle.join().unwrap();
+    }
+
+    #[test]
     fn test_unreadable_socket_dir() {
         use std::fs::set_permissions;
         use std::fs::Permissions;
         use std::os::unix::fs::PermissionsExt;
-        use tempdir::TempDir; 
-        let tmp_dir = TempDir::new("test_sockets_dir").unwrap();
+        use tempdir::TempDir;
+        let tmp_dir = TempDir::new("test_sockets_dir4").unwrap();
         let empty_socket_dir = tmp_dir.path().join("empty-socket-dir");
         fs::create_dir(empty_socket_dir.clone()).unwrap();
         let no_permissions: Permissions = Permissions::from_mode(0o000);
@@ -176,9 +220,11 @@ mod tests {
         };
         let normal_permissions: Permissions = Permissions::from_mode(0o777);
         set_permissions(empty_socket_dir.clone(), normal_permissions).unwrap();
-        let dir_listing: String = fs::read_dir(&tmp_dir).unwrap()
-            .map(|entry: Result<fs::DirEntry, std::io::Error>|
-                entry.unwrap().file_name().to_owned())
+        let dir_listing: String = fs::read_dir(&tmp_dir)
+            .unwrap()
+            .map(|entry: Result<fs::DirEntry, std::io::Error>| {
+                entry.unwrap().file_name().to_owned()
+            })
             .map(|entry: std::ffi::OsString| entry.to_string_lossy().to_string())
             .collect();
         assert_eq!(dir_listing, "empty-socket-dir");
@@ -191,7 +237,7 @@ mod tests {
         use std::fs::Permissions;
         use std::os::unix::fs::PermissionsExt;
         use tempdir::TempDir;
-        let tmp_dir = TempDir::new("test_sockets_dir").unwrap();
+        let tmp_dir = TempDir::new("test_sockets_dir5").unwrap();
         let empty_socket_dir = tmp_dir.path().join("empty-socket-dir");
         fs::create_dir(empty_socket_dir.clone()).unwrap();
         // To trigger a write error when removing an empty socket dir
@@ -223,7 +269,7 @@ mod tests {
     #[test]
     fn test_fail_on_dirty_socket_dir() {
         use tempdir::TempDir;
-        let tmp_dir = TempDir::new("test_sockets_dir").unwrap();
+        let tmp_dir = TempDir::new("test_sockets_dir6").unwrap();
         let dirty_socket_dir = tmp_dir.path().join("dirty-socket-dir");
         fs::create_dir(dirty_socket_dir.clone()).unwrap();
         fs::File::create(dirty_socket_dir.join("mess")).unwrap();
