@@ -1,16 +1,22 @@
 #[cfg(test)]
 use zmq;
 
-const DEFAULT_SOCKET_PATH: &str = "ipc:///tmp/rust_test_channels_socket.ZMQ_REQ_REP";
+const DEFAULT_SOCKET_PATH: &str = "/tmp/rust_test_channels_socket.ZMQ_REQ_REP";
 
 #[cfg(not(test))]
 pub fn report_to_custom_socket(socket_path: &str) {}
 
 #[cfg(test)]
 pub fn report_to_custom_socket(message: &str, socket_path: &str) {
+    use std::path;
+    if !path::Path::new(socket_path).exists() {
+        return // Fall through if we're not expecting anything so that non-expectant tests work.
+    }
+
     let ctx = zmq::Context::new();
     let socket = ctx.socket(zmq::REQ).unwrap();
-    socket.connect(&socket_path).unwrap();
+    let socket_url = format!("ipc://{}", socket_path);
+    socket.connect(&socket_url).unwrap();
     socket.send(&message, 0).unwrap();
     socket.recv_msg(0).unwrap();
 }
@@ -27,7 +33,8 @@ pub fn report(message: &str) {}
 pub fn open_test_channel_with_custom_socket(socket_path: &str) ->  zmq::Socket {
     let ctx = zmq::Context::new();
     let socket = ctx.socket(zmq::REP).unwrap();
-    socket.bind(&socket_path).unwrap();
+    let socket_url = format!("ipc://{}", socket_path);
+    socket.bind(&socket_url).unwrap();
     return socket;
 }
 
@@ -51,9 +58,14 @@ pub fn send_continue(socket: &zmq::Socket) {
     socket.send("", 0).unwrap();
 }
 
-pub fn clear_expectations(socket: &zmq::Socket) {
-    expect("END", socket);
+pub fn clear_expectations(socket: zmq::Socket) {
+    expect("END", &socket);
     send_continue(&socket);
+    let url = socket.get_last_endpoint().unwrap().unwrap();
+    socket.disconnect(&url).unwrap();
+    drop(socket);
+    use std::fs;
+    fs::remove_file(&url[6..]).unwrap();
 }
 
 #[cfg(test)]
@@ -66,17 +78,20 @@ mod tests {
         use std::thread;
         use std::fs;
         use std::path;
+        assert!(!path::Path::new(DEFAULT_SOCKET_PATH).exists());
+        report(&"ignored");
         fs::remove_file(MAGIC_TEST_FILE).unwrap_or_default();
+        let channel = open_test_channel();
         let handle = thread::spawn(|| {
-            let channel = open_test_channel();
             expect(&"foo", &channel);
             send_continue(&channel);
             expect(&"bar", &channel);
             fs::write(MAGIC_TEST_FILE, "foo").unwrap();
             send_continue(&channel);
-            clear_expectations(&channel);
+            clear_expectations(channel);
         });
         report(&"foo");
+        assert!(path::Path::new(DEFAULT_SOCKET_PATH).exists());
         report(&"baz");
         assert!(!path::Path::new(MAGIC_TEST_FILE).exists());
         report(&"bar");
@@ -84,5 +99,6 @@ mod tests {
         report(&"lol");
         report(&"END");
         handle.join().unwrap();
+        assert!(!path::Path::new(DEFAULT_SOCKET_PATH).exists());
     }
 }
