@@ -117,5 +117,7 @@ mod tests {
         report(&"END");
         handle.join().unwrap();
         assert!(!path::Path::new(&get_default_socket_path()).exists());
+        fs::remove_file(MAGIC_TEST_FILE).unwrap();
+        assert!(!path::Path::new(MAGIC_TEST_FILE).exists());
     }
 }
