@@ -4,6 +4,7 @@ extern crate ofiles;
 use itertools::Itertools;
 use std::fs;
 use std::path;
+use super::test_channels;
 
 /// 1. Deletes any left over directories from socket dir
 /// 2. Deletes any left over/non-connected sockets from socket dir
@@ -29,6 +30,7 @@ pub fn organize_socket_dir(
         ))
     })?;
     for entry_r in entries {
+        //test_channels::report("");
         let entry = entry_r.or_else(|err| {
             Err(format!(
                 "Could not read dir {}\n {}",
@@ -121,7 +123,8 @@ mod tests {
             Ok(dirs) => assert_eq!(dirs.len(), 0),
             Err(_) => assert!(false),
         };
-        assert_eq!(fs::read_dir(tmp_dir).unwrap().count(), 0);
+        assert_eq!(fs::read_dir(&tmp_dir).unwrap().count(), 0);
+        tmp_dir.close().unwrap();
     }
 
     #[test]
@@ -147,7 +150,8 @@ mod tests {
         // re-enable writing so we can clean up.
         let normal_permissions: Permissions = Permissions::from_mode(0o644);
         set_permissions(tmp_dir.path(), normal_permissions).unwrap();
-        assert_eq!(fs::read_dir(tmp_dir).unwrap().count(), 0);
+        assert_eq!(fs::read_dir(&tmp_dir).unwrap().count(), 0);
+        tmp_dir.close().unwrap();
     }
 
     #[test]
@@ -155,7 +159,7 @@ mod tests {
         use std::fs::set_permissions;
         use std::fs::Permissions;
         use std::os::unix::fs::PermissionsExt;
-        use tempdir::TempDir;
+        use tempdir::TempDir; 
         let tmp_dir = TempDir::new("test_sockets_dir").unwrap();
         let empty_socket_dir = tmp_dir.path().join("empty-socket-dir");
         fs::create_dir(empty_socket_dir.clone()).unwrap();
@@ -172,11 +176,16 @@ mod tests {
                 )
             ),
         };
-        let normal_permissions: Permissions = Permissions::from_mode(0o644);
+        let normal_permissions: Permissions = Permissions::from_mode(0o777);
         set_permissions(empty_socket_dir.clone(), normal_permissions).unwrap();
-        assert_eq!(fs::read_dir(tmp_dir).unwrap().count(), 0);
+        let dir_listing: String = fs::read_dir(&tmp_dir).unwrap()
+            .map(|entry: Result<fs::DirEntry, std::io::Error>|
+                entry.unwrap().file_name().to_owned())
+            .map(|entry: std::ffi::OsString| entry.to_string_lossy().to_string())
+            .collect();
+        assert_eq!(dir_listing, "empty-socket-dir");
+        tmp_dir.close().unwrap();
     }
-
 
     #[test]
     fn test_unwriteable_empty_socket_dir() {
@@ -207,9 +216,10 @@ mod tests {
                 )
             ),
         };
-        let normal_permissions: Permissions = Permissions::from_mode(0o644);
+        let normal_permissions: Permissions = Permissions::from_mode(0o777);
         set_permissions(tmp_dir.path(), normal_permissions).unwrap();
-        assert_eq!(fs::read_dir(tmp_dir).unwrap().count(), 1);
+        assert_eq!(fs::read_dir(&tmp_dir).unwrap().count(), 1);
+        tmp_dir.close().unwrap();
     }
 
     #[test]
@@ -245,5 +255,6 @@ mod tests {
                 )
             ),
         }
+        tmp_dir.close().unwrap();
     }
 }
