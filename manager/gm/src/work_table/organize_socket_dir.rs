@@ -30,14 +30,11 @@ pub fn organize_socket_dir(
         ))
     })?;
     for entry_r in entries {
-        //test_channels::report("");
-        let entry = entry_r.or_else(|err| {
-            Err(format!(
-                "Could not read dir {}\n {}",
-                sockets_dir,
-                err.to_string()
-            ))
-        })?;
+        // Not sure why DirEntries are wrapped in a Result
+        // https://www.gnu.org/software/libc/manual/html_mono/libc.html#Reading_002fClosing-Directory
+        // The only possible error here from glibc's standpoint is EBADF which is irrelivant as we just got
+        // a valid FD from glibc.
+        let entry = entry_r.unwrap();
         let socket_dir: path::PathBuf = entry.path();
         if !socket_dir.is_dir() {
             continue;
@@ -51,17 +48,18 @@ pub fn organize_socket_dir(
             ))
         })?;
         for entry1_r in entries1 {
-            let entry1 = entry1_r.or_else(|err| {
-                Err(format!(
-                    "Could not read directory {}\n{}",
-                    socket_dir.as_path().display(),
-                    err.to_string()
-                ))
-            })?;
+            test_channels::report("Reading second level dir entry.");
+            let entry1 = entry1_r.unwrap();
             let socket: path::PathBuf = entry1.path();
             if entry1.file_name() == "PAIR.zmq" {
                 // https://docs.rs/ofiles/0.2.0/ofiles/fn.opath.html
-                let pids = ofiles::opath(socket_dir.clone()).or_else(|err| Err(err.to_string()))?;
+                let pids = ofiles::opath(socket_dir.clone()).or_else(|err| {
+                    Err(format!(
+                        "Error looking up socket information for socket {}\n{}.",
+                        socket.to_string_lossy(),
+                        err.to_string()
+                    ))
+                })?;
                 if pids.len() > 0 {
                     active_sockets.push((socket.clone(), pids));
                     empty = false;
