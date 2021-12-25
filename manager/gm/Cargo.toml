@@ -15,3 +15,5 @@ itertools = "0.10.3"
 
 [dev-dependencies]
 tempdir = "0.3.7"
+sha2 =  "0.10.0"
+hex = "0.4.3"
