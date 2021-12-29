@@ -55,7 +55,7 @@ pub fn organize_socket_dir(
             let socket: path::PathBuf = entry1.path();
             if entry1.file_name() == "PAIR.zmq" {
                 // https://docs.rs/ofiles/0.2.0/ofiles/fn.opath.html
-                let pids = ofiles::opath(socket_dir.clone()).or_else(|err| {
+                let pids = ofiles::opath(entry1.path()).or_else(|err| {
                     Err(format!(
                         "Error looking up socket information for socket {}\n{}.",
                         socket.to_string_lossy(),
@@ -294,6 +294,29 @@ mod tests {
                 )
             ),
         }
+        tmp_dir.close().unwrap();
+    }
+
+    #[test]
+    fn test_socket_dir_listing_old_socket() {
+        use tempdir::TempDir;
+        use std::thread;
+        let tmp_dir = TempDir::new("test_sockets_dir7").unwrap();
+        let socket_dir = tmp_dir.path().join("socket-dir");
+        fs::create_dir(socket_dir.clone()).unwrap();
+        let ctx = zmq::Context::new();
+        let socket = ctx.socket(zmq::REP).unwrap();
+        let socket_url = format!("ipc://{}/PAIR.zmq", socket_dir.as_os_str().to_str().unwrap());
+        socket.bind(&socket_url).unwrap();
+        //std::thread::sleep_ms(100000);
+        socket.disconnect(&socket_url).unwrap();
+        drop(socket);
+        let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
+        match organize_socket_dir(&temp_dir_path) {
+            Ok(sockets) => assert_eq!(sockets.len(), 0),
+            Err(e) => assert_eq!(e, "foo"),
+        };
+        assert_eq!(fs::read_dir(&tmp_dir).unwrap().count(), 0);
         tmp_dir.close().unwrap();
     }
 }

@@ -204,7 +204,7 @@ dependencies = [
  "itertools",
  "nix 0.23.0",
  "notify",
- "ofiles",
+ "ofiles 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "sha2",
  "tempdir",
  "zmq",
@@ -415,14 +415,19 @@ dependencies = [
 [[package]]
 name = "ofiles"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6d996a29712d694df329d19f0e18632466a42c9de4aab73dca087a1a4c1bd7d"
 dependencies = [
  "error-chain 0.12.4",
  "glob",
  "log",
  "nix 0.17.0",
 ]
+
+[[package]]
+name = "ofiles"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6d996a29712d694df329d19f0e18632466a42c9de4aab73dca087a1a4c1bd7d"
+replace = "ofiles 0.2.0"
 
 [[package]]
 name = "pkg-config"
