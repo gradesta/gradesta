@@ -14,7 +14,7 @@ use std::path;
 /// Returns an error string if there were other types of files in the left over socket dirs
 /// or there were permission denied errors
 /// or other types of read error.
-pub fn organize_socket_dir(
+pub fn organize_sockets_dir(
     sockets_dir: &String,
 ) -> Result<Vec<(path::PathBuf, Vec<ofiles::Pid>)>, String> {
     let mut active_sockets: Vec<(path::PathBuf, Vec<ofiles::Pid>)> = Vec::new();
@@ -56,7 +56,7 @@ pub fn organize_socket_dir(
             let socket: path::PathBuf = entry1.path();
             if entry1.file_name() == "PAIR.zmq" {
                 // https://docs.rs/ofiles/0.2.0/ofiles/fn.opath.html
-                let pids = ofiles::opath(entry1.path()).or_else(|err| {
+                let pids = ofiles::osocket(entry1.path()).or_else(|err| {
                     Err(format!(
                         "Error looking up socket information for socket {}\n{}.",
                         socket.to_string_lossy(),
@@ -122,7 +122,7 @@ mod tests {
         }
         assert!(contains);
         let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
-        match organize_socket_dir(&temp_dir_path) {
+        match organize_sockets_dir(&temp_dir_path) {
             Ok(dirs) => assert_eq!(dirs.len(), 0),
             Err(_) => unreachable!(),
         };
@@ -140,7 +140,7 @@ mod tests {
         let no_permissions: Permissions = Permissions::from_mode(0o000);
         set_permissions(tmp_dir.path(), no_permissions).unwrap();
         let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
-        match organize_socket_dir(&temp_dir_path) {
+        match organize_sockets_dir(&temp_dir_path) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
                 e,
@@ -177,12 +177,12 @@ mod tests {
             clear_expectations(channel);
         });
 
-        match organize_socket_dir(&temp_dir_path) {
+        match organize_sockets_dir(&temp_dir_path) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
                 e,
                 format!(
-                    "Error looking up socket information for socket {}/PAIR.zmq\nENOENT: No such file or directory.",
+                    "Error looking up socket information for socket {}/PAIR.zmq\nNo such file or directory (os error 2).",
                     socket_dir.as_os_str().to_str().unwrap().to_owned()
                 )
             ),
@@ -205,7 +205,7 @@ mod tests {
         let no_permissions: Permissions = Permissions::from_mode(0o000);
         set_permissions(empty_socket_dir.clone(), no_permissions).unwrap();
         let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
-        match organize_socket_dir(&temp_dir_path) {
+        match organize_sockets_dir(&temp_dir_path) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
                 e,
@@ -247,7 +247,7 @@ mod tests {
             Err(_) => unreachable!(),
         };
         let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
-        match organize_socket_dir(&temp_dir_path) {
+        match organize_sockets_dir(&temp_dir_path) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
                 e,
@@ -286,7 +286,7 @@ mod tests {
         }
         assert!(contains);
         let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
-        match organize_socket_dir(&temp_dir_path) {
+        match organize_sockets_dir(&temp_dir_path) {
             Ok(_) => unreachable!(),
             Err(error) => assert_eq!(
                 error,
@@ -311,14 +311,14 @@ mod tests {
         let socket_url = format!("ipc://{}/PAIR.zmq", socket_dir.as_os_str().to_str().unwrap());
         socket.bind(&socket_url).unwrap();
         let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
-        match organize_socket_dir(&temp_dir_path) {
+        match organize_sockets_dir(&temp_dir_path) {
             Ok(sockets) => assert_eq!(u32::from(sockets[0].1[0]), std::process::id() as u32),
             Err(e) => unreachable!(),
         };
         assert_eq!(fs::read_dir(&tmp_dir).unwrap().count(), 1);
         socket.disconnect(&socket_url).unwrap();
         drop(socket);
-        match organize_socket_dir(&temp_dir_path) {
+        match organize_sockets_dir(&temp_dir_path) {
             Ok(sockets) => assert_eq!(sockets.len(), 0),
             Err(e) => unreachable!(),
         };
@@ -340,7 +340,7 @@ mod tests {
         socket.disconnect(&socket_url).unwrap();
         drop(socket);
         let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
-        match organize_socket_dir(&temp_dir_path) {
+        match organize_sockets_dir(&temp_dir_path) {
             Ok(sockets) => assert_eq!(sockets.len(), 0),
             Err(e) => unreachable!(),
         };
