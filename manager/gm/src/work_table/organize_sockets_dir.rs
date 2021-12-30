@@ -2,8 +2,8 @@ extern crate itertools;
 extern crate ofiles;
 
 extern crate rust_util;
-use rust_util::ageing_cellar::test_channels;
 use itertools::Itertools;
+use rust_util::ageing_cellar::test_channels;
 use std::fs;
 use std::path;
 
@@ -15,7 +15,7 @@ use std::path;
 /// or there were permission denied errors
 /// or other types of read error.
 pub fn organize_sockets_dir(
-    sockets_dir: &String,
+    sockets_dir: &path::Path,
 ) -> Result<Vec<(path::PathBuf, Vec<ofiles::Pid>)>, String> {
     let mut active_sockets: Vec<(path::PathBuf, Vec<ofiles::Pid>)> = Vec::new();
     let mut unexpected_files: Vec<String> = Vec::new();
@@ -26,7 +26,7 @@ pub fn organize_sockets_dir(
     let entries = fs::read_dir(top_dir).or_else(|err| {
         Err(format!(
             "Could not read dir {} \n {}",
-            sockets_dir,
+            sockets_dir.as_os_str().to_str().unwrap_or("Cannot display sockets dir path because it contains really really weird characters or something.").to_owned(),
             err.to_string()
         ))
     })?;
@@ -36,7 +36,10 @@ pub fn organize_sockets_dir(
         // The only possible error here from glibc's standpoint is EBADF which is irrelivant as we just got
         // a valid FD from glibc.
         let entry = entry_r.unwrap();
-        let report_str = format!("Reading first level dir entry. {}", entry.path().to_string_lossy());
+        let report_str = format!(
+            "Reading first level dir entry. {}",
+            entry.path().to_string_lossy()
+        );
         test_channels::report(&report_str);
         let socket_dir: path::PathBuf = entry.path();
         if !socket_dir.is_dir() {
@@ -121,8 +124,7 @@ mod tests {
             }
         }
         assert!(contains);
-        let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
-        match organize_sockets_dir(&temp_dir_path) {
+        match organize_sockets_dir(&tmp_dir.path()) {
             Ok(dirs) => assert_eq!(dirs.len(), 0),
             Err(_) => unreachable!(),
         };
@@ -140,7 +142,7 @@ mod tests {
         let no_permissions: Permissions = Permissions::from_mode(0o000);
         set_permissions(tmp_dir.path(), no_permissions).unwrap();
         let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
-        match organize_sockets_dir(&temp_dir_path) {
+        match organize_sockets_dir(&tmp_dir.path()) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
                 e,
@@ -159,14 +161,13 @@ mod tests {
 
     #[test]
     fn test_interrupted_socket_dir_listing() {
-       extern crate rust_util;
-        use tempdir::TempDir;
+        extern crate rust_util;
         use rust_util::ageing_cellar::test_channels::for_tests::*;
+        use tempdir::TempDir;
         let tmp_dir = TempDir::new("test_sockets_dir3").unwrap();
         let socket_dir = tmp_dir.path().join("socket-dir");
         fs::create_dir(socket_dir.clone()).unwrap();
         fs::write(socket_dir.join("PAIR.zmq"), "foo").unwrap();
-        let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
         use std::thread;
         let channel = open_test_channel();
         let tmp_dir_path_thread = tmp_dir.path().to_owned();
@@ -177,7 +178,7 @@ mod tests {
             clear_expectations(channel);
         });
 
-        match organize_sockets_dir(&temp_dir_path) {
+        match organize_sockets_dir(&tmp_dir.path()) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
                 e,
@@ -204,8 +205,7 @@ mod tests {
         fs::create_dir(empty_socket_dir.clone()).unwrap();
         let no_permissions: Permissions = Permissions::from_mode(0o000);
         set_permissions(empty_socket_dir.clone(), no_permissions).unwrap();
-        let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
-        match organize_sockets_dir(&temp_dir_path) {
+        match organize_sockets_dir(&tmp_dir.path()) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
                 e,
@@ -246,8 +246,7 @@ mod tests {
             Ok(_) => assert!(true),
             Err(_) => unreachable!(),
         };
-        let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
-        match organize_sockets_dir(&temp_dir_path) {
+        match organize_sockets_dir(&tmp_dir.path()) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
                 e,
@@ -285,8 +284,7 @@ mod tests {
             }
         }
         assert!(contains);
-        let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
-        match organize_sockets_dir(&temp_dir_path) {
+        match organize_sockets_dir(&tmp_dir.path()) {
             Ok(_) => unreachable!(),
             Err(error) => assert_eq!(
                 error,
@@ -302,23 +300,24 @@ mod tests {
     #[test]
     fn test_socket_dir_active_and_inactive_socket() {
         use tempdir::TempDir;
-        use std::thread;
         let tmp_dir = TempDir::new("test_sockets_dir7").unwrap();
         let socket_dir = tmp_dir.path().join("socket-dir");
         fs::create_dir(socket_dir.clone()).unwrap();
         let ctx = zmq::Context::new();
         let socket = ctx.socket(zmq::REP).unwrap();
-        let socket_url = format!("ipc://{}/PAIR.zmq", socket_dir.as_os_str().to_str().unwrap());
+        let socket_url = format!(
+            "ipc://{}/PAIR.zmq",
+            socket_dir.as_os_str().to_str().unwrap()
+        );
         socket.bind(&socket_url).unwrap();
-        let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
-        match organize_sockets_dir(&temp_dir_path) {
+        match organize_sockets_dir(&tmp_dir.path()) {
             Ok(sockets) => assert_eq!(u32::from(sockets[0].1[0]), std::process::id() as u32),
             Err(e) => unreachable!(),
         };
         assert_eq!(fs::read_dir(&tmp_dir).unwrap().count(), 1);
         socket.disconnect(&socket_url).unwrap();
         drop(socket);
-        match organize_sockets_dir(&temp_dir_path) {
+        match organize_sockets_dir(&tmp_dir.path()) {
             Ok(sockets) => assert_eq!(sockets.len(), 0),
             Err(e) => unreachable!(),
         };
@@ -328,19 +327,21 @@ mod tests {
 
     #[test]
     fn test_socket_dir_old_socket() {
-        use tempdir::TempDir;
         use std::thread;
+        use tempdir::TempDir;
         let tmp_dir = TempDir::new("test_sockets_dir7").unwrap();
         let socket_dir = tmp_dir.path().join("socket-dir");
         fs::create_dir(socket_dir.clone()).unwrap();
         let ctx = zmq::Context::new();
         let socket = ctx.socket(zmq::REP).unwrap();
-        let socket_url = format!("ipc://{}/PAIR.zmq", socket_dir.as_os_str().to_str().unwrap());
+        let socket_url = format!(
+            "ipc://{}/PAIR.zmq",
+            socket_dir.as_os_str().to_str().unwrap()
+        );
         socket.bind(&socket_url).unwrap();
         socket.disconnect(&socket_url).unwrap();
         drop(socket);
-        let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
-        match organize_sockets_dir(&temp_dir_path) {
+        match organize_sockets_dir(&tmp_dir.path()) {
             Ok(sockets) => assert_eq!(sockets.len(), 0),
             Err(e) => unreachable!(),
         };
