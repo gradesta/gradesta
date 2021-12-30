@@ -1,7 +1,8 @@
 extern crate itertools;
 extern crate ofiles;
 
-use super::test_channels;
+extern crate rust_util;
+use rust_util::ageing_cellar::test_channels;
 use itertools::Itertools;
 use std::fs;
 use std::path;
@@ -158,8 +159,9 @@ mod tests {
 
     #[test]
     fn test_interrupted_socket_dir_listing() {
+       extern crate rust_util;
         use tempdir::TempDir;
-        use test_channels::for_tests::*;
+        use rust_util::ageing_cellar::test_channels::for_tests::*;
         let tmp_dir = TempDir::new("test_sockets_dir3").unwrap();
         let socket_dir = tmp_dir.path().join("socket-dir");
         fs::create_dir(socket_dir.clone()).unwrap();

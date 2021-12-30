@@ -1,9 +1,13 @@
+#[cfg(feature="testing")]
+extern crate zmq;
+
+#[cfg(feature="testing")]
 const DEFAULT_SOCKET_PATH: &str = "/tmp/rust_test_channels_socket.ZMQ_REQ_REP";
 
-#[cfg(not(test))]
-pub fn report_to_custom_socket(socket_path: &str) {}
+#[cfg(not(feature="testing"))]
+pub fn report_to_custom_socket(_socket_path: &str) {}
 
-#[cfg(test)]
+#[cfg(feature="testing")]
 pub fn report_to_custom_socket(message: &str, socket_path: &str) {
     use std::path;
     if !path::Path::new(socket_path).exists() {
@@ -18,15 +22,15 @@ pub fn report_to_custom_socket(message: &str, socket_path: &str) {
     socket.recv_msg(0).unwrap();
 }
 
-#[cfg(test)]
+#[cfg(feature="testing")]
 pub fn report(message: &str) {
     report_to_custom_socket(message, &for_tests::get_default_socket_path());
 }
 
-#[cfg(not(test))]
-pub fn report(message: &str) {}
+#[cfg(not(feature="testing"))]
+pub fn report(_message: &str) {}
 
-#[cfg(test)]
+#[cfg(feature="testing")]
 pub mod for_tests {
     use super::*;
     use zmq;
@@ -53,7 +57,6 @@ pub mod for_tests {
         return socket;
     }
 
-    #[cfg(test)]
     pub fn open_test_channel() -> zmq::Socket {
         open_test_channel_with_custom_socket(&get_default_socket_path())
     }

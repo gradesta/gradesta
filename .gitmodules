@@ -2,5 +2,5 @@
 	path = 3rd-party/capnproto
 	url = https://github.com/capnproto/capnproto.git
 [submodule "rust-util/work_table/ofiles"]
-	path = rust-util/work_table/ofiles
+	path = 3rd-party/ofiles
 	url = https://github.com/gradesta/ofiles.git

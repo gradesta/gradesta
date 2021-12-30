@@ -200,12 +200,11 @@ name = "gm"
 version = "0.1.0"
 dependencies = [
  "clap",
- "hex",
  "itertools",
  "nix 0.23.0",
  "notify",
  "ofiles 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "sha2",
+ "rust-util",
  "tempdir",
  "zmq",
 ]
@@ -491,6 +490,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust-util"
+version = "0.0.0"
+dependencies = [
+ "hex",
+ "nix 0.17.0",
+ "sha2",
+ "tempdir",
+ "zmq",
+]
+
+[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -549,9 +559,9 @@ checksum = "736b60249cb25337bc196faa43ee12c705e426f3d55c214d73a4e7be06f92cb4"
 
 [[package]]
 name = "typenum"
-version = "1.14.0"
+version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b63708a265f51345575b27fe43f9500ad611579e764c79edbc2037b1121959ec"
+checksum = "dcf81ac59edc17cc8697ff311e8f5ef2d99fcbd9817b34cec66f90b6c3dfd987"
 
 [[package]]
 name = "unicode-width"
