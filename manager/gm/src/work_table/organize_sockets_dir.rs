@@ -327,7 +327,6 @@ mod tests {
 
     #[test]
     fn test_socket_dir_old_socket() {
-        use std::thread;
         use tempdir::TempDir;
         let tmp_dir = TempDir::new("test_sockets_dir7").unwrap();
         let socket_dir = tmp_dir.path().join("socket-dir");
@@ -343,7 +342,7 @@ mod tests {
         drop(socket);
         match organize_sockets_dir(&tmp_dir.path()) {
             Ok(sockets) => assert_eq!(sockets.len(), 0),
-            Err(e) => unreachable!(),
+            Err(_) => unreachable!(),
         };
         assert_eq!(fs::read_dir(&tmp_dir).unwrap().count(), 0);
         tmp_dir.close().unwrap();
