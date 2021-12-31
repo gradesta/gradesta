@@ -4,3 +4,6 @@
 [submodule "rust-util/work_table/ofiles"]
 	path = 3rd-party/ofiles
 	url = https://github.com/gradesta/ofiles.git
+[submodule "3rd-party/sysinfo"]
+	path = 3rd-party/sysinfo
+	url = git@github.com:GuillaumeGomez/sysinfo.git

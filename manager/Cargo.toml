@@ -13,11 +13,12 @@ notify = "4.0.17"
 ofiles = "0.2.0"
 nix = "0.23.0"
 itertools = "0.10.3"
-"rust-util" = { path = "../../rust-util" }
+"rust-util" = { path = "../rust-util" }
+sysinfo = "0.22.4"
 
 [dev-dependencies]
 tempdir = "0.3.7"
-"rust-util" = { path = "../../rust-util", features=["testing"] }
+"rust-util" = { path = "../rust-util", features=["testing"] }
 
 [replace]
-"ofiles:0.2.0" = { path = "../../3rd-party/ofiles" }
+"ofiles:0.2.0" = { path = "../3rd-party/ofiles" }
