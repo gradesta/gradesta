@@ -49,7 +49,6 @@ pub mod for_tests {
     }
 
     pub fn open_test_channel_with_custom_socket(socket_path: &str) -> zmq::Socket {
-        assert!(!path::Path::new(socket_path).exists());
         let ctx = zmq::Context::new();
         let socket = ctx.socket(zmq::REP).unwrap();
         let socket_url = format!("ipc://{}", socket_path);
