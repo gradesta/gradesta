@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"path": "rust-util"
+		},
+		{
+			"path": "3rd-party/sysinfo"
+		},
+		{
+			"path": "3rd-party/ofiles"
+		},
+		{
+			"path": "manager"
+		},
+		{
+			"path": "protocol"
+		}
+	],
+	"settings": {}
+}
