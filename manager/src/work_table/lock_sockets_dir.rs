@@ -35,7 +35,7 @@ fn lock_sockets_dir(dir: &path::Path) -> Result<(), String> {
             .or_else(|err| Err(format!("Error reading lock file {:?}: {}", lockfile.as_os_str(), err)))?;
         let old_pid: i32 = contents
             .parse::<i32>()
-            .or_else(|err| Err(err.to_string()))?;
+            .or_else(|err| Err(format!("Corrupted lock file {:?}: {}", lockfile.as_os_str(), err.to_string())))?;
         let mut system_info = sysinfo::System::new();
         system_info.refresh_process(old_pid);
         match system_info.process(old_pid) {
@@ -63,26 +63,26 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn test_lock_empty_sockets_dir() {
+    fn test_lock_sockets_dir() {
         use tempdir::TempDir;
         let tmp_dir = TempDir::new("test_lock_sockets_dir1").unwrap();
         lock_sockets_dir(&tmp_dir.path()).unwrap();
         let lockfile_path = tmp_dir.path().join("PID.lock");
         assert!(lockfile_path.exists());
-        let mut lockfile = fs::File::open(lockfile_path).unwrap();
+        let mut lockfile = fs::File::open(&lockfile_path).unwrap();
         let mut contents = String::new();
         lockfile.read_to_string(&mut contents).unwrap();
         assert_eq!(contents, format!("{}", std::process::id()));
-    }
-
-    #[test]
-    fn test_lock_locked_sockets_dir() {
-        use tempdir::TempDir;
-        let tmp_dir = TempDir::new("test_lock_sockets_dir1").unwrap();
-        lock_sockets_dir(&tmp_dir.path()).unwrap();
+        drop(lockfile);
         match lock_sockets_dir(&tmp_dir.path()){
             Ok(_) => unreachable!(),
             Err(e) => assert!(e.starts_with("The sockets directory is already locked by pid ")),
+        }
+        let mut lockfile = fs::OpenOptions::new().write(true).open(lockfile_path).unwrap();
+        lockfile.write("not a pid".as_bytes()).unwrap();
+        match lock_sockets_dir(&tmp_dir.path()){
+            Ok(_) => unreachable!(),
+            Err(e) => assert!(e.starts_with("Corrupted lock file ")),
         }
     }
 }
