@@ -10,7 +10,7 @@
 # You should consider this document to be read only.
 # Changes to level 0 of the protocol are not welcome.
 # The reason for this is not animosity towards others,
-#  but due to a desire to maintain compatibility as widely as possible.
+# but due to a desire to maintain compatibility as widely as possible.
 
 struct Address {
   socket            @0 :Text;
@@ -137,6 +137,11 @@ struct ForClient {
   encryptionUpdates @6 :List(EncryptionUpdate);
   timestamp         @7 :List(Time);
   # timestamp is sent as a list, but it is really just an optional value.
+  message_number    @8 :Int64;
+  # Must always increase by one or restart from zero
+  # If restarted from zero this means that the connection
+  # has been reset and the state of the protocol should
+  # reset to a clean slate.
 }
 
 struct ForService {
@@ -147,6 +152,10 @@ struct ForService {
   select            @4 :List(Address);
   deselect          @5 :List(Int64); # Instance ids
   timestamp         @6 :List(Time);
+  message_number    @7 :Int64;
+  # Each time the for client message number is zero the client
+  # should reset its state and send a zero numbered message
+  # to let the service know that it has been reset.
 }
 
 struct Message {
