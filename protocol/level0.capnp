@@ -161,4 +161,9 @@ struct ForService {
 struct Message {
   forClient        @0 :ForClient;
   forService       @1 :ForService;
+  track            @2 :List(Text);
+  # A LIFO list of socket forwarding addresses.
+  # Does not need to be set by clients/services.
+  # Must be cleared by websocket bridges at network boundaries
+  # to prevent leakage of info about local network topologies!
 }
