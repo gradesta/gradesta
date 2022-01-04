@@ -22,6 +22,8 @@ We do not engage in or facilitate non-consensual transactions (commercial or oth
 
 6. Business Transparency: In order for our customers to provide informed consent when engaging in business with us, our customers should always know our business model and how we make money. We make money by providing value to our customers, not through trickery.
 
+7. Employee consent: Employees should want to work for Gradesta. If we find out that they are seeking work elsewhere they will not be punished for doing so. It is fine for employees to post their resumes on a jobs site. Employees are free people, not serfs.
+
 Core Value 2: Environment, Habitat, and Biodiversity
 --------------------------------------------------------------
 
@@ -33,21 +35,22 @@ Internal business operations will be conducted in such a way as to minimize thei
 
 3. Direct consumption: Food packaging, office supplies, and marketing materials must be sustainable to the extent possible. We will prefer non-packaged food and food in re-usable packaging to packaged food and biodegradable food packaging to non-biodegradable. Sustainability must be prioritized when choosing office supplies and marketing materials.
 
-Core Value 3: Family
-------------------------
-
-Our workers must be able to spend time with their family if they wish. This also applies to "de-facto" family members, such as non-married long term partners and their children.
-
-1. Displacement: We should avoid separating families by encouraging workers to relocate without their family. If relocation is necessary we should make sure we take into account the costs of family relocation and re-emberse those costs to the extent reasonable.
-
-2. Sickness: Workers should be able to take unpaid time off to spend time with sick family members without repercussions to their careers.
-
-3. Children: Unless the law provides better, workers with long term contracts should receive 6 months paid leave to use during the first two years of each of their children's lives. Workers with long term contracts may take unpaid leave for up to 3 years during the first 7 years of their children's lives without loosing their positions.
-
-Core Value 4: Don't stifle innovation
+Core Value 3: Don't stifle innovation
 --------------------------------------------
 
 While most software Gradesta will produce is Free Open Source Software, there is nothing in our codex against producing proprietary software and/or patenting inventions. However, one of our core values is to never use patents to stifle innovation. We will always be willing to license our patents individually, and for a reasonable price, even to direct competitors.
+
+
+Core Value 4: Family & Friends
+------------------------------------
+
+Our workers must be able to spend time with their family if they wish. This also applies to "de-facto" family members, such as non-married partners and their children.
+
+1. Displacement: We should avoid separating families. We should not force, preasure or encourage workers to relocate without their family. If relocation is necessary we should make sure we take into account the costs of family relocation and re-emberse those costs to the extent reasonable.
+
+2. Sickness: Workers should be able to take unpaid time off to spend time with sick family members without repercussions to their careers.
+
+3. Children: Unless the law provides better, workers with long term contracts should receive 6 months paid leave to use during the first two years of each of their children's lives. Workers with long term contracts may take unpaid leave for up to 3 years during the first 7 years of their children's lives without loosing their positions. We do not descriminate by gender/sex in any of our dealings including this one.
 
 Core Value 5: That's not all
 ---------------------------------
