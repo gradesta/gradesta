@@ -50,7 +50,7 @@ Our workers must be able to spend time with their family if they wish. This also
 
 2. Sickness: Workers should be able to take unpaid time off to spend time with sick family members without repercussions to their careers.
 
-3. Children: Unless the law provides better, workers with long term contracts should receive 6 months paid leave to use during the first two years of each of their children's lives. Workers with long term contracts may take unpaid leave for up to 3 years during the first 7 years of their children's lives without loosing their positions. We do not descriminate by gender/sex in any of our dealings including this one.
+3. Children: Unless the law provides better, workers with long term contracts should receive 6 months paid leave (paid at a livable wage, not necessarily the same wage as full time work) to use during the first two years of each of their children's lives. Workers with long term contracts may take unpaid leave for up to 3 years during the first 7 years of their children's lives without loosing their positions. We do not descriminate by gender/sex in any of our dealings including this one.
 
 Core Value 5: That's not all
 ---------------------------------
