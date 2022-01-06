@@ -35,7 +35,7 @@ In the new protocol there are no walk trees, nor roles. There is optional client
 Business model
 =======
 
-I was indoctrinated with Free software and leftist ideology from a young age, however I've found myself more and more frustrated by the apparent lack of spontaneous self organization of free people (doing exactly what I personally want, of course). Boring people seem to do things like drink beer in their free time and interesting people often seem to have their own ideas. If I want people to work on MY ideas, I have to find a way inspire them or to pay them. After mulling it over in my head, I decided for the later, mostly because inspiration alone doesn't put food on the table.
+I was indoctrinated with Free software and leftist ideology from a young age, however I've found myself more and more frustrated by the apparent lack of spontaneous self organization of free people (doing exactly what I personally want, of course). Boring people seem to do things like drink beer in their free time and interesting people often seem to have their own ideas. (Note: I know plenty of interesting people who drink beer, don't take me the wrong way). If I want people to work on MY ideas, I have to find a way inspire them or to pay them. After mulling it over in my head, I decided for the later, mostly because inspiration alone doesn't put food on the table.
 
 *Goodnight gradesta*
 
