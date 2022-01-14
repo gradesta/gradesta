@@ -112,6 +112,8 @@ The only question is how to prevent competitors from burning eachother? Well in 
 Enterprise certification program
 ----------- 
 
+I don't really want to spend my life doing enterprise sales so I probably won't do this.
+
 Almost all of the software I've described can make money using an open-core if not completely open source business model. However, if there was still doubt about the profitability of gradesta studio, there is another way of making money off of it: performing security audits on networks of Elves (Internal to the organization or otherwise) and dynamic data sources. We could find good means of static analysis and sell big organizations certain guarantees about their particular configurations. We could certify those configurations that we had audited and state that the certification is only valid if all users of the system were trained. We could then get payed to train users about encryption and security. We could also make a deal with some insurance companies, that they would provide insurance only on certified gradesta installations/configurations. This would make pricing easy:
 
 If
