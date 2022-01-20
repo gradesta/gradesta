@@ -3,7 +3,7 @@ Code of Conduct
 
 This code of conduct is derived from and very similar to the [Python Community Code of Conduct](https://www.python.org/psf/conduct/) and we believe in spirit essentially identical.
 
-The Gradesta Open Source community hopes to be made up of members from around the globe with a diverse set of skills, personalities, and experiences. It is through these differences that our community experiences great successes and continued growth. When you're working with members of the community, this Code of Conduct will help steer your interactions and keep the Gradesta Open Source community a positive, successful, and growing community.
+The Gradesta Open Source community hopes to be made up of members from around the globe with a diverse set of skills, personalities, and experiences. It is through these differences that our community hopes to experience great successes and continued growth. When you're working with members of the community, this Code of Conduct will help steer your interactions and keep the Gradesta Open Source community a positive, successful, and growing community.
 
 Our Community
 ----------------
