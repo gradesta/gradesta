@@ -48,6 +48,7 @@ Examples of unacceptable behavior by participants include:
  - Pattern of inappropriate social contact, such as requesting/assuming inappropriate levels of intimacy with others
  - Sustained disruption of online community discussions, in-person presentations, or other in-person events
  - Continued one-on-one communication after requests to cease
+ - Claustrophobia inducing body language such as repeated walking towards someone who is stepping backwards to maintain space, leaning over someone who is sitting or placing your hand on the back of their chair in such a way that they cannot easily leave their seat, if standing near a wall placing your hand on the wall above the head or shoulder of the person who is closer to the wall. 
  - Other conduct that is inappropriate for a professional audience including people of many different backgrounds
 
 Community members asked to stop any inappropriate behavior are expected to comply immediately.
