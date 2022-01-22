@@ -14,6 +14,10 @@ If I find that I'm getting a lot of SPAM PRs, I'll begin to sell cryptographic s
 Finding other people's problems
 --------------------------------------
 
+There are [already companies](https://www.trackerintelligence.com/resources/procurement-news/how-do-i-find-private-sector-tenders/) that exist for the sole purpose of finding private sector public tenders. There are also companies who manage private sector public tenders [while taking a commission](https://www.nejremeslnici.cz/). But why don't you cut out the middle-man.
+
 GitHub lets you search by filename, so you can find all of the problems on github by searching for [SOLVExTHESExPROBLEMS/](https://github.com/search?q=filename%3A%22SOLVExTHESExPROBLEMS%2F%22). The `x`es are there because [GitHub does not support exact string search](https://stackoverflow.com/questions/26433561/how-to-search-on-github-to-get-exact-string-matches-including-special-character).
 
-[1] The idea that pricing is anything but a random game of psychology is obviously false for all non-commodity products. The buyer side idea here is to create markets and turn products into commodities. The question is, whether 
+Note: I've noticed that files don't show up in github's filename search immediately, perhaps this process can be improved a bit.
+
+[1] The idea that pricing is anything but a game of psychology is obviously false for all non-commodity products. The buyer side idea here is to create markets and turn products into commodities. The question is, whether suppliers will engage with those who publish public tenders, or if they will continue to try to cold call at random instead.
