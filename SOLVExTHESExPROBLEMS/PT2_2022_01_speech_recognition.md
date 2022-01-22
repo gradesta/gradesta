@@ -1,6 +1,8 @@
 Public tender #2: Speech recognition
 -------------------------------------------
 
+keywords: STT, speech recognition
+
 Goodnight gradesta is an audio native note taking app. It allows you to record short snippets of audio and work with them as easily as you work with text. While audio is a first class citizen in goodnight, I still want to be able to add text previews to speech snippets, to make them easier to work with. For this, I need great speech recognition that works efficiently with very short snippets of speech. Ideally, it should support many languages.
 
 I found [this list](https://fosspost.org/open-source-speech-recognition/) of open source speech recognition engines online. It is not clear to me how good they are, or whether they come with training data or need to be trained. If they need to be trained, then they are useless to me, I need something that works out of the box.
