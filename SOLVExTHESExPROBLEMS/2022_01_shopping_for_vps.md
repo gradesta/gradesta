@@ -1,6 +1,8 @@
 Shopping for servers
 ------------------------
 
+Keywords: vps, hosting, dedicated server
+
 This list is from 1.2022.
 
 According to our ethical codex we should be protecting biodiversity, but typical web hosting can be rather nasty. Some if it is even powered by lignite coal which isn't typically good for biodiversity (though the nature reserves created from exhausted lignite mines are actually some of the most biodiverse places in Czechia).
@@ -73,9 +75,30 @@ The verification is performed to keep your personal data safe."
  - No reviews
  - Decided to try them out because I'm bored searching
 
- 
- 
+Conclusion of search
+------------------------
 
- 
- 
+Right now the market is not doing a good job of providing affordable and ecologically powered servers. Or at least I cannot find them. All of the options I found have major drawbacks. Most have very low data transfer limits, datacenterlight has extremely high disk space costs. With the limited bandwidth it will be necessary, if I am to use green power for servers at all, to divide up compute and storage. Storing in CDNs and S3 compatible services that use traditional power sources and computing in the green places. Luckily, I planned around the ability to divide the storage of media files from the serving of gradesta cells.
 
+Ideally, media files on the edge would be encrypted. One possible flow diagram would be.
+
+```
+
+  ╭──────────╮                       ╭──────────────────────────────╮
+  │ client   │ ←-gradesta protocol-→ │ hydropowered gradesta server │
+  ╰──────────╯                       ╰──────────────────────────────╯
+        ↑
+        │                                 ╭───────────────────────────╮
+        ╰─ encrypted and signed media ──▸ │ coal powered media server │
+                                          ╰───────────────────────────╯
+
+```
+
+However, this doesn't account for automatic transcription of audio using STT (Speech recognition).
+
+The real setup will probably look something like [this architecture diagram](../gradesta s.r.o. commercial.stuff/top_secret/network_architecture.md).
+
+Request for help
+-------------------
+
+If you have information about green hosting services that I've missed, don't hesitate to create a PR.
