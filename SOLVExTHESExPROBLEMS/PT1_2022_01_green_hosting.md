@@ -1,5 +1,5 @@
-Shopping for servers
-------------------------
+Public tender #1: Shopping for servers
+----------------------------------------------
 
 Keywords: vps, hosting, dedicated server
 
