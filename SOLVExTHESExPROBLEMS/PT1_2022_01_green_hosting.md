@@ -96,7 +96,7 @@ Ideally, media files on the edge would be encrypted. One possible flow diagram w
 
 However, this doesn't account for automatic transcription of audio using STT (Speech recognition).
 
-The real setup will probably look something like [this architecture diagram](../gradesta s.r.o. commercial.stuff/top_secret/network_architecture.md).
+The real setup will probably look something like [this architecture diagram](../gradesta-s.r.o.-commercial-stuff/top_secret/network_architecture.md).
 
 Request for help
 -------------------
