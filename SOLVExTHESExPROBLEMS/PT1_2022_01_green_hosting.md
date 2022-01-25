@@ -74,6 +74,12 @@ The verification is performed to keep your personal data safe."
  - [Super open](https://datacenterlight.ch/en-us/cms/open-infrastructure-project/)
  - No reviews
  - Decided to try them out because I'm bored searching
+ 
+7. [bahnhof.cloud](bahnhof.cloud)
+ - VPS 2vCPU 4GB ram 50GB storage for 39 EUR per month (No info on transfer)
+ - Sweeden
+ - "Certified green power"
+ - Heat repurposing to heat homes
 
 Conclusion of search
 ------------------------
