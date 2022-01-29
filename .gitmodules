@@ -7,3 +7,6 @@
 [submodule "3rd-party/sysinfo"]
 	path = 3rd-party/sysinfo
 	url = git@github.com:GuillaumeGomez/sysinfo.git
+[submodule "gradesta-s.r.o.-commercial-stuff/web/themes/portio"]
+	path = gradesta-s.r.o.-commercial-stuff/web/themes/portio
+	url = git@github.com:StaticMania/portio-hugo.git
