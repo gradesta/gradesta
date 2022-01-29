@@ -13,11 +13,11 @@ name = "About"
 url = "#about"
 weight = 2
 [[menu.main]]
-name = "Service"
+name = "Features"
 url = "#service"
 weight = 3
 [[menu.main]]
-name = "Work"
+name = "Stories"
 url = "#portfolio"
 weight = 4
 [[menu.main]]
