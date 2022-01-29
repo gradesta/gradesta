@@ -9,4 +9,4 @@
 	url = git@github.com:GuillaumeGomez/sysinfo.git
 [submodule "gradesta-s.r.o.-commercial-stuff/web/themes/portio"]
 	path = gradesta-s.r.o.-commercial-stuff/web/themes/portio
-	url = git@github.com:StaticMania/portio-hugo.git
+	url = git@github.com:gradesta/website-theme-portio-hugo.git
