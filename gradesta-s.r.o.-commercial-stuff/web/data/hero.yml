@@ -6,5 +6,4 @@ content: >
   
 buttonName: Contact me
 buttonURL: contact
-image: images/hero/2960351.jpg
-videoThumb: images/hero/popup-thumb.png
+image: https://assets.gradesta.com/wireframes/Home.jpg
