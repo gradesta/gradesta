@@ -20,3 +20,5 @@ You can find a presentation on the license below:
 [Youtube link](https://youtu.be/1rsQ4-YnubM)
 
 [Slides](https://assets.gradesta.com/screencasts/AML.pdf)
+
+(Presentation license CC-BY-4.0 Interantional)
