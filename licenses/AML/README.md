@@ -15,7 +15,7 @@ The license text can be found [here](./AML.md).
 
 You can find a presentation on the license below:
 
-[![Play button](https://assets.gradesta.com/screencast.png)](https://assets.gradesta.com/screencasts/2022-02-18-Active maintainers license 2022-02-18 15-35-41.mp4)
+[![Play button](https://assets.gradesta.com/screencast.png)](https://assets.gradesta.com/screencasts/2022-02-18-Active%20maintainers%20license%202022-02-18%2015-35-41.mp4)
 
 [Youtube link](https://youtu.be/1rsQ4-YnubM)
 
