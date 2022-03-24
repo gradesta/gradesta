@@ -1,0 +1,4 @@
+#!/bin/bash
+ffmpeg -i "$1.mkv" -codec copy "$1.mp4"
+s3cmd put -P "$1.mp4" "s3://gradesta-web-static/screencasts/$(date +%Y-%m-%d)-$1.mp4"
+echo https://assets.gradesta.com/screencasts/$(date +%Y-%m-%d)-$1.mp4
