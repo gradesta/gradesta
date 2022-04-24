@@ -26,7 +26,7 @@ Our Standards
 The Gradesta Open Source community is dedicated to providing a positive experience as many people as possible, regardless of:
  - _Biology_: including age, genetics (race, sex), sexual orientation, disability, physical appearance, health(including body size and mental health)
  - _Origin_: ethnicity, nationality, socio-economic status
- - And to the extent that they are not in conflict with the above: Identity and belief including religion or lack their of, political views, and gender identity.
+ - And to the extent that they are not in conflict with the above: Identity and belief including religion or lack their of, political views, and gender.
 
 Inappropriate Behavior
 ---------------------------
