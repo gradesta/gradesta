@@ -1,6 +1,10 @@
 MDL - Multideveloper License
 -----------------------------------
 
+** Section §0 - Preamble **
+
+It is common for companies providing commercial support for an open source project to ask contributors to sign a CLA in order to allow for easy relicensing and the sale of commercial licenses. CLAs tend to take rights away from contributors and give those rights to the host company. The MDL is intended to provide the same benefits of a CLA, but to not tie the power to a specific legal entity and to give power over licensing decisions and revenue share back to the contributors.
+
 ** Section §1 - Definitions **:
 
 a) **COLABORATIVE WORK***: A work or body of works wich has been composed over a period of time by one or more contributors.
@@ -49,3 +53,8 @@ d) Owners of DTIVs may sell their nominations or otherwise profit from the nomin
 
 a) Two FORKs of the same work may be combined and be treated as one JOINTLY OWNED WORK. Voting rights of the DTIVs are equal.
 b) Two distinct works under this license may be combined. Works are considered distinct if they share less than %60 of their DTIVs. When two distinct works are combined, usage and performance rights to each work must be licensed separately.
+
+** Section §7 - Updating this license **
+
+a) Anyone may publicly propose a change to this license
+b) If that change is publicly nominated by %80 of the DTIVs, the license will be updated
