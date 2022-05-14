@@ -12,11 +12,10 @@ weight = 1
 name = "Features"
 url = "#service"
 weight = 3
-weight = 4
 [[menu.main]]
 name = "Devlog"
 url = "/blog"
-weight = 5
+weight = 4
 
 # Sitemap Menu
 [[menu.sitemap]]
