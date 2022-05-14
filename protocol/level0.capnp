@@ -24,7 +24,7 @@ struct Address {
   qargs             @4 :List(Text); # Names of quargs
   qvals             @5 :List(Text); # Values of quargs
   # qargs and qvals can be zipped together to get the pairs you want.
-  session          @6 :UInt64; # The id of the session.
+  session           @6 :UInt64; # The id of the session.
 }
 
 struct Time {
