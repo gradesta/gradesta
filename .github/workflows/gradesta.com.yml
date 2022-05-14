@@ -25,7 +25,11 @@ jobs:
         with:
           hugo-version: '0.91.2'
           extended: true
-          source: gradesta-s.r.o.-commercial-stuff/web
+          
+          
+      - name: Build
+        working-directory: gradesta-s.r.o.-commercial-stuff/web
+        run: hugo
           
       - name: 📂 Sync files
         uses: SamKirkland/FTP-Deploy-Action@4.2.0
