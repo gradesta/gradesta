@@ -17,11 +17,14 @@ jobs:
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
-
-      # Runs a single command using the runners shell
-      - name: hugo
-        uses: klakegg/actions-hugo@1.0.0
         with:
+          submodules: recursive
+
+      - name: Setup Hugo
+        uses: peaceiris/actions-hugo@v2
+        with:
+          hugo-version: '0.91.2'
+          extended: true
           source: gradesta-s.r.o.-commercial-stuff/web
           
       - name: 📂 Sync files
