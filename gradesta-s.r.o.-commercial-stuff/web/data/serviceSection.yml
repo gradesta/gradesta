@@ -1,45 +1,24 @@
 ---
 enable: true
-topTitle: Working Area
+topTitle: What can it do?
 title: >
-  ## Creative Services
+  ## Features
 
-  Enjoy team diversity and increase their networks among others people in
-  various fields by provided.
 service:
   - content: >
-      #### UI/UX Design 
+      ####  Quickly capture and organize images
 
-      Lorem ipsum dolor sit amet conset sadipscing elitr, sed diam nonumy eirmod
-      tempor invidunt ut labore et dolore magna aliquyam erat.
-    image: images/service/ui-ux.svg
-  - content: >
-      #### Web Development 
+      Take a photo on your cellphone and add audio or text notes immediately. No need to organize your images at your desk.
 
-      Lorem ipsum dolor sit amet conset sadipscing elitr, sed diam nonumy eirmod
-      tempor invidunt ut labore et dolore magna aliquyam erat.
-    image: images/service/web.svg
-  - content: >
-      #### Creative Design 
-
-      Lorem ipsum dolor sit amet conset sadipscing elitr, sed diam nonumy eirmod
-      tempor invidunt ut labore et dolore magna aliquyam erat.
     image: images/service/creative.svg
   - content: >
-      #### Branding
+      ####  Record and organize audio notes
 
-      Lorem ipsum dolor sit amet conset sadipscing elitr, sed diam nonumy eirmod
-      tempor invidunt ut labore et dolore magna aliquyam erat.
+      With gradesta, audio notes aren't just some 3 hour long mp3 you have to "deal with later" you can organize them imediately and they are automatically transcribed for quick reference.
     image: images/service/branding.svg
+    
   - content: >
-      #### UI/UX Design
+      #### Quickly build interactive multimedia services
 
-      Lorem ipsum dolor sit amet conset sadipscing elitr, sed diam nonumy eirmod
-      tempor invidunt ut labore et dolore magna aliquyam erat.
+      Gradesta is a protocol. You can create your own interactive multimedia services and serve them to anyone using the app.
     image: images/service/ui-ux.svg
-  - content: >
-      #### Web Development
-
-      Lorem ipsum dolor sit amet conset sadipscing elitr, sed diam nonumy eirmod
-      tempor invidunt ut labore et dolore magna aliquyam erat.
-    image: images/service/web.svg

@@ -2,7 +2,7 @@
 enable: true
 topTitle: Hello, this is gradesta 
 content: >
-  # We are working on audio native computing
+  # We are building a new form of connected multimedia document
   
 buttonName: Contact me
 buttonURL: contact
