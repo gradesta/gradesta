@@ -34,7 +34,7 @@ weight = 3
 [params]
 blogPageURL = "blog"
 contactLink = "contact"
-copyright = "All right reserved copyright © gradesta s.r.o. 2022"
+copyright = "All rights reserved copyright © gradesta s.r.o. 2022"
 footerLogo = "https://assets.gradesta.com/long-path-light-t.png"
 logo = "https://assets.gradesta.com/long-logo-t.png"
 
