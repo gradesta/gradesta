@@ -18,7 +18,7 @@ service:
     image: images/service/branding.svg
     
   - content: >
-      #### Quickly build interactive multimedia services
+      #### Build interactive multimedia services
 
       Gradesta is a protocol. You can create your own interactive multimedia services and serve them to anyone using the app.
     image: images/service/ui-ux.svg
