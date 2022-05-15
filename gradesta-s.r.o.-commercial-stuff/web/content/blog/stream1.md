@@ -1,5 +1,5 @@
 ---
-title: "Building our website: Session 1"
+title: "Building our website"
 date: 2022-01-26
 featureImage: https://assets.gradesta.com/vegan-buddies/img/avomik.jpg
 ---
