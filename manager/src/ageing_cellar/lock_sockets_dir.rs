@@ -1,5 +1,4 @@
 use nix::fcntl;
-use nix::fcntl::FlockArg;
 use std::fs;
 use std::io::{Read, Write};
 use std::path;
@@ -7,7 +6,7 @@ use sysinfo;
 use sysinfo::{SystemExt, ProcessExt};
 
 #[cfg(unix)]
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::{AsRawFd};
 #[cfg(target_os = "wasi")]
 use std::os::wasi::io::{AsRawFd, RawFd};
 
@@ -18,7 +17,7 @@ use std::os::wasi::io::{AsRawFd, RawFd};
 /// process, returns a string complaining about the problem.
 /// If any unexpected problems occur, also returns a string
 /// complaining about them.
-fn lock_sockets_dir(dir: &path::Path) -> Result<(), String> {
+pub fn lock_sockets_dir(dir: &path::Path) -> Result<(), String> {
     let lockfile = dir.join("PID.lock");
     let exists = lockfile.exists();
     let mut f = fs::OpenOptions::new()

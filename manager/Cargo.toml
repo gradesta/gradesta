@@ -8,13 +8,14 @@ edition = "2021"
 
 [dependencies]
 zmq = "0.9.2"
-clap = "2.33.3"
+clap = { version = "3.1.18", features = ["derive"] }
 notify = "4.0.17"
 ofiles = "0.2.0"
 nix = "0.23.0"
 itertools = "0.10.3"
 "rust-util" = { path = "../rust-util" }
 sysinfo = "0.22.4"
+humantime = "2.1.0"
 
 [dev-dependencies]
 tempdir = "0.3.7"

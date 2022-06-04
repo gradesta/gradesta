@@ -1,5 +1,11 @@
 mod work_table;
 mod ageing_cellar;
+
+extern crate clap;
+use clap::{App, Arg, SubCommand};
+use std::env;
+use work_table::parse_args_and_environment::*;
+
 /*
 extern crate notify;
 
@@ -8,11 +14,8 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::sync::mpsc::channel;
 use std::time::Duration;
 
-use std::env;
 use zmq;
 
-extern crate clap;
-use clap::{App, Arg, SubCommand};
 
 fn watch(path: String) -> notify::Result<()> {
     println!("Watching {}", path);
@@ -48,13 +51,12 @@ fn watch(path: String) -> notify::Result<()> {
         }
     }
 }
+ */
 
 fn main() {
-    let matches = App::new("Gradesta manager")
-        .version("0.0")
-        .author("Timothy Hobbs <goodnight@gradesta.com>")
-        .about("Manage and route messages between gradesta protocol services. Provides the meta namespace. Evaluates walk trees.")
-        .get_matches();
+    let config = parse_args_and_environment();
+
+    println!("Init: {:?}", config.init);
 
     let mut socket_dir = String::from("");
     match env::var("HOME") {
@@ -66,6 +68,5 @@ fn main() {
             eprintln!("No $HOME directory.")
         }
     };
-    watch(socket_dir);
+    //watch(socket_dir);
 }
-*/
