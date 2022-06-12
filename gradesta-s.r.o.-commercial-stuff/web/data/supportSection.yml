@@ -41,7 +41,7 @@ priceLevel:
 
     image: images/contact/email.svg
     callToAction: Get support
-    callToActionLink: "mailto:tim@gradesta.com?subject=Email support request: <subject>&body=In your initial email, please include the name, address, and tax number (if applicable) of the organization to be invoiced."
+    callToActionLink: "mailto:tim@gradesta.com?subject=Email support request: <subject>&body=In your initial email, please include the name, address, and VAT number (if applicable) of the organization to be invoiced."
 
   - content: >
       ### Integration and development work
@@ -49,7 +49,7 @@ priceLevel:
       €60 an hour
 
     callToAction: Integrate & develop
-    callToActionLink: "mailto:tim@gradesta.com?subject=Development request: <subject>&body=In your initial email, please include the name, address, and tax number (if applicable) of the organization to be invoiced."
+    callToActionLink: "mailto:tim@gradesta.com?subject=Development request: <subject>&body=In your initial email, please include the name, address, and VAT number (if applicable) of the organization to be invoiced."
     image: images/service/branding.svg
 
   - content: >
@@ -58,7 +58,7 @@ priceLevel:
       €120 an hour
 
     callToAction: Get priority support
-    callToActionLink: "mailto:tim@gradesta.com?subject=High priority support request: <subject>&body=In your initial email, please include the name, address, and tax number (if applicable) of the organization to be invoiced."
+    callToActionLink: "mailto:tim@gradesta.com?subject=High priority support request: <subject>&body=In your initial email, please include the name, address, and VAT number (if applicable) of the organization to be invoiced."
     image: images/contact/time.svg
 
 pricingNotes: >
