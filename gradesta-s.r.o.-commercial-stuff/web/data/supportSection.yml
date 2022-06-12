@@ -1,0 +1,57 @@
+---
+productsTitle: >
+  # What we can provide
+
+product:
+  - content: >
+      ####  Gradesta integrations
+
+      We provide support for integrating the gradesta protocol into your applications.
+
+  - content: >
+      ####  django-import-export-celery support
+
+      We provide support for django-import-export-celery.
+
+      [django-import-export-celery](https://github.com/auto-mat/django-import-export-celery) is a django app for importing and exporting large amounts of data asynchronously.
+
+  - content: >
+      ####  django-smmapdfs support
+
+      We provide support for django-smmapdfs.
+
+      [django-smmapdfs](https://github.com/auto-mat/smmapdfs) is a django app for generating pdfs from django models using a template PDF that can be built by a graphic designer.
+
+pricingTitle: >
+  # Pricing
+
+priceLevel:
+  - content: >
+      ### Basic email support
+
+      €40 an hour
+
+    image: images/contact/email.svg
+    callToAction: Get support
+    callToActionLink: "mailto:tim@gradesta.com?subject=Email support request: <subject>&body=In your initial email, please include the name, address, and tax number (if applicable) of the organization to be invoiced."
+
+  - content: >
+      ### Integration and development work
+
+      €60 an hour
+
+    callToAction: Integrate our libraries
+    callToActionLink: "mailto:tim@gradesta.com?subject=Development request: <subject>&body=In your initial email, please include the name, address, and tax number (if applicable) of the organization to be invoiced."
+    image: images/service/branding.svg
+
+  - content: >
+      ### High priority support
+
+      €120 an hour
+
+    callToAction: Get priority support
+    callToActionLink: "mailto:tim@gradesta.com?subject=High priority support request: <subject>&body=In your initial email, please include the name, address, and tax number (if applicable) of the organization to be invoiced."
+    image: images/contact/time.svg
+
+pricingNotes: >
+  Work is billed in 15 minute intervals

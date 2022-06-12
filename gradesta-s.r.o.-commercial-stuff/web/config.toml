@@ -23,17 +23,21 @@ name = "Open source project"
 url = "https://gradesta.org"
 weight = 1
 [[menu.sitemap]]
+name = "Comercial support"
+url = "support"
+weight = 2
+[[menu.sitemap]]
 name = "Github"
 url = "https://github.com/gradesta/gradesta"
-weight = 2
+weight = 3
 [[menu.sitemap]]
 name = "Ethical codex"
 url = "https://github.com/gradesta/gradesta/blob/default/gradesta-s.r.o.-commercial-stuff/ethical_codex.md"
-weight = 3
+weight = 4
 
 [params]
 blogPageURL = "blog"
-contactLink = "contact"
+supportLink = "support"
 copyright = "All rights reserved copyright © gradesta s.r.o. 2022"
 footerLogo = "https://assets.gradesta.com/long-path-light-t.png"
 logo = "https://assets.gradesta.com/long-logo-t.png"
