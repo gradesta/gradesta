@@ -22,6 +22,22 @@ product:
 
       [django-smmapdfs](https://github.com/auto-mat/smmapdfs) is a django app for generating pdfs from django models using a template PDF that can be built by a graphic designer.
 
+  - content: >
+      ####  django-helpdesk support
+
+      We provide support for django-helpdesk.
+
+      [django-smmapdfs](https://github.com/django-helpdesk/django-helpdesk) is a ticketing system for django.
+
+  - content: >
+      ####  petgraph support
+
+      We provide support for petgraph.
+
+      [petgraph](https://github.com/petgraph/petgraph) is a rust library that provides graph datastructures and implements common graph algorithms.
+
+
+
 pricingTitle: >
   # Pricing
 
@@ -40,7 +56,7 @@ priceLevel:
 
       €60 an hour
 
-    callToAction: Integrate our libraries
+    callToAction: Integrate & develop
     callToActionLink: "mailto:tim@gradesta.com?subject=Development request: <subject>&body=In your initial email, please include the name, address, and tax number (if applicable) of the organization to be invoiced."
     image: images/service/branding.svg
 
