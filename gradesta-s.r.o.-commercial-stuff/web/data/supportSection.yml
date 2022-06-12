@@ -11,28 +11,20 @@ product:
   - content: >
       ####  django-import-export-celery support
 
-      We provide support for django-import-export-celery.
-
       [django-import-export-celery](https://github.com/auto-mat/django-import-export-celery) is a django app for importing and exporting large amounts of data asynchronously.
 
   - content: >
       ####  django-smmapdfs support
-
-      We provide support for django-smmapdfs.
 
       [django-smmapdfs](https://github.com/auto-mat/smmapdfs) is a django app for generating pdfs from django models using a template PDF that can be built by a graphic designer.
 
   - content: >
       ####  django-helpdesk support
 
-      We provide support for django-helpdesk.
-
-      [django-smmapdfs](https://github.com/django-helpdesk/django-helpdesk) is a ticketing system for django.
+      [django-helpdesk](https://github.com/django-helpdesk/django-helpdesk) is a ticketing system for django.
 
   - content: >
       ####  petgraph support
-
-      We provide support for petgraph.
 
       [petgraph](https://github.com/petgraph/petgraph) is a rust library that provides graph datastructures and implements common graph algorithms.
 
