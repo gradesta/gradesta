@@ -4,27 +4,27 @@ productsTitle: >
 
 product:
   - content: >
-      ####  Gradesta integrations
+      ####  gradesta ∼ integrations & support
 
       We provide support for integrating the gradesta protocol into your applications.
 
   - content: >
-      ####  django-import-export-celery support
+      ####  django-import-export-celery ∼ integrations & support
 
       [django-import-export-celery](https://github.com/auto-mat/django-import-export-celery) is a django app for importing and exporting large amounts of data asynchronously.
 
   - content: >
-      ####  django-smmapdfs support
+      ####  django-smmapdfs ∼ integrations & support
 
       [django-smmapdfs](https://github.com/auto-mat/smmapdfs) is a django app for generating pdfs from django models using a template PDF that can be built by a graphic designer.
 
   - content: >
-      ####  django-helpdesk support
+      ####  django-helpdesk ∼ integrations & support
 
       [django-helpdesk](https://github.com/django-helpdesk/django-helpdesk) is a ticketing system for django.
 
   - content: >
-      ####  petgraph support
+      ####  petgraph ∼ support
 
       [petgraph](https://github.com/petgraph/petgraph) is a rust library that provides graph datastructures and implements common graph algorithms.
 
@@ -37,7 +37,7 @@ priceLevel:
   - content: >
       ### Basic email support
 
-      €40 an hour
+      €40 an hour *
 
     image: images/contact/email.svg
     callToAction: Get support
@@ -46,7 +46,7 @@ priceLevel:
   - content: >
       ### Integration and development work
 
-      €60 an hour
+      €60 an hour *
 
     callToAction: Integrate & develop
     callToActionLink: "mailto:tim@gradesta.com?subject=Development request: <subject>&body=In your initial email, please include the name, address, and VAT number (if applicable) of the organization to be invoiced."
@@ -55,11 +55,11 @@ priceLevel:
   - content: >
       ### High priority support
 
-      €120 an hour
+      €120 an hour *
 
     callToAction: Get priority support
     callToActionLink: "mailto:tim@gradesta.com?subject=High priority support request: <subject>&body=In your initial email, please include the name, address, and VAT number (if applicable) of the organization to be invoiced."
     image: images/contact/time.svg
 
 pricingNotes: >
-  Work is billed in 15 minute intervals
+  \* Work is billed with a 15 minute minimum
