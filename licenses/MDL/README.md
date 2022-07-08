@@ -32,14 +32,14 @@ a) This license does not give you the right to use or perform this work for any 
  a1) The improvement of this work
  a2) The dissemination of this work
 
-** Section §4 - Licensors ***
+** Section §4 - Licensors **
 
 a) A legal entity becomes a LICENSOR if it is nominated by %60 of the DTIVs
 b) The owner of a DTIV may nominate one or more LICENSORs to use the work.
 c) Owners of DTIVs may NOT revoke a nomination for an already published work, however, they can create a new version of the work without a given nomination or with additional nominations.
 b) A LICENSOR may grant a non-exclusive license of their choice to any party.
 
-** Section §5 - DTIVs ***
+** Section §5 - DTIVs **
 
 a) In order for a CONTRIBUTOR to aquire DTIVs for their work, they MUST document their time investment using a screencast and publish this documentaiton along with the CONTRIBUTIONS that they relate to.
 b) The screencasts must be published using a widely readable file format.
