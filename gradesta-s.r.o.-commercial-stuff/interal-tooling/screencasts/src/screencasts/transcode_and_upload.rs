@@ -2,10 +2,12 @@ use super::parsing::{extract_screencast_tags};
 use std::path::{Path};
 use std::error::{Error};
 
+type Command = Vec<String>;
+
 /// Takes the contents of a blog post and returns a list of lists of external commands to run.
 /// These lists can be run in paralel.
 ///
-pub fn transcode_and_upload<'a>(blogpost: &'a str, video_files: Vec<&str>) -> Result<Vec<Vec<Vec<String>>>, Box<dyn Error + 'a>>
+pub fn transcode_and_upload<'a>(blogpost: &'a str, video_files: Vec<&str>) -> Result<Vec<Vec<Command>>, Box<dyn Error + 'a>>
 {
     let (_, screencasts) = extract_screencast_tags(blogpost)?;
     if video_files.len() != screencasts.len() {
