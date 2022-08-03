@@ -9,3 +9,4 @@ edition = "2021"
 clap = { version = "3.2.14", features = ["cargo"] }
 nom = { version = "7.1.1", features = ["alloc"] }
 os_str_bytes = "=6.1.0"
+daggy = "0.8.0"

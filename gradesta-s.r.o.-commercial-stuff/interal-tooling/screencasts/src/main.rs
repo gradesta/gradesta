@@ -28,11 +28,26 @@ fn main() {
             let video_files: Vec<&str> = video_files.map(|s| s.as_ref()).collect();
             match transcode_and_upload(&blog_post, video_files) {
                 Ok(commands) => {
-                    for commandset in commands {
-                        for command in commandset {
-                            println!("{:?}", command);
+                    // 1. Collect zero dependency targets
+                    let mut target_queue = vec![];
+                    use daggy::Walker;
+                    for node in commands.graph().node_indices() {
+                        if commands.parents(node).walk_next(&commands) == None {
+                            target_queue.push(node);
                         }
                     }
+                    // 2. Loop thorough collected targets, running them
+                    while target_queue.len() > 0 {
+                        match target_queue.pop() {
+                            Some(node) => {
+                                println!("{:?}", commands.node_weight(node));
+                            },
+                            None => {
+                                break;
+                            }
+                        };
+                    };
+                    // 2a. When a target completes, add its children to to the pool of targets to run.
                 },
                 Err(e) => {
                     eprintln!("{}", e);

@@ -39,12 +39,24 @@ The `publish_screencasts` command uploads the screencasts to an EC2 spot instanc
 
 So I've decided not to transcode the videos on the cloud afterall. I don't have the time to set it up and its not strictly necessary. Instead, I will simply transcode locally using ffmpeg as I have done in the past. I still need to write a script that extracts the screencast id tags from the blog entries, does the transcoding locally, and uploads them to the CDN.
 
+Part 3:
+--------
+
 {{<screencast "2022-07-24-657a1bb245023357b9a37519f01b4fea">}}
-(Part 3)
+
+Part 4:
+---------
 
 {{<screencast "2022-07-24-0b0a47829b3a9f8f57f19b7dd7c01117">}}
-(Part 4)
+
+Part 5: parsing out tags with nom
+---------------------------------------
 
 {{<screencast "2022-07-25-26d4043b2ab967ea24db5d20dd85c99e">}}
-(Part 5 - parsing out tags with nom)
+
+Part 6: Building the upload command dependency DAG and running the upload commands
+--------------------------------------------------------------------------------------
+
+{{<screencast "2022-08-03-a79910b214ad854b387814f1be3a57fe">}}
+
 
