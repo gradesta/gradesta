@@ -57,6 +57,8 @@ Part 5: parsing out tags with nom
 Part 6: Building the upload command dependency DAG and running the upload commands
 --------------------------------------------------------------------------------------
 
+I use the [daggy](https://docs.rs/daggy/latest/daggy/) package to build a dependeny DAG of commands that are run in parallel, in order of dependeny fulfillment, sort of similar to `make`.
+
 {{<screencast "2022-08-03-a79910b214ad854b387814f1be3a57fe">}}
 
 
