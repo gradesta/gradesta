@@ -12,3 +12,4 @@ os_str_bytes = "=6.1.0"
 daggy = "0.8.0"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0.59"
+futures = "0.3.21"

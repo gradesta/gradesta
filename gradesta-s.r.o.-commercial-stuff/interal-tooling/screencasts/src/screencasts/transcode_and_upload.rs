@@ -1,5 +1,5 @@
 use super::parsing::extract_screencast_tags;
-use daggy::Dag;
+use daggy::{Dag, NodeIndex};
 use std::cell::RefCell;
 use std::error::Error;
 use std::path::Path;
@@ -21,6 +21,7 @@ pub fn transcode_and_upload<'a>(
     }
     let mut commands: Dag<RefCell<Command>, ()> = Dag::new();
     let mut i = 0;
+    let mut first_transcode: Option<NodeIndex> = None;
     for screencast in screencasts {
         let mkvfile = video_files[i];
         let mp4file_path = Path::new(video_files[i]).with_extension("mp4");
@@ -37,6 +38,14 @@ pub fn transcode_and_upload<'a>(
                 .arg(mp4file.clone());
         }
         let c1 = commands.add_node(ffmpeg_cmd);
+        match first_transcode {
+            None => {
+                first_transcode = Some(c1);
+            }
+            Some(ft) => {
+                commands.add_edge(ft, c1, ())?;
+            }
+        }
         let s3cmd_cmd = RefCell::new(Command::new("s3cmd"));
         {
             let mut s3cmd_cmd_bld = s3cmd_cmd.borrow_mut();
@@ -66,7 +75,7 @@ mod tests {
             ],
         )
         .unwrap();
-        assert_eq!(format!("{:?}", commands), "Dag { graph: Graph { Ty: \"Directed\", node_count: 4, edge_count: 2, edges: (0, 1), (2, 3), node weights: {0: RefCell { value: Command { std: \"ffmpeg\" \"-i\" \"/home/user/Videos/screencast1.mkv\" \"/home/user/Videos/screencast1.mp4\", kill_on_drop: false } }, 1: RefCell { value: Command { std: \"s3cmd\" \"put\" \"-P\" \"/home/user/Videos/screencast1.mp4\" \"s3://gradesta-web-static/screencasts/video-id.mp4\", kill_on_drop: false } }, 2: RefCell { value: Command { std: \"ffmpeg\" \"-i\" \"/home/user/Videos/screencast2.mkv\" \"/home/user/Videos/screencast2.mp4\", kill_on_drop: false } }, 3: RefCell { value: Command { std: \"s3cmd\" \"put\" \"-P\" \"/home/user/Videos/screencast2.mp4\" \"s3://gradesta-web-static/screencasts/video-id-2.mp4\", kill_on_drop: false } }} }, cycle_state: DfsSpace { dfs: Dfs { stack: [], discovered: FixedBitSet { data: [], length: 0 } } } }");
+        assert_eq!(format!("{:?}", commands), "Dag { graph: Graph { Ty: \"Directed\", node_count: 4, edge_count: 3, edges: (0, 1), (0, 2), (2, 3), node weights: {0: RefCell { value: Command { std: \"ffmpeg\" \"-i\" \"/home/user/Videos/screencast1.mkv\" \"/home/user/Videos/screencast1.mp4\", kill_on_drop: false } }, 1: RefCell { value: Command { std: \"s3cmd\" \"put\" \"-P\" \"/home/user/Videos/screencast1.mp4\" \"s3://gradesta-web-static/screencasts/video-id.mp4\", kill_on_drop: false } }, 2: RefCell { value: Command { std: \"ffmpeg\" \"-i\" \"/home/user/Videos/screencast2.mkv\" \"/home/user/Videos/screencast2.mp4\", kill_on_drop: false } }, 3: RefCell { value: Command { std: \"s3cmd\" \"put\" \"-P\" \"/home/user/Videos/screencast2.mp4\" \"s3://gradesta-web-static/screencasts/video-id-2.mp4\", kill_on_drop: false } }} }, cycle_state: DfsSpace { dfs: Dfs { stack: [], discovered: FixedBitSet { data: [], length: 0 } } } }");
 
         let commands = transcode_and_upload(
             "My blog post {{<screencast \"video-id\">}} {{<screencast \"video-id\">}}",
