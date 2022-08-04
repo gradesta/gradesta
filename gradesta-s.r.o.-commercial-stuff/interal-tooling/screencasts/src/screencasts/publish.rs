@@ -41,31 +41,19 @@ async fn run_command_dag(
     commands: Dag<RefCell<Command>, ()>,
 ) -> anyhow::Result<HashMap<NodeIndex, ExitStatus>> {
     let mut command_results = HashMap::new();
-    // 1. Collect zero dependency targets
-    let mut target_queue = vec![];
+    // 1. Collect and run zero dependency targets
     let mut running_commands = FuturesUnordered::new();
     use daggy::Walker;
     let mut launched_commands = HashSet::new();
     for node in commands.graph().node_indices() {
         if commands.parents(node).walk_next(&commands) == None {
-            target_queue.push(node);
+            launched_commands.insert(node);
+            let command = commands.node_weight(node).unwrap();
+            let running_command = run_command_and_return_with_node(command, node);
+            running_commands.push(running_command);
         }
     }
-    // 2. Loop thorough collected targets, running them
-    while target_queue.len() > 0 {
-        match target_queue.pop() {
-            Some(node) => {
-                if !launched_commands.contains(&node) {
-                    launched_commands.insert(node);
-                    let command = commands.node_weight(node).unwrap();
-                    let running_command = run_command_and_return_with_node(command, node);
-                    running_commands.push(running_command);
-                }
-            }
-            None => (),
-        };
-    }
-    // 2a. When a target completes, add its children to to the pool of targets to run.
+    // 2. As targets are completed, run their children if dependencies are fulfilled
     while let Some(res) = running_commands.next().await {
         match res {
             Err(e) => return Err(e),
