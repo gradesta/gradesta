@@ -7,7 +7,7 @@ use nom::{
     character::complete::char,
     combinator::{map, opt, rest},
     error::ParseError,
-    multi::{fold_many0},
+    multi::fold_many0,
     sequence::{preceded, terminated, tuple},
     IResult,
 };
@@ -34,7 +34,10 @@ fn whitespace<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a st
 }
 
 fn screencast_id<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Screencast, E> {
-    preceded(char('"'), terminated(map(take_until("\""), |id| Screencast { id: id }), char('"')))(i)
+    preceded(
+        char('"'),
+        terminated(map(take_until("\""), |id| Screencast { id: id }), char('"')),
+    )(i)
 }
 
 fn screencast_tag<'a>(i: &'a str) -> IResult<&'a str, Screencast<'a>> {
@@ -53,10 +56,7 @@ fn screencast_tag<'a>(i: &'a str) -> IResult<&'a str, Screencast<'a>> {
 fn hugo_tag<'a>(i: &'a str) -> IResult<&'a str, Option<Screencast<'a>>> {
     preceded(
         is_a("{{"),
-        terminated(
-            opt(screencast_tag),
-            tuple((take_until("}}"), take(2usize)))
-        )
+        terminated(opt(screencast_tag), tuple((take_until("}}"), take(2usize)))),
     )(i)
 }
 
@@ -97,7 +97,7 @@ mod tests {
     fn test_read_screencast_tag() {
         let (remainder, parsed_tag) = screencast_tag("<screencast \"lol\">}} foo").unwrap();
         assert_eq!(remainder, "}} foo");
-        assert_eq!(parsed_tag, Screencast{id: "lol"});
+        assert_eq!(parsed_tag, Screencast { id: "lol" });
     }
 
     #[test]
