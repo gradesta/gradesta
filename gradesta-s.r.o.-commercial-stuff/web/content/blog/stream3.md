@@ -6,8 +6,9 @@ author: Timothy Hobbs <tim@gradesta.com>
 draft: false
 ---
 
+Part 1: Using mk_screencast_label rather than adding screencast urls to blog posts after uploading
+------
 {{<screencast "2022-07-08-3f1fe08707a4ce6932e5282b8cf30ff9">}}
-(Part 1)
 
 In this screencast I am setting up a cleaner and less fiddly system for uploading videos of screencasts and pairing them with blogposts. Instead of generating the names for screencast files after the fact when the screencasts are uploaded. We first generate the file names and then set the names of the uploaded video assets according to the generated names.
 
@@ -34,22 +35,24 @@ The `publish_screencasts` command uploads the screencasts to an EC2 spot instanc
 
 ![diagram showing flow of screecasts during publishing](/images/blog/publish-screecasts-flow.png)
 
-{{<screencast "2022-07-09-669cde795a73e3aec1fdc1fd82929c9b">}}
-(Part 2)
+Part 2: Thinking about how to make this work in a team
+------
 
 So I've decided not to transcode the videos on the cloud afterall. I don't have the time to set it up and its not strictly necessary. Instead, I will simply transcode locally using ffmpeg as I have done in the past. I still need to write a script that extracts the screencast id tags from the blog entries, does the transcoding locally, and uploads them to the CDN.
 
-Part 3:
+{{<screencast "2022-07-09-669cde795a73e3aec1fdc1fd82929c9b">}}
+
+Part 3: Beginning to write the screencast management software in rust
 --------
 
 {{<screencast "2022-07-24-657a1bb245023357b9a37519f01b4fea">}}
 
-Part 4:
+Part 4: Looking at various ways of parsing the blogpost HTML
 ---------
 
 {{<screencast "2022-07-24-0b0a47829b3a9f8f57f19b7dd7c01117">}}
 
-Part 5: parsing out tags with nom
+Part 5: Parsing out tags with nom
 ---------------------------------------
 
 {{<screencast "2022-07-25-26d4043b2ab967ea24db5d20dd85c99e">}}
