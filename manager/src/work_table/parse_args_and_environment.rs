@@ -1,7 +1,7 @@
 use super::configuration::Configuration;
+use anyhow::Result;
 use clap::{crate_version, Arg, Command};
 use std::path::PathBuf;
-use anyhow::Result;
 
 pub fn parse_args_and_environment() -> anyhow::Result<Configuration> {
     let default_sockets_dir: &str = &format!(

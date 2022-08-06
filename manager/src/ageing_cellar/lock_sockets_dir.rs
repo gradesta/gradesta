@@ -3,10 +3,10 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path;
 use sysinfo;
-use sysinfo::{SystemExt, ProcessExt};
+use sysinfo::{ProcessExt, SystemExt};
 
 #[cfg(unix)]
-use std::os::unix::io::{AsRawFd};
+use std::os::unix::io::AsRawFd;
 #[cfg(target_os = "wasi")]
 use std::os::wasi::io::{AsRawFd, RawFd};
 
@@ -25,16 +25,36 @@ pub fn lock_sockets_dir(dir: &path::Path) -> Result<(), String> {
         .write(true)
         .read(true)
         .open(&lockfile)
-        .or_else(|err| Err(format!("Error opening lock file {:?}: {}", lockfile.as_os_str(), err.to_string())))?;
-    fcntl::flock(f.as_raw_fd(), fcntl::FlockArg::LockExclusive)
-        .or_else(|err| Err(format!("Error locking file {:?}: {}", lockfile.as_os_str(), err)))?;
+        .or_else(|err| {
+            Err(format!(
+                "Error opening lock file {:?}: {}",
+                lockfile.as_os_str(),
+                err.to_string()
+            ))
+        })?;
+    fcntl::flock(f.as_raw_fd(), fcntl::FlockArg::LockExclusive).or_else(|err| {
+        Err(format!(
+            "Error locking file {:?}: {}",
+            lockfile.as_os_str(),
+            err
+        ))
+    })?;
     if exists {
         let mut contents = String::new();
-        f.read_to_string(&mut contents)
-            .or_else(|err| Err(format!("Error reading lock file {:?}: {}", lockfile.as_os_str(), err)))?;
-        let old_pid: i32 = contents
-            .parse::<i32>()
-            .or_else(|err| Err(format!("Corrupted lock file {:?}: {}", lockfile.as_os_str(), err.to_string())))?;
+        f.read_to_string(&mut contents).or_else(|err| {
+            Err(format!(
+                "Error reading lock file {:?}: {}",
+                lockfile.as_os_str(),
+                err
+            ))
+        })?;
+        let old_pid: i32 = contents.parse::<i32>().or_else(|err| {
+            Err(format!(
+                "Corrupted lock file {:?}: {}",
+                lockfile.as_os_str(),
+                err.to_string()
+            ))
+        })?;
         let mut system_info = sysinfo::System::new();
         system_info.refresh_process(old_pid);
         match system_info.process(old_pid) {
@@ -49,9 +69,20 @@ pub fn lock_sockets_dir(dir: &path::Path) -> Result<(), String> {
         };
     }
     f.write(&format!("{}", std::process::id()).as_bytes())
-        .or_else(|err| Err(format!("Error writing to lock file {:?}: {}", lockfile.as_os_str(), err)))?;
-    fcntl::flock(f.as_raw_fd(), fcntl::FlockArg::Unlock)
-        .or_else(|err| Err(format!("Error unlocking lock file {:?}: {}", lockfile.as_os_str(), err)))?;
+        .or_else(|err| {
+            Err(format!(
+                "Error writing to lock file {:?}: {}",
+                lockfile.as_os_str(),
+                err
+            ))
+        })?;
+    fcntl::flock(f.as_raw_fd(), fcntl::FlockArg::Unlock).or_else(|err| {
+        Err(format!(
+            "Error unlocking lock file {:?}: {}",
+            lockfile.as_os_str(),
+            err
+        ))
+    })?;
     Ok(())
 }
 
@@ -73,13 +104,16 @@ mod tests {
         lockfile.read_to_string(&mut contents).unwrap();
         assert_eq!(contents, format!("{}", std::process::id()));
         drop(lockfile);
-        match lock_sockets_dir(&tmp_dir.path()){
+        match lock_sockets_dir(&tmp_dir.path()) {
             Ok(_) => unreachable!(),
             Err(e) => assert!(e.starts_with("The sockets directory is already locked by pid ")),
         }
-        let mut lockfile = fs::OpenOptions::new().write(true).open(lockfile_path).unwrap();
+        let mut lockfile = fs::OpenOptions::new()
+            .write(true)
+            .open(lockfile_path)
+            .unwrap();
         lockfile.write("not a pid".as_bytes()).unwrap();
-        match lock_sockets_dir(&tmp_dir.path()){
+        match lock_sockets_dir(&tmp_dir.path()) {
             Ok(_) => unreachable!(),
             Err(e) => assert!(e.starts_with("Corrupted lock file ")),
         }

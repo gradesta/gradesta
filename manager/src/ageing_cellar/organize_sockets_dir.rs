@@ -312,7 +312,7 @@ mod tests {
         socket.bind(&socket_url).unwrap();
         match organize_sockets_dir(&tmp_dir.path()) {
             Ok(sockets) => assert_eq!(u32::from(sockets[0].1[0]), std::process::id() as u32),
-            Err(e) => unreachable!(),
+            Err(_) => unreachable!(),
         };
         assert_eq!(fs::read_dir(&tmp_dir).unwrap().count(), 1);
         socket.disconnect(&socket_url).unwrap();
