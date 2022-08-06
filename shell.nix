@@ -4,5 +4,7 @@ mkShell {
         pkgconfig
         zeromq
         pkgs.llvmPackages.bintools
+        cargo-watch
+        cargo-tarpaulin
     ];
 }
