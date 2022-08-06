@@ -2,8 +2,6 @@ mod ageing_cellar;
 mod work_table;
 
 extern crate clap;
-use clap::{App, Arg, SubCommand};
-use std::env;
 use work_table::parse_args_and_environment::*;
 
 /*
@@ -57,14 +55,4 @@ fn main() {
     let config = parse_args_and_environment();
 
     println!("Config: {:?}", config);
-
-    match env::var("HOME") {
-        Ok(val) => {
-            let dir: String = format!("{}/.cache/gradesta/services/", val);
-            //watch(socket_dir);
-        }
-        Err(e) => {
-            eprintln!("No $HOME directory.")
-        }
-    };
 }

@@ -1,5 +1,4 @@
 use super::configuration::Configuration;
-use anyhow::Result;
 use clap::{crate_version, Arg, Command};
 use std::path::PathBuf;
 

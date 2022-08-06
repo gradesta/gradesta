@@ -319,7 +319,7 @@ mod tests {
         drop(socket);
         match organize_sockets_dir(&tmp_dir.path()) {
             Ok(sockets) => assert_eq!(sockets.len(), 0),
-            Err(e) => unreachable!(),
+            Err(_) => unreachable!(),
         };
         assert_eq!(fs::read_dir(&tmp_dir).unwrap().count(), 0);
         tmp_dir.close().unwrap();

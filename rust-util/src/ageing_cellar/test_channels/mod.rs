@@ -34,7 +34,6 @@ pub fn report(_message: &str) {}
 pub mod for_tests {
     use super::*;
     use zmq;
-    use std::path;
     use sha2::{Sha256, Digest};
     use hex;
 
