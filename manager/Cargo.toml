@@ -16,6 +16,7 @@ itertools = "0.10.3"
 "rust-util" = { path = "../rust-util" }
 sysinfo = "0.22.4"
 humantime = "2.1.0"
+anyhow = "1.0.59"
 
 [dev-dependencies]
 tempdir = "0.3.7"

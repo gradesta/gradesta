@@ -1,5 +1,5 @@
-mod work_table;
 mod ageing_cellar;
+mod work_table;
 
 extern crate clap;
 use clap::{App, Arg, SubCommand};
@@ -56,17 +56,15 @@ fn watch(path: String) -> notify::Result<()> {
 fn main() {
     let config = parse_args_and_environment();
 
-    println!("Init: {:?}", config.init);
+    println!("Config: {:?}", config);
 
-    let mut socket_dir = String::from("");
     match env::var("HOME") {
         Ok(val) => {
             let dir: String = format!("{}/.cache/gradesta/services/", val);
-            socket_dir.push_str(&dir);
+            //watch(socket_dir);
         }
         Err(e) => {
             eprintln!("No $HOME directory.")
         }
     };
-    //watch(socket_dir);
 }

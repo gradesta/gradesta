@@ -1,6 +1,7 @@
-use std::path::PathBuf;
 use humantime;
+use std::path::PathBuf;
 
+#[derive(Debug)]
 pub struct Configuration {
     // Dir for ZMQ unix sockets
     pub sockets_dir: PathBuf,
