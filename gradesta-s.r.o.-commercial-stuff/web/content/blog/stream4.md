@@ -25,9 +25,12 @@ In the end I ended up just dissabling mold which solved the problem. If my new R
 
 {{<screencast "2022-08-06-8d7e60bc62b16cf07726c6b0439c6490">}}
 
-Part 2:
+Part 2: Refactoring config parsing code and linting various things in the manager
 ---------
 
-
-
 {{screencast "2022-08-06-efc2c67b6d514a56e80c03fa956fb08d"}}
+
+Part 3: Use a tokio main and print out non-garbled error messages and exit with the right exitcode
+---------
+
+{{screencast "2022-08-14-a2fa42c311bd0bdee43e2378d5672862"}}

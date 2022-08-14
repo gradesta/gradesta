@@ -51,8 +51,18 @@ fn watch(path: String) -> notify::Result<()> {
 }
  */
 
-fn main() {
-    let config = parse_args_and_environment();
+async fn real_main() -> anyhow::Result<()>  {
+    let config = parse_args_and_environment()?;
+    Ok(())
+}
 
-    println!("Config: {:?}", config);
+#[tokio::main]
+async fn main() {
+    match real_main().await {
+        Err(e) => {
+            print!("{}", e);
+            std::process::exit(1)
+        },
+        Ok(_) => std::process::exit(0)
+    }
 }
