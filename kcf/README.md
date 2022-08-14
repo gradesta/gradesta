@@ -72,8 +72,8 @@ There are various types of PRs:
 - `new-code`: Can change only `work_table` and `ageing_cellar` folders and move code from `finished` to `archive`
 - `audit`: Can only add names to the `Auditors` sections of code in the `finished` folder
 - `flow`: May only move code from `work_table` to `ageing_cellar` or from `ageing_cellar` to `finished`
-- `recall-secuirty` and `recall-error`: May change code anywhere including `finished`. Must list changes in `recall_log.md`
-- `polish`: May only change code on `work_table` to add tests/documentation.
+- `recall-security` and `recall-error`: May change code anywhere including `finished`. Must list changes in `recall_log.md`
+- `polish`: May only change code on `work_table` or in `ageing_cellar` to add tests/documentation.
 - `clean`: May only remove untested/undocumented code from `work_table`
 - `roadmap`: Explained later
 
