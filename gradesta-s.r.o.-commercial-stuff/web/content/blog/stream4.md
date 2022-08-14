@@ -34,3 +34,8 @@ Part 3: Use a tokio main and print out non-garbled error messages and exit with 
 ---------
 
 {{screencast "2022-08-14-a2fa42c311bd0bdee43e2378d5672862"}}
+
+Part 4: Polish and run lockfile code
+--------
+
+{{screencast "2022-08-14-6123c72fb3e6f15d517956926a0a6767"}}

@@ -3,6 +3,7 @@ mod work_table;
 
 extern crate clap;
 use work_table::parse_args_and_environment::*;
+use ageing_cellar::lock_sockets_dir::*;
 
 /*
 extern crate notify;
@@ -53,6 +54,7 @@ fn watch(path: String) -> notify::Result<()> {
 
 async fn real_main() -> anyhow::Result<()>  {
     let config = parse_args_and_environment()?;
+    lock_sockets_dir(&config.sockets_dir)?;
     Ok(())
 }
 
