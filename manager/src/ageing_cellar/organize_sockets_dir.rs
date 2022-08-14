@@ -6,6 +6,7 @@ use itertools::Itertools;
 use rust_util::ageing_cellar::test_channels;
 use std::fs;
 use std::path;
+use anyhow::anyhow;
 
 /// 1. Deletes any left over directories from socket dir
 /// 2. Deletes any left over/non-connected sockets from socket dir
@@ -16,7 +17,7 @@ use std::path;
 /// or other types of read error.
 pub fn organize_sockets_dir(
     sockets_dir: &path::Path,
-) -> Result<Vec<(path::PathBuf, Vec<ofiles::Pid>)>, String> {
+) -> Result<Vec<(path::PathBuf, Vec<ofiles::Pid>)>, anyhow::Error> {
     let mut active_sockets: Vec<(path::PathBuf, Vec<ofiles::Pid>)> = Vec::new();
     let mut unexpected_files: Vec<String> = Vec::new();
 
@@ -24,7 +25,7 @@ pub fn organize_sockets_dir(
 
     // https://natclark.com/tutorials/rust-list-all-files/
     let entries = fs::read_dir(top_dir).or_else(|err| {
-        Err(format!(
+        Err(anyhow!(
             "Could not read dir {} \n {}",
             sockets_dir.as_os_str().to_str().unwrap_or("Cannot display sockets dir path because it contains really really weird characters or something.").to_owned(),
             err.to_string()
@@ -47,7 +48,7 @@ pub fn organize_sockets_dir(
         }
         let mut empty = true;
         let entries1 = fs::read_dir(socket_dir.clone()).or_else(|err| {
-            Err(format!(
+            Err(anyhow!(
                 "Could not read directory {}\n{}",
                 socket_dir.as_path().display(),
                 err.to_string()
@@ -60,7 +61,7 @@ pub fn organize_sockets_dir(
             if entry1.file_name() == "PAIR.zmq" {
                 // https://docs.rs/ofiles/0.2.0/ofiles/fn.opath.html
                 let pids = ofiles::osocket(entry1.path()).or_else(|err| {
-                    Err(format!(
+                    Err(anyhow!(
                         "Error looking up socket information for socket {}\n{}.",
                         socket.to_string_lossy(),
                         err.to_string()
@@ -70,7 +71,7 @@ pub fn organize_sockets_dir(
                     active_sockets.push((socket.clone(), pids));
                     empty = false;
                 } else {
-                    fs::remove_file(socket).or_else(|err| Err(err.to_string()))?;
+                    fs::remove_file(socket).or_else(|err| Err(anyhow!(err)))?;
                 }
             } else {
                 unexpected_files.push(entry1.path().display().to_string());
@@ -79,7 +80,7 @@ pub fn organize_sockets_dir(
         }
         if empty {
             fs::remove_dir(socket_dir.clone()).or_else(|err| {
-                Err(format!(
+                Err(anyhow!(
                     "Could not remove dir {}\n{}",
                     socket_dir.as_path().display(),
                     err.to_string(),
@@ -89,7 +90,7 @@ pub fn organize_sockets_dir(
     }
     if unexpected_files.len() > 0 {
         let unexpected_files_s = Itertools::join(&mut unexpected_files.iter(), "\n");
-        return Err(format!(
+        return Err(anyhow!(
             "Unexpected files in socket dir \n{}",
             unexpected_files_s
         ));
@@ -145,7 +146,7 @@ mod tests {
         match organize_sockets_dir(&tmp_dir.path()) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
-                e,
+                e.to_string(),
                 format!(
                     "Could not read dir {} \n Permission denied (os error 13)",
                     temp_dir_path
@@ -181,7 +182,7 @@ mod tests {
         match organize_sockets_dir(&tmp_dir.path()) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
-                e,
+                e.to_string(),
                 format!(
                     "Error looking up socket information for socket {}/PAIR.zmq\nNo such file or directory (os error 2).",
                     socket_dir.as_os_str().to_str().unwrap().to_owned()
@@ -208,7 +209,7 @@ mod tests {
         match organize_sockets_dir(&tmp_dir.path()) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
-                e,
+                e.to_string(),
                 format!(
                     "Could not read directory {}\nPermission denied (os error 13)",
                     empty_socket_dir.as_os_str().to_str().unwrap().to_owned()
@@ -249,7 +250,7 @@ mod tests {
         match organize_sockets_dir(&tmp_dir.path()) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
-                e,
+                e.to_string(),
                 format!(
                     "Could not remove dir {}\nPermission denied (os error 13)",
                     empty_socket_dir.as_os_str().to_str().unwrap().to_owned()
@@ -287,7 +288,7 @@ mod tests {
         match organize_sockets_dir(&tmp_dir.path()) {
             Ok(_) => unreachable!(),
             Err(error) => assert_eq!(
-                error,
+                error.to_string(),
                 format!(
                     "Unexpected files in socket dir \n{}/mess",
                     dirty_socket_dir.as_path().display()

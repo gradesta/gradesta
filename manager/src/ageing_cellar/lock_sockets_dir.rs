@@ -114,7 +114,7 @@ mod tests {
         drop(lockfile);
         match lock_sockets_dir(&tmp_dir.path()) {
             Ok(_) => unreachable!(),
-            Err(e) => assert!(e.starts_with("The sockets directory is already locked by pid ")),
+            Err(e) => assert!(e.to_string().starts_with("The sockets directory is already locked by pid ")),
         }
         let mut lockfile = fs::OpenOptions::new()
             .write(true)
@@ -123,7 +123,7 @@ mod tests {
         lockfile.write("not a pid".as_bytes()).unwrap();
         match lock_sockets_dir(&tmp_dir.path()) {
             Ok(_) => unreachable!(),
-            Err(e) => assert!(e.starts_with("Corrupted lock file ")),
+            Err(e) => assert!(e.to_string().starts_with("Corrupted lock file ")),
         }
     }
 }
