@@ -1,6 +1,7 @@
 mod screencasts;
 use anyhow;
 use screencasts::publish::publish;
+use screencasts::print_label::print_label;
 
 extern crate clap;
 use clap::{arg, command, Command};
@@ -17,6 +18,10 @@ async fn main() -> anyhow::Result<()> {
                 .arg(arg!(<BLOG_POST>))
                 .arg(arg!(<VIDEO_FILE>...)),
         )
+        .subcommand(
+            Command::new("label")
+                .about("Creates a new screencast label and prints it to stdout")
+        )
         .get_matches();
 
     match matches.subcommand() {
@@ -26,6 +31,9 @@ async fn main() -> anyhow::Result<()> {
             let video_files: Vec<&str> = video_files.map(|s| s.as_ref()).collect();
             publish(blog_post_path, video_files).await?;
         }
+        Some(("label", _)) => {
+            print_label().await?;
+        },
         _ => unreachable!("Exhausted list of subcommands and subcommand_required prevents `None`"),
     };
     return Ok(());

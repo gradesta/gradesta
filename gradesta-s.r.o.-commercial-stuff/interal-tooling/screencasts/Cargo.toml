@@ -13,3 +13,5 @@ daggy = "0.8.0"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0.59"
 futures = "0.3.21"
+chrono = "0.4"
+uuid = { version = "1.1", features = ["v4"] }
