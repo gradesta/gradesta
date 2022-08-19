@@ -67,19 +67,56 @@ mod tests {
 
     #[test]
     fn test_generate_commands() {
+        use std::fs;
+        use tempdir::TempDir;
+        let tmp_dir_obj = TempDir::new("test_screencasts_dir").unwrap();
+        let tmp_dir = tmp_dir_obj.path();
+        let screencast1_path = tmp_dir.join("screencast1.mkv");
+        let screencast2_path = tmp_dir.join("screencast2.mkv");
+        fs::write(&screencast1_path, "foo").unwrap();
+        fs::write(&screencast2_path, "foo").unwrap();
+        let screencast1= screencast1_path.to_string_lossy();
+        let screencast2= screencast2_path.to_string_lossy();
         let commands = transcode_and_upload(
             "My blog post {{<screencast \"video-id\">}} {{<screencast \"video-id-2\">}}",
             vec![
-                "/home/user/Videos/screencast1.mkv",
-                "/home/user/Videos/screencast2.mkv",
+                &screencast1,
+                &screencast2,
             ],
         )
         .unwrap();
-        assert_eq!(format!("{:?}", commands), "Dag { graph: Graph { Ty: \"Directed\", node_count: 4, edge_count: 3, edges: (0, 1), (0, 2), (2, 3), node weights: {0: RefCell { value: Command { std: \"ffmpeg\" \"-i\" \"/home/user/Videos/screencast1.mkv\" \"/home/user/Videos/screencast1.mp4\", kill_on_drop: false } }, 1: RefCell { value: Command { std: \"s3cmd\" \"put\" \"-P\" \"/home/user/Videos/screencast1.mp4\" \"s3://gradesta-web-static/screencasts/video-id.mp4\", kill_on_drop: false } }, 2: RefCell { value: Command { std: \"ffmpeg\" \"-i\" \"/home/user/Videos/screencast2.mkv\" \"/home/user/Videos/screencast2.mp4\", kill_on_drop: false } }, 3: RefCell { value: Command { std: \"s3cmd\" \"put\" \"-P\" \"/home/user/Videos/screencast2.mp4\" \"s3://gradesta-web-static/screencasts/video-id-2.mp4\", kill_on_drop: false } }} }, cycle_state: DfsSpace { dfs: Dfs { stack: [], discovered: FixedBitSet { data: [], length: 0 } } } }");
+
+        assert_eq!(commands.edge_count(), 3);
+        commands.find_edge(daggy::NodeIndex::new(0), daggy::NodeIndex::new(1)).unwrap();
+        commands.find_edge(daggy::NodeIndex::new(0), daggy::NodeIndex::new(2)).unwrap();
+        commands.find_edge(daggy::NodeIndex::new(2), daggy::NodeIndex::new(3)).unwrap();
+        assert_eq!(
+            format!("{:?}", commands.node_weight(daggy::NodeIndex::new(0)).unwrap().borrow()),
+            format!("Command {{ std: \"ffmpeg\" \"-i\" \"{0}/screencast1.mkv\" \"{0}/screencast1.mp4\", kill_on_drop: false }}", tmp_dir.to_string_lossy()));
+        assert_eq!(
+            format!("{:?}", commands.node_weight(daggy::NodeIndex::new(1)).unwrap().borrow()),
+            format!("Command {{ std: \"s3cmd\" \"put\" \"-P\" \"{0}/screencast1.mp4\" \"s3://gradesta-web-static/screencasts/video-id.mp4\", kill_on_drop: false }}", tmp_dir.to_string_lossy()));
+        assert_eq!(
+            format!("{:?}", commands.node_weight(daggy::NodeIndex::new(2)).unwrap().borrow()),
+            format!("Command {{ std: \"ffmpeg\" \"-i\" \"{0}/screencast2.mkv\" \"{0}/screencast2.mp4\", kill_on_drop: false }}", tmp_dir.to_string_lossy()));
+        assert_eq!(
+            format!("{:?}", commands.node_weight(daggy::NodeIndex::new(3)).unwrap().borrow()),
+            format!("Command {{ std: \"s3cmd\" \"put\" \"-P\" \"{0}/screencast2.mp4\" \"s3://gradesta-web-static/screencasts/video-id-2.mp4\", kill_on_drop: false }}", tmp_dir.to_string_lossy()));
+    }
+
+    #[test]
+    fn test_generate_commands_too_few_inputs() {
+        use std::fs;
+        use tempdir::TempDir;
+        let tmp_dir_obj = TempDir::new("test_screencasts_dir").unwrap();
+        let tmp_dir = tmp_dir_obj.path();
+        let screencast1_path = tmp_dir.join("screencast1.mkv");
+        fs::write(&screencast1_path, "foo").unwrap();
+        let screencast1= screencast1_path.to_string_lossy();
 
         let commands = transcode_and_upload(
             "My blog post {{<screencast \"video-id\">}} {{<screencast \"video-id\">}}",
-            vec!["/home/user/Videos/screencast1.mkv"],
+            vec![&screencast1],
         );
         match commands {
             Ok(_) => assert!(false),

@@ -65,9 +65,18 @@ I use the [daggy](https://docs.rs/daggy/latest/daggy/) package to build a depend
 {{<screencast "2022-08-03-a79910b214ad854b387814f1be3a57fe">}}
 
 
-Part 7: Restarting uploads, and adding new screencasts to series that have already been uploaded
+Part 7: Moving the `mk_screencast_label` script into the screencasts rust app
 ----------------------------------------
 
 I start this section by turning the `mk_screencast_label` script into a subcommand of the screencasts program.
 
 {{<screencast "2022-08-17-91220f13472bbf0bdfdb43e97e90dde3">}}
+
+Part 8: Making the screencast test suit easier to update
+---------
+
+{{<screencast "2022-8-19-70025373-cf05-4e85-bff4-d9909662cc26">}}
+
+Part 9: Restarting uploads, and adding new screencasts to series that have already been uploaded
+-----------
+
