@@ -14,9 +14,9 @@ async fn main() -> anyhow::Result<()> {
         .arg_required_else_help(true)
         .subcommand(
             Command::new("publish")
-                .about("Publishes screencasts to s3")
+                .about("Publishes screencasts to s3.")
                 .arg(arg!(<BLOG_POST>))
-                .arg(arg!(<VIDEO_FILE>...)),
+                .arg(arg!(<VIDEO_FILE>... "Use non-existant paths (for example 'skip') in place of mkv files to skip over previously uploaded screencast tags")),
         )
         .subcommand(
             Command::new("label")
