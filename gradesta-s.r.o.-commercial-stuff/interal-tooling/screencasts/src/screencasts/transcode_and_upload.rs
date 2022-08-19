@@ -121,7 +121,7 @@ mod tests {
 
 
     #[test]
-    fn test_generate_commands_skipping_skips() {
+    fn test_generate_commands_skipping_missing_input_files() {
         use std::fs;
         use tempdir::TempDir;
         let tmp_dir_obj = TempDir::new("test_screencasts_dir").unwrap();
