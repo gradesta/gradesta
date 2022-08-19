@@ -1,7 +1,7 @@
 ---
 title: "Better screencast management"
 date: 2022-07-08
-featureImage: https://assets.gradesta.com/vegan-buddies/img/avomik.jpg
+featureImage: https://assets.gradesta.com/gradesta/img/dalle2-tape.png
 author: Timothy Hobbs <tim@gradesta.com>
 draft: false
 ---
