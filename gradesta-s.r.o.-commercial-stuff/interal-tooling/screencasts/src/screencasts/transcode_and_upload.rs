@@ -55,7 +55,14 @@ pub fn transcode_and_upload<'a>(
                 .arg(mp4file.clone())
                 .arg(s3path.clone());
         }
-        commands.add_child(c1, (), s3cmd_cmd);
+        let (_, c2) = commands.add_child(c1, (), s3cmd_cmd);
+        let delete_cmd = RefCell::new(Command::new("rm"));
+        {
+            let mut delete_cmd_bld = delete_cmd.borrow_mut();
+            delete_cmd_bld.arg(mkvfile.clone());
+        }
+        commands.add_child(c2, (), delete_cmd);
+
         i += 1;
     }
     return Ok(commands);
@@ -86,10 +93,8 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(commands.edge_count(), 3);
-        commands.find_edge(daggy::NodeIndex::new(0), daggy::NodeIndex::new(1)).unwrap();
-        commands.find_edge(daggy::NodeIndex::new(0), daggy::NodeIndex::new(2)).unwrap();
-        commands.find_edge(daggy::NodeIndex::new(2), daggy::NodeIndex::new(3)).unwrap();
+        assert_eq!(commands.edge_count(), 5);
+        assert_eq!(commands.node_count(), 6);
         assert_eq!(
             format!("{:?}", commands.node_weight(daggy::NodeIndex::new(0)).unwrap().borrow()),
             format!("Command {{ std: \"ffmpeg\" \"-i\" \"{0}/screencast1.mkv\" \"{0}/screencast1.mp4\", kill_on_drop: false }}", tmp_dir.to_string_lossy()));
@@ -98,10 +103,18 @@ mod tests {
             format!("Command {{ std: \"s3cmd\" \"put\" \"-P\" \"{0}/screencast1.mp4\" \"s3://gradesta-web-static/screencasts/video-id.mp4\", kill_on_drop: false }}", tmp_dir.to_string_lossy()));
         assert_eq!(
             format!("{:?}", commands.node_weight(daggy::NodeIndex::new(2)).unwrap().borrow()),
-            format!("Command {{ std: \"ffmpeg\" \"-i\" \"{0}/screencast2.mkv\" \"{0}/screencast2.mp4\", kill_on_drop: false }}", tmp_dir.to_string_lossy()));
+            format!("Command {{ std: \"rm\" \"{0}/screencast1.mkv\", kill_on_drop: false }}", tmp_dir.to_string_lossy()));
         assert_eq!(
             format!("{:?}", commands.node_weight(daggy::NodeIndex::new(3)).unwrap().borrow()),
+            format!("Command {{ std: \"ffmpeg\" \"-i\" \"{0}/screencast2.mkv\" \"{0}/screencast2.mp4\", kill_on_drop: false }}", tmp_dir.to_string_lossy()));
+        assert_eq!(
+            format!("{:?}", commands.node_weight(daggy::NodeIndex::new(4)).unwrap().borrow()),
             format!("Command {{ std: \"s3cmd\" \"put\" \"-P\" \"{0}/screencast2.mp4\" \"s3://gradesta-web-static/screencasts/video-id-2.mp4\", kill_on_drop: false }}", tmp_dir.to_string_lossy()));
+        commands.find_edge(daggy::NodeIndex::new(0), daggy::NodeIndex::new(1)).unwrap();
+        commands.find_edge(daggy::NodeIndex::new(1), daggy::NodeIndex::new(2)).unwrap();
+        commands.find_edge(daggy::NodeIndex::new(0), daggy::NodeIndex::new(3)).unwrap();
+        commands.find_edge(daggy::NodeIndex::new(3), daggy::NodeIndex::new(4)).unwrap();
+        commands.find_edge(daggy::NodeIndex::new(4), daggy::NodeIndex::new(5)).unwrap();
     }
 
     #[test]

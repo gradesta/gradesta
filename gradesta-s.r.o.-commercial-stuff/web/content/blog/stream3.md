@@ -80,3 +80,6 @@ Part 8: Making the screencast test suit easier to update
 Part 9: Restarting uploads, and adding new screencasts to series that have already been uploaded
 -----------
 
+
+
+{{<screencast "2022-8-19-7dcb7ef8-faf3-47af-98ec-d365d02ab0dc">}}
