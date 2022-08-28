@@ -7,6 +7,7 @@ use itertools::Itertools;
 use rust_util::ageing_cellar::test_channels;
 use std::fs;
 use std::path;
+use std::collections;
 
 /// 1. Deletes any left over directories from socket dir
 /// 2. Deletes any left over/non-connected sockets from socket dir
@@ -17,6 +18,7 @@ use std::path;
 /// or other types of read error.
 pub fn organize_sockets_dir(
     sockets_dir: &path::Path,
+    ignored_pids: &collections::HashSet<ofiles::Pid>,
 ) -> Result<Vec<(path::PathBuf, Vec<ofiles::Pid>)>, anyhow::Error> {
     let mut active_sockets: Vec<(path::PathBuf, Vec<ofiles::Pid>)> = Vec::new();
     let mut unexpected_files: Vec<String> = Vec::new();
@@ -72,7 +74,14 @@ pub fn organize_sockets_dir(
                         err.to_string()
                     ))
                 })?;
-                if pids.len() > 0 {
+                let mut active = false;
+                for pid in &pids {
+                    if !ignored_pids.contains(&pid) {
+                        active = true;
+                        break;
+                    }
+                }
+                if active {
                     active_sockets.push((socket.clone(), pids));
                     empty = false;
                 } else {
@@ -130,7 +139,7 @@ mod tests {
             }
         }
         assert!(contains);
-        match organize_sockets_dir(&tmp_dir.path()) {
+        match organize_sockets_dir(&tmp_dir.path(), &collections::HashSet::new()) {
             Ok(dirs) => assert_eq!(dirs.len(), 0),
             Err(_) => unreachable!(),
         };
@@ -148,7 +157,7 @@ mod tests {
         let no_permissions: Permissions = Permissions::from_mode(0o000);
         set_permissions(tmp_dir.path(), no_permissions).unwrap();
         let temp_dir_path: String = tmp_dir.path().as_os_str().to_str().unwrap().to_owned();
-        match organize_sockets_dir(&tmp_dir.path()) {
+        match organize_sockets_dir(&tmp_dir.path(), &collections::HashSet::new()) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
                 e.to_string(),
@@ -184,7 +193,7 @@ mod tests {
             clear_expectations(channel);
         });
 
-        match organize_sockets_dir(&tmp_dir.path()) {
+        match organize_sockets_dir(&tmp_dir.path(), &collections::HashSet::new()) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
                 e.to_string(),
@@ -211,7 +220,7 @@ mod tests {
         fs::create_dir(empty_socket_dir.clone()).unwrap();
         let no_permissions: Permissions = Permissions::from_mode(0o000);
         set_permissions(empty_socket_dir.clone(), no_permissions).unwrap();
-        match organize_sockets_dir(&tmp_dir.path()) {
+        match organize_sockets_dir(&tmp_dir.path(), &collections::HashSet::new()) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
                 e.to_string(),
@@ -252,7 +261,7 @@ mod tests {
             Ok(_) => assert!(true),
             Err(_) => unreachable!(),
         };
-        match organize_sockets_dir(&tmp_dir.path()) {
+        match organize_sockets_dir(&tmp_dir.path(), &collections::HashSet::new()) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
                 e.to_string(),
@@ -290,7 +299,7 @@ mod tests {
             }
         }
         assert!(contains);
-        match organize_sockets_dir(&tmp_dir.path()) {
+        match organize_sockets_dir(&tmp_dir.path(), &collections::HashSet::new()) {
             Ok(_) => unreachable!(),
             Err(error) => assert_eq!(
                 error.to_string(),
@@ -316,14 +325,14 @@ mod tests {
             socket_dir.as_os_str().to_str().unwrap()
         );
         socket.bind(&socket_url).unwrap();
-        match organize_sockets_dir(&tmp_dir.path()) {
+        match organize_sockets_dir(&tmp_dir.path(), &collections::HashSet::new()) {
             Ok(sockets) => assert_eq!(i32::from(sockets[0].1[0]), std::process::id() as i32),
             Err(_) => unreachable!("Organize sockets dir should succeed."),
         };
         assert_eq!(fs::read_dir(&tmp_dir).unwrap().count(), 1);
         socket.disconnect(&socket_url).unwrap();
         drop(socket);
-        match organize_sockets_dir(&tmp_dir.path()) {
+        match organize_sockets_dir(&tmp_dir.path(), &collections::HashSet::new()) {
             Ok(sockets) => assert_eq!(sockets.len(), 0),
             Err(_) => unreachable!(),
         };
@@ -346,7 +355,7 @@ mod tests {
         socket.bind(&socket_url).unwrap();
         socket.disconnect(&socket_url).unwrap();
         drop(socket);
-        match organize_sockets_dir(&tmp_dir.path()) {
+        match organize_sockets_dir(&tmp_dir.path(), &collections::HashSet::new()) {
             Ok(sockets) => assert_eq!(sockets.len(), 0),
             Err(_) => unreachable!("Organize sockets dir should succeed."),
         };

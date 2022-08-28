@@ -20,7 +20,7 @@ pub fn clean(sockets_dir: &path::Path) -> anyhow::Result<()> {
         interactive_clean_and_kill(sockets_dir, std::io::stdin().lock(), std::io::stdout())
     } else {
         // Just print error message about dangling sockets
-        let dangling_sockets = organize_sockets_dir(sockets_dir)?;
+        let dangling_sockets = organize_sockets_dir(sockets_dir, &collections::HashSet::new())?;
         if dangling_sockets.len() > 0 {
             Err(anyhow!("Could not start because the following gradesta service sockets are still in use: \n{}", display_dangling_sockets(dangling_sockets)?))
         } else {
@@ -78,7 +78,7 @@ where
 {
     let mut ignored_pids: collections::HashSet<ofiles::Pid> = collections::HashSet::new();
     'main_loop: loop {
-        let dangling_sockets = organize_sockets_dir(sockets_dir)?;
+        let dangling_sockets = organize_sockets_dir(sockets_dir, &ignored_pids)?;
         for (socket, pids) in dangling_sockets {
             for pid in pids {
                 // Prompt the user as to what to do with the pid
