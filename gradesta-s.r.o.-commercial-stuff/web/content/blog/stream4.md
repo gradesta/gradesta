@@ -28,27 +28,27 @@ In the end I ended up just dissabling mold which solved the problem. If my new R
 Part 2: Refactoring config parsing code and linting various things in the manager
 ---------
 
-{{screencast "2022-08-06-efc2c67b6d514a56e80c03fa956fb08d"}}
+{{<screencast "2022-08-06-efc2c67b6d514a56e80c03fa956fb08d">}}
 
 Part 3: Use a tokio main and print out non-garbled error messages and exit with the right exitcode
 ---------
 
-{{screencast "2022-08-14-a2fa42c311bd0bdee43e2378d5672862"}}
+{{<screencast "2022-08-14-a2fa42c311bd0bdee43e2378d5672862">}}
 
 Part 4: Polish and run lockfile code
 --------
 
-{{screencast "2022-08-14-6123c72fb3e6f15d517956926a0a6767"}}
+{{<screencast "2022-08-14-6123c72fb3e6f15d517956926a0a6767">}}
 
 Part 5: Cleaning up dangling sockets and orphaned services
 ---------
 
-{{screencast "2022-08-14-1fa30af99995269ff537fde989bfcb19"}}
+{{<screencast "2022-08-14-1fa30af99995269ff537fde989bfcb19">}}
 
 Part 6: More cleaning up of dangling sockets
 ---------
 
-{{screencast "2022-08-15-8054f51c60c1ab3474b6a5218e34b7e3"}}
+{{<screencast "2022-08-15-8054f51c60c1ab3474b6a5218e34b7e3">}}
 
 Part 7:  More cleaning up of dangling sockets
 ---------
