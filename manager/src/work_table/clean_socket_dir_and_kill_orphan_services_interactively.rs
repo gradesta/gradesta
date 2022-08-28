@@ -17,7 +17,7 @@ use sysinfo::{ProcessExt, SystemExt};
 pub fn clean(sockets_dir: &path::Path) -> anyhow::Result<()> {
     use is_terminal::IsTerminal;
     if std::io::stdout().is_terminal() {
-        interactive_clean(sockets_dir, std::io::stdin().lock(), std::io::stdout())
+        interactive_clean_and_kill(sockets_dir, std::io::stdin().lock(), std::io::stdout())
     } else {
         // Just print error message about dangling sockets
         let dangling_sockets = organize_sockets_dir(sockets_dir)?;
@@ -67,7 +67,7 @@ fn display_dangling_sockets(
     return Ok(display);
 }
 
-fn interactive_clean<R, W>(
+fn interactive_clean_and_kill<R, W>(
     sockets_dir: &path::Path,
     mut stdin: R,
     mut stdout: W,
@@ -81,35 +81,33 @@ where
         let dangling_sockets = organize_sockets_dir(sockets_dir)?;
         for (socket, pids) in dangling_sockets {
             for pid in pids {
-                if !ignored_pids.contains(&pid) {
-                    // Prompt the user as to what to do with the pid
-                    writeln!(stdout, "The socket {} is currently in use by the following program\n    PID - name\n{}Would you like to [t term, k kill, i ignore, w wait 1 sec] this process?", socket.to_string_lossy(), display_pid(pid)?)?;
-                    // Actually do the killing/terminating/ignoring
-                    let mut s = String::new();
-                    stdin.read_line(&mut s)?;
-                    let i32pid = <i32>::from(pid);
-                    let nixpid = nix::unistd::Pid::from_raw(i32pid);
-                    match s.as_str() {
-                        "t\n" => {
-                            kill(nixpid, Signal::SIGTERM)?;
-                            thread::sleep(Duration::from_secs(1));
-                        }
-                        "k\n" => {
-                            kill(nixpid, Signal::SIGKILL)?;
-                            thread::sleep(Duration::from_secs(1));
-                        }
-                        "w\n" => {
-                            thread::sleep(Duration::from_secs(1));
-                        }
-                        "i\n" => {
-                            ignored_pids.insert(pid);
-                        }
-                        _ => {
-                            write!(stdout, "Unknown option.")?;
-                        }
-                    };
-                    continue 'main_loop;
-                }
+                // Prompt the user as to what to do with the pid
+                writeln!(stdout, "The socket {} is currently in use by the following program\n    PID - name\n{}Would you like to [t term, k kill, i ignore, w wait 1 sec] this process?", socket.to_string_lossy(), display_pid(pid)?)?;
+                // Actually do the killing/terminating/ignoring
+                let mut s = String::new();
+                stdin.read_line(&mut s)?;
+                let i32pid = <i32>::from(pid);
+                let nixpid = nix::unistd::Pid::from_raw(i32pid);
+                match s.as_str() {
+                    "t\n" => {
+                        kill(nixpid, Signal::SIGTERM)?;
+                        thread::sleep(Duration::from_secs(1));
+                    }
+                    "k\n" => {
+                        kill(nixpid, Signal::SIGKILL)?;
+                        thread::sleep(Duration::from_secs(1));
+                    }
+                    "w\n" => {
+                        thread::sleep(Duration::from_secs(1));
+                    }
+                    "i\n" => {
+                        ignored_pids.insert(pid);
+                    }
+                    _ => {
+                        write!(stdout, "Unknown option.")?;
+                    }
+                };
+                continue 'main_loop;
             }
         }
         break Ok(());
@@ -141,7 +139,7 @@ mod tests {
         let mut s = String::new();
         let _ = stdout_reader.read_line(&mut s);
         assert_eq!(s, "Ready!\n");
-        interactive_clean(&socket_dir_path, &input[..], output).unwrap();
+        interactive_clean_and_kill(&socket_dir_path, &input[..], output).unwrap();
         let mut s1 = String::new();
         let _ = stdout_reader.read_line(&mut s1);
         assert_eq!(s1, "TERM\n");
