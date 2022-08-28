@@ -73,7 +73,7 @@ Still working on `ofiles` Pid type.
 Part 10:
 ---------
 
-
+Implementing tests for clean_socket_dir using the [test_binary](https://docs.rs/test-binary/latest/test_binary/) package.
 
 {{<screencast "2022-8-28-2ddff790-a50c-44dc-8490-4cc23c769360">}}
 
