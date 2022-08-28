@@ -2,8 +2,8 @@ mod ageing_cellar;
 mod work_table;
 
 extern crate clap;
-use work_table::parse_args_and_environment::*;
 use ageing_cellar::lock_sockets_dir::*;
+use work_table::parse_args_and_environment::*;
 
 /*
 extern crate notify;
@@ -52,7 +52,7 @@ fn watch(path: String) -> notify::Result<()> {
 }
  */
 
-async fn real_main() -> anyhow::Result<()>  {
+async fn real_main() -> anyhow::Result<()> {
     let config = parse_args_and_environment()?;
     lock_sockets_dir(&config.sockets_dir)?;
     work_table::clean_socket_dir::clean(&config.sockets_dir)?;
@@ -65,7 +65,7 @@ async fn main() {
         Err(e) => {
             print!("{}", e);
             std::process::exit(1)
-        },
-        Ok(_) => std::process::exit(0)
+        }
+        Ok(_) => std::process::exit(0),
     }
 }

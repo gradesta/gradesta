@@ -5,11 +5,11 @@ use std::path;
 use sysinfo;
 use sysinfo::{ProcessExt, SystemExt};
 
+use std::io::Seek;
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
 #[cfg(target_os = "wasi")]
 use std::os::wasi::io::{AsRawFd, RawFd};
-use std::io::Seek;
 
 use anyhow::anyhow;
 
@@ -114,7 +114,9 @@ mod tests {
         drop(lockfile);
         match lock_sockets_dir(&tmp_dir.path()) {
             Ok(_) => unreachable!(),
-            Err(e) => assert!(e.to_string().starts_with("The sockets directory is already locked by pid ")),
+            Err(e) => assert!(e
+                .to_string()
+                .starts_with("The sockets directory is already locked by pid ")),
         }
         let mut lockfile = fs::OpenOptions::new()
             .write(true)

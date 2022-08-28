@@ -1,23 +1,20 @@
 use crate::ageing_cellar::organize_sockets_dir::*;
-use std::path;
 use anyhow::anyhow;
-use std::io::{BufRead, Write};
+use nix::sys::signal::{kill, Signal};
 use std::collections;
+use std::io::{BufRead, Write};
+use std::path;
+use std::thread;
+use std::time::Duration;
 use sysinfo;
 use sysinfo::{ProcessExt, SystemExt};
-use std::time::Duration;
-use std::thread;
-use nix::sys::signal::{kill, Signal};
-
 
 /// Deletes left over sockets.
 /// If these sockets are in use and in terminal
 ///  asks user if we should send TERM/KILL signal to the user
 ///  users can also "ignore" the process that is using the socket and just try to delete it anyways
 /// If not in terminal reports error when sockets are in use.
-pub fn clean(
-    sockets_dir: &path::Path,
-) -> anyhow::Result<()> {
+pub fn clean(sockets_dir: &path::Path) -> anyhow::Result<()> {
     use is_terminal::IsTerminal;
     if std::io::stdout().is_terminal() {
         interactive_clean(sockets_dir, std::io::stdin().lock(), std::io::stdout())
@@ -32,10 +29,9 @@ pub fn clean(
     }
 }
 
-
-fn display_pid(pid : ofiles::Pid) -> anyhow::Result<String> {
+fn display_pid(pid: ofiles::Pid) -> anyhow::Result<String> {
     let mut system_info = sysinfo::System::new();
-    let i32pid : i32 = <i32>::from(pid).try_into()?;
+    let i32pid: i32 = <i32>::from(pid).try_into()?;
     system_info.refresh_process(i32pid);
     match system_info.process(i32pid) {
         Some(process) => {
@@ -44,7 +40,6 @@ fn display_pid(pid : ofiles::Pid) -> anyhow::Result<String> {
         None => return Ok(format!("    {} - no longer running\n", i32pid)),
     };
 }
-
 
 /// Returns a string containing a nicely formatted listing of the dangling sockets
 /// and the processes that are using them.
@@ -58,7 +53,9 @@ fn display_pid(pid : ofiles::Pid) -> anyhow::Result<String> {
 ///    PID - name
 ///    343 - cargo-watch
 ///    3940 - gradesta-chess-demo
-fn display_dangling_sockets(dangling_sockets: Vec<(path::PathBuf, Vec<ofiles::Pid>)>) -> anyhow::Result<String> {
+fn display_dangling_sockets(
+    dangling_sockets: Vec<(path::PathBuf, Vec<ofiles::Pid>)>,
+) -> anyhow::Result<String> {
     let mut display = String::new();
     for (socket, pids) in dangling_sockets {
         let socket_header: String = format!("{}\n    PID - name\n", socket.to_string_lossy());
@@ -73,7 +70,7 @@ fn display_dangling_sockets(dangling_sockets: Vec<(path::PathBuf, Vec<ofiles::Pi
 fn interactive_clean<R, W>(
     sockets_dir: &path::Path,
     mut stdin: R,
-    mut stdout: W
+    mut stdout: W,
 ) -> anyhow::Result<()>
 where
     R: BufRead,
@@ -96,17 +93,17 @@ where
                         "t\n" => {
                             kill(nixpid, Signal::SIGTERM)?;
                             thread::sleep(Duration::from_secs(1));
-                        },
+                        }
                         "k\n" => {
                             kill(nixpid, Signal::SIGKILL)?;
                             thread::sleep(Duration::from_secs(1));
-                        },
+                        }
                         "w\n" => {
                             thread::sleep(Duration::from_secs(1));
-                        },
+                        }
                         "i\n" => {
                             ignored_pids.insert(pid);
-                        },
+                        }
                         _ => {
                             write!(stdout, "Unknown option.")?;
                         }
@@ -148,7 +145,7 @@ mod tests {
         let mut s1 = String::new();
         let _ = stdout_reader.read_line(&mut s1);
         assert_eq!(s1, "TERM\n");
-        return (subproc_pid.try_into().unwrap(), socket_path)
+        return (subproc_pid.try_into().unwrap(), socket_path);
     }
 
     #[test]
