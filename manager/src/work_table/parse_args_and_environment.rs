@@ -1,5 +1,6 @@
 use super::configuration::Configuration;
-use clap::{crate_version, Arg, Command};
+use anyhow::anyhow;
+use clap::{crate_version, Arg, ArgAction, Command};
 use std::path::PathBuf;
 
 pub fn parse_args_and_environment() -> anyhow::Result<Configuration> {
@@ -25,14 +26,38 @@ pub fn parse_args_and_environment() -> anyhow::Result<Configuration> {
              .takes_value(true)
              .help("Port for websockets to connect")
              .default_value("443"))
-        .arg(Arg::new("service_heartbeat_timeout")
-             .long("heartbeat_timeout")
+        .arg(Arg::new("no-websockets")
+             .long("no-websockets")
+             .help("Dissable websockets")
+             .action(ArgAction::SetTrue)
+        )
+        .arg(Arg::new("no-unix-sockets")
+             .long("no-unix-sockets")
+             .takes_value(false)
+             .help("Dissable unix sockets")
+             .action(ArgAction::SetTrue)
+        )
+        .arg(Arg::new("service-heartbeat-timeout")
+             .long("heartbeat-timeout")
              .takes_value(true)
              .help("Amount of time to wait after heartbeat before closing connection")
              .default_value("15s"))
         .get_matches();
-    let sockets_dir = matches.value_of_t("sockets_dir")?;
-    let port = matches.value_of_t("port")?;
+    let sockets_dir = if *matches.get_one::<bool>("no-unix-sockets").unwrap() {
+        None
+    } else {
+        Some(matches.value_of_t("sockets_dir")?)
+    };
+    let port = if *matches.get_one::<bool>("no-websockets").unwrap() {
+        None
+    } else {
+        Some(matches.value_of_t("port")?)
+    };
+    if sockets_dir == None && port == None {
+        return Err(anyhow!(
+            "Either UNIX sockets or websockets must be enabled."
+        ));
+    }
     let init = match matches.value_of_t::<PathBuf>("init") {
         Ok(value) => Ok(Some(value)),
         Err(error) => {
@@ -43,7 +68,7 @@ pub fn parse_args_and_environment() -> anyhow::Result<Configuration> {
             }
         }
     }?;
-    let service_heartbeat_timeout = matches.value_of_t("service_heartbeat_timeout")?;
+    let service_heartbeat_timeout = matches.value_of_t("service-heartbeat-timeout")?;
     Ok(Configuration {
         sockets_dir: sockets_dir,
         port: port,
@@ -60,10 +85,10 @@ mod tests {
     #[test]
     fn test_default_values() {
         let config = parse_args_and_environment().unwrap();
-        assert_eq!(config.port, 443);
+        assert_eq!(config.port.unwrap(), 443);
         assert_eq!(config.init, Option::None);
         assert_eq!(
-            config.sockets_dir.components().last().unwrap(),
+            config.sockets_dir.unwrap().components().last().unwrap(),
             Component::Normal("services".as_ref())
         );
         assert_eq!(

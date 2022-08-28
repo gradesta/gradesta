@@ -54,17 +54,38 @@ fn watch(path: String) -> notify::Result<()> {
 
 async fn real_main() -> anyhow::Result<()> {
     let config = parse_args_and_environment()?;
-    println!("Launching gradesta manager. Will watch for clients binding sockets in {:?} and listen for websocket connections on port {}.", &config.sockets_dir, &config.port);
-    lock_sockets_dir(&config.sockets_dir)?;
-    work_table::clean_socket_dir::clean(&config.sockets_dir)?;
+    println!("Launching gradesta manager.");
+    match &config.sockets_dir {
+        Some(sockets_dir) => {
+            lock_sockets_dir(sockets_dir)?;
+            work_table::clean_socket_dir::clean(sockets_dir)?;
+            println!(
+                "Will watch for clients binding sockets in {:?}",
+                sockets_dir
+            );
+        }
+        None => println!("Unix sockets dissabled."),
+    }
+    match &config.port {
+        Some(port) => println!(
+            "Will listen for clients connecting via websockets to port {}",
+            port
+        ),
+        None => println!("Websockets dissabled."),
+    }
     let main_loop = work_table::main_loop::run(&config);
     match &config.init {
         Some(init) => {
-            std::process::Command::new(init)
-                .arg(&config.sockets_dir)
-                .arg(format!("{}", &config.port))
-                .spawn()
-                .expect("Error running init binary");
+            let mut builder = std::process::Command::new(init);
+            let mut builder = match &config.sockets_dir {
+                Some(dir) => builder.arg(format!("--sockets-dir={}", dir.to_string_lossy())),
+                None => &mut builder,
+            };
+            let builder = match &config.port {
+                Some(port) => builder.arg(format!("--websockets-port={}", port)),
+                None => &mut builder,
+            };
+            builder.spawn().expect("Error running init binary");
         }
         None => (),
     };
