@@ -1,4 +1,4 @@
-use super::configuration::Configuration;
+use crate::ageing_cellar::configuration::Configuration;
 use anyhow;
 
 pub async fn run(config: &Configuration) -> anyhow::Result<()> {

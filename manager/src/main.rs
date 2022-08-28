@@ -3,7 +3,7 @@ mod work_table;
 
 extern crate clap;
 use ageing_cellar::lock_sockets_dir::*;
-use work_table::parse_args_and_environment::*;
+use ageing_cellar::parse_args_and_environment::*;
 
 /*
 extern crate notify;
@@ -58,7 +58,7 @@ async fn real_main() -> anyhow::Result<()> {
     match &config.sockets_dir {
         Some(sockets_dir) => {
             lock_sockets_dir(sockets_dir)?;
-            work_table::clean_socket_dir_and_kill_orphan_services_interactively::clean(sockets_dir)?;
+            ageing_cellar::clean_socket_dir_and_kill_orphan_services_interactively::clean(sockets_dir)?;
             println!(
                 "Will watch for clients binding sockets in {:?}",
                 sockets_dir
