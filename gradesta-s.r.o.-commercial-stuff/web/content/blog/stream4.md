@@ -39,3 +39,33 @@ Part 4: Polish and run lockfile code
 --------
 
 {{screencast "2022-08-14-6123c72fb3e6f15d517956926a0a6767"}}
+
+Part 5: Cleaning up dangling sockets and orphaned services
+---------
+
+{{screencast "2022-08-14-1fa30af99995269ff537fde989bfcb19"}}
+
+Part 6: More cleaning up of dangling sockets
+---------
+
+{{screencast "2022-08-15-8054f51c60c1ab3474b6a5218e34b7e3"}}
+
+Part 7:  More cleaning up of dangling sockets
+---------
+
+{{<screencast "2022-8-21-11eddf31-9be5-4450-a7d7-8fdd02fda669">}}
+
+Part 8: ofiles tests
+---------
+
+So I am struggling to understand what the proper type for PIDs are. `ofiles` used `u32` because that is what [the pid type](https://doc.rust-lang.org/std/process/fn.id.html) used by the rust standard library is. This is probably because that is [the pid type on Windows](https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getprocessid) (Microsoft defines a [DWORD](https://docs.microsoft.com/en-us/windows/win32/winprog/windows-data-types) as a `u32`), and in POSIX, negative Pids don't really exist so this is the safe type to use on both systems. However [`nix`](https://docs.rs/nix/0.25.0/nix/pty/type.SessionId.html) uses an `i32`, because that is the type used by [glibc](https://ftp.gnu.org/old-gnu/Manuals/glibc-2.2.3/html_node/libc_554.html) and [the linux kernel](https://github.com/torvalds/linux/blob/5147da902e0dd162c6254a61e4c57f21b60a9b1c/include/linux/pid.h#L55). Since `ofiles` is distinctly POSIX bound, yet there are never negative PIDs it seems best to use `i32` natively but implement `From` for `u32` as well.
+
+{{<screencast "2022-8-22-2ac231f3-6fdd-4f83-8b19-b24b40c065dd">}}
+
+
+Part 9:
+----------
+
+Still working on `ofiles` Pid type.
+
+{{<screencast "2022-8-28-839391cb-4af4-41c5-9046-8e2367836cca">}}
