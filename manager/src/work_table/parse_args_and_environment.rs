@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 pub fn parse_args_and_environment() -> anyhow::Result<Configuration> {
     let default_sockets_dir: &str = &format!(
-        "{}/.cache/gradsta/services/",
+        "{}/.cache/gradesta/services/",
         std::env::var("HOME").unwrap()
     );
     let matches = Command::new("gradesta manager")

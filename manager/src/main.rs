@@ -54,9 +54,21 @@ fn watch(path: String) -> notify::Result<()> {
 
 async fn real_main() -> anyhow::Result<()> {
     let config = parse_args_and_environment()?;
+    println!("Launching gradesta manager. Will watch for clients binding sockets in {:?} and listen for websocket connections on port {}.", &config.sockets_dir, &config.port);
     lock_sockets_dir(&config.sockets_dir)?;
     work_table::clean_socket_dir::clean(&config.sockets_dir)?;
-    Ok(())
+    let main_loop = work_table::main_loop::run(&config);
+    match &config.init {
+        Some(init) => {
+            std::process::Command::new(init)
+                .arg(&config.sockets_dir)
+                .arg(format!("{}", &config.port))
+                .spawn()
+                .expect("Error running init binary");
+        }
+        None => (),
+    };
+    main_loop.await
 }
 
 #[tokio::main]

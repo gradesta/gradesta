@@ -77,3 +77,10 @@ Implementing tests for clean_socket_dir using the [test_binary](https://docs.rs/
 
 {{<screencast "2022-8-28-2ddff790-a50c-44dc-8490-4cc23c769360">}}
 
+Part 11:
+----------
+
+
+
+{{<screencast "2022-8-28-39d0cd84-d4c3-4cf9-b21c-220efcbc256d">}}
+
