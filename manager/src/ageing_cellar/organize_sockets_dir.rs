@@ -31,6 +31,7 @@ pub fn organize_sockets_dir(
             err.to_string()
         ))
     })?;
+
     for entry_r in entries {
         // Not sure why DirEntries are wrapped in a Result
         // https://www.gnu.org/software/libc/manual/html_mono/libc.html#Reading_002fClosing-Directory
@@ -41,11 +42,13 @@ pub fn organize_sockets_dir(
             "Reading first level dir entry. {}",
             entry.path().to_string_lossy()
         );
+
         test_channels::report(&report_str);
         let socket_dir: path::PathBuf = entry.path();
         if !socket_dir.is_dir() {
             continue;
         }
+
         let mut empty = true;
         let entries1 = fs::read_dir(socket_dir.clone()).or_else(|err| {
             Err(anyhow!(
@@ -54,10 +57,12 @@ pub fn organize_sockets_dir(
                 err.to_string()
             ))
         })?;
+
         for entry1_r in entries1 {
             test_channels::report("Reading second level dir entry.");
             let entry1 = entry1_r.unwrap();
             let socket: path::PathBuf = entry1.path();
+
             if entry1.file_name() == "PAIR.zmq" {
                 // https://docs.rs/ofiles/0.2.0/ofiles/fn.opath.html
                 let pids = ofiles::osocket(entry1.path()).or_else(|err| {
@@ -343,7 +348,7 @@ mod tests {
         drop(socket);
         match organize_sockets_dir(&tmp_dir.path()) {
             Ok(sockets) => assert_eq!(sockets.len(), 0),
-            Err(_) => unreachable!(),
+            Err(_) => unreachable!("Organize sockets dir should succeed."),
         };
         assert_eq!(fs::read_dir(&tmp_dir).unwrap().count(), 0);
         tmp_dir.close().unwrap();

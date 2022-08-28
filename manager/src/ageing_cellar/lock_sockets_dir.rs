@@ -74,7 +74,7 @@ pub fn lock_sockets_dir(dir: &path::Path) -> anyhow::Result<()> {
             None => (),
         };
     }
-    f.seek(std::io::SeekFrom::Start(0));
+    f.seek(std::io::SeekFrom::Start(0))?;
     f.set_len(0)?;
     f.write(&format!("{}", std::process::id()).as_bytes())
         .or_else(|err| {
