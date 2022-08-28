@@ -1,9 +1,9 @@
 ---
 title: "Launching and configuring the manager"
 date: 2022-08-06
-featureImage: https://assets.gradesta.com/vegan-buddies/img/avomik.jpg
+featureImage: https://assets.gradesta.com/gradesta/img/dalle2-web-rocket.png
 author: Timothy Hobbs <tim@gradesta.com>
-draft: true
+draft: false
 ---
 
 Part 1: Getting things building again after setting up mold (by dissabling mold)
