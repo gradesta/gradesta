@@ -80,7 +80,15 @@ Implementing tests for clean_socket_dir using the [test_binary](https://docs.rs/
 Part 11:
 ----------
 
+This is the final stream in the series.
 
+- I test launching by hand
+- Made websockets and unix sockets optional
+- Setup scafholding for main loop
+- Renamed clean to clean&kill so it doesn't get confused with origanize_sockets_dir
+- Fixed PID ignoring code so that the files that are being used by ignored PIDs actually get cleaned update- Clarified the licenses a bit
+- Moved initialization code over to ageing cellar
+- did manual integration testing again
 
 {{<screencast "2022-8-28-39d0cd84-d4c3-4cf9-b21c-220efcbc256d">}}
 
