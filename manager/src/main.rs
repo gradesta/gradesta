@@ -55,6 +55,7 @@ fn watch(path: String) -> notify::Result<()> {
 async fn real_main() -> anyhow::Result<()>  {
     let config = parse_args_and_environment()?;
     lock_sockets_dir(&config.sockets_dir)?;
+    work_table::clean_socket_dir::clean(&config.sockets_dir)?;
     Ok(())
 }
 

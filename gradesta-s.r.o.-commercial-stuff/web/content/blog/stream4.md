@@ -69,3 +69,11 @@ Part 9:
 Still working on `ofiles` Pid type.
 
 {{<screencast "2022-8-28-839391cb-4af4-41c5-9046-8e2367836cca">}}
+
+Part 10:
+---------
+
+
+
+{{<screencast "2022-8-28-2ddff790-a50c-44dc-8490-4cc23c769360">}}
+
