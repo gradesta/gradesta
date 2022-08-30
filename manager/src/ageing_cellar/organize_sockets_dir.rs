@@ -5,9 +5,9 @@ extern crate rust_util;
 use anyhow::anyhow;
 use itertools::Itertools;
 use rust_util::ageing_cellar::test_channels;
+use std::collections;
 use std::fs;
 use std::path;
-use std::collections;
 
 /// 1. Deletes any left over directories from socket dir
 /// 2. Deletes any left over/non-connected sockets from socket dir

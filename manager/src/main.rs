@@ -58,7 +58,9 @@ async fn real_main() -> anyhow::Result<()> {
     match &config.sockets_dir {
         Some(sockets_dir) => {
             lock_sockets_dir(sockets_dir)?;
-            ageing_cellar::clean_socket_dir_and_kill_orphan_services_interactively::clean(sockets_dir)?;
+            ageing_cellar::clean_socket_dir_and_kill_orphan_services_interactively::clean(
+                sockets_dir,
+            )?;
             println!(
                 "Will watch for clients binding sockets in {:?}",
                 sockets_dir
