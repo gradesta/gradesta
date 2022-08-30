@@ -1,9 +1,9 @@
 ---
 title: "A system for prioritization and time estimation"
 date: 2022-08-29
-featureImage: https://assets.gradesta.com/vegan-buddies/img/avomik.jpg
+featureImage: https://assets.gradesta.com/gradesta/img/dalle2-clock-and-coins.png
 author: Timothy Hobbs <tim@gradesta.com>
-draft: true
+draft: false
 ---
 
 In this series I lay out a rough draft of a system for estimating time and task priority and also how much to pay subcontractors for completing tasks. I am trying to integrate this into the Kanban Code Flow system so all the draft documents are in the `kcf` directory.
