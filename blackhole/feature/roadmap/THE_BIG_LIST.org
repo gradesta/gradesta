@@ -1,0 +1,139 @@
+* Manager
+** Watching for new unix sockets
+*** TASK_ID: a28c678f9cb4684164b62b8730b34155
+*** CREATED: 2022-08-31 14:38
+*** TIME_COST: W4
+** Listening for websocket connections
+*** TASK_ID: ba859b09bcf396f4e026ab075a9539fc
+*** CREATED: 2022-08-31 14:38
+*** TIME_COST: U2
+** The event loop
+*** TASK_ID: 10017dbb2ea8b40e1a9281464fd39357
+*** CREATED: 2022-08-31 14:38
+*** TIME_COST: U3
+** Decide on how to do paralelization / interprocess synchronization of walk tree algorithm
+*** TASK_ID: 450c595ab6630e7ce33c981877a0198f
+*** CREATED: 2022-08-31 14:38
+*** TIME_COST: U4
+** Implement walk trees
+*** TASK_ID: b958cf5ed42ac1615049b7467dd190ce
+*** CREATED: 2022-08-31 14:38
+*** TIME_COST: W5
+** Implement cursor sharing/synchronization
+*** TASK_ID: 00cceebf07bd315642db69f35f7471e9
+*** CREATED: 2022-08-31 15:21
+*** TIME_COST: W6
+** Decide how cursor sharing intereacts with identities
+*** TASK_ID: fd2a90dd641d5f2dcd6233db5a8b301f
+*** CREATED: 2022-08-31 15:21
+*** TIME_COST: U4
+** Mock and automatically test the zmq sockets
+*** TASK_ID: 37cd123ada612c8b664edcd94b1f9135
+*** CREATED: 2022-08-31 14:38
+*** TIME_COST: W6
+** Mock and automatically test websockets
+*** TASK_ID: 975cbc07b13eabb61ddaef3e96dbd979
+*** CREATED: 2022-08-31 14:38
+*** TIME_COST: W6
+** Address routing
+*** TASK_ID: 365b03ecf5ec0b35269915886f4060b9
+*** CREATED: 2022-08-31 15:17
+*** TIME_COST: U4
+** Authentification and identity management
+*** TASK_ID: 8fe1d0e4ea1f3a39f7c2ce9638b6b9c1
+*** CREATED: 2022-08-31 15:19
+*** TIME_COST: U7
+** Access control
+*** TASK_ID: f9f967fa4febf1637003c0b2b5d7f6d2
+*** CREATED: 2022-08-31 15:19
+*** TIME_COST: U7
+** Serializing and deserializing the CapnProto
+*** TASK_ID: 8bbd23e2faea99935dca57fc22172047
+*** CREATED: 2022-08-31 15:16
+*** TIME_COST: W5
+** ForService: message_numbers set by the manager
+*** TASK_ID: 5be6b34003557ee6fa76381160515f5f
+*** CREATED: 2022-08-31 14:38
+*** TIME_COST: W3
+** ForService: Timestamps set by the manager
+*** TASK_ID: 2558bfa42894ccac28c717e4d99bac37
+*** CREATED: 2022-08-31 14:38
+*** TIME_COST: W5
+** ForService: Vertex message forwarding between services
+*** TASK_ID: 448a34be34efa5863b7694fc4437d202
+*** CREATED: 2022-08-31 14:39
+*** TIME_COST: W4
+** ForService: Select vertexes
+*** TASK_ID: daf6cbbf0031c852cfdafa92b0df2331
+*** CREATED: 2022-08-31 14:40
+*** TIME_COST: W4
+** ForService: Deselect
+*** TASK_ID: a14d884343e33c0c2730e50849392d58
+*** CREATED: 2022-08-31 14:40
+*** TIME_COST: W3
+** ForService: portUpdates
+*** TASK_ID: c2f9c937845c2aef4a01238a7d491b7b
+*** CREATED: 2022-08-31 14:42
+*** TIME_COST: W3
+** ForService: dataUpdates
+*** TASK_ID: 9e7b9fc5f7fe4f01b954c8fe46df0b0e
+*** CREATED: 2022-08-31 14:42
+*** TIME_COST: W3
+** ForService: encryptionUpdates
+*** TASK_ID: b4459e6caea6e9a0747f2afcc000b1fa
+*** CREATED: 2022-08-31 15:11
+*** TIME_COST: W4
+** ForClient: vertexes
+*** TASK_ID: 7ba945a9b331055c9a65608a957d4fb1
+*** CREATED: 2022-08-31 15:12
+*** TIME_COST: W2
+** ForClient: vertexStates
+*** TASK_ID: 0aec294278baa4e67df640b05a1a686e
+*** CREATED: 2022-08-31 15:13
+*** TIME_COST: W3
+** ForClient: updateStatuses
+*** TASK_ID: 96ab4c5f16bbc73dc05d00fc9ace894c
+*** CREATED: 2022-08-31 15:13
+*** TIME_COST: W3
+** ForClient: portUpdates
+*** TASK_ID: 70d2a51ae5f0a691aa2e553b3089ff05
+*** CREATED: 2022-08-31 15:14
+*** TIME_COST: W3
+** ForClient: dataUpdates
+*** TASK_ID: 0e3079557216925eece75cd37fa1154a
+*** CREATED: 2022-08-31 15:14
+*** TIME_COST: W3
+** ForClient: encryptionUpdates
+*** TASK_ID: b794a1b704ddf9a4451d80948c364d65
+*** CREATED: 2022-08-31 15:15
+*** TIME_COST: W3
+** ForClient: timestamp
+*** TASK_ID: 1f0bf2973ecf8a9107c1789d8573a6b8
+*** CREATED: 2022-08-31 15:15
+*** TIME_COST: W4
+* Python bindings
+* Rust bindinds
+* Javascript bindings
+* Browser
+* Studio
+* Test services
+** Tick tack toe
+** Chess
+** Wiki
+** Chat
+** File browser
+* Utils
+#+A emacs-lisp
+(defun create_task () (interactive)
+       (insert (concatenate 'string "*** TASK_ID: "(string-trim (shell-command-to-string "mcookie")) "\n"))
+       (insert (concatenate 'string "*** CREATED: "(string-trim (shell-command-to-string "date -u \"+%Y-%m-%d %H:%M\"")) "\n"))
+       (insert "*** TIME_COST: "))
+
+
+(defun bounty_task () (interactive)
+       (insert (concatenate 'string "*** BOUNTIED: "(string-trim (shell-command-to-string "date -u \"+%Y-%m-%d %H:%M\"")) "\n"))
+       (insert "*** INCOMPLETION_COST: per hour\n")
+       (insert "*** START_VALUE: \n")
+       (insert "*** MAX_VALUE: \n")
+       )
+#+END_A
