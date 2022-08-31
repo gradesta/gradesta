@@ -62,6 +62,14 @@ Team tasks:
 - `T11` - 300 hours to 800 hours
 - `T12` - 600 hours to 1200 hours
 
+Tasks that are complete should be marked `DONE` as folows:
+
+
+```
+TIME_COST: U1 DONE
+```
+
+
 Classifying tasks in terms of time cost
 -------------------------
 

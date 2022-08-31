@@ -17,3 +17,8 @@ Part 2: Developing a mechanism for gathering the tasks and summing their estimat
 --------------------------------------------
 
 {{<screencast "2022-8-31-38358167-2830-4355-9a2c-e04479090446">}}
+
+Part 3: Browser roadmap
+----------------------------
+
+{{<screencast "2022-8-31-e5ccc82a-5e53-4f3f-a7e1-fb8c0ca6b0b3">}}

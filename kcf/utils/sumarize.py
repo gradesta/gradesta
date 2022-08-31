@@ -3,7 +3,8 @@ import subprocess
 from datetime import timedelta
 import sys
 
-output = str(subprocess.check_output("git grep -h TIME_COST -- ':!kcf'", shell=True))
+output = subprocess.check_output("git grep -h TIME_COST -- ':!kcf'", shell=True).decode("utf-8")
+output = "\n".join([l for l in output.splitlines() if "DONE" not in l])
 costs = {
     "U0": ("decision", timedelta(minutes=0), timedelta(minutes=15)),
     "U1": ("decision", timedelta(minutes=15), timedelta(hours=4)),
