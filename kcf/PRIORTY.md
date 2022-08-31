@@ -16,8 +16,8 @@ Task 1:
 INCOMPLETION_COST: $1 per hour
 START_VALUE: $50
 MAX_VALUE: $5000
-PUBLISHED: 2022-08-29 10:40
+BOUNTIED: 2022-08-29 10:40
 Description: ....
 ```
 
-To calculate the current value for this task, one can take the `TASK_VALUE = min(START_VALUE + (NOW - PUBLISHED) * INCOMPLETION_COST, MAX_VALUE)`.
+To calculate the current value for this task, one can take the `TASK_VALUE = min(START_VALUE + (NOW - BOUNTIED) * INCOMPLETION_COST, MAX_VALUE)`.
