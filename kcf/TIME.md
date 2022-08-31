@@ -55,6 +55,7 @@ Team tasks:
 - `T4` - 30 hours to 60 hours
 - `T5` - 40 hours to 80 hours
 - `T6` - 60 hours to 120 hours
+- `T7` - 80 hours to 160 hours
 - `T8` - 100 hours to 200 hours
 - `T9` - 150 hours to 300 hours
 - `T10` - 200 hours to 400 hours

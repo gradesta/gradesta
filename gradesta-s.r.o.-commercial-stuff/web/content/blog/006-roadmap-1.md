@@ -9,5 +9,11 @@ draft: false
 Part 1: Just figuring out how to organize the tasks
 --------------------------------------------------------------
 
+In this part I think about how to organize the tasks and I start listing tasks for the manager.
+
 {{<screencast "2022-8-31-42f5eafe-d710-41da-afeb-18125ee83c73">}}
 
+Part 2: Developing a mechanism for gathering the tasks and summing their estimated time costs
+--------------------------------------------
+
+{{<screencast "2022-8-31-38358167-2830-4355-9a2c-e04479090446">}}
