@@ -111,10 +111,190 @@
 *** TASK_ID: 1f0bf2973ecf8a9107c1789d8573a6b8
 *** CREATED: 2022-08-31 15:15
 *** TIME_COST: W4
+** Message: track
+*** TASK_ID: a0e51663a32507a7539dbb7f051d48ec
+*** CREATED: 2022-08-31 19:41
+*** TIME_COST: U3
 * Python bindings
-* Rust bindinds
+* Rust bindings
 * Javascript bindings
+** Figure out how to connect via websocket to the manager
+*** TASK_ID: d504c2fcad9ee35edb1a20087863367d
+*** CREATED: 2022-08-31 19:29
+*** TIME_COST: W4
+** Figure out how to serialize/deserialize capnproto
+*** TASK_ID: bc7261505f59e06c8c7452eb2974ffd4
+*** CREATED: 2022-08-31 19:29
+*** TIME_COST: W4
+** Create walk tree builder/serializer
+*** TASK_ID: 42e62c70499cc64cff25ded9e9bc5260
+*** CREATED: 2022-08-31 19:30
+*** TIME_COST: W5
+** Decide on API for interacting with the bindings
+*** TASK_ID: c4d9fa7936d17d090fcc2707f9b5bae8
+*** CREATED: 2022-08-31 19:31
+*** TIME_COST: U4
+** Create callbacks / events for cursor synchronization
+*** TASK_ID: ad2a139c7c25702a684b83b37fb473ac
+*** CREATED: 2022-08-31 19:32
+*** TIME_COST: W4
+** Create callbacks / events for handling new vertexes / topology changes
+*** TASK_ID: 79d5dc6f312eced1fd802a95363cad2b
+*** CREATED: 2022-08-31 19:33
+*** TIME_COST: W5
+** Create callbacks / events for handing vertex messages
+*** TASK_ID: 35558b17aaab898248dce2a09550aaa4
+*** CREATED: 2022-08-31 19:33
+*** TIME_COST: W3
+** Create callbacks / events for handing port updates
+*** TASK_ID: 5546f4ff1ba6d5bd4624c270411e2912
+*** CREATED: 2022-08-31 19:34
+*** TIME_COST: W3
+** Create callbacks / events for handling data updates
+*** TASK_ID: 6bfca38a495ce2ff4551cddfd1221546
+*** CREATED: 2022-08-31 19:34
+*** TIME_COST: W3
+** Figure out timestamping
+*** TASK_ID: 7c6f367b7505bda197cd229c4cfb7599
+*** CREATED: 2022-08-31 19:34
+*** TIME_COST: W4
+** Figure out message numbering and protocol resets
+*** TASK_ID: 2a7c9564ce3e0e0ff95aa89942299716
+*** CREATED: 2022-08-31 19:35
+*** TIME_COST: W4
+** Low level function for vertex selection
+*** TASK_ID: 67b0d79cc1d9ca8ae13f0ec582f5af7d
+*** CREATED: 2022-08-31 19:36
+*** TIME_COST: W3
+** Low level function for vertex deselection
+*** TASK_ID: dccdfb787ebdb3853b735cd4abba21a1
+*** CREATED: 2022-08-31 19:36
+*** TIME_COST: W3
+** Encription updates/handling
+*** TASK_ID: 5b6c5b4867dd174f0fc7a6d1cea0df0b
+*** CREATED: 2022-08-31 19:37
+*** TIME_COST: W6
+** Update status handlers
+*** TASK_ID: 0a9bfb81a88b76fe9090a31e6c13f9a3
+*** CREATED: 2022-08-31 19:38
+*** TIME_COST: W3
+** Identity / authentification
+*** TASK_ID: 8bb3c9980bb32cfd79017dcfc2804f90
+*** CREATED: 2022-08-31 19:39
+*** TIME_COST: U4
+** Address parsing
+*** TASK_ID: 2992878f437f11505c71b4abfd07da6a
+*** CREATED: 2022-08-31 19:41
+*** TIME_COST: W4
+** Address formatting
+*** TASK_ID: 8af0b1a22b984199a29877fd26363775
+*** CREATED: 2022-08-31 19:42
+*** TIME_COST: W3
 * Browser
+** Deciding on framework to write browser in (Hint either Vue.js or React/react native)
+*** TASK_ID: 9b750fcb218799192ab1bfd94b8cdb89
+*** CREATED: 2022-08-31 19:26
+*** TIME_COST: U1
+** Figure out how to isolate untrusted HTML/DOM elements that are used for custom vertex display/iteraction
+*** TASK_ID: 0c0e6bdbb2fdd1e93927b86dbe5fb245
+*** CREATED: 2022-08-31 19:28
+*** TIME_COST: U5
+** 3 column layout
+*** TASK_ID: 219a9245859136c0705e2700bed3f35d
+*** CREATED: 2022-08-31 19:42
+*** TIME_COST: W5
+** breadcrumb
+*** TASK_ID: e8ed7e43cf460757ab148b8fe83db58d
+*** CREATED: 2022-08-31 19:43
+*** TIME_COST: W4
+** menu
+*** TASK_ID: 564bcd00265e93068687e20b252bdbbe
+*** CREATED: 2022-08-31 19:43
+*** TIME_COST: W4
+** Links drawn on screen
+*** TASK_ID: d68af567fbc2d125be5fc1a3af5c7c58
+*** CREATED: 2022-08-31 19:44
+*** TIME_COST: W4
+** Special widget: audio
+*** TASK_ID: 7247d3068307556309032d5ab02daf73
+*** CREATED: 2022-08-31 19:44
+*** TIME_COST: W5
+** Special widget: text
+*** TASK_ID: aacfb15870cd87512a58497d47c53b8d
+*** CREATED: 2022-08-31 19:44
+*** TIME_COST: W5
+** Special widget: image
+*** TASK_ID: 1cbb64bedff0488912f785814cf4f2ca
+*** CREATED: 2022-08-31 19:45
+*** TIME_COST: W5
+** Special widget: video
+*** TASK_ID: ad87739e49bde5fe18df286bacac560b
+*** CREATED: 2022-08-31 19:45
+*** TIME_COST: W5
+** Special widget: File
+*** TASK_ID: e82fdb7616ecc5b59b757ba2d9873d58
+*** CREATED: 2022-08-31 19:45
+*** TIME_COST: W6
+** The insert tool thing at bottom of screen
+*** TASK_ID: 99aed6cf46d12492ad7c313a2c06d454
+*** CREATED: 2022-08-31 19:46
+*** TIME_COST: W5
+** Inserting audio
+*** TASK_ID: a555f335fce4a8e9e580dc1825b42224
+*** CREATED: 2022-08-31 19:46
+*** TIME_COST: W6
+** Inserting text
+*** TASK_ID: 26ea1bf71df51dfc550b420076835d8b
+*** CREATED: 2022-08-31 19:46
+*** TIME_COST: W5
+** Adding files
+*** TASK_ID: 13798d26bc45d0bfdb29d93548dd5017
+*** CREATED: 2022-08-31 19:47
+*** TIME_COST: W4
+** Adding images
+*** TASK_ID: 04999e02d09ee8bc3e0b6f31689bd257
+*** CREATED: 2022-08-31 19:47
+*** TIME_COST: W5
+** Adding video
+*** TASK_ID: d3c4309b0b78f2d375fcaab54d766d86
+*** CREATED: 2022-08-31 19:47
+*** TIME_COST: W5
+** Vertex insertion direction display
+*** TASK_ID: b610594311685d3f254dc60d21817527
+*** CREATED: 2022-08-31 19:48
+*** TIME_COST: W4
+** Vertex insertion direction touch/click interaction
+*** TASK_ID: 00b874e7101a8705a3e90b0176f8aa87
+*** CREATED: 2022-08-31 19:48
+*** TIME_COST: W5
+** Vertex insertion direction keyboard interaction
+*** TASK_ID: 2bbb6325d34192b7ce20f5865b4339e4
+*** CREATED: 2022-08-31 19:48
+*** TIME_COST: W4
+** per vertex menu: display and opening
+*** TASK_ID: 122256a27504baab9b00cb99121cea6d
+*** CREATED: 2022-08-31 19:49
+*** TIME_COST: W4
+** per vertex menu action: edit mode
+*** TASK_ID: 81af668d66bc6372ddc0cbff6b1ae6f1
+*** CREATED: 2022-08-31 19:49
+*** TIME_COST: W5
+** per vertex menu action: linking
+*** TASK_ID: e7f32a3468f3788cb40cfeea0abe6354
+*** CREATED: 2022-08-31 19:50
+*** TIME_COST: W6
+** per vertex menu action: deletion
+*** TASK_ID: 064687f8059c4f1f1df8ab0f527cf57d
+*** CREATED: 2022-08-31 19:50
+*** TIME_COST: W5
+** per vertex menu action: moving
+*** TASK_ID: 6ae4123a704e8a867d1b9565494ceada
+*** CREATED: 2022-08-31 19:50
+*** TIME_COST: W6
+** main menu action: critter search
+*** TASK_ID: a56be8d1376c917ea99d4ca49ac0ffc8
+*** CREATED: 2022-08-31 19:51
+*** TIME_COST: U6
 * Studio
 * Test services
 ** Tick tack toe
