@@ -16,7 +16,7 @@ Decision making time is both active (research) and passive. It isn't something t
 Mark decision tasks with the prefix `U` for "unknown" and a number classifying how "big" the decision is.
 
 ```
-TIME_COST: U1
+ESTIMATED_TIME: U1
 ```
 
 Since decision making requires "passive" time like sleep as well as active time, we measure decisions in days, weeks and months rather than "person hours".
@@ -66,7 +66,7 @@ Tasks that are complete should be marked `DONE` as folows:
 
 
 ```
-TIME_COST: U1 DONE
+ESTIMATED_TIME: U1 DONE
 ```
 
 

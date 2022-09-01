@@ -8,5 +8,6 @@ mkShell {
         pkgs.llvmPackages.bintools
         cargo-watch
         cargo-tarpaulin
+        python311
     ];
 }

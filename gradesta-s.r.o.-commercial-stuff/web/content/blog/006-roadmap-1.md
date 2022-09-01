@@ -22,3 +22,8 @@ Part 3: Browser roadmap
 ----------------------------
 
 {{<screencast "2022-8-31-e5ccc82a-5e53-4f3f-a7e1-fb8c0ca6b0b3">}}
+
+Part 4: Milestones
+----------------------
+
+{{<screencast "2022-9-1-8472d8b0-8c06-4d9f-8d05-0009400cffd8">}}

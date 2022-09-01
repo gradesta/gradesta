@@ -1,319 +1,394 @@
 * Manager
-** Watching for new unix sockets
+** TASK: Watching for new unix sockets
 *** TASK_ID: a28c678f9cb4684164b62b8730b34155
 *** CREATED: 2022-08-31 14:38
-*** TIME_COST: W4
-** Listening for websocket connections
+*** ESTIMATED_TIME: W4
+*** MILESTONES: unix-sockets
+** TASK: Listening for websocket connections
 *** TASK_ID: ba859b09bcf396f4e026ab075a9539fc
 *** CREATED: 2022-08-31 14:38
-*** TIME_COST: U2
-** The event loop
+*** ESTIMATED_TIME: U2
+*** MILESTONES: mvp manager-mvp
+** TASK: The event loop
 *** TASK_ID: 10017dbb2ea8b40e1a9281464fd39357
 *** CREATED: 2022-08-31 14:38
-*** TIME_COST: U3
-** Decide on how to do paralelization / interprocess synchronization of walk tree algorithm
+*** ESTIMATED_TIME: U3
+*** MILESTONES: mvp manager-mvp
+** TASK: Decide on how to do paralelization / interprocess synchronization of walk tree algorithm
 *** TASK_ID: 450c595ab6630e7ce33c981877a0198f
 *** CREATED: 2022-08-31 14:38
-*** TIME_COST: U4
-** Implement walk trees
+*** ESTIMATED_TIME: U4
+*** MILESTONES: mvp manager-mvp
+** TASK: Implement walk trees
 *** TASK_ID: b958cf5ed42ac1615049b7467dd190ce
 *** CREATED: 2022-08-31 14:38
-*** TIME_COST: W5
-** Implement cursor sharing/synchronization
+*** ESTIMATED_TIME: W5
+*** MILESTONES: mvp manager-mvp
+** TASK: Implement cursor sharing/synchronization
 *** TASK_ID: 00cceebf07bd315642db69f35f7471e9
 *** CREATED: 2022-08-31 15:21
-*** TIME_COST: W6
-** Decide how cursor sharing intereacts with identities
+*** ESTIMATED_TIME: W6
+*** MILESTONES: cursor-sharing
+** TASK: Decide how cursor sharing intereacts with identities
 *** TASK_ID: fd2a90dd641d5f2dcd6233db5a8b301f
 *** CREATED: 2022-08-31 15:21
-*** TIME_COST: U4
-** Mock and automatically test the zmq sockets
+*** ESTIMATED_TIME: U4
+*** MILESTONES: cursor-sharing
+** TASK: Mock and automatically test the zmq sockets
 *** TASK_ID: 37cd123ada612c8b664edcd94b1f9135
 *** CREATED: 2022-08-31 14:38
-*** TIME_COST: W6
-** Mock and automatically test websockets
+*** ESTIMATED_TIME: W6
+*** MILESTONES: mvp manager-mvp
+** TASK: Mock and automatically test websockets
 *** TASK_ID: 975cbc07b13eabb61ddaef3e96dbd979
 *** CREATED: 2022-08-31 14:38
-*** TIME_COST: W6
-** Address routing
+*** ESTIMATED_TIME: W6
+*** MILESTONES: websockets
+** TASK: Address routing
 *** TASK_ID: 365b03ecf5ec0b35269915886f4060b9
 *** CREATED: 2022-08-31 15:17
-*** TIME_COST: U4
-** Authentification and identity management
+*** ESTIMATED_TIME: U4
+*** MILESTONES: mvp manager-mvp
+** TASK: Authentification and identity management
 *** TASK_ID: 8fe1d0e4ea1f3a39f7c2ce9638b6b9c1
 *** CREATED: 2022-08-31 15:19
-*** TIME_COST: U7
-** Access control
+*** ESTIMATED_TIME: U7
+*** MILESTONES: auth
+** TASK: Access control
 *** TASK_ID: f9f967fa4febf1637003c0b2b5d7f6d2
 *** CREATED: 2022-08-31 15:19
-*** TIME_COST: U7
-** Serializing and deserializing the CapnProto
+*** ESTIMATED_TIME: U7
+*** MILESTONES: auth
+** TASK: Serializing and deserializing the CapnProto
 *** TASK_ID: 8bbd23e2faea99935dca57fc22172047
 *** CREATED: 2022-08-31 15:16
-*** TIME_COST: W5
-** ForService: message_numbers set by the manager
+*** ESTIMATED_TIME: W5
+*** MILESTONES: mvp manager-mvp
+** TASK: ForService: message_numbers set by the manager
 *** TASK_ID: 5be6b34003557ee6fa76381160515f5f
 *** CREATED: 2022-08-31 14:38
-*** TIME_COST: W3
-** ForService: Timestamps set by the manager
+*** ESTIMATED_TIME: W3
+*** MILESTONES: mvp manager-mvp
+** TASK: ForService: Timestamps set by the manager
 *** TASK_ID: 2558bfa42894ccac28c717e4d99bac37
 *** CREATED: 2022-08-31 14:38
-*** TIME_COST: W5
-** ForService: Vertex message forwarding between services
+*** ESTIMATED_TIME: W5
+*** MILESTONES: mvp manager-mvp
+** TASK: ForService: Vertex message forwarding between services
 *** TASK_ID: 448a34be34efa5863b7694fc4437d202
 *** CREATED: 2022-08-31 14:39
-*** TIME_COST: W4
-** ForService: Select vertexes
+*** ESTIMATED_TIME: W4
+*** MILESTONES: mvp manager-mvp
+** TASK: ForService: Select vertexes
 *** TASK_ID: daf6cbbf0031c852cfdafa92b0df2331
 *** CREATED: 2022-08-31 14:40
-*** TIME_COST: W4
-** ForService: Deselect
+*** ESTIMATED_TIME: W4
+*** MILESTONES: mvp manager-mvp
+** TASK: ForService: Deselect
 *** TASK_ID: a14d884343e33c0c2730e50849392d58
 *** CREATED: 2022-08-31 14:40
-*** TIME_COST: W3
-** ForService: portUpdates
+*** ESTIMATED_TIME: W3
+*** MILESTONES: mvp manager-mvp
+** TASK: ForService: portUpdates
 *** TASK_ID: c2f9c937845c2aef4a01238a7d491b7b
 *** CREATED: 2022-08-31 14:42
-*** TIME_COST: W3
-** ForService: dataUpdates
+*** ESTIMATED_TIME: W3
+*** MILESTONES: mvp manager-mvp
+** TASK: ForService: dataUpdates
 *** TASK_ID: 9e7b9fc5f7fe4f01b954c8fe46df0b0e
 *** CREATED: 2022-08-31 14:42
-*** TIME_COST: W3
-** ForService: encryptionUpdates
+*** ESTIMATED_TIME: W3
+*** MILESTONES: mvp manager-mvp
+** TASK: ForService: encryptionUpdates
 *** TASK_ID: b4459e6caea6e9a0747f2afcc000b1fa
 *** CREATED: 2022-08-31 15:11
-*** TIME_COST: W4
-** ForClient: vertexes
+*** ESTIMATED_TIME: W4
+*** MILESTONES: encryption
+** TASK: ForClient: vertexes
 *** TASK_ID: 7ba945a9b331055c9a65608a957d4fb1
 *** CREATED: 2022-08-31 15:12
-*** TIME_COST: W2
-** ForClient: vertexStates
+*** ESTIMATED_TIME: W2
+*** MILESTONES: mvp manager-mvp
+** TASK: ForClient: vertexStates
 *** TASK_ID: 0aec294278baa4e67df640b05a1a686e
 *** CREATED: 2022-08-31 15:13
-*** TIME_COST: W3
-** ForClient: updateStatuses
+*** ESTIMATED_TIME: W3
+*** MILESTONES: mvp manager-mvp
+** TASK: ForClient: updateStatuses
 *** TASK_ID: 96ab4c5f16bbc73dc05d00fc9ace894c
 *** CREATED: 2022-08-31 15:13
-*** TIME_COST: W3
-** ForClient: portUpdates
+*** ESTIMATED_TIME: W3
+*** MILESTONES: mvp manager-mvp
+** TASK: ForClient: portUpdates
 *** TASK_ID: 70d2a51ae5f0a691aa2e553b3089ff05
 *** CREATED: 2022-08-31 15:14
-*** TIME_COST: W3
-** ForClient: dataUpdates
+*** ESTIMATED_TIME: W3
+*** MILESTONES: mvp manager-mvp
+** TASK: ForClient: dataUpdates
 *** TASK_ID: 0e3079557216925eece75cd37fa1154a
 *** CREATED: 2022-08-31 15:14
-*** TIME_COST: W3
-** ForClient: encryptionUpdates
+*** ESTIMATED_TIME: W3
+*** MILESTONES: mvp manager-mvp
+** TASK: ForClient: encryptionUpdates
 *** TASK_ID: b794a1b704ddf9a4451d80948c364d65
 *** CREATED: 2022-08-31 15:15
-*** TIME_COST: W3
-** ForClient: timestamp
+*** ESTIMATED_TIME: W3
+*** MILESTONES: encryption
+** TASK: ForClient: timestamp
 *** TASK_ID: 1f0bf2973ecf8a9107c1789d8573a6b8
 *** CREATED: 2022-08-31 15:15
-*** TIME_COST: W4
-** Message: track
+*** ESTIMATED_TIME: W4
+*** MILESTONES: mvp manager-mvp
+** TASK: Message: track
 *** TASK_ID: a0e51663a32507a7539dbb7f051d48ec
 *** CREATED: 2022-08-31 19:41
-*** TIME_COST: U3
+*** ESTIMATED_TIME: U3
+*** MILESTONES: webscale
 * Python bindings
 * Rust bindings
 * Javascript bindings
-** Figure out how to connect via websocket to the manager
+** TASK: Figure out how to connect via websocket to the manager
 *** TASK_ID: d504c2fcad9ee35edb1a20087863367d
 *** CREATED: 2022-08-31 19:29
-*** TIME_COST: W4
-** Figure out how to serialize/deserialize capnproto
+*** ESTIMATED_TIME: W4
+*** MILESTONES: mvp javascript-mvp
+** TASK: Figure out how to serialize/deserialize capnproto
 *** TASK_ID: bc7261505f59e06c8c7452eb2974ffd4
 *** CREATED: 2022-08-31 19:29
-*** TIME_COST: W4
-** Create walk tree builder/serializer
+*** ESTIMATED_TIME: W4
+*** MILESTONES: mvp javascript-mvp
+** TASK: Create walk tree builder/serializer
 *** TASK_ID: 42e62c70499cc64cff25ded9e9bc5260
 *** CREATED: 2022-08-31 19:30
-*** TIME_COST: W5
-** Decide on API for interacting with the bindings
+*** ESTIMATED_TIME: W5
+*** MILESTONES: mvp javascript-mvp
+** TASK: Decide on API for interacting with the bindings
 *** TASK_ID: c4d9fa7936d17d090fcc2707f9b5bae8
 *** CREATED: 2022-08-31 19:31
-*** TIME_COST: U4
-** Create callbacks / events for cursor synchronization
+*** ESTIMATED_TIME: U4
+*** MILESTONES: mvp javascript-mvp
+** TASK: Create callbacks / events for cursor synchronization
 *** TASK_ID: ad2a139c7c25702a684b83b37fb473ac
 *** CREATED: 2022-08-31 19:32
-*** TIME_COST: W4
-** Create callbacks / events for handling new vertexes / topology changes
+*** ESTIMATED_TIME: W4
+*** MILESTONES: cursor-sharing
+** TASK: Create callbacks / events for handling new vertexes / topology changes
 *** TASK_ID: 79d5dc6f312eced1fd802a95363cad2b
 *** CREATED: 2022-08-31 19:33
-*** TIME_COST: W5
-** Create callbacks / events for handing vertex messages
+*** ESTIMATED_TIME: W5
+*** MILESTONES: mvp javascript-mvp
+** TASK: Create callbacks / events for handing vertex messages
 *** TASK_ID: 35558b17aaab898248dce2a09550aaa4
 *** CREATED: 2022-08-31 19:33
-*** TIME_COST: W3
-** Create callbacks / events for handing port updates
+*** ESTIMATED_TIME: W3
+*** MILESTONES: mvp javascript-mvp
+** TASK: Create callbacks / events for handing port updates
 *** TASK_ID: 5546f4ff1ba6d5bd4624c270411e2912
 *** CREATED: 2022-08-31 19:34
-*** TIME_COST: W3
-** Create callbacks / events for handling data updates
+*** ESTIMATED_TIME: W3
+*** MILESTONES: mvp javascript-mvp
+** TASK: Create callbacks / events for handling data updates
 *** TASK_ID: 6bfca38a495ce2ff4551cddfd1221546
 *** CREATED: 2022-08-31 19:34
-*** TIME_COST: W3
-** Figure out timestamping
+*** ESTIMATED_TIME: W3
+*** MILESTONES: mvp javascript-mvp
+** TASK: Figure out timestamping
 *** TASK_ID: 7c6f367b7505bda197cd229c4cfb7599
 *** CREATED: 2022-08-31 19:34
-*** TIME_COST: W4
-** Figure out message numbering and protocol resets
+*** ESTIMATED_TIME: W4
+*** MILESTONES: mvp javascript-mvp
+** TASK: Figure out message numbering and protocol resets
 *** TASK_ID: 2a7c9564ce3e0e0ff95aa89942299716
 *** CREATED: 2022-08-31 19:35
-*** TIME_COST: W4
-** Low level function for vertex selection
+*** ESTIMATED_TIME: W4
+*** MILESTONES: mvp javascript-mvp
+** TASK: Low level function for vertex selection
 *** TASK_ID: 67b0d79cc1d9ca8ae13f0ec582f5af7d
 *** CREATED: 2022-08-31 19:36
-*** TIME_COST: W3
-** Low level function for vertex deselection
+*** ESTIMATED_TIME: W3
+*** MILESTONES: mvp javascript-mvp
+** TASK: Low level function for vertex deselection
 *** TASK_ID: dccdfb787ebdb3853b735cd4abba21a1
 *** CREATED: 2022-08-31 19:36
-*** TIME_COST: W3
-** Encription updates/handling
+*** ESTIMATED_TIME: W3
+*** MILESTONES: mvp javascript-mvp
+** TASK: Encription updates/handling
 *** TASK_ID: 5b6c5b4867dd174f0fc7a6d1cea0df0b
 *** CREATED: 2022-08-31 19:37
-*** TIME_COST: W6
-** Update status handlers
+*** ESTIMATED_TIME: W6
+*** MILESTONES: encryption
+** TASK: Update status handlers
 *** TASK_ID: 0a9bfb81a88b76fe9090a31e6c13f9a3
 *** CREATED: 2022-08-31 19:38
-*** TIME_COST: W3
-** Identity / authentification
+*** ESTIMATED_TIME: W3
+*** MILESTONES: mvp javascript-mvp
+** TASK: Identity / authentification
 *** TASK_ID: 8bb3c9980bb32cfd79017dcfc2804f90
 *** CREATED: 2022-08-31 19:39
-*** TIME_COST: U4
-** Address parsing
+*** ESTIMATED_TIME: U4
+*** MILESTONES: auth
+** TASK: Address parsing
 *** TASK_ID: 2992878f437f11505c71b4abfd07da6a
 *** CREATED: 2022-08-31 19:41
-*** TIME_COST: W4
-** Address formatting
+*** ESTIMATED_TIME: W4
+*** MILESTONES: mvp javascript-mvp
+** TASK: Address formatting
 *** TASK_ID: 8af0b1a22b984199a29877fd26363775
 *** CREATED: 2022-08-31 19:42
-*** TIME_COST: W3
+*** ESTIMATED_TIME: W3
+*** MILESTONES: mvp javascript-mvp
 * Browser
-** Deciding on framework to write browser in (Hint either Vue.js or React/react native)
+** TASK: Deciding on framework to write browser in (Hint either Vue.js or React/react native)
 *** TASK_ID: 9b750fcb218799192ab1bfd94b8cdb89
 *** CREATED: 2022-08-31 19:26
-*** TIME_COST: U1
-** Figure out how to isolate untrusted HTML/DOM elements that are used for custom vertex display/iteraction
+*** ESTIMATED_TIME: U1
+*** MILESTONES: mvp browser-mvp
+** TASK: Figure out how to isolate untrusted HTML/DOM elements that are used for custom vertex display/iteraction
 *** TASK_ID: 0c0e6bdbb2fdd1e93927b86dbe5fb245
 *** CREATED: 2022-08-31 19:28
-*** TIME_COST: U5
-** 3 column layout
+*** ESTIMATED_TIME: U5
+*** MILESTONES: custom-elements
+** TASK: 3 column layout
 *** TASK_ID: 219a9245859136c0705e2700bed3f35d
 *** CREATED: 2022-08-31 19:42
-*** TIME_COST: W5
-** breadcrumb
+*** ESTIMATED_TIME: W5
+*** MILESTONES: mvp browser-mvp
+** TASK: breadcrumb
 *** TASK_ID: e8ed7e43cf460757ab148b8fe83db58d
 *** CREATED: 2022-08-31 19:43
-*** TIME_COST: W4
-** menu
+*** ESTIMATED_TIME: W4
+*** MILESTONES: mvp browser-mvp
+** TASK: menu
 *** TASK_ID: 564bcd00265e93068687e20b252bdbbe
 *** CREATED: 2022-08-31 19:43
-*** TIME_COST: W4
-** Links drawn on screen
+*** ESTIMATED_TIME: W4
+*** MILESTONES: mvp browser-mvp
+** TASK: Conections between vertexes (edges) drawn on screen
 *** TASK_ID: d68af567fbc2d125be5fc1a3af5c7c58
 *** CREATED: 2022-08-31 19:44
-*** TIME_COST: W4
-** Special widget: audio
+*** ESTIMATED_TIME: W4
+*** MILESTONES: mvp browser-mvp
+** TASK: Special widget: audio
 *** TASK_ID: 7247d3068307556309032d5ab02daf73
 *** CREATED: 2022-08-31 19:44
-*** TIME_COST: W5
-** Special widget: text
+*** ESTIMATED_TIME: W5
+*** MILESTONES: audio
+** TASK: Special widget: text
 *** TASK_ID: aacfb15870cd87512a58497d47c53b8d
 *** CREATED: 2022-08-31 19:44
-*** TIME_COST: W5
-** Special widget: image
+*** ESTIMATED_TIME: W5
+*** MILESTONES: mvp browser-mvp
+** TASK: Special widget: image
 *** TASK_ID: 1cbb64bedff0488912f785814cf4f2ca
 *** CREATED: 2022-08-31 19:45
-*** TIME_COST: W5
-** Special widget: video
+*** ESTIMATED_TIME: W5
+*** MILESTONES: images
+** TASK: Special widget: video
 *** TASK_ID: ad87739e49bde5fe18df286bacac560b
 *** CREATED: 2022-08-31 19:45
-*** TIME_COST: W5
-** Special widget: File
+*** ESTIMATED_TIME: W5
+*** MILESTONES: video
+** TASK: Special widget: File
 *** TASK_ID: e82fdb7616ecc5b59b757ba2d9873d58
 *** CREATED: 2022-08-31 19:45
-*** TIME_COST: W6
-** The insert tool thing at bottom of screen
+*** ESTIMATED_TIME: W6
+*** MILESTONES: file-attachments
+** TASK: The insert tool thing at bottom of screen
 *** TASK_ID: 99aed6cf46d12492ad7c313a2c06d454
 *** CREATED: 2022-08-31 19:46
-*** TIME_COST: W5
-** Inserting audio
+*** ESTIMATED_TIME: W5
+*** MILESTONES: mvp browser-mvp
+** TASK: Inserting audio
 *** TASK_ID: a555f335fce4a8e9e580dc1825b42224
 *** CREATED: 2022-08-31 19:46
-*** TIME_COST: W6
-** Inserting text
+*** ESTIMATED_TIME: W6
+*** MILESTONES: audio
+** TASK: Inserting text
 *** TASK_ID: 26ea1bf71df51dfc550b420076835d8b
 *** CREATED: 2022-08-31 19:46
-*** TIME_COST: W5
-** Adding files
+*** ESTIMATED_TIME: W5
+*** MILESTONES: read-write
+** TASK: Adding files
 *** TASK_ID: 13798d26bc45d0bfdb29d93548dd5017
 *** CREATED: 2022-08-31 19:47
-*** TIME_COST: W4
-** Adding images
+*** ESTIMATED_TIME: W4
+*** MILESTONES: file-attachments
+** TASK: Adding images
 *** TASK_ID: 04999e02d09ee8bc3e0b6f31689bd257
 *** CREATED: 2022-08-31 19:47
-*** TIME_COST: W5
-** Adding video
+*** ESTIMATED_TIME: W5
+*** MILESTONES: images
+** TASK: Adding video
 *** TASK_ID: d3c4309b0b78f2d375fcaab54d766d86
 *** CREATED: 2022-08-31 19:47
-*** TIME_COST: W5
-** Vertex insertion direction display
+*** ESTIMATED_TIME: W5
+*** MILESTONES: video
+** TASK: Vertex insertion direction display
 *** TASK_ID: b610594311685d3f254dc60d21817527
 *** CREATED: 2022-08-31 19:48
-*** TIME_COST: W4
-** Vertex insertion direction touch/click interaction
+*** ESTIMATED_TIME: W4
+*** MILESTONES: read-write
+** TASK: Vertex insertion direction touch/click interaction
 *** TASK_ID: 00b874e7101a8705a3e90b0176f8aa87
 *** CREATED: 2022-08-31 19:48
-*** TIME_COST: W5
-** Vertex insertion direction keyboard interaction
+*** ESTIMATED_TIME: W5
+*** MILESTONES: read-write
+** TASK: Vertex insertion direction keyboard interaction
 *** TASK_ID: 2bbb6325d34192b7ce20f5865b4339e4
 *** CREATED: 2022-08-31 19:48
-*** TIME_COST: W4
-** per vertex menu: display and opening
+*** ESTIMATED_TIME: W4
+*** MILESTONES: keyboard-accessibility
+** TASK: per vertex menu: display and opening
 *** TASK_ID: 122256a27504baab9b00cb99121cea6d
 *** CREATED: 2022-08-31 19:49
-*** TIME_COST: W4
-** per vertex menu action: edit mode
+*** ESTIMATED_TIME: W4
+*** MILESTONES: read-write
+** TASK: per vertex menu action: edit mode
 *** TASK_ID: 81af668d66bc6372ddc0cbff6b1ae6f1
 *** CREATED: 2022-08-31 19:49
-*** TIME_COST: W5
-** per vertex menu action: linking
+*** ESTIMATED_TIME: W5
+*** MILESTONES: read-write
+** TASK: per vertex menu action: linking
 *** TASK_ID: e7f32a3468f3788cb40cfeea0abe6354
 *** CREATED: 2022-08-31 19:50
-*** TIME_COST: W6
-** per vertex menu action: deletion
+*** ESTIMATED_TIME: W6
+*** MILESTONES: read-write
+** TASK: per vertex menu action: deletion
 *** TASK_ID: 064687f8059c4f1f1df8ab0f527cf57d
 *** CREATED: 2022-08-31 19:50
-*** TIME_COST: W5
-** per vertex menu action: moving
+*** ESTIMATED_TIME: W5
+*** MILESTONES: read-write
+** TASK: per vertex menu action: moving
 *** TASK_ID: 6ae4123a704e8a867d1b9565494ceada
 *** CREATED: 2022-08-31 19:50
-*** TIME_COST: W6
-** main menu action: critter search
+*** ESTIMATED_TIME: W6
+*** MILESTONES: read-write
+** TASK: main menu action: critter search
 *** TASK_ID: a56be8d1376c917ea99d4ca49ac0ffc8
 *** CREATED: 2022-08-31 19:51
-*** TIME_COST: U6
+*** ESTIMATED_TIME: U6
+*** MILESTONES: critters
 * Studio
 * Test services
-** Tick tack toe
-** Chess
-** Wiki
-** Chat
-** File browser
+** TASK: Tick tack toe
+** TASK: Chess
+** TASK: Wiki
+** TASK: Chat
+** TASK: File browser
 * Utils
 #+A emacs-lisp
 (defun create_task () (interactive)
-       (insert (concatenate 'string "*** TASK_ID: "(string-trim (shell-command-to-string "mcookie")) "\n"))
-       (insert (concatenate 'string "*** CREATED: "(string-trim (shell-command-to-string "date -u \"+%Y-%m-%d %H:%M\"")) "\n"))
-       (insert "*** TIME_COST: "))
+       (insert (concatenate 'string "*** TASK_ID: "(string-trim (shell-command-to-string "mcookie")) "\n")) ; NO_TASK
+       (insert (concatenate 'string "*** CREATED: "(string-trim (shell-command-to-string "date -u \"+%Y-%m-%d %H:%M\"")) "\n")) ; NO_TASK
+       (insert "*** ESTIMATED_TIME: \n") ; NO_TASK
+       (insert "*** MILESTONES: ") ; NO_TASK
+       )
 
 
 (defun bounty_task () (interactive)
-       (insert (concatenate 'string "*** BOUNTIED: "(string-trim (shell-command-to-string "date -u \"+%Y-%m-%d %H:%M\"")) "\n"))
-       (insert "*** INCOMPLETION_COST: per hour\n")
-       (insert "*** START_VALUE: \n")
-       (insert "*** MAX_VALUE: \n")
+       (insert (concatenate 'string "*** BOUNTIED: "(string-trim (shell-command-to-string "date -u \"+%Y-%m-%d %H:%M\"")) "\n")) ; NO_TASK
+       (insert "*** INCOMPLETION_COST: per hour\n") ; NO_TASK
+       (insert "*** START_VALUE: \n") ; NO_TASK
+       (insert "*** MAX_VALUE: \n") ; NO_TASK
        )
 #+END_A
