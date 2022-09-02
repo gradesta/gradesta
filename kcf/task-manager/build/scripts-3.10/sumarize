@@ -1,6 +1,6 @@
-#!/usr/bin/python3
-from gather_tasks import gather_from_git
-from time_cost_estimates import get_empty_sums, add_sums
+#!python
+from kcf_tasks.gather_tasks import gather_from_git
+from kcf_tasks.time_cost_estimates import get_empty_sums, add_sums
 import sys
 
 milestones = {"without-milestone": []}
