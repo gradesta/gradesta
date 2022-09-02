@@ -5,7 +5,7 @@ use chrono::prelude::*;
 pub async fn print_label() -> anyhow::Result<()> {
     let now = Local::now();
     println!(
-        "{}-{}-{}-{}",
+        "{}-{:02}-{:02}-{}",
         now.year(),
         now.month(),
         now.day(),
