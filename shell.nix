@@ -1,6 +1,7 @@
 with import <nixpkgs> {};
 mkShell {
     buildInputs = [
+        ffmpeg
         cargo
         rustc
         pkgconfig

@@ -12,6 +12,8 @@ use nom::{
     IResult,
 };
 
+use anyhow::anyhow;
+
 #[derive(PartialEq, Eq, Debug)]
 pub struct Screencast<'a> {
     pub id: &'a str,
@@ -60,8 +62,8 @@ fn hugo_tag<'a>(i: &'a str) -> IResult<&'a str, Option<Screencast<'a>>> {
     )(i)
 }
 
-pub fn extract_screencast_tags<'a>(i: &'a str) -> IResult<&'a str, Vec<Screencast<'a>>> {
-    fold_many0(
+pub fn extract_screencast_tags<'a>(i: &'a str) -> anyhow::Result<(&str, Vec<Screencast<'a>>)> {
+    match fold_many0(
         preceded(content, terminated(hugo_tag, content)),
         || vec![],
         |mut acc, item| match item {
@@ -71,7 +73,10 @@ pub fn extract_screencast_tags<'a>(i: &'a str) -> IResult<&'a str, Vec<Screencas
             }
             None => acc,
         },
-    )(i)
+    )(i) {
+        Ok(ss) => Ok(ss),
+        Err(e) => Err(anyhow!("{}", e)),
+    }
 }
 
 #[cfg(test)]
