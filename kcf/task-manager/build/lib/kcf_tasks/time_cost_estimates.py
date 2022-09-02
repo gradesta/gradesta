@@ -33,12 +33,14 @@ costs = {
     "T12": ("team_work", timedelta(hours=600), timedelta(hours=1200)),
 }
 
+
 def add_sums(s1, s2):
     """
     Adds s2 into s1
     """
     for k, v in s2.items():
         s1[k] += v
+
 
 def get_empty_sums():
     return {
@@ -49,6 +51,7 @@ def get_empty_sums():
         "team_work_min": timedelta(seconds=0),
         "team_work_max": timedelta(seconds=0),
     }
+
 
 def get_estimates(estimates):
     """

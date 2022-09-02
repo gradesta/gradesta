@@ -106,3 +106,46 @@ class Task:
                 self.SOURCE_FILE, self.START_LINE_IN_SOURCE_FILE
             )
         return s
+
+
+def test_read_line():
+    task = Task()
+    task.read_line("nothing interesting")
+    assert task.TASK_ID == ""
+    task.read_line("nothing interesting ** TASK: foo ")
+    assert task.NAME == "foo"
+    task.read_line("TASK_ID: abcd")
+    assert task.TASK_ID == "abcd"
+    task.read_line("TASK_ID: abcd  ")
+    assert task.TASK_ID == "abcd"
+    task.read_line("CREATED: 2022-08-12 10:20  ")
+    assert task.CREATED.hour == 10
+    task.read_line("ESTIMATED_TIME: U2 W4  ")
+    assert ["U2", "W4"] == list(sorted(task.TIME_COST_ESTIMATES))
+    task.read_line("MILESTONES: mvp abc  ")
+    assert ["abc", "mvp"] == list(sorted(task.MILESTONES))
+    task.read_line("INCOMPLETION_COST: $3 per hour  ")
+    assert 3.0 == task.INCOMPLETION_COST
+    task.read_line("START_VALUE: $50 ")
+    assert 50.0 == task.START_VALUE
+    task.read_line("MAX_VALUE: $500 ")
+    assert 500.0 == task.MAX_VALUE
+    task.read_line("BOUNTIED:  2022-08-12 12:20  ")
+    assert task.BOUNTIED.hour == 12
+    task.read_line("DESCRIPTION:  Hello this is a big task ")
+    assert task.DESCRIPTION == "Hello this is a big task"
+    task.SOURCE_FILE = "foo.py"
+    task.START_LINE_IN_SOURCE_FILE = 23
+    assert task.estimate_time_cost()["individual_work_max"] == timedelta(hours=16)
+    assert str(task) == """TASK: foo
+TASK_ID: abcd
+CREATED: 2022-08-12 10:20
+ESTIMATED_TIME: U2 W4
+MILESTONES: mvp abc
+INCOMPLETION_COST: $3.0 per hour
+START_VALUE: $50.0
+MAX_VALUE: $500.0
+BOUNTIED: 2022-08-12 12:20
+DESCRIPTION: Hello this is a big task
+SOURCE: foo.py:23
+"""

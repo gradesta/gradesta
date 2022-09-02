@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from kcf_tasks.time_cost_estimates import get_estimates
 
+
 def get_tag_val(line, tag):
     """
     Returns tag value as unparsed string or None if tag is not present
@@ -11,6 +12,7 @@ def get_tag_val(line, tag):
         return line.split(tag)[1].strip()
     return None
 
+
 def get_datetime(line, tag):
     """
     Returns a datetime if tag is present, otherwise returns None
@@ -19,12 +21,14 @@ def get_datetime(line, tag):
         return datetime.strptime(val.strip(), "%Y-%m-%d %H:%M")
     return None
 
+
 def get_money(line, tag):
     if val := get_tag_val(line, tag):
         toks = [t.strip() for t in val.split(" ")]
         assert toks[0][0] == "$"
         return float(toks[0][1:])
     return None
+
 
 def get_symbols(line, tag):
     """
@@ -40,11 +44,11 @@ class Task:
     NAME: str = ""
     TASK_ID: str = ""
     CREATED: datetime | None = None
-    TIME_COST_ESTIMATES: [str] = field(default_factory = list)
-    MILESTONES: [str] = field(default_factory = list)
-    INCOMPLETION_COST: float | None = None # USD per hour
-    START_VALUE: float | None = None # USD
-    MAX_VALUE: float | None = None # USD
+    TIME_COST_ESTIMATES: [str] = field(default_factory=list)
+    MILESTONES: [str] = field(default_factory=list)
+    INCOMPLETION_COST: float | None = None  # USD per hour
+    START_VALUE: float | None = None  # USD
+    MAX_VALUE: float | None = None  # USD
     BOUNTIED: datetime | None = None
     DESCRIPTION: str = ""
     SOURCE_FILE: str = ""
@@ -98,6 +102,16 @@ class Task:
         if self.DESCRIPTION:
             s += "DESCRIPTION: {}\n".format(self.DESCRIPTION)
         if self.SOURCE_FILE:
-            s += "SOURCE: {}:{}\n".format(self.SOURCE_FILE, self.START_LINE_IN_SOURCE_FILE)
+            s += "SOURCE: {}:{}\n".format(
+                self.SOURCE_FILE, self.START_LINE_IN_SOURCE_FILE
+            )
         return s
+
+
+def test_read_line():
+    task = Task()
+    task.read_line("nothing interesting")
+    assert task.TASK_ID == ""
+    task.read_line("TASK_ID: abcd")
+    assert task.TASK_ID == "abcd"
 

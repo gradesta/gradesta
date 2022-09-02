@@ -13,7 +13,8 @@ def group_tasks_by_milestone(tasks):
             milestones["without-milestone"].append(task)
     return milestones
 
-def get_milestones(paths = None):
+
+def get_milestones(paths=None):
     """
     Gather tasks and group them by milestone. If a list of paths are passed, look only in those paths.
     """
