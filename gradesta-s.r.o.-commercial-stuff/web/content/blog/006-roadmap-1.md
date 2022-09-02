@@ -3,7 +3,7 @@ title: "Lets start putting together a road map for gradesta"
 date: 2022-08-31
 featureImage: https://assets.gradesta.com/gradesta/img/dalle2-clock-and-coins.png
 author: Timothy Hobbs <tim@gradesta.com>
-draft: false
+draft: true
 ---
 
 Part 1: Just figuring out how to organize the tasks
@@ -44,17 +44,7 @@ Part 4: TASK: Setting up pytest for kcf task gathering code
 
 {{<screencast "2022-9-1-f62403e9-09b6-4457-89bf-95d5a14b8e6c" "cc0874cc357bfb9d81a91267dbb6cbbf">}}
 
-Part 5: TASK: Associating screencasts with tasks
-----------
-
-```
-TASK_ID: b4f4710742e5aa3fe4c920cd0192c04d
-CREATED: 2022-09-01 19:01
-ESTIMATED_TIME: W3
-MILESTONES: kcf-task-management
-```
-
-Part 6: TASK: Tracking screencast length
+Part 5: TASK: Tracking screencast length
 ----
 
 ```
@@ -63,6 +53,18 @@ Part 6: TASK: Tracking screencast length
 *** ESTIMATED_TIME: W3
 *** MILESTONES: kcf-task-management
 ```
+
+TASK: Associating screencasts with tasks
+
+```
+TASK_ID: b4f4710742e5aa3fe4c920cd0192c04d
+CREATED: 2022-09-01 19:01
+ESTIMATED_TIME: W3
+MILESTONES: kcf-task-management
+```
+
+{{<screencast "2022-9-2-e8ff07d8-5148-4059-ab24-66b77988c577">}}
+
 
 Part 7: TASK: Marking tasks as done and sumarizing completed tasks
 -------
