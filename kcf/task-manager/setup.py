@@ -30,5 +30,7 @@ setup(
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3.10",
     ],
-    scripts = ["kcf_tasks/kcf-tasks"],
+    scripts=["kcf_tasks/kcf-tasks"],
+    setup_requires=["pytest-runner", "black"],
+    tests_require=["pytest", "pytest-cov"],
 )

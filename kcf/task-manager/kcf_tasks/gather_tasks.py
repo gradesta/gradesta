@@ -4,11 +4,14 @@ from datetime import timedelta, datetime
 from kcf_tasks.task import Task
 import os.path
 
+
 def gather_from_git():
     """
     Returns a list of Task objects taken from the current git repo
     """
-    output = subprocess.check_output("git ls-files -- ':!kcf'", shell=True).decode("utf-8")
+    output = subprocess.check_output("git ls-files -- ':!kcf'", shell=True).decode(
+        "utf-8"
+    )
 
     tasks = []
     current_task = None
@@ -16,6 +19,7 @@ def gather_from_git():
         if os.path.isfile(file):
             tasks += gather_from_file(file)
     return tasks
+
 
 def gather_from_file(file):
     lineno = 0
