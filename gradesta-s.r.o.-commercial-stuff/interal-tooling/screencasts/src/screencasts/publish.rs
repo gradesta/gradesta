@@ -1,3 +1,4 @@
+use super::config::load_config;
 use super::transcode_and_upload::transcode_and_upload;
 use anyhow::{anyhow, Context};
 use daggy::{Dag, NodeIndex};
@@ -11,7 +12,8 @@ use tokio::process::{Child, Command};
 
 pub async fn publish(blog_post_path: &str, video_files: Vec<&str>) -> anyhow::Result<()> {
     let blog_post = fs::read_to_string(blog_post_path).unwrap();
-    let transcoded = transcode_and_upload(&blog_post, video_files);
+    let config = load_config(blog_post_path).await?;
+    let transcoded = transcode_and_upload(&blog_post, video_files, &config);
     match transcoded {
         Ok(commands) => {
             run_command_dag(commands).await?;

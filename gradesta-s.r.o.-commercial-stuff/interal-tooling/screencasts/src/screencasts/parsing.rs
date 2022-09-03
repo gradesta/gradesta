@@ -1,6 +1,9 @@
 /*
 / This is code used to parse hugo blog posts and extract information about coding screencasts.
 */
+
+use super::screencast::Screencast;
+
 use nom::{
     branch::alt,
     bytes::complete::{is_a, take, take_until, take_while},
@@ -13,12 +16,6 @@ use nom::{
 };
 
 use anyhow::anyhow;
-
-#[derive(PartialEq, Eq, Debug)]
-pub struct Screencast<'a> {
-    pub id: &'a str,
-    //authors: Vec<String>,
-}
 
 /*
 / Post content is ignored, we're only interested in screencast tags.
@@ -38,11 +35,14 @@ fn whitespace<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a st
 fn screencast_id<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Screencast, E> {
     preceded(
         char('"'),
-        terminated(map(take_until("\""), |id| Screencast { id: id }), char('"')),
+        terminated(
+            map(take_until("\""), |id: &str| Screencast::new(id.to_string())),
+            char('"'),
+        ),
     )(i)
 }
 
-fn screencast_tag<'a>(i: &'a str) -> IResult<&'a str, Screencast<'a>> {
+fn screencast_tag<'a>(i: &'a str) -> IResult<&'a str, Screencast> {
     preceded(
         char('<'),
         terminated(
@@ -55,14 +55,14 @@ fn screencast_tag<'a>(i: &'a str) -> IResult<&'a str, Screencast<'a>> {
     )(i)
 }
 
-fn hugo_tag<'a>(i: &'a str) -> IResult<&'a str, Option<Screencast<'a>>> {
+fn hugo_tag<'a>(i: &'a str) -> IResult<&'a str, Option<Screencast>> {
     preceded(
         is_a("{{"),
         terminated(opt(screencast_tag), tuple((take_until("}}"), take(2usize)))),
     )(i)
 }
 
-pub fn extract_screencast_tags<'a>(i: &'a str) -> anyhow::Result<(&str, Vec<Screencast<'a>>)> {
+pub fn extract_screencast_tags<'a>(i: &'a str) -> anyhow::Result<(&str, Vec<Screencast>)> {
     match fold_many0(
         preceded(content, terminated(hugo_tag, content)),
         || vec![],
@@ -73,7 +73,8 @@ pub fn extract_screencast_tags<'a>(i: &'a str) -> anyhow::Result<(&str, Vec<Scre
             }
             None => acc,
         },
-    )(i) {
+    )(i)
+    {
         Ok(ss) => Ok(ss),
         Err(e) => Err(anyhow!("{}", e)),
     }
@@ -102,7 +103,7 @@ mod tests {
     fn test_read_screencast_tag() {
         let (remainder, parsed_tag) = screencast_tag("<screencast \"lol\">}} foo").unwrap();
         assert_eq!(remainder, "}} foo");
-        assert_eq!(parsed_tag, Screencast { id: "lol" });
+        assert_eq!(parsed_tag, Screencast::new("lol".to_string()));
     }
 
     #[test]
@@ -113,7 +114,7 @@ mod tests {
 
         let (remainder, parsed_tag) = hugo_tag("{{<screencast \"bar\">}} foo").unwrap();
         assert_eq!(remainder, " foo");
-        assert_eq!(parsed_tag, Some(Screencast { id: "bar" }));
+        assert_eq!(parsed_tag, Some(Screencast::new("bar".to_string())));
     }
 
     #[test]
@@ -123,7 +124,10 @@ mod tests {
                 .unwrap();
         assert_eq!(remainder, "");
         assert_eq!(
-            vec![Screencast { id: "abc" }, Screencast { id: "def" }],
+            vec![
+                Screencast::new("abc".to_string()),
+                Screencast::new("def".to_string())
+            ],
             screencasts
         );
     }

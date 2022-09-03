@@ -6,7 +6,7 @@ pub async fn inspect(blog_post_path: &str) -> anyhow::Result<()> {
     let (_, screencasts) = extract_screencast_tags(&blogpost)?;
     for screencast in &screencasts {
         println!("{}", screencast.id);
-    };
+    }
     println!("Found {} screencasts.", screencasts.len());
     Ok(())
 }

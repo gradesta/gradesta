@@ -1,6 +1,6 @@
 use anyhow;
-use uuid::Uuid;
 use chrono::prelude::*;
+use uuid::Uuid;
 
 pub async fn print_label() -> anyhow::Result<()> {
     let now = Local::now();
