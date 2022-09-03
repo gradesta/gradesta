@@ -44,7 +44,16 @@ Part 4: TASK: Setting up pytest for kcf task gathering code
 
 {{<screencast "2022-9-1-f62403e9-09b6-4457-89bf-95d5a14b8e6c" "cc0874cc357bfb9d81a91267dbb6cbbf">}}
 
-Part 5: TASK: Tracking screencast length
+Part 5: TASK: Screencast metadata and config
+------------
+
+```
+*** TASK_ID: bb20cd7d5ae49813c4ab36b7c33d4272
+*** CREATED: 2022-09-03 20:46
+*** MILESTONES: kcf-task-management
+```
+
+Part 6: TASK: Tracking screencast length
 ----
 
 ```
