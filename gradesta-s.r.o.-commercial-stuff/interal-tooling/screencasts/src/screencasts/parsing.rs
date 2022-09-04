@@ -10,16 +10,15 @@ ESTIMATED_TIME: W4
 MILESTONES: nitpicks
 */
 
-
-use super::screencast::Screencast;
 use super::frontmatter::FrontMatter;
+use super::screencast::Screencast;
 
 use nom::{
     branch::alt,
-    bytes::complete::{is_a, take, take_until, take_while, tag},
+    bytes::complete::{is_a, tag, take, take_until, take_while},
     character::complete::char,
     combinator::{map, opt, rest},
-    error::{ParseError},
+    error::ParseError,
     multi::fold_many0,
     sequence::{preceded, terminated, tuple},
     IResult,
@@ -91,14 +90,28 @@ pub fn extract_screencast_tags<'a>(i: &'a str) -> anyhow::Result<(&str, Vec<Scre
 }
 
 pub fn extract_frontmatter<'a>(i: &'a str) -> IResult<&str, FrontMatter> {
-    preceded(whitespace,
-             preceded(
-                 tag("---"),
-                 map(take_until("---"), |frontmatter: &str|
-                     serde_yaml::from_str::<FrontMatter>(frontmatter).unwrap()
-                 )
-             )
+    preceded(
+        whitespace,
+        preceded(
+            tag("---"),
+            map(take_until("---"), |frontmatter: &str| {
+                serde_yaml::from_str::<FrontMatter>(frontmatter).unwrap()
+            }),
+        ),
     )(i)
+}
+
+pub fn load_screencasts_from_blogpost(blogpost: &str) -> anyhow::Result<Vec<Screencast>> {
+    let (remainder, frontmatter) = match extract_frontmatter(blogpost) {
+        Ok((r, f)) => Ok((r, f)),
+        Err(e) => Err(anyhow!("{:?}", e)),
+    }?;
+    let (_, mut screencasts) = extract_screencast_tags(remainder)?;
+
+    for i in 0..screencasts.len() {
+        screencasts[i].authors = frontmatter.authors.clone();
+    }
+    Ok(screencasts)
 }
 
 #[cfg(test)]
@@ -161,11 +174,12 @@ mod tests {
                 Err(e) => panic!("{}", e),
                 Ok((r, fm)) => (r, fm)
             };
-        assert_eq!(remainder, "---\nFoo {{<screencast \"abc\">}} {{<screencast \"def\">}}");
         assert_eq!(
-            vec![
-                "Timothy Hobbs <timothyhobbs@seznam.cz>".to_string()
-            ],
+            remainder,
+            "---\nFoo {{<screencast \"abc\">}} {{<screencast \"def\">}}"
+        );
+        assert_eq!(
+            vec!["Timothy Hobbs <timothyhobbs@seznam.cz>".to_string()],
             frontmatter.authors
         );
         assert_eq!("Foo".to_string(), frontmatter.title);

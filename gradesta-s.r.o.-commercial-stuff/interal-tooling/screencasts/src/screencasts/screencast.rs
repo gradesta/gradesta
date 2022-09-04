@@ -55,7 +55,6 @@ pub async fn load_metadata(metadata_path: &str) -> anyhow::Result<Screencast> {
     Ok(metadata.to_owned())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -65,9 +64,14 @@ mod tests {
     async fn test_load_metadata() {
         let mut metadata_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         metadata_path.push("test-data/screencast-metadata.yaml");
-        let metadata = load_metadata(&metadata_path.to_string_lossy()).await.unwrap();
+        let metadata = load_metadata(&metadata_path.to_string_lossy())
+            .await
+            .unwrap();
         assert_eq!(metadata.id, "screencast-metadata");
-        assert_eq!(metadata.authors, vec!["Timothy Hobbs <timothyhobbs@seznam.cz>"]);
+        assert_eq!(
+            metadata.authors,
+            vec!["Timothy Hobbs <timothyhobbs@seznam.cz>"]
+        );
         assert_eq!(metadata.tasks, vec!["100", "200"]);
         assert_eq!(metadata.duration_seconds, 3.4);
         assert_eq!(metadata.url, Some("https://assets.gradesta.com/screencasts/2022-8-29-52456480-87f8-4221-9587-04fd3283ab43.mp4".to_string()));

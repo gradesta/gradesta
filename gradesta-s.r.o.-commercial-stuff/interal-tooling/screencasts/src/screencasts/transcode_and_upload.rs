@@ -1,5 +1,5 @@
 use super::config::Config;
-use super::parsing::extract_screencast_tags;
+use super::parsing::load_screencasts_from_blogpost;
 use super::screencast::Screencast;
 use daggy::{Dag, NodeIndex};
 use std::cell::RefCell;
@@ -15,18 +15,20 @@ pub fn transcode_and_upload<'a>(
     video_files: Vec<&str>,
     config: &Config,
 ) -> Result<Dag<RefCell<Command>, ()>, Box<dyn Error + 'a>> {
-    let (_, mut screencasts) = extract_screencast_tags(blogpost)?;
+    let mut screencasts = load_screencasts_from_blogpost(blogpost)?;
     if video_files.len() != screencasts.len() {
         return Err(format!("There are {} screencasts refered to in the blog post but {} were passed. Please pass one video file per screencast tag.",
                            screencasts.len(),
                            video_files.len()
         ).into());
     }
+
     let mut i = 0;
     for video_file in video_files {
         screencasts[i].video_file = Some(video_file.to_string());
         i += 1;
     }
+
     return build_command_dag(screencasts, config);
 }
 
@@ -108,7 +110,7 @@ mod tests {
         let screencast1 = screencast1_path.to_string_lossy();
         let screencast2 = screencast2_path.to_string_lossy();
         let commands = transcode_and_upload(
-            "My blog post {{<screencast \"video-id\">}} {{<screencast \"video-id-2\">}}",
+            "---\nauthors: [\"Timothy Hobbs <timothyhobbs@seznam.cz>\"]\ndate: 2022-08-23\ntitle: Foo ---\nMy blog post {{<screencast \"video-id\">}} {{<screencast \"video-id-2\">}}",
             vec![&screencast1, &screencast2],
             &config,
         )
@@ -172,7 +174,7 @@ mod tests {
         let screencast1 = screencast1_path.to_string_lossy();
         let screencast2 = screencast2_path.to_string_lossy();
         let commands = transcode_and_upload(
-            "My blog post {{<screencast \"video-id\">}} {{<screencast \"video-id-2\">}} {{<screencast \"video-id-3\">}}",
+            "---\nauthors: [\"Timothy Hobbs <timothyhobbs@seznam.cz>\"]\ndate: 2022-08-23\ntitle: Foo ---\nMy blog post {{<screencast \"video-id\">}} {{<screencast \"video-id-2\">}} {{<screencast \"video-id-3\">}}",
             vec![
                 "skip",
                 &screencast1,
@@ -238,7 +240,7 @@ mod tests {
         let screencast1 = screencast1_path.to_string_lossy();
 
         let commands = transcode_and_upload(
-            "My blog post {{<screencast \"video-id\">}} {{<screencast \"video-id\">}}",
+            "---\nauthors: [\"Timothy Hobbs <timothyhobbs@seznam.cz>\"]\ndate: 2022-08-23\ntitle: Foo ---\nMy blog post {{<screencast \"video-id\">}} {{<screencast \"video-id\">}}",
             vec![&screencast1],
             &config,
         );

@@ -13,16 +13,14 @@ use tokio::process::{Child, Command};
 pub async fn publish(blog_post_path: &str, video_files: Vec<&str>) -> anyhow::Result<()> {
     let blog_post = fs::read_to_string(blog_post_path).unwrap();
     let config = load_config(blog_post_path).await?;
-    let transcoded = transcode_and_upload(&blog_post, video_files, &config);
-    match transcoded {
+
+    let transcode = transcode_and_upload(&blog_post, video_files, &config);
+    match transcode {
         Ok(commands) => {
             run_command_dag(commands).await?;
             Ok(())
         }
-        Err(e) => {
-            eprintln!("{}", e);
-            Err(anyhow!(""))
-        }
+        Err(e) => Err(anyhow!("{}", e)),
     }
 }
 

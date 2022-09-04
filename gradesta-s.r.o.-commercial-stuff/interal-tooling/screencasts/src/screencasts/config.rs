@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use derive_new::new;
+use serde::{Deserialize, Serialize};
 
 use anyhow::Context;
 use std::path::{Path, PathBuf};
@@ -40,7 +40,6 @@ pub async fn load_config(blogpost_path: &str) -> anyhow::Result<Config> {
     Ok(config)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::load_config;
@@ -51,7 +50,13 @@ mod tests {
         let mut blogpost = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         blogpost.push("test-data/blogpost.md");
         let config = load_config(&blogpost.to_string_lossy()).await.unwrap();
-        assert_eq!(config.s3_screencasts_path, "s3://gradesta-web-static/screencasts/");
-        assert_eq!(config.screencasts_base_url, "https://assets.gradesta.com/screencasts/");
+        assert_eq!(
+            config.s3_screencasts_path,
+            "s3://gradesta-web-static/screencasts/"
+        );
+        assert_eq!(
+            config.screencasts_base_url,
+            "https://assets.gradesta.com/screencasts/"
+        );
     }
 }
