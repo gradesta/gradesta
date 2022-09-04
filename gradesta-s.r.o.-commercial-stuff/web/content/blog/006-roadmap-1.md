@@ -67,7 +67,18 @@ MILESTONES: kcf-task-management
 {{<screencast "2022-09-03-e6ad8aa9-4f96-493c-a7c1-4279f609876e">}}
 
 
-Part 7: TASK: Recording screencast length on user upload
+Part 7: Add function for parsing hugo frontmatter
+--------
+
+In order to save screencast metadata, I need to parse frontmatter so I can extract the authors. This turned out to be extremely difficult and frustrating for two reasons:
+
+1. I struggled to find a good way to parse a date with serde.
+
+2. I struggled to get nom to give me good error messages. It turns out that nom isn't designed to give good error messages. I will have to switch to something better in the future.
+
+{{<screencast "2022-09-04-e3e86b1a-7264-4409-bae9-71906fab2307">}}
+
+Part 8: TASK: Recording screencast length on user upload
 ----
 
 ```
@@ -77,7 +88,7 @@ ESTIMATED_TIME: W3
 MILESTONES: kcf-task-management
 ```
 
-Part 8: TASK: Associating screencasts with tasks
+Part 9: TASK: Associating screencasts with tasks
 --------------------------------
 
 ```
@@ -88,21 +99,11 @@ MILESTONES: kcf-task-management
 ```
 
 
-Part 9: TASK: Marking tasks as done and sumarizing completed tasks
+Part 10: TASK: Marking tasks as done and sumarizing completed tasks
 -------
 
 ```
 TASK_ID: aaff42e535b800c28d10d883177b5165
-CREATED: 2022-09-01 19:04
-ESTIMATED_TIME: W2
-MILESTONES: kcf-task-management
-```
-
-Part 10: TASK: Comparing time estimates with actual time spent
--------
-
-```
-TASK_ID: 28c9fe4ca2a1a2ea604eea0e6aee3ca0
 CREATED: 2022-09-01 19:04
 ESTIMATED_TIME: W2
 MILESTONES: kcf-task-management
