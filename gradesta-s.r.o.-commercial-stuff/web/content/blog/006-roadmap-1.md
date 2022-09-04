@@ -53,17 +53,22 @@ Part 5: TASK: Screencast metadata and config
 *** MILESTONES: kcf-task-management
 ```
 
-Part 6: TASK: Tracking screencast length
+{{<screencast "2022-9-2-e8ff07d8-5148-4059-ab24-66b77988c577">}}
+
+Part 6: TASK: Recording screencast length on user upload
 ----
 
 ```
-*** TASK_ID: 5a63bdcd7ee86ae33c0eba0525faf735
-*** CREATED: 2022-09-01 19:03
-*** ESTIMATED_TIME: W3
-*** MILESTONES: kcf-task-management
+TASK_ID: 5a63bdcd7ee86ae33c0eba0525faf735
+CREATED: 2022-09-01 19:03
+ESTIMATED_TIME: W3
+MILESTONES: kcf-task-management
 ```
 
-TASK: Associating screencasts with tasks
+{{<screencast "2022-09-03-e6ad8aa9-4f96-493c-a7c1-4279f609876e">}}
+
+Part 7: TASK: Associating screencasts with tasks
+--------------------------------
 
 ```
 TASK_ID: b4f4710742e5aa3fe4c920cd0192c04d
@@ -72,25 +77,23 @@ ESTIMATED_TIME: W3
 MILESTONES: kcf-task-management
 ```
 
-{{<screencast "2022-9-2-e8ff07d8-5148-4059-ab24-66b77988c577">}}
 
-
-Part 7: TASK: Marking tasks as done and sumarizing completed tasks
+Part 8: TASK: Marking tasks as done and sumarizing completed tasks
 -------
 
 ```
-*** TASK_ID: aaff42e535b800c28d10d883177b5165
-*** CREATED: 2022-09-01 19:04
-*** ESTIMATED_TIME: W2
-*** MILESTONES: kcf-task-management
+TASK_ID: aaff42e535b800c28d10d883177b5165
+CREATED: 2022-09-01 19:04
+ESTIMATED_TIME: W2
+MILESTONES: kcf-task-management
 ```
 
-Part 8: TASK: Comparing time estimates with actual time spent
+Part 9: TASK: Comparing time estimates with actual time spent
 -------
 
 ```
-*** TASK_ID: 28c9fe4ca2a1a2ea604eea0e6aee3ca0
-*** CREATED: 2022-09-01 19:04
-*** ESTIMATED_TIME: W2
-*** MILESTONES: kcf-task-management
+TASK_ID: 28c9fe4ca2a1a2ea604eea0e6aee3ca0
+CREATED: 2022-09-01 19:04
+ESTIMATED_TIME: W2
+MILESTONES: kcf-task-management
 ```

@@ -1,15 +1,19 @@
 use serde::{Deserialize, Serialize};
+use derive_new::new;
 
 use anyhow::Context;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
-#[derive(Default, Serialize, Deserialize, Debug)]
+#[derive(new, Default, Serialize, Deserialize, Debug)]
 pub struct Config {
     pub s3_screencasts_path: String,
     pub screencasts_base_url: String,
+    #[serde(skip)]
+    #[new(value = "PathBuf::new()")]
+    pub git_root: PathBuf,
 }
 
 pub async fn load_config(blogpost_path: &str) -> anyhow::Result<Config> {
@@ -30,6 +34,24 @@ pub async fn load_config(blogpost_path: &str) -> anyhow::Result<Config> {
         .context(format!("Could not read {:?}", &screencast_config_file_path))?
         .read_to_end(&mut contents)
         .await?;
-    let config: Config = serde_yaml::from_str(&String::from_utf8(contents)?)?;
+    let mut config: Config = serde_yaml::from_str(&String::from_utf8(contents)?)?;
+    config.git_root = PathBuf::new();
+    config.git_root.push(git_repo_path);
     Ok(config)
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::load_config;
+    use std::path::PathBuf;
+
+    #[tokio::test]
+    async fn test_load_config() {
+        let mut blogpost = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        blogpost.push("test-data/blogpost.md");
+        let config = load_config(&blogpost.to_string_lossy()).await.unwrap();
+        assert_eq!(config.s3_screencasts_path, "s3://gradesta-web-static/screencasts/");
+        assert_eq!(config.screencasts_base_url, "https://assets.gradesta.com/screencasts/");
+    }
 }

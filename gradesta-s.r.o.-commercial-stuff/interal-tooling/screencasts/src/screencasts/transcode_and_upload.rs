@@ -87,14 +87,18 @@ pub fn build_command_dag(
 mod tests {
     use super::*;
 
+    fn config() -> Config {
+        return Config::new(
+            "s3://gradesta-web-static/screencasts/".to_string(),
+            "https://assets.gradesta.com/screencasts/".to_string(),
+        );
+    }
+
     #[test]
     fn test_generate_commands() {
         use std::fs;
         use tempdir::TempDir;
-        let config = Config {
-            s3_screencasts_path: "s3://gradesta-web-static/screencasts/".to_string(),
-            screencasts_base_url: "https://assets.gradesta.com/screencasts/".to_string(),
-        };
+        let config = config();
         let tmp_dir_obj = TempDir::new("test_screencasts_dir").unwrap();
         let tmp_dir = tmp_dir_obj.path();
         let screencast1_path = tmp_dir.join("screencast1.mkv");
@@ -156,10 +160,7 @@ mod tests {
 
     #[test]
     fn test_generate_commands_skipping_missing_input_files() {
-        let config = Config {
-            s3_screencasts_path: "s3://gradesta-web-static/screencasts/".to_string(),
-            screencasts_base_url: "https://assets.gradesta.com/screencasts/".to_string(),
-        };
+        let config = config();
         use std::fs;
         use tempdir::TempDir;
         let tmp_dir_obj = TempDir::new("test_screencasts_dir").unwrap();
@@ -227,10 +228,7 @@ mod tests {
 
     #[test]
     fn test_generate_commands_too_few_inputs() {
-        let config = Config {
-            s3_screencasts_path: "s3://gradesta-web-static/screencasts/".to_string(),
-            screencasts_base_url: "https://assets.gradesta.com/screencasts/".to_string(),
-        };
+        let config = config();
         use std::fs;
         use tempdir::TempDir;
         let tmp_dir_obj = TempDir::new("test_screencasts_dir").unwrap();
