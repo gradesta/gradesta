@@ -1,5 +1,8 @@
 use super::config::load_config;
+use super::parsing::load_screencasts_from_blogpost;
 use super::transcode_and_upload::transcode_and_upload;
+use super::save_screencast_metadata::save_screencast_metadata;
+
 use anyhow::{anyhow, Context};
 use daggy::{Dag, NodeIndex};
 use futures::stream::FuturesUnordered;
@@ -11,10 +14,12 @@ use std::process::ExitStatus;
 use tokio::process::{Child, Command};
 
 pub async fn publish(blog_post_path: &str, video_files: Vec<&str>) -> anyhow::Result<()> {
-    let blog_post = fs::read_to_string(blog_post_path).unwrap();
+    let blogpost = fs::read_to_string(blog_post_path).unwrap();
     let config = load_config(blog_post_path).await?;
 
-    let transcode = transcode_and_upload(&blog_post, video_files, &config);
+    let mut screencasts = load_screencasts_from_blogpost(&blogpost)?;
+    let transcode = transcode_and_upload(&mut screencasts, video_files, &config);
+    save_screencast_metadata(&mut screencasts, &config).await?;
     match transcode {
         Ok(commands) => {
             run_command_dag(commands).await?;

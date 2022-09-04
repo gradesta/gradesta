@@ -1,5 +1,4 @@
 use super::config::Config;
-use super::parsing::load_screencasts_from_blogpost;
 use super::screencast::Screencast;
 use daggy::{Dag, NodeIndex};
 use std::cell::RefCell;
@@ -11,11 +10,10 @@ use tokio::process::Command;
 /// These lists can be run in paralel.
 ///
 pub fn transcode_and_upload<'a>(
-    blogpost: &'a str,
+    screencasts: &mut Vec<Screencast>,
     video_files: Vec<&str>,
     config: &Config,
 ) -> Result<Dag<RefCell<Command>, ()>, Box<dyn Error + 'a>> {
-    let mut screencasts = load_screencasts_from_blogpost(blogpost)?;
     if video_files.len() != screencasts.len() {
         return Err(format!("There are {} screencasts refered to in the blog post but {} were passed. Please pass one video file per screencast tag.",
                            screencasts.len(),
@@ -33,13 +31,13 @@ pub fn transcode_and_upload<'a>(
 }
 
 pub fn build_command_dag(
-    screencasts: Vec<Screencast>,
+    screencasts: &Vec<Screencast>,
     config: &Config,
 ) -> Result<Dag<RefCell<Command>, ()>, Box<dyn Error>> {
     let mut commands: Dag<RefCell<Command>, ()> = Dag::new();
     let mut first_transcode: Option<NodeIndex> = None;
     for screencast in screencasts {
-        let mkvfile = screencast.video_file.unwrap();
+        let mkvfile = screencast.video_file.as_ref().unwrap();
         if !std::path::Path::new(&mkvfile).exists() {
             continue;
         }
@@ -87,6 +85,7 @@ pub fn build_command_dag(
 
 #[cfg(test)]
 mod tests {
+    use super::super::parsing::load_screencasts_from_blogpost;
     use super::*;
 
     fn config() -> Config {
@@ -109,12 +108,9 @@ mod tests {
         fs::write(&screencast2_path, "foo").unwrap();
         let screencast1 = screencast1_path.to_string_lossy();
         let screencast2 = screencast2_path.to_string_lossy();
-        let commands = transcode_and_upload(
-            "---\nauthors: [\"Timothy Hobbs <timothyhobbs@seznam.cz>\"]\ndate: 2022-08-23\ntitle: Foo ---\nMy blog post {{<screencast \"video-id\">}} {{<screencast \"video-id-2\">}}",
-            vec![&screencast1, &screencast2],
-            &config,
-        )
-        .unwrap();
+        let mut screencasts = load_screencasts_from_blogpost("---\nauthors: [\"Timothy Hobbs <timothyhobbs@seznam.cz>\"]\ndate: 2022-08-23\ntitle: Foo ---\nMy blog post {{<screencast \"video-id\">}} {{<screencast \"video-id-2\">}}").unwrap();
+        let commands =
+            transcode_and_upload(&mut screencasts, vec![&screencast1, &screencast2], &config).unwrap();
 
         assert_eq!(commands.edge_count(), 5);
         assert_eq!(commands.node_count(), 6);
@@ -173,8 +169,9 @@ mod tests {
         fs::write(&screencast2_path, "foo").unwrap();
         let screencast1 = screencast1_path.to_string_lossy();
         let screencast2 = screencast2_path.to_string_lossy();
+        let mut screencasts = load_screencasts_from_blogpost("---\nauthors: [\"Timothy Hobbs <timothyhobbs@seznam.cz>\"]\ndate: 2022-08-23\ntitle: Foo ---\nMy blog post {{<screencast \"video-id\">}} {{<screencast \"video-id-2\">}} {{<screencast \"video-id-3\">}}").unwrap();
         let commands = transcode_and_upload(
-            "---\nauthors: [\"Timothy Hobbs <timothyhobbs@seznam.cz>\"]\ndate: 2022-08-23\ntitle: Foo ---\nMy blog post {{<screencast \"video-id\">}} {{<screencast \"video-id-2\">}} {{<screencast \"video-id-3\">}}",
+            &mut screencasts,
             vec![
                 "skip",
                 &screencast1,
@@ -239,8 +236,9 @@ mod tests {
         fs::write(&screencast1_path, "foo").unwrap();
         let screencast1 = screencast1_path.to_string_lossy();
 
+        let mut screencasts = load_screencasts_from_blogpost("---\nauthors: [\"Timothy Hobbs <timothyhobbs@seznam.cz>\"]\ndate: 2022-08-23\ntitle: Foo ---\nMy blog post {{<screencast \"video-id\">}} {{<screencast \"video-id\">}}").unwrap();
         let commands = transcode_and_upload(
-            "---\nauthors: [\"Timothy Hobbs <timothyhobbs@seznam.cz>\"]\ndate: 2022-08-23\ntitle: Foo ---\nMy blog post {{<screencast \"video-id\">}} {{<screencast \"video-id\">}}",
+            &mut screencasts,
             vec![&screencast1],
             &config,
         );

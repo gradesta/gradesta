@@ -1,19 +1,9 @@
-use super::screencast::load_metadata;
+use super::screencast::{load_metadata, Screencast};
 
 use anyhow::{anyhow, Context};
 use tokio::process::Command;
 
-pub async fn fetch_duration(metadata_path: &str, missing: bool) -> anyhow::Result<()> {
-    let mut screencast = load_metadata(metadata_path).await?;
-    if missing && screencast.duration_seconds > 0.0 {
-        println!("Duration already set for {}", metadata_path);
-        return Ok(());
-    }
-    println!("Fetching duration data data for {}", metadata_path);
-    let url: String = screencast.url.clone().ok_or(anyhow!(
-        "Metadata file {} missing URL, cannot fetch duration.",
-        metadata_path
-    ))?;
+pub async fn fetch_duration(screencast: &mut Screencast, source: &str) -> anyhow::Result<()> {
     let output = Command::new("ffprobe")
         .arg("-v")
         .arg("error")
@@ -21,7 +11,7 @@ pub async fn fetch_duration(metadata_path: &str, missing: bool) -> anyhow::Resul
         .arg("format=duration")
         .arg("-of")
         .arg("default=noprint_wrappers=1:nokey=1")
-        .arg(&url)
+        .arg(source)
         .output()
         .await
         .context("Error running ffmpeg command")?;
@@ -32,8 +22,23 @@ pub async fn fetch_duration(metadata_path: &str, missing: bool) -> anyhow::Resul
         .context(format!("Could not parse {}", ffmpeg_output))?;
     println!(
         "{} fetched, duration is {} seconds.",
-        &url, screencast.duration_seconds
+        source, screencast.duration_seconds
     );
+    Ok(())
+}
+
+pub async fn fetch_and_save_duration(metadata_path: &str, missing: bool) -> anyhow::Result<()> {
+    let mut screencast = load_metadata(metadata_path).await?;
+    if missing && screencast.duration_seconds > 0.0 {
+        println!("Duration already set for {}", metadata_path);
+        return Ok(());
+    }
+    println!("Fetching duration data data for {}", metadata_path);
+    let url: String = screencast.url.clone().ok_or(anyhow!(
+        "Metadata file {} missing URL, cannot fetch duration.",
+        metadata_path
+    ))?;
+    fetch_duration(&mut screencast, &url);
     let f = std::fs::OpenOptions::new()
         .write(true)
         .open(metadata_path)

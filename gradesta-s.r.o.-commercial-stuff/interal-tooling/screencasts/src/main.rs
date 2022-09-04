@@ -1,6 +1,6 @@
 mod screencasts;
 use anyhow;
-use screencasts::fetch_duration::fetch_duration;
+use screencasts::fetch_duration::fetch_and_save_duration;
 use screencasts::inspect::inspect;
 use screencasts::print_label::print_label;
 use screencasts::publish::publish;
@@ -52,7 +52,7 @@ async fn main() -> anyhow::Result<()> {
             let metadata_files = sub_matches.get_many::<String>("METADATA").unwrap();
             let missing = *sub_matches.get_one::<bool>("missing").unwrap();
             for metadata in metadata_files {
-                fetch_duration(metadata, missing).await?;
+                fetch_and_save_duration(metadata, missing).await?;
             }
         }
         Some(("inspect-blogpost", sub_matches)) => {

@@ -84,9 +84,11 @@ Part 8: TASK: Recording screencast length on user upload
 ```
 TASK_ID: 5a63bdcd7ee86ae33c0eba0525faf735
 CREATED: 2022-09-01 19:03
-ESTIMATED_TIME: W3
+ESTIMATED_TIME: W3 DONE
 MILESTONES: kcf-task-management
 ```
+
+{{<screencast "2022-09-04-59266aa1-467a-4f05-a4b8-593f5fb0704b">}}
 
 Part 9: TASK: Associating screencasts with tasks
 --------------------------------

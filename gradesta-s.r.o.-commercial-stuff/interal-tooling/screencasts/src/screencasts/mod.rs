@@ -7,3 +7,4 @@ pub mod print_label;
 pub mod publish;
 pub mod screencast;
 pub mod transcode_and_upload;
+pub mod save_screencast_metadata;
