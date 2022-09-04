@@ -55,7 +55,19 @@ Part 5: TASK: Screencast metadata and config
 
 {{<screencast "2022-9-2-e8ff07d8-5148-4059-ab24-66b77988c577">}}
 
-Part 6: TASK: Recording screencast length on user upload
+Part 6: TASK: Add tests for screencast config and metadata code
+--------------
+
+```
+TASK_ID: 2748a899cdbd3cc1c99194386d328540
+CREATED: 2022-09-04 05:51
+MILESTONES: kcf-task-management
+```
+
+{{<screencast "2022-09-03-e6ad8aa9-4f96-493c-a7c1-4279f609876e">}}
+
+
+Part 7: TASK: Recording screencast length on user upload
 ----
 
 ```
@@ -65,9 +77,7 @@ ESTIMATED_TIME: W3
 MILESTONES: kcf-task-management
 ```
 
-{{<screencast "2022-09-03-e6ad8aa9-4f96-493c-a7c1-4279f609876e">}}
-
-Part 7: TASK: Associating screencasts with tasks
+Part 8: TASK: Associating screencasts with tasks
 --------------------------------
 
 ```
@@ -78,7 +88,7 @@ MILESTONES: kcf-task-management
 ```
 
 
-Part 8: TASK: Marking tasks as done and sumarizing completed tasks
+Part 9: TASK: Marking tasks as done and sumarizing completed tasks
 -------
 
 ```
@@ -88,7 +98,7 @@ ESTIMATED_TIME: W2
 MILESTONES: kcf-task-management
 ```
 
-Part 9: TASK: Comparing time estimates with actual time spent
+Part 10: TASK: Comparing time estimates with actual time spent
 -------
 
 ```

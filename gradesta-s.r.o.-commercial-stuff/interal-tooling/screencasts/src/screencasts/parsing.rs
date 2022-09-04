@@ -2,14 +2,24 @@
 / This is code used to parse hugo blog posts and extract information about coding screencasts.
 */
 
+/*
+TASK: Nom doesn't give good errors, swithch to https://github.com/Marwes/combine
+TASK_ID: a7cf535496c5a1437f341492e988d17d
+CREATED: 2022-09-04 15:08
+ESTIMATED_TIME: W4
+MILESTONES: nitpicks
+*/
+
+
 use super::screencast::Screencast;
+use super::frontmatter::FrontMatter;
 
 use nom::{
     branch::alt,
-    bytes::complete::{is_a, take, take_until, take_while},
+    bytes::complete::{is_a, take, take_until, take_while, tag},
     character::complete::char,
     combinator::{map, opt, rest},
-    error::ParseError,
+    error::{ParseError},
     multi::fold_many0,
     sequence::{preceded, terminated, tuple},
     IResult,
@@ -80,6 +90,17 @@ pub fn extract_screencast_tags<'a>(i: &'a str) -> anyhow::Result<(&str, Vec<Scre
     }
 }
 
+pub fn extract_frontmatter<'a>(i: &'a str) -> IResult<&str, FrontMatter> {
+    preceded(whitespace,
+             preceded(
+                 tag("---"),
+                 map(take_until("---"), |frontmatter: &str|
+                     serde_yaml::from_str::<FrontMatter>(frontmatter).unwrap()
+                 )
+             )
+    )(i)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,5 +151,23 @@ mod tests {
             ],
             screencasts
         );
+    }
+
+    #[test]
+    fn test_extract_frontmatter() {
+        let (remainder, frontmatter) =
+            match extract_frontmatter("---\nauthors: [\"Timothy Hobbs <timothyhobbs@seznam.cz>\"]\ndate: 2022-08-23\ntitle: Foo ---\nFoo {{<screencast \"abc\">}} {{<screencast \"def\">}}")
+            {
+                Err(e) => panic!("{}", e),
+                Ok((r, fm)) => (r, fm)
+            };
+        assert_eq!(remainder, "---\nFoo {{<screencast \"abc\">}} {{<screencast \"def\">}}");
+        assert_eq!(
+            vec![
+                "Timothy Hobbs <timothyhobbs@seznam.cz>".to_string()
+            ],
+            frontmatter.authors
+        );
+        assert_eq!("Foo".to_string(), frontmatter.title);
     }
 }

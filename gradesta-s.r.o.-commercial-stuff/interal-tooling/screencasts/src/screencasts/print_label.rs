@@ -1,9 +1,9 @@
 use anyhow;
-use chrono::prelude::*;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 pub async fn print_label() -> anyhow::Result<()> {
-    let now = Local::now();
+    let now = OffsetDateTime::now_local()?;
     println!(
         "{}-{:02}-{:02}-{}",
         now.year(),
