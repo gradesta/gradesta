@@ -436,17 +436,17 @@
 * Utils
 #+A emacs-lisp
 (defun create_task () (interactive)
-       (insert (concatenate 'string "*** TASK_ID: "(string-trim (shell-command-to-string "mcookie")) "\n")) ; NO_TASK
-       (insert (concatenate 'string "*** CREATED: "(string-trim (shell-command-to-string "date -u \"+%Y-%m-%d %H:%M\"")) "\n")) ; NO_TASK
-       (insert "*** ESTIMATED_TIME: \n") ; NO_TASK
-       (insert "*** MILESTONES: ") ; NO_TASK
+       (insert (concatenate 'string "TASK_ID: "(string-trim (shell-command-to-string "mcookie")) "\n")) ; NO_TASK
+       (insert (concatenate 'string "CREATED: "(string-trim (shell-command-to-string "date -u \"+%Y-%m-%d %H:%M\"")) "\n")) ; NO_TASK
+       (insert "ESTIMATED_TIME: \n") ; NO_TASK
+       (insert "MILESTONES: ") ; NO_TASK
        )
 
 
 (defun bounty_task () (interactive)
-       (insert (concatenate 'string "*** BOUNTIED: "(string-trim (shell-command-to-string "date -u \"+%Y-%m-%d %H:%M\"")) "\n")) ; NO_TASK
-       (insert "*** INCOMPLETION_COST: per hour\n") ; NO_TASK
-       (insert "*** START_VALUE: \n") ; NO_TASK
-       (insert "*** MAX_VALUE: \n") ; NO_TASK
+       (insert (concatenate 'string "BOUNTIED: "(string-trim (shell-command-to-string "date -u \"+%Y-%m-%d %H:%M\"")) "\n")) ; NO_TASK
+       (insert "INCOMPLETION_COST: per hour\n") ; NO_TASK
+       (insert "START_VALUE: \n") ; NO_TASK
+       (insert "MAX_VALUE: \n") ; NO_TASK
        )
 #+END_A
