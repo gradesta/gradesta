@@ -44,13 +44,17 @@ def get_symbols(line, tag):
     return None
 
 
+def initial_milestones():
+    return ["all-tasks"]
+
+
 @dataclass
 class Task:
     NAME: str = ""
     TASK_ID: str = ""
     CREATED: datetime | None = None
     TIME_COST_ESTIMATES: [str] = field(default_factory=list)
-    MILESTONES: [str] = field(default_factory=list)
+    MILESTONES: [str] = field(default_factory=initial_milestones)
     INCOMPLETION_COST: float | None = None  # USD per hour
     START_VALUE: float | None = None  # USD
     MAX_VALUE: float | None = None  # USD
@@ -67,7 +71,7 @@ class Task:
         if i := get_tag_val(line, "TASK_ID"):
             self.TASK_ID = i
         if ms := get_symbols(line, "MILESTONES"):
-            self.MILESTONES = ms
+            self.MILESTONES += ms
         if c := get_datetime(line, "CREATED"):
             self.CREATED = c
         if b := get_datetime(line, "BOUNTIED"):
@@ -86,6 +90,10 @@ class Task:
     def estimate_time_cost(self):
         return get_estimates(" ".join(self.TIME_COST_ESTIMATES or []))
 
+    @property
+    def MANUAL_MILESTONES(self):
+        return [m for m in self.MILESTONES if m != "all-tasks"]
+
     def __str__(self):
         s = "TASK: " + self.NAME + "\n" # NO_TASK
         if self.TASK_ID: # NO_TASK
@@ -95,7 +103,7 @@ class Task:
         if self.TIME_COST_ESTIMATES: # NO_TASK
             s += "ESTIMATED_TIME: {}\n".format(" ".join(self.TIME_COST_ESTIMATES)) # NO_TASK
         if self.MILESTONES: # NO_TASK
-            s += "MILESTONES: {}\n".format(" ".join(self.MILESTONES)) # NO_TASK
+            s += "MILESTONES: {}\n".format(" ".join(self.MANUAL_MILESTONES)) # NO_TASK
         if self.INCOMPLETION_COST: # NO_TASK
             s += "INCOMPLETION_COST: ${} per hour\n".format(self.INCOMPLETION_COST) # NO_TASK
         if self.START_VALUE: # NO_TASK
@@ -128,7 +136,7 @@ def test_read_line():
     task.read_line("ESTIMATED_TIME: U2 W4  ") #NO_TASK
     assert ["U2", "W4"] == list(sorted(task.TIME_COST_ESTIMATES))
     task.read_line("MILESTONES: mvp abc  ") #NO_TASK
-    assert ["abc", "mvp"] == list(sorted(task.MILESTONES))
+    assert ["abc", "all-tasks", "mvp"] == list(sorted(task.MILESTONES))
     task.read_line("INCOMPLETION_COST: $3 per hour  ") #NO_TASK
     assert 3.0 == task.INCOMPLETION_COST
     task.read_line("START_VALUE: $50 ") #NO_TASK

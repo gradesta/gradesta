@@ -6,12 +6,11 @@ import os
 def group_tasks_by_milestone(tasks):
     milestones = {"without-milestone": []}
     for task in tasks:
-        if task.MILESTONES:
-            for milestone in task.MILESTONES:
-                if milestone not in milestones:
-                    milestones[milestone] = []
-                milestones[milestone].append(task)
-        else:
+        for milestone in task.MILESTONES:
+            if milestone not in milestones:
+                milestones[milestone] = []
+            milestones[milestone].append(task)
+        if len(task.MANUAL_MILESTONES) == 0:
             milestones["without-milestone"].append(task)
     return milestones
 
