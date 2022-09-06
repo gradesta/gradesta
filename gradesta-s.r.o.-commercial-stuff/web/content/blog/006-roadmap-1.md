@@ -96,7 +96,7 @@ Part 9: TASK: Associating screencasts with tasks
 ```
 TASK_ID: b4f4710742e5aa3fe4c920cd0192c04d
 CREATED: 2022-09-01 19:01
-ESTIMATED_TIME: W3
+ESTIMATED_TIME: W3 DONE
 MILESTONES: kcf-task-management
 ```
 
