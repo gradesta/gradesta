@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from kcf_tasks.time_cost_estimates import get_estimates
 
+import sys
+
 
 def get_tag_val(line, tag):
     """
@@ -18,7 +20,10 @@ def get_datetime(line, tag):
     Returns a datetime if tag is present, otherwise returns None
     """
     if val := get_tag_val(line, tag):
-        return datetime.strptime(val.strip(), "%Y-%m-%d %H:%M")
+        try:
+            return datetime.strptime(val.strip(), "%Y-%m-%d %H:%M")
+        except ValueError:
+            sys.exit("Date could not be parsed " + line)
     return None
 
 
