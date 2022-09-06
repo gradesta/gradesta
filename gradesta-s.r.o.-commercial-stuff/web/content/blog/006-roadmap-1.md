@@ -100,6 +100,7 @@ ESTIMATED_TIME: W3 DONE
 MILESTONES: kcf-task-management
 ```
 
+{{<screencast "2022-09-06-4f595839-95a0-435c-ba70-b4862c235749" "b4f4710742e5aa3fe4c920cd0192c04d">}}
 
 Part 10: TASK: Marking tasks as done and sumarizing completed tasks
 -------
