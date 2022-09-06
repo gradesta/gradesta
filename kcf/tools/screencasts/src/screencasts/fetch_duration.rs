@@ -38,7 +38,7 @@ pub async fn fetch_and_save_duration(metadata_path: &str, missing: bool) -> anyh
         "Metadata file {} missing URL, cannot fetch duration.",
         metadata_path
     ))?;
-    fetch_duration(&mut screencast, &url);
+    fetch_duration(&mut screencast, &url).await?;
     let f = std::fs::OpenOptions::new()
         .write(true)
         .open(metadata_path)
