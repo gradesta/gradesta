@@ -38,6 +38,10 @@ def print_milestone(milestone, tasks):
         sums["team_work_max"].total_seconds() / 3600,
         " hours",
     )
+    print(
+        "Completed tasks:              ",
+        sums["completed"]
+    )
 
 parser = ArgumentParser(
                       description="Get information about kcf style tasks")

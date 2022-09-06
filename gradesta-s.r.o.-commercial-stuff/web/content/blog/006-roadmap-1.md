@@ -36,10 +36,10 @@ Part 4: TASK: Setting up pytest for kcf task gathering code
 ---------
 
 ```
-*** TASK_ID: cc0874cc357bfb9d81a91267dbb6cbbf
-*** CREATED: 2022-09-01 19:05
-*** ESTIMATED_TIME: W3
-*** MILESTONES: kcf-task-management
+TASK_ID: cc0874cc357bfb9d81a91267dbb6cbbf
+CREATED: 2022-09-01 19:05
+ESTIMATED_TIME: W3 DONE
+MILESTONES: kcf-task-management
 ```
 
 {{<screencast "2022-9-1-f62403e9-09b6-4457-89bf-95d5a14b8e6c" "cc0874cc357bfb9d81a91267dbb6cbbf">}}
@@ -48,9 +48,10 @@ Part 5: TASK: Screencast metadata and config
 ------------
 
 ```
-*** TASK_ID: bb20cd7d5ae49813c4ab36b7c33d4272
-*** CREATED: 2022-09-03 20:46
-*** MILESTONES: kcf-task-management
+TASK_ID: bb20cd7d5ae49813c4ab36b7c33d4272
+CREATED: 2022-09-03 20:46
+ESTIMATED_TIME: DONE
+MILESTONES: kcf-task-management
 ```
 
 {{<screencast "2022-9-2-e8ff07d8-5148-4059-ab24-66b77988c577">}}
@@ -61,6 +62,7 @@ Part 6: TASK: Add tests for screencast config and metadata code
 ```
 TASK_ID: 2748a899cdbd3cc1c99194386d328540
 CREATED: 2022-09-04 05:51
+ESTIMATED_TIME: DONE
 MILESTONES: kcf-task-management
 ```
 
@@ -118,7 +120,8 @@ Part 11: TASK: Marking tasks as done and sumarizing completed tasks
 ```
 TASK_ID: aaff42e535b800c28d10d883177b5165
 CREATED: 2022-09-01 19:04
-ESTIMATED_TIME: W2
+ESTIMATED_TIME: W2 DONE
 MILESTONES: kcf-task-management
 ```
 
+{{<screencast "2022-09-06-5961a13e-21d7-4b4f-9771-a5556d4daeec">}}

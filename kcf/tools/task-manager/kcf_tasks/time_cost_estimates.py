@@ -50,6 +50,7 @@ def get_empty_sums():
         "individual_work_max": timedelta(seconds=0),
         "team_work_min": timedelta(seconds=0),
         "team_work_max": timedelta(seconds=0),
+        "completed": 0,
     }
 
 
@@ -65,9 +66,16 @@ def get_estimates(estimates):
         "individual_work_max": timedelta,
         "team_work_min": timedelta,
         "team_work_max": timedelta,
+        "completed": num_tasks,
     }
     """
     sums = get_empty_sums()
+
+    if "DONE" in estimates:
+        sums["completed"] = 1
+        estimates = []
+    else:
+        sums["completed"] = 0
 
     for classification, (type, min, max) in costs.items():
         sums[type + "_min"] += estimates.count(classification) * min
