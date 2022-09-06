@@ -41,4 +41,6 @@ def gather_from_file(file):
                 current_task.START_LINE_IN_SOURCE_FILE = lineno
             if current_task:
                 current_task.read_line(line)
+    if current_task:
+        tasks.append(current_task)
     return tasks
