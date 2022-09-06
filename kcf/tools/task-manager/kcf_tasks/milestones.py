@@ -1,5 +1,7 @@
 from kcf_tasks.gather_tasks import gather_from_git, gather_from_file
 
+import os
+
 
 def group_tasks_by_milestone(tasks):
     milestones = {"without-milestone": []}
@@ -20,13 +22,13 @@ def get_milestones(paths=None):
     """
 
     if paths is None:
-        tasks = gather_from_git()
+        tasks = gather_from_git(os.getcwd())
     else:
         tasks = []
         for path in paths:
-            if isfile(path):
+            if not os.path.isdir(path):
                 tasks += gather_from_file(path)
             else:
-                tasks += gather_from_git(folder)
+                tasks += gather_from_git(path)
 
     return group_tasks_by_milestone(tasks)

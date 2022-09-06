@@ -5,17 +5,18 @@ from kcf_tasks.task import Task
 import os.path
 
 
-def gather_from_git():
+def gather_from_git(dir):
     """
     Returns a list of Task objects taken from the current git repo
     """
-    output = subprocess.check_output("git ls-files -- ':!kcf'", shell=True).decode(
+    output = subprocess.check_output("git ls-files -- ':!kcf'", shell=True, cwd=dir).decode(
         "utf-8"
     )
 
     tasks = []
     current_task = None
     for file in output.split("\n"):
+        file = os.path.join(dir, file)
         if os.path.isfile(file):
             tasks += gather_from_file(file)
     return tasks
