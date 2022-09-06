@@ -82,27 +82,27 @@ class Task:
         return get_estimates(" ".join(self.TIME_COST_ESTIMATES or []))
 
     def __str__(self):
-        s = "TASK: " + self.NAME + "\n"
-        if self.TASK_ID:
-            s += "TASK_ID: {}\n".format(self.TASK_ID)
-        if self.CREATED:
-            s += "CREATED: {}\n".format(self.CREATED.strftime("%Y-%m-%d %H:%M"))
-        if self.TIME_COST_ESTIMATES:
-            s += "ESTIMATED_TIME: {}\n".format(" ".join(self.TIME_COST_ESTIMATES))
-        if self.MILESTONES:
-            s += "MILESTONES: {}\n".format(" ".join(self.MILESTONES))
-        if self.INCOMPLETION_COST:
-            s += "INCOMPLETION_COST: ${} per hour\n".format(self.INCOMPLETION_COST)
-        if self.START_VALUE:
-            s += "START_VALUE: ${}\n".format(self.START_VALUE)
-        if self.MAX_VALUE:
-            s += "MAX_VALUE: ${}\n".format(self.MAX_VALUE)
-        if self.BOUNTIED:
-            s += "BOUNTIED: {}\n".format(self.BOUNTIED.strftime("%Y-%m-%d %H:%M"))
-        if self.DESCRIPTION:
-            s += "DESCRIPTION: {}\n".format(self.DESCRIPTION)
-        if self.SOURCE_FILE:
-            s += "SOURCE: {}:{}\n".format(
+        s = "TASK: " + self.NAME + "\n" # NO_TASK
+        if self.TASK_ID: # NO_TASK
+            s += "TASK_ID: {}\n".format(self.TASK_ID) # NO_TASK
+        if self.CREATED: # NO_TASK
+            s += "CREATED: {}\n".format(self.CREATED.strftime("%Y-%m-%d %H:%M")) # NO_TASK
+        if self.TIME_COST_ESTIMATES: # NO_TASK
+            s += "ESTIMATED_TIME: {}\n".format(" ".join(self.TIME_COST_ESTIMATES)) # NO_TASK
+        if self.MILESTONES: # NO_TASK
+            s += "MILESTONES: {}\n".format(" ".join(self.MILESTONES)) # NO_TASK
+        if self.INCOMPLETION_COST: # NO_TASK
+            s += "INCOMPLETION_COST: ${} per hour\n".format(self.INCOMPLETION_COST) # NO_TASK
+        if self.START_VALUE: # NO_TASK
+            s += "START_VALUE: ${}\n".format(self.START_VALUE) # NO_TASK
+        if self.MAX_VALUE: #NO_TASK
+            s += "MAX_VALUE: ${}\n".format(self.MAX_VALUE) #NO_TASK
+        if self.BOUNTIED: #NO_TASK
+            s += "BOUNTIED: {}\n".format(self.BOUNTIED.strftime("%Y-%m-%d %H:%M")) #NO_TASK
+        if self.DESCRIPTION: #NO_TASK
+            s += "DESCRIPTION: {}\n".format(self.DESCRIPTION) #NO_TASK
+        if self.SOURCE_FILE: #NO_TASK
+            s += "SOURCE: {}:{}\n".format( #NO_TASK
                 self.SOURCE_FILE, self.START_LINE_IN_SOURCE_FILE
             )
         return s
@@ -114,25 +114,25 @@ def test_read_line():
     assert task.TASK_ID == ""
     task.read_line("nothing interesting ** TASK: foo ")
     assert task.NAME == "foo"
-    task.read_line("TASK_ID: abcd")
+    task.read_line("TASK_ID: abcd") #NO_TASK
     assert task.TASK_ID == "abcd"
-    task.read_line("TASK_ID: abcd  ")
+    task.read_line("TASK_ID: abcd  ") #NO_TASK
     assert task.TASK_ID == "abcd"
-    task.read_line("CREATED: 2022-08-12 10:20  ")
+    task.read_line("CREATED: 2022-08-12 10:20  ") #NO_TASK
     assert task.CREATED.hour == 10
-    task.read_line("ESTIMATED_TIME: U2 W4  ")
+    task.read_line("ESTIMATED_TIME: U2 W4  ") #NO_TASK
     assert ["U2", "W4"] == list(sorted(task.TIME_COST_ESTIMATES))
-    task.read_line("MILESTONES: mvp abc  ")
+    task.read_line("MILESTONES: mvp abc  ") #NO_TASK
     assert ["abc", "mvp"] == list(sorted(task.MILESTONES))
-    task.read_line("INCOMPLETION_COST: $3 per hour  ")
+    task.read_line("INCOMPLETION_COST: $3 per hour  ") #NO_TASK
     assert 3.0 == task.INCOMPLETION_COST
-    task.read_line("START_VALUE: $50 ")
+    task.read_line("START_VALUE: $50 ") #NO_TASK
     assert 50.0 == task.START_VALUE
-    task.read_line("MAX_VALUE: $500 ")
+    task.read_line("MAX_VALUE: $500 ") #NO_TASK
     assert 500.0 == task.MAX_VALUE
-    task.read_line("BOUNTIED:  2022-08-12 12:20  ")
+    task.read_line("BOUNTIED:  2022-08-12 12:20  ") #NO_TASK
     assert task.BOUNTIED.hour == 12
-    task.read_line("DESCRIPTION:  Hello this is a big task ")
+    task.read_line("DESCRIPTION:  Hello this is a big task ") #NO_TASK
     assert task.DESCRIPTION == "Hello this is a big task"
     task.SOURCE_FILE = "foo.py"
     task.START_LINE_IN_SOURCE_FILE = 23
