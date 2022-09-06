@@ -102,8 +102,18 @@ MILESTONES: kcf-task-management
 
 {{<screencast "2022-09-06-4f595839-95a0-435c-ba70-b4862c235749" "b4f4710742e5aa3fe4c920cd0192c04d">}}
 
-Part 10: TASK: Marking tasks as done and sumarizing completed tasks
+Part 10: Fixing kcf-tasks after moving it's dir and setting up argparse
 -------
+
+I actually start out discovering that kcf-tasks is no longer in my path. It turns out that this is due to the fact that in the previous part I moved the task-manager source directory to the tools directory. Apparently virualenv is not set up to handle such changes and so I had to delete the virtualenv and start over.
+
+Next I fight with argparse and allowing the user to specify a path from which to gather the tasks. This leads me down all sorts of rabit holes involving my lack of ability to work with python as a dynamically typed language (it doesn't tell me that I'm an idiot when I do unreasonable things like try to pass a string to a function that expects a list...)
+
+{{<screencast "2022-09-06-54ca2115-0145-4812-bd77-c3ed72d1cae9">}}
+
+Part 11: TASK: Marking tasks as done and sumarizing completed tasks
+-----
+
 
 ```
 TASK_ID: aaff42e535b800c28d10d883177b5165
@@ -111,3 +121,4 @@ CREATED: 2022-09-01 19:04
 ESTIMATED_TIME: W2
 MILESTONES: kcf-task-management
 ```
+
