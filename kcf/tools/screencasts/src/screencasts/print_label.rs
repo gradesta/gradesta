@@ -3,11 +3,11 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 pub async fn print_label() -> anyhow::Result<()> {
-    let now = OffsetDateTime::now_local()?;
+    let now = OffsetDateTime::now_utc();
     println!(
         "{}-{:02}-{:02}-{}",
         now.year(),
-        now.month(),
+        <u8>::from(now.month()),
         now.day(),
         Uuid::new_v4(),
     );
