@@ -23,6 +23,7 @@ pub async fn save_screencast_metadata(
         metadata_path.set_extension("yaml");
         let f = std::fs::OpenOptions::new()
             .write(true)
+            .create(true)
             .open(metadata_path)
             .expect("Couldn't open file");
         serde_yaml::to_writer(f, &screencast)?;
