@@ -1,9 +1,9 @@
 ---
 title: "Lets start putting together a road map for gradesta"
 date: 2022-08-31
-featureImage: https://assets.gradesta.com/gradesta/img/dalle2-clock-and-coins.png
+featureImage: https://assets.gradesta.com/gradesta/img/dalle2-roadmap-bike.png
 author: Timothy Hobbs <tim@gradesta.com>
-draft: true
+draft: false
 ---
 
 Part 1: Just figuring out how to organize the tasks
