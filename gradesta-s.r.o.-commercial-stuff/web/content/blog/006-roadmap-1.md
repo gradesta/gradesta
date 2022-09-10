@@ -32,7 +32,7 @@ This is a coding session in which I write a script for extracting time estimate 
 
 In the last part I will be looking at how to record time spent on each task by associating screencasts with tasks and recording a list of the screencast lengths and authorship.
 
-Part 4: TASK: Setting up pytest for kcf task gathering code
+Part 5: TASK: Setting up pytest for kcf task gathering code
 ---------
 
 ```
@@ -44,7 +44,7 @@ MILESTONES: kcf-task-management
 
 {{<screencast "2022-9-1-f62403e9-09b6-4457-89bf-95d5a14b8e6c" "cc0874cc357bfb9d81a91267dbb6cbbf">}}
 
-Part 5: TASK: Screencast metadata and config
+Part 6: TASK: Screencast metadata and config
 ------------
 
 ```
@@ -56,7 +56,7 @@ MILESTONES: kcf-task-management
 
 {{<screencast "2022-9-2-e8ff07d8-5148-4059-ab24-66b77988c577">}}
 
-Part 6: TASK: Add tests for screencast config and metadata code
+Part 7: TASK: Add tests for screencast config and metadata code
 --------------
 
 ```
@@ -69,7 +69,7 @@ MILESTONES: kcf-task-management
 {{<screencast "2022-09-03-e6ad8aa9-4f96-493c-a7c1-4279f609876e">}}
 
 
-Part 7: Add function for parsing hugo frontmatter
+Part 8: Add function for parsing hugo frontmatter
 --------
 
 In order to save screencast metadata, I need to parse frontmatter so I can extract the authors. This turned out to be extremely difficult and frustrating for two reasons:
@@ -80,7 +80,7 @@ In order to save screencast metadata, I need to parse frontmatter so I can extra
 
 {{<screencast "2022-09-04-e3e86b1a-7264-4409-bae9-71906fab2307">}}
 
-Part 8: TASK: Recording screencast length on user upload
+Part 9: TASK: Recording screencast length on user upload
 ----
 
 ```
@@ -92,7 +92,7 @@ MILESTONES: kcf-task-management
 
 {{<screencast "2022-09-04-59266aa1-467a-4f05-a4b8-593f5fb0704b">}}
 
-Part 9: TASK: Associating screencasts with tasks
+Part 10: TASK: Associating screencasts with tasks
 --------------------------------
 
 ```
@@ -104,7 +104,7 @@ MILESTONES: kcf-task-management
 
 {{<screencast "2022-09-06-4f595839-95a0-435c-ba70-b4862c235749" "b4f4710742e5aa3fe4c920cd0192c04d">}}
 
-Part 10: Fixing kcf-tasks after moving it's dir and setting up argparse
+Part 11: Fixing kcf-tasks after moving it's dir and setting up argparse
 -------
 
 I actually start out discovering that kcf-tasks is no longer in my path. It turns out that this is due to the fact that in the previous part I moved the task-manager source directory to the tools directory. Apparently virualenv is not set up to handle such changes and so I had to delete the virtualenv and start over.
@@ -113,7 +113,7 @@ Next I fight with argparse and allowing the user to specify a path from which to
 
 {{<screencast "2022-09-06-54ca2115-0145-4812-bd77-c3ed72d1cae9">}}
 
-Part 11: TASK: Marking tasks as done and sumarizing completed tasks
+Part 12: TASK: Marking tasks as done and sumarizing completed tasks
 -----
 
 
