@@ -1,4 +1,12 @@
 * Infra
+** TASK: Find a universal CI config format if it exists
+TASK_ID: afdb8ee2feb8be6db7925837828dc2c0
+CREATED: 2022-09-18 19:11
+ESTIMATED_TIME: U1 DONE
+MILESTONES: mvp ci
+
+Will use github actions
+
 ** TASK: Set up CI to test manager
 *** TASK_ID: e59db446d76a2ab972abb1bfab616376
 *** CREATED: 2022-09-01 18:49
