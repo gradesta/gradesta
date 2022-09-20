@@ -8,19 +8,16 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    environment: "FTP deploy"
+    container:
+      image: nixos/nix
 
     steps:
       - name: Checkout
-      - uses: actions/checkout@v2
+        uses: actions/checkout@v2
         with:
           submodules: recursive
 
-      - name: Test Manager
-        container:
-          image: nixos
-        steps:
-          - run: nix-shell
-          - run: cd manager ; cargo test
+      - run: nix-shell
+      - run: cd manager ; cargo test
 
         
