@@ -10,9 +10,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    container:
-      image: nixos/nix
-      options: --user root # https://stackoverflow.com/questions/68578638/how-to-checkout-repo-inside-the-docker-in-github-action
 
     steps:
       - name: Checkout
@@ -20,5 +17,7 @@ jobs:
         with:
           submodules: recursive
 
-      - run: nix-shell
-      - run: cd manager ; cargo test
+      - name: Test
+        uses: docker://nixos/nix
+        with:
+          args: nix-shell --command "cargo test"
