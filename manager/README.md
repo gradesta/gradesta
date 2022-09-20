@@ -1,0 +1,1 @@
+The gradesta manager is an application which functions as a router and proxy, sort of like ngnix in a modern web server, routing requests between clients and services. It also (similar to ngnix) automatically adds certain "upgrades" to client protocol support, such as verifying authentification automatically and parsing/evaluating walk trees.
