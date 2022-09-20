@@ -20,4 +20,4 @@ jobs:
       - name: Test
         uses: docker://nixos/nix
         with:
-          args: nix-shell --command "cargo test"
+          args: nix-shell --command "cd manager ; cargo test"
