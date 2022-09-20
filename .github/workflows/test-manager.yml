@@ -4,12 +4,14 @@ on:
   push:
     paths:
       - manager/**
+      - .github/test-manager.yml
 
 jobs:
   test:
     runs-on: ubuntu-latest
     container:
       image: nixos/nix
+      options: --user root # https://stackoverflow.com/questions/68578638/how-to-checkout-repo-inside-the-docker-in-github-action
 
     steps:
       - name: Checkout
@@ -19,5 +21,3 @@ jobs:
 
       - run: nix-shell
       - run: cd manager ; cargo test
-
-        
