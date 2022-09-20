@@ -5,7 +5,8 @@ on:
     paths:
       - manager/**
       - .github/test-manager.yml
-
+  workflow_dispatch: {}
+  
 jobs:
   test:
     runs-on: ubuntu-latest
