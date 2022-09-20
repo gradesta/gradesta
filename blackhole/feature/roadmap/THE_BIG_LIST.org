@@ -8,10 +8,15 @@ MILESTONES: mvp ci
 Will use github actions
 
 ** TASK: Set up CI to test manager
-*** TASK_ID: e59db446d76a2ab972abb1bfab616376
-*** CREATED: 2022-09-01 18:49
-*** ESTIMATED_TIME: W4
-*** MILESTONES: mvp ci
+TASK_ID: e59db446d76a2ab972abb1bfab616376
+CREATED: 2022-09-01 18:49
+ESTIMATED_TIME: W4
+MILESTONES: mvp ci
+*** TASK: Set up docker image with normal user in CI pipeline
+TASK_ID: 8886c40d54bf08d3ef40ae5d7207ebf6
+CREATED: 2022-09-20 19:06
+ESTIMATED_TIME: W2
+MILESTONES: mvp ci
 ** TASK: Set up CI to do `cargo fmt`
 *** TASK_ID: c4cea87b7e9a0db374d6679570555e08
 *** CREATED: 2022-09-01 18:51
