@@ -1,0 +1,26 @@
+name: Test manager
+
+on:
+  push:
+    paths:
+      - manager/**
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    environment: "FTP deploy"
+
+    steps:
+      - name: Checkout
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+
+      - name: Test Manager
+        container:
+          image: nixos
+        steps:
+          - run: nix-shell
+          - run: cd manager ; cargo test
+
+        
