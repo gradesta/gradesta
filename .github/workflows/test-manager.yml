@@ -36,6 +36,14 @@ jobs:
           cache-from: type=registry,ref=user/app:latest
           cache-to: type=inline
 
+  run-ci-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          submodules: recursive
+
       - name: Test
         uses: docker://timthelion/gradesta-ci-test
         with:
