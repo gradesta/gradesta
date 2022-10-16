@@ -15,9 +15,9 @@ on:
         uses: actions/checkout@v2
         with:
           submodules: recursive
-    - uses: cachix/install-nix-action@v17
-      with:
-        nix_path: nixpkgs=channel:nixos-unstabl
+      - uses: cachix/install-nix-action@v17
+        with:
+           nix_path: nixpkgs=channel:nixos-unstabl
 
-    - name: Test manager
-      run: nix-shell --command "cd manager ; cargo test"
+      - name: Test manager
+        run: nix-shell --command "cd manager ; cargo test"
