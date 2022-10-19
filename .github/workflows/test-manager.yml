@@ -20,4 +20,6 @@ jobs:
            nix_path: nixpkgs=channel:nixos-22.05
 
       - name: Test manager
-        run: nix-shell --command "cd manager ; cargo test"
+        run:
+          - nix-shell --command "cd manager ; cargo fmt --check"
+          - nix-shell --command "cd manager ; cargo test"
