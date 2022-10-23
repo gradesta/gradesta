@@ -92,6 +92,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[ignore] // Have to run these guys separately... https://github.com/xd009642/tarpaulin/issues/971
     async fn test_run_command_dag_with_non_existant_command() {
         let mut cdag = Dag::new();
         let not_in_path = RefCell::new(Command::new("not-in-path"));
@@ -104,6 +105,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_run_command_dag() {
         let mut cdag = Dag::new();
         let echo = RefCell::new(Command::new("echo"));
