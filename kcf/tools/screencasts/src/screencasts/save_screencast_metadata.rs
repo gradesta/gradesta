@@ -9,7 +9,10 @@ pub async fn save_screencast_metadata(
     for i in 0..screencasts.len() {
         {
             let mut screencast = &mut screencasts[i];
-            let video_file = &screencast.video_file.as_ref().unwrap().clone();
+            let video_file = match &screencast.video_file {
+                Some(vf) => vf.clone(),
+                None => panic!("Video file not set for screencast {:?}", screencast),
+            };
             fetch_duration(&mut screencast, &video_file).await?;
         }
         let mut screencast = &mut screencasts[i];
