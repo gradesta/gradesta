@@ -333,6 +333,9 @@ mod tests {
         socket.disconnect(&socket_url).unwrap();
         drop(socket);
         let my_pid = std::process::id();
+        use std::thread;
+        use std::time::Duration;
+        thread::sleep(Duration::from_millis(12)); // make sure the socket is dropped before we run the organize command
         match organize_sockets_dir(&tmp_dir.path(), &collections::HashSet::new()) {
             Ok(sockets) => assert_eq!(format!("{:?}{}", sockets, my_pid), format!("[]{}", my_pid)),
             Err(_) => unreachable!(),
