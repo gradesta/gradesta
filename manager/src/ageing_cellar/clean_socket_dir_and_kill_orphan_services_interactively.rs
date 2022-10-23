@@ -159,6 +159,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_term_than_ignore() {
         let input = b"t\ni\n";
         let mut output = Vec::new();
