@@ -348,13 +348,12 @@ mod tests {
         fs::create_dir(socket_dir.clone()).unwrap();
         let ctx = zmq::Context::new();
         let socket = ctx.socket(zmq::REP).unwrap();
-        let socket_url = format!(
-            "ipc://{}/PAIR.zmq",
-            socket_dir.as_os_str().to_str().unwrap()
-        );
+        let socket_path = format!("{}/PAIR.zmq", socket_dir.as_os_str().to_str().unwrap());
+        let socket_url = format!("ipc://{}", socket_path);
         socket.bind(&socket_url).unwrap();
         socket.disconnect(&socket_url).unwrap();
         drop(socket);
+        assert!(std::path::Path::new(&socket_path).exists());
         match organize_sockets_dir(&tmp_dir.path(), &collections::HashSet::new()) {
             Ok(sockets) => assert_eq!(format!("{:?}", sockets), "[]"),
             Err(_) => unreachable!("Organize sockets dir should succeed."),
