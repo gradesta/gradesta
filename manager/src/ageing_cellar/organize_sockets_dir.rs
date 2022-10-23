@@ -341,6 +341,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // This test flakes out if other test threas are running
     fn test_socket_dir_old_socket() {
         use tempdir::TempDir;
         let tmp_dir = TempDir::new("test_sockets_dir7").unwrap();

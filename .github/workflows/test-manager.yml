@@ -22,4 +22,6 @@ jobs:
       - name: Check cargo-fmt on manager
         run: nix-shell --command "cd manager ; cargo fmt --check"
       - name: Test manager
-        run: nix-shell --command "cd manager ; cargo test"
+        run: nix-shell --command "cd manager ; cargo tarpaulin --implicit-test-threads --fail-under 90"
+      - name: Test that one flaky test that fails if other threads are working with disk
+        run: nix-shell --command "cd manager ; cargo test -- --ignored"

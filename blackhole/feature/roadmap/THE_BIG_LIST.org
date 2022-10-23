@@ -50,7 +50,7 @@ Turns out this is very easy with github actions
 ** TASK: Set up CI to show code coverage
 *** TASK_ID: 47c7ff403b446e8b42a87401d35fd450
 *** CREATED: 2022-09-01 18:52
-*** ESTIMATED_TIME: W4
+*** ESTIMATED_TIME: W4 DONE
 *** MILESTONES: mvp ci
 
 ** TASK: Set up CI to test kcf code
