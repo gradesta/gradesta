@@ -1,0 +1,25 @@
+name: Test kcf-tasks
+
+on:
+  push:
+    paths:
+      - kcf/tools/task-manager/**
+      - .github/workflows/test-kcf-tasks.yml
+  workflow_dispatch: {}
+
+jobs:
+  run-ci-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          submodules: recursive
+      - uses: cachix/install-nix-action@v17
+        with:
+           nix_path: nixpkgs=channel:nixos-22.05
+
+      - name: Check black on kcf_tasks
+        run: nix-shell --command "cd kcf/tools/task-manager/ ; black --check kcf_tasks"
+      - name: Test kcf_tasks
+        run: nix-shell --command "cd manager ; pytest kcf_tasks --cov --cov-fail-under=17"

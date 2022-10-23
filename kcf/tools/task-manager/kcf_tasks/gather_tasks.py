@@ -9,9 +9,9 @@ def gather_from_git(dir):
     """
     Returns a list of Task objects taken from the current git repo
     """
-    output = subprocess.check_output("git ls-files -- ':!kcf'", shell=True, cwd=dir).decode(
-        "utf-8"
-    )
+    output = subprocess.check_output(
+        "git ls-files -- ':!kcf'", shell=True, cwd=dir
+    ).decode("utf-8")
 
     tasks = []
     current_task = None
