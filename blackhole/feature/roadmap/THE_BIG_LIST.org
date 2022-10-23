@@ -24,13 +24,13 @@ Turns out it's not needed
 ** TASK: Set up CI to do `cargo fmt`
 *** TASK_ID: c4cea87b7e9a0db374d6679570555e08
 *** CREATED: 2022-09-01 18:51
-*** ESTIMATED_TIME: W2
+*** ESTIMATED_TIME: W2 DONE
 *** MILESTONES: mvp ci
 
 ** TASK: Set up precommit hook to do `cargo fmt` everywhere
 *** TASK_ID: f7b43334d359dd3d2aa47c3c28fbece4
 *** CREATED: 2022-09-01 18:51
-*** ESTIMATED_TIME: W2
+*** ESTIMATED_TIME: W2 DONE
 *** MILESTONES: mvp ci
 
 ** TASK: Set up CI to test browser
