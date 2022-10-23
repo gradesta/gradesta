@@ -56,13 +56,13 @@ Turns out this is very easy with github actions
 ** TASK: Set up CI to test kcf code
 *** TASK_ID: 216868ec2a5f6adf295dd6688737c56c
 *** CREATED: 2022-09-01 18:53
-*** ESTIMATED_TIME: W2
+*** ESTIMATED_TIME: W2 DONE
 *** MILESTONES: mvp ci
 
 ** TASK: Set up CI to ensure kcf code is black
 *** TASK_ID: 0f0a4c7c0df8a6683b9f292c3cc0c5f5
 *** CREATED: 2022-09-01 18:53
-*** ESTIMATED_TIME: W2
+*** ESTIMATED_TIME: W2 DONE
 *** MILESTONES: mvp ci
 
 * Manager
