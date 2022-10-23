@@ -22,4 +22,4 @@ jobs:
       - name: Check black on kcf_tasks
         run: nix-shell --command "cd kcf/tools/task-manager/ ; black --check kcf_tasks"
       - name: Test kcf_tasks
-        run: nix-shell --command "cd manager ; pytest kcf_tasks --cov --cov-fail-under=17"
+        run: nix-shell --command "cd kcf/tools/task-manager/ ; pytest kcf_tasks --cov --cov-fail-under=17"
