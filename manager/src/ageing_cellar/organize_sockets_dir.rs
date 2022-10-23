@@ -356,7 +356,7 @@ mod tests {
         socket.disconnect(&socket_url).unwrap();
         drop(socket);
         match organize_sockets_dir(&tmp_dir.path(), &collections::HashSet::new()) {
-            Ok(sockets) => assert_eq!(sockets.len(), 0),
+            Ok(sockets) => assert_eq!(format!("{:?}", sockets), "[]"),
             Err(_) => unreachable!("Organize sockets dir should succeed."),
         };
         assert_eq!(fs::read_dir(&tmp_dir).unwrap().count(), 0);
