@@ -1,2 +1,3 @@
 #!/bin/bash
 nix-shell --command "cd manager ; cargo fmt --check"
+nix-shell --command "cd kcf/tools/task-manager/ ; black --check kcf_tasks"
