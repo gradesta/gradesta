@@ -147,6 +147,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_term_than_kill() {
         let input = b"t\nk\n";
         let mut output = Vec::new();
