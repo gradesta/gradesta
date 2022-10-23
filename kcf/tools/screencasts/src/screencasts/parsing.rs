@@ -20,7 +20,7 @@ use nom::{
     combinator::{map, opt, rest},
     error::ParseError,
     multi::fold_many0,
-    sequence::{preceded, terminated, tuple, separated_pair},
+    sequence::{preceded, separated_pair, terminated, tuple},
     IResult,
 };
 
@@ -45,20 +45,16 @@ fn screencast_tasks<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, 
     preceded(
         char('"'),
         terminated(
-            map(take_until("\""), |tasks: &str| tasks.split(" ").collect::<Vec<&str>>()),
+            map(take_until("\""), |tasks: &str| {
+                tasks.split(" ").collect::<Vec<&str>>()
+            }),
             char('"'),
         ),
     )(i)
 }
 
 fn screencast_id<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
-    preceded(
-        char('"'),
-        terminated(
-            take_until("\""),
-            char('"'),
-        ),
-    )(i)
+    preceded(char('"'), terminated(take_until("\""), char('"')))(i)
 }
 
 fn screencast_tag<'a>(i: &'a str) -> IResult<&'a str, Screencast> {
@@ -67,14 +63,26 @@ fn screencast_tag<'a>(i: &'a str) -> IResult<&'a str, Screencast> {
         terminated(
             preceded(
                 whitespace,
-                preceded(is_a("screencast"), preceded(whitespace, map(separated_pair(screencast_id, whitespace, opt(screencast_tasks)), |(id, tasks)| {
-                    let mut screencast = Screencast::new(id.to_string());
-                    match tasks {
-                        Some(ts) => screencast.tasks = ts.iter().map(|t| t.to_string()).collect(),
-                        None => ()
-                    }
-                    screencast
-                }))),
+                preceded(
+                    is_a("screencast"),
+                    preceded(
+                        whitespace,
+                        map(
+                            separated_pair(screencast_id, whitespace, opt(screencast_tasks)),
+                            |(id, tasks)| {
+                                let mut screencast = Screencast::new(id.to_string());
+                                match tasks {
+                                    Some(ts) => {
+                                        screencast.tasks =
+                                            ts.iter().map(|t| t.to_string()).collect()
+                                    }
+                                    None => (),
+                                }
+                                screencast
+                            },
+                        ),
+                    ),
+                ),
             ),
             char('>'),
         ),
@@ -156,12 +164,12 @@ mod tests {
         assert_eq!(remainder, "}} foo");
         assert_eq!(parsed_tag, Screencast::new("lol".to_string()));
 
-        let (remainder, parsed_tag) = screencast_tag("<screencast \"lol\" \"task1 task2\">}} foo").unwrap();
+        let (remainder, parsed_tag) =
+            screencast_tag("<screencast \"lol\" \"task1 task2\">}} foo").unwrap();
         assert_eq!(remainder, "}} foo");
         let mut sc = Screencast::new("lol".to_string());
         sc.tasks = vec!["task1".to_string(), "task2".to_string()];
         assert_eq!(parsed_tag, sc);
-
     }
 
     #[test]

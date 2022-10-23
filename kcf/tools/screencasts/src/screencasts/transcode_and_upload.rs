@@ -110,7 +110,8 @@ mod tests {
         let screencast2 = screencast2_path.to_string_lossy();
         let mut screencasts = load_screencasts_from_blogpost("---\nauthors: [\"Timothy Hobbs <timothyhobbs@seznam.cz>\"]\ndate: 2022-08-23\ntitle: Foo ---\nMy blog post {{<screencast \"video-id\">}} {{<screencast \"video-id-2\">}}").unwrap();
         let commands =
-            transcode_and_upload(&mut screencasts, vec![&screencast1, &screencast2], &config).unwrap();
+            transcode_and_upload(&mut screencasts, vec![&screencast1, &screencast2], &config)
+                .unwrap();
 
         assert_eq!(commands.edge_count(), 5);
         assert_eq!(commands.node_count(), 6);
@@ -172,11 +173,7 @@ mod tests {
         let mut screencasts = load_screencasts_from_blogpost("---\nauthors: [\"Timothy Hobbs <timothyhobbs@seznam.cz>\"]\ndate: 2022-08-23\ntitle: Foo ---\nMy blog post {{<screencast \"video-id\">}} {{<screencast \"video-id-2\">}} {{<screencast \"video-id-3\">}}").unwrap();
         let commands = transcode_and_upload(
             &mut screencasts,
-            vec![
-                "skip",
-                &screencast1,
-                &screencast2,
-            ],
+            vec!["skip", &screencast1, &screencast2],
             &config,
         )
         .unwrap();
@@ -237,11 +234,7 @@ mod tests {
         let screencast1 = screencast1_path.to_string_lossy();
 
         let mut screencasts = load_screencasts_from_blogpost("---\nauthors: [\"Timothy Hobbs <timothyhobbs@seznam.cz>\"]\ndate: 2022-08-23\ntitle: Foo ---\nMy blog post {{<screencast \"video-id\">}} {{<screencast \"video-id\">}}").unwrap();
-        let commands = transcode_and_upload(
-            &mut screencasts,
-            vec![&screencast1],
-            &config,
-        );
+        let commands = transcode_and_upload(&mut screencasts, vec![&screencast1], &config);
         match commands {
             Ok(_) => assert!(false),
             Err(e) =>

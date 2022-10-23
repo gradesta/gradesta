@@ -1,7 +1,7 @@
 use super::config::load_config;
 use super::parsing::load_screencasts_from_blogpost;
-use super::transcode_and_upload::transcode_and_upload;
 use super::save_screencast_metadata::save_screencast_metadata;
+use super::transcode_and_upload::transcode_and_upload;
 
 use anyhow::{anyhow, Context};
 use daggy::{Dag, NodeIndex};
