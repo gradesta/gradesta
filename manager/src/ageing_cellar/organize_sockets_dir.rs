@@ -332,8 +332,9 @@ mod tests {
         assert_eq!(fs::read_dir(&tmp_dir).unwrap().count(), 1);
         socket.disconnect(&socket_url).unwrap();
         drop(socket);
+        let my_pid = std::process::id();
         match organize_sockets_dir(&tmp_dir.path(), &collections::HashSet::new()) {
-            Ok(sockets) => assert_eq!(sockets.len(), 0),
+            Ok(sockets) => assert_eq!(format!("{:?}{}", sockets, my_pid), format!("[]{}", my_pid)),
             Err(_) => unreachable!(),
         };
         assert_eq!(fs::read_dir(&tmp_dir).unwrap().count(), 0);
