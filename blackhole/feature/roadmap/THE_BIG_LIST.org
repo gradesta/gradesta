@@ -450,7 +450,7 @@ Turns out this is very easy with github actions
 ** TASK: Pairing screencast durations with tasks in kcf_tasks code
 TASK_ID: daad2f126cd66db5339249734364aae8
 CREATED: 2022-10-23 20:42
-ESTIMATED_TIME: W2
+ESTIMATED_TIME: W2 DONE
 MILESTONES: kcf-task-management
 ** TASK: Comparing time estimates with actual time spent
 TASK_ID: 28c9fe4ca2a1a2ea604eea0e6aee3ca0

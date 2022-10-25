@@ -1,10 +1,13 @@
 import os
 import yaml
 import subprocess
+from datetime import timedelta
 
 def gather_durations(tasks, screencasts_folder=None):
     """
     Gather screencast durations from the `screencasts` directory that is found in the git repo and pair them with tasks.
+
+    This function edits the tasks in place and doesn't return anything.
     """
     td = {}
     for task in tasks:
@@ -19,3 +22,17 @@ def gather_durations(tasks, screencasts_folder=None):
         with open(screencasts_folder + metadata_file, "r") as fd:
             print("Reading metadata file", screencasts_folder,  metadata_file)
             md = yaml.load(fd, Loader=yaml.Loader)
+            if "tasks" not in md:
+                continue
+            duration = timedelta(seconds=md["duration_seconds"])
+            task_weights = {}
+            total_weight = 0
+            for task_id in md["tasks"]:
+                if task_id not in td:
+                    continue
+                task_weight = td[task_id].estimate_time_cost()["individual_work_max"]
+                task_weights[task_id] = task_weight
+                total_weight += task_weight
+            for (task_id, weight) in task_weights.items():
+                balanced_weight = weight / total_weight
+                td[task_id].INVESTED_WORK_TIME += duration / balanced_weight
