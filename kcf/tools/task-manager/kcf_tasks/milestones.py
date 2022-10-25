@@ -1,4 +1,5 @@
 from kcf_tasks.gather_tasks import gather_from_git, gather_from_file
+from kcf_tasks.gather_durations import gather_durations
 
 import os
 
@@ -29,5 +30,7 @@ def get_milestones(paths=None):
                 tasks += gather_from_file(path)
             else:
                 tasks += gather_from_git(path)
+
+    gather_durations(tasks)
 
     return group_tasks_by_milestone(tasks)

@@ -1,8 +1,13 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from kcf_tasks.time_cost_estimates import get_estimates
+from pytimeparse.timeparse import timeparse
 
 import sys
+
+
+class ParseError(Exception):
+     pass
 
 
 def get_tag_val(line, tag):
@@ -11,7 +16,7 @@ def get_tag_val(line, tag):
     """
     tag = tag + ":"
     if tag in line:
-        return line.split(tag)[1].strip()
+         return line.split(tag)[1].strip()
     return None
 
 
@@ -23,17 +28,28 @@ def get_datetime(line, tag):
         try:
             return datetime.strptime(val.strip(), "%Y-%m-%d %H:%M")
         except ValueError:
-            sys.exit("Date could not be parsed " + line)
+            raise ParseError("Date could not be parsed " + val)
     return None
 
 
 def get_money(line, tag):
     if val := get_tag_val(line, tag):
         toks = [t.strip() for t in val.split(" ")]
-        assert toks[0][0] == "$"
-        return float(toks[0][1:])
+        if toks[0][0] != "$":
+          raise ParseError("Expected dollar value as float preceded by $.")
+        try:
+             return float(toks[0][1:])
+        except ValueError:
+             raise ParseError("Expected dollar value as float preceded by $.")
     return None
 
+def get_timedelta(line, tag):
+    if val := get_tag_val(line, tag):
+         if delta := timeparse(val) is not None:
+              return delta
+         else:
+              raise ParseError("Excpected duration in a format accepted by https://pypi.org/project/pytimeparse/")
+    return None
 
 def get_symbols(line, tag):
     """
@@ -62,6 +78,7 @@ class Task:
     DESCRIPTION: str = ""
     SOURCE_FILE: str = ""
     START_LINE_IN_SOURCE_FILE: int = 0
+    INVESTED_WORK_TIME: timedelta = field(default_factory=lambda : timedelta(seconds=0))
 
     def read_line(self, line):
         if "NO_TASK" in line:
@@ -86,6 +103,8 @@ class Task:
             self.MAX_VALUE = mv
         if d := get_tag_val(line, "DESCRIPTION"):
             self.DESCRIPTION = d
+        if it := get_timedelta(line, "INVESTED_WORK_TIME"):
+             self.INVESTED_WORK_TIME = it
 
     def estimate_time_cost(self):
         return get_estimates(" ".join(self.TIME_COST_ESTIMATES or []))
@@ -99,17 +118,17 @@ class Task:
         if self.TASK_ID:  # NO_TASK
             s += "TASK_ID: {}\n".format(self.TASK_ID)  # NO_TASK
         if self.CREATED:  # NO_TASK
-            s += "CREATED: {}\n".format(
+            s += "CREATED: {}\n".format( # NO_TASK
                 self.CREATED.strftime("%Y-%m-%d %H:%M")
             )  # NO_TASK
         if self.TIME_COST_ESTIMATES:  # NO_TASK
-            s += "ESTIMATED_TIME: {}\n".format(
+            s += "ESTIMATED_TIME: {}\n".format( # NO_TASK
                 " ".join(self.TIME_COST_ESTIMATES)
             )  # NO_TASK
         if self.MILESTONES:  # NO_TASK
             s += "MILESTONES: {}\n".format(" ".join(self.MANUAL_MILESTONES))  # NO_TASK
         if self.INCOMPLETION_COST:  # NO_TASK
-            s += "INCOMPLETION_COST: ${} per hour\n".format(
+            s += "INCOMPLETION_COST: ${} per hour\n".format( # NO_TASK
                 self.INCOMPLETION_COST
             )  # NO_TASK
         if self.START_VALUE:  # NO_TASK
@@ -117,7 +136,7 @@ class Task:
         if self.MAX_VALUE:  # NO_TASK
             s += "MAX_VALUE: ${}\n".format(self.MAX_VALUE)  # NO_TASK
         if self.BOUNTIED:  # NO_TASK
-            s += "BOUNTIED: {}\n".format(
+            s += "BOUNTIED: {}\n".format( # NO_TASK
                 self.BOUNTIED.strftime("%Y-%m-%d %H:%M")
             )  # NO_TASK
         if self.DESCRIPTION:  # NO_TASK

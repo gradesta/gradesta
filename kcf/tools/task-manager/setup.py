@@ -6,8 +6,6 @@ import subprocess
 here = os.path.abspath(os.path.dirname(__file__))
 import codecs
 
-requires = ["Django"]
-
 version = subprocess.check_output(["git", "describe", "--abbrev=0", "--tags"]).decode(
     "utf-8"
 )
@@ -30,6 +28,7 @@ setup(
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3.10",
     ],
+    requires=["pytimeparse"],
     scripts=["kcf_tasks/kcf-tasks"],
     setup_requires=["pytest-runner", "black"],
     tests_require=["pytest", "pytest-cov"],
