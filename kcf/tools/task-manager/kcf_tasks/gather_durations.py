@@ -30,9 +30,12 @@ def gather_durations(tasks, screencasts_folder=None):
             for task_id in md["tasks"]:
                 if task_id not in td:
                     continue
-                task_weight = td[task_id].estimate_time_cost()["individual_work_max"]
+                task_weight = td[task_id].estimate_time_cost()["individual_work_max"].seconds
                 task_weights[task_id] = task_weight
                 total_weight += task_weight
             for (task_id, weight) in task_weights.items():
-                balanced_weight = weight / total_weight
+                if weight == total_weight and total_weight == 0:
+                    balanced_weight = 1
+                else:
+                    balanced_weight = weight / total_weight
                 td[task_id].INVESTED_WORK_TIME += duration / balanced_weight

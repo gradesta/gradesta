@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import sys
 import os
+from datetime import timedelta
 
 from kcf_tasks.time_cost_estimates import get_empty_sums, add_sums
 from kcf_tasks.milestones import get_milestones
@@ -11,6 +12,9 @@ def print_milestone(milestone, tasks):
     sums = get_empty_sums()
     for task in tasks:
         add_sums(sums, task.estimate_time_cost())
+    total_time_spent = timedelta(seconds=0)
+    for task in tasks:
+        total_time_spent += task.INVESTED_WORK_TIME
 
     print("\nMILESTONE: ", milestone)
     print("Minimum decision time:        ", sums["decision_min"])
@@ -41,6 +45,10 @@ def print_milestone(milestone, tasks):
     print(
         "Completed tasks:              ",
         sums["completed"]
+    )
+    print(
+        "Total time spent:             ",
+        total_time_spent
     )
 
 parser = ArgumentParser(
