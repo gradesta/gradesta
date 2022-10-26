@@ -113,6 +113,9 @@ class Task:
     def estimate_time_cost(self):
         return get_estimates(" ".join(self.TIME_COST_ESTIMATES or []))
 
+    def summarize(self):
+         return str(self.estimate_time_cost()["individual_work_min"])+ "-" + str(self.estimate_time_cost()["individual_work_max"]) + ": " + self.NAME
+
     @property
     def MANUAL_MILESTONES(self):
         return [m for m in self.MILESTONES if m != "all-tasks"]

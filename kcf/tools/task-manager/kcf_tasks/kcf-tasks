@@ -57,5 +57,10 @@ parser.add_argument('source', nargs='*', default=[os.getcwd()])
 
 opts = parser.parse_args()
 
-for milestone, tasks in get_milestones(opts.source).items():
+milestones = get_milestones(opts.source)
+
+for task in milestones["all-tasks"]:
+    print(task.summarize())
+
+for milestone, tasks in milestones.items():
     print_milestone(milestone, tasks)
