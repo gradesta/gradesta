@@ -1,8 +1,10 @@
 import subprocess
 import sys
 from datetime import timedelta, datetime
-from kcf_tasks.task import Task, ParseError
 import os.path
+
+from kcf_tasks.task import Task
+from kcf_tasks.parse_task_attributes import ParseError, get_time_log
 
 
 def gather_from_git(dir):
@@ -25,6 +27,7 @@ def gather_from_git(dir):
 def gather_from_file(file):
     lineno = 0
     tasks = []
+    task_time_logs = {}
     current_task = None
     with open(file) as fd:
         try:
@@ -34,21 +37,30 @@ def gather_from_file(file):
             return tasks
         for line in lines:
             lineno += 1
-            if "TASK: " in line:
+            try:
+                if "TASK_TIME_LOG:" in line:
+                    (date, task_id, time_spent) = get_time_log(line)
+                    if task_id in task_time_logs:
+                        task_time_logs[task_id].append((date, time_spent))
+                    else:
+                        task_time_logs[task_id] = [(date, time_spent)]
+                if "TASK:" in line:
+                    if current_task:
+                        tasks.append(current_task)
+                    current_task = Task()
+                    current_task.SOURCE_FILE = file
+                    current_task.START_LINE_IN_SOURCE_FILE = lineno
                 if current_task:
-                    tasks.append(current_task)
-                current_task = Task()
-                current_task.SOURCE_FILE = file
-                current_task.START_LINE_IN_SOURCE_FILE = lineno
-            if current_task:
-                try:
                     current_task.read_line(line)
-                except ParseError as e:
-                    sys.exit(
-                        "[ERROR] {file}:{lineno} {line}\n{error}".format(
-                            file=file, lineno=lineno, line=line, error=str(e)
-                        )
+            except ParseError as e:
+                sys.exit(
+                    "[ERROR] {file}:{lineno} {line}\n{error}".format(
+                        file=file, lineno=lineno, line=line, error=str(e)
                     )
+                )
     if current_task:
         tasks.append(current_task)
+    for task in tasks:
+        if task.TASK_ID in task_time_logs:
+            task.TASK_TIME_LOGs += task_time_logs[task.TASK_ID]
     return tasks

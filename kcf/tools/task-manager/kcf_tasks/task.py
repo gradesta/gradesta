@@ -1,67 +1,9 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from kcf_tasks.time_cost_estimates import get_estimates
-from pytimeparse.timeparse import timeparse
+from kcf_tasks.parse_task_attributes import *
 
 import sys
-
-
-class ParseError(Exception):
-    pass
-
-
-def get_tag_val(line, tag):
-    """
-    Returns tag value as unparsed string or None if tag is not present
-    """
-    tag = tag + ":"
-    if tag in line:
-        return line.split(tag)[1].strip()
-    return None
-
-
-def get_datetime(line, tag):
-    """
-    Returns a datetime if tag is present, otherwise returns None
-    """
-    if val := get_tag_val(line, tag):
-        try:
-            return datetime.strptime(val.strip(), "%Y-%m-%d %H:%M")
-        except ValueError:
-            raise ParseError("Date could not be parsed " + val)
-    return None
-
-
-def get_money(line, tag):
-    if val := get_tag_val(line, tag):
-        toks = [t.strip() for t in val.split(" ")]
-        if toks[0][0] != "$":
-            raise ParseError("Expected dollar value as float preceded by $.")
-        try:
-            return float(toks[0][1:])
-        except ValueError:
-            raise ParseError("Expected dollar value as float preceded by $.")
-    return None
-
-
-def get_timedelta(line, tag):
-    if val := get_tag_val(line, tag):
-        if delta := timeparse(val) is not None:
-            return delta
-        else:
-            raise ParseError(
-                "Excpected duration in a format accepted by https://pypi.org/project/pytimeparse/"
-            )
-    return None
-
-
-def get_symbols(line, tag):
-    """
-    Get a value and return it as a list of words
-    """
-    if val := get_tag_val(line, tag):
-        return [word.strip() for word in val.split(" ")]
-    return None
 
 
 def initial_milestones():
@@ -82,7 +24,7 @@ class Task:
     DESCRIPTION: str = ""
     SOURCE_FILE: str = ""
     START_LINE_IN_SOURCE_FILE: int = 0
-    INVESTED_WORK_TIME: timedelta = field(default_factory=lambda: timedelta(seconds=0))
+    TASK_TIME_LOGs: [(datetime, timedelta)] = field(default_factory=list)
 
     def read_line(self, line):
         if "NO_TASK" in line:
@@ -107,14 +49,18 @@ class Task:
             self.MAX_VALUE = mv
         if d := get_tag_val(line, "DESCRIPTION"):
             self.DESCRIPTION = d
-        if it := get_timedelta(line, "INVESTED_WORK_TIME"):
-            self.INVESTED_WORK_TIME = it
 
     def estimate_time_cost(self):
         return get_estimates(" ".join(self.TIME_COST_ESTIMATES or []))
 
     def summarize(self):
-         return str(self.estimate_time_cost()["individual_work_min"])+ "-" + str(self.estimate_time_cost()["individual_work_max"]) + ": " + self.NAME
+        return (
+            str(self.estimate_time_cost()["individual_work_min"])
+            + "-"
+            + str(self.estimate_time_cost()["individual_work_max"])
+            + ": "
+            + self.NAME
+        )
 
     @property
     def MANUAL_MILESTONES(self):
@@ -148,6 +94,8 @@ class Task:
             )  # NO_TASK
         if self.DESCRIPTION:  # NO_TASK
             s += "DESCRIPTION: {}\n".format(self.DESCRIPTION)  # NO_TASK
+        if self.TASK_TIME_LOGs:  # NO_TASK
+            s += "TASK_TIME_LOGs: {}\n".format(self.TASK_TIME_LOGs)  # NO_TASK
         if self.SOURCE_FILE:  # NO_TASK
             s += "SOURCE: {}:{}\n".format(  # NO_TASK
                 self.SOURCE_FILE, self.START_LINE_IN_SOURCE_FILE

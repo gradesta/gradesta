@@ -14,7 +14,8 @@ def print_milestone(milestone, tasks):
         add_sums(sums, task.estimate_time_cost())
     total_time_spent = timedelta(seconds=0)
     for task in tasks:
-        total_time_spent += task.INVESTED_WORK_TIME
+        for (date, time_spent) in task.TASK_TIME_LOGs:
+            total_time_spent += time_spent
 
     print("\nMILESTONE: ", milestone)
     print("Minimum decision time:        ", sums["decision_min"])

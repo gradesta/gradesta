@@ -1,7 +1,7 @@
-import os
+import os, sys
 import yaml
 import subprocess
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 
 def gather_durations(tasks, screencasts_folder=None):
@@ -21,7 +21,9 @@ def gather_durations(tasks, screencasts_folder=None):
                 .strip()
             ) + "/screencasts/"
         except subprocess.CalledProcessError:
-            print("Not reading duration info from screencast metadata, not a git repo, no screencast metadata found.")
+            print(
+                "Not reading duration info from screencast metadata, not a git repo, no screencast metadata found."
+            )
             return
     for metadata_file in next(os.walk(screencasts_folder))[2]:
         with open(screencasts_folder + metadata_file, "r") as fd:
@@ -32,6 +34,14 @@ def gather_durations(tasks, screencasts_folder=None):
             duration = timedelta(seconds=md["duration_seconds"])
             task_weights = {}
             total_weight = 0
+            try:
+                screencast_date = datetime.strptime(
+                    "-".join(metadata_file.split("-")[:3]), "%Y-%m-%d"
+                )
+            except ValueError:
+                sys.exit(
+                    "Could not parse date part of screencast id %s" % metadata_file
+                )
             for task_id in md["tasks"]:
                 if task_id not in td:
                     continue
@@ -45,4 +55,6 @@ def gather_durations(tasks, screencasts_folder=None):
                     balanced_weight = 1
                 else:
                     balanced_weight = weight / total_weight
-                td[task_id].INVESTED_WORK_TIME += duration / balanced_weight
+                td[task_id].TASK_TIME_LOGs.append(
+                    (screencast_date, duration / balanced_weight)
+                )
