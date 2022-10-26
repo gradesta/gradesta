@@ -4,6 +4,7 @@ from datetime import timedelta, datetime
 from kcf_tasks.task import Task, ParseError
 import os.path
 
+
 def gather_from_git(dir):
     """
     Returns a list of Task objects taken from the current git repo
@@ -43,7 +44,11 @@ def gather_from_file(file):
                 try:
                     current_task.read_line(line)
                 except ParseError as e:
-                    sys.exit("[ERROR] {file}:{lineno} {line}\n{error}".format(file=file, lineno=lineno, line=line, error=str(e)))
+                    sys.exit(
+                        "[ERROR] {file}:{lineno} {line}\n{error}".format(
+                            file=file, lineno=lineno, line=line, error=str(e)
+                        )
+                    )
     if current_task:
         tasks.append(current_task)
     return tasks
