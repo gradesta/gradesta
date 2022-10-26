@@ -5,11 +5,11 @@ This is the public repository for Gradesta. Gradesta is a protocol for serving s
 
 Everything you need to create gradesta services, the protocol itself, the manager, and language bindings are open source.
 
-- Language bindings are licensed under the LGPLv3 license
+- Language bindings are licensed under the LGPLv3 license (And dual licensed under MDL)
 
-- Example code is LGPLv3 or MIT
+- Example code is LGPLv3 or MIT (And dual licensed under MDL)
 
-- The manager is AGPLv3
+- The manager is AGPLv3 (And dual licensed under MDL)
 
 - Other services and the browser/studio are [MDL](https://github.com/gradesta/gradesta/tree/default/licenses/MDL) licensed.
 
