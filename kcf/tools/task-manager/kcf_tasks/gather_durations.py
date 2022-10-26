@@ -14,11 +14,15 @@ def gather_durations(tasks, screencasts_folder=None):
     for task in tasks:
         td[task.TASK_ID] = task
     if screencasts_folder is None:
-        screencasts_folder = (
-            subprocess.check_output("git rev-parse --show-toplevel", shell=True)
-            .decode("utf-8")
-            .strip()
-        ) + "/screencasts/"
+        try:
+            screencasts_folder = (
+                subprocess.check_output("git rev-parse --show-toplevel", shell=True)
+                .decode("utf-8")
+                .strip()
+            ) + "/screencasts/"
+        except subprocess.CalledProcessError:
+            print("Not reading duration info from screencast metadata, not a git repo, no screencast metadata found.")
+            return
     for metadata_file in next(os.walk(screencasts_folder))[2]:
         with open(screencasts_folder + metadata_file, "r") as fd:
             print("Reading metadata file", screencasts_folder, metadata_file)
