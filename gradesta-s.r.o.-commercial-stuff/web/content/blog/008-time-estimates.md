@@ -30,4 +30,6 @@ It turns out that I need to load the screencast dates and pair those with the ta
 Part 4: Add author data to work logs
 -------------------------------------------
 
-{{<screencast "2022-11-04-1c534448-8be0-442e-9adc-3d5afdc63c9c" "">}}
+I thought this was going to be a very simple task, but it turns out that authorship data has not been making its way into screencast metadata. Will have to examine that further...
+
+{{<screencast "2022-11-04-1c534448-8be0-442e-9adc-3d5afdc63c9c" "47e0901b6b2248ba7c38420ecc7b1043">}}

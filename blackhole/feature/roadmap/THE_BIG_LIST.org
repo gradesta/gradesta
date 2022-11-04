@@ -471,7 +471,7 @@ MILESTONES: kcf-task-management-time-spent
 *** TASK: Pairing authorship data with time logs
 TASK_ID: 47e0901b6b2248ba7c38420ecc7b1043
 CREATED: 2022-11-04 17:39
-ESTIMATED_TIME: W2
+ESTIMATED_TIME: W2 DONE
 MILESTONES: kcf-task-management-time-spent
 
 * Test services
