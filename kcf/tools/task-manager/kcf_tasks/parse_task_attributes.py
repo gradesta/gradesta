@@ -118,12 +118,15 @@ def parse_timedelta(val):
 
 def get_time_log(line):
     if val := get_tag_val(line, "TASK_TIME_LOG"):
-        symbols = [word.strip() for word in val.split(" ", 2)]
-        if len(symbols) != 3:
+        symbols = [word.strip() for word in val.split(",")]
+        if len(symbols) != 4:
             raise ParseError(
-                "Expected the date of the log entry, the task id, and a duration in the format accepted by https://pypi.org/project/pytimeparse/."
+                "Expected the a comma separated line wiht date of the log entry, the task id, the author, and a duration in the format accepted by https://pypi.org/project/pytimeparse/. \
+                Example: TASK_TIME_LOG: 2022-02-22, kjlsk28343847298, Timothy Hobbs, 3h"
             )
-        date = datetime.strptime(val.strip(), "%Y-%m-%d")
+        date = datetime.strptime(symbols[0].strip(), "%Y-%m-%d")
         task_id = symbols[1]
-        time_spent = parse_timedelta(symbols[2])
+        author = symbols[2]
+        time_spent = parse_timedelta(symbols[3])
+        return (date, task_id, author, time_spent)
     return None

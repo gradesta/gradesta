@@ -14,7 +14,7 @@ def print_milestone(milestone, tasks):
         add_sums(sums, task.estimate_time_cost())
     total_time_spent = timedelta(seconds=0)
     for task in tasks:
-        for (date, time_spent) in task.TASK_TIME_LOGs:
+        for (date, author, time_spent) in task.TASK_TIME_LOGs:
             total_time_spent += time_spent
 
     print("\nMILESTONE: ", milestone)

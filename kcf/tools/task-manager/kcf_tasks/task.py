@@ -24,7 +24,7 @@ class Task:
     DESCRIPTION: str = ""
     SOURCE_FILE: str = ""
     START_LINE_IN_SOURCE_FILE: int = 0
-    TASK_TIME_LOGs: [(datetime, timedelta)] = field(default_factory=list)
+    TASK_TIME_LOGs: [(datetime, timedelta, str)] = field(default_factory=list)
 
     def read_line(self, line):
         if "NO_TASK" in line:

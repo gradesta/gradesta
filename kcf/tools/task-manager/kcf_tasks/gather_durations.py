@@ -27,7 +27,7 @@ def gather_durations(tasks, screencasts_folder=None):
             return
     for metadata_file in next(os.walk(screencasts_folder))[2]:
         with open(screencasts_folder + metadata_file, "r") as fd:
-            print("Reading metadata file", screencasts_folder, metadata_file)
+            print("Reading metadata file", screencasts_folder + metadata_file)
             md = yaml.load(fd, Loader=yaml.Loader)
             if "tasks" not in md:
                 continue
@@ -55,6 +55,11 @@ def gather_durations(tasks, screencasts_folder=None):
                     balanced_weight = 1
                 else:
                     balanced_weight = weight / total_weight
-                td[task_id].TASK_TIME_LOGs.append(
-                    (screencast_date, duration / balanced_weight)
-                )
+                for author in md["authors"]:
+                    td[task_id].TASK_TIME_LOGs.append(
+                        (
+                            screencast_date,
+                            author,
+                            (duration / balanced_weight) / len(md["authors"]),
+                        )
+                    )

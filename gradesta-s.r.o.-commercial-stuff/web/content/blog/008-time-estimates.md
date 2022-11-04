@@ -18,7 +18,7 @@ Part 2: Continuing with loading tasks from metadata
 
 {{<screencast "2022-10-25-b3c92483-e32f-4c38-9f83-2fbf53282601" "daad2f126cd66db5339249734364aae8">}}
 
-Part 3: Graphing time spent vs estimated time spent & future time to spend
+Part 3: Pairing time investments with timestamps/dates
 ------------------------------------------------------------------
 
 I'm interested in how much individual "keyboard time" I spend vs how much time I thought I would spend. I also am kind of interested in how the future estimate changes as I add new tasks. If the finish line is getting closer, or farther away...
@@ -26,3 +26,8 @@ I'm interested in how much individual "keyboard time" I spend vs how much time I
 {{<screencast "2022-10-26-11a8a013-5c46-4930-b2ce-4518ac45acec" "0edbdaaa9e469846ff237523f03640ee">}}
 
 It turns out that I need to load the screencast dates and pair those with the tasks in such a way that I can graph the actual time spent. So that has become the subtask which I'll actually end up doing in this part.  We can find the screencast date by looking at it's ID, which is in the filename of the screencast metadata file.
+
+Part 4: Add author data to work logs
+-------------------------------------------
+
+{{<screencast "2022-11-04-1c534448-8be0-442e-9adc-3d5afdc63c9c" "">}}
