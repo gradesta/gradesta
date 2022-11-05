@@ -69,6 +69,8 @@ class Task:
             + str(estimates["individual_work_max"])
             + ": "
             + self.NAME
+            + " "
+            + self.TASK_ID
         )
         if "DONE" in self.TIME_COST_ESTIMATES:
             if time_spent_ := self.time_spent():
