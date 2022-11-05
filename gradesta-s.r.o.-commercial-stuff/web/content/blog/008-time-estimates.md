@@ -67,6 +67,8 @@ Part 5: Miscellania
 Part 6: Fix CI/CD errors in kcf code
 -------------------------------------------
 
+Since I started actually using some dependencies, I had to set up the github action to install those dependencies in a virtualenv in order to have the test"s" pass in the ci.
+
 ```
 TASK: Fix CI/CD errors in kcf code
 TASK_ID: 27bf7514314933ff56da2b58c5aa0da5
