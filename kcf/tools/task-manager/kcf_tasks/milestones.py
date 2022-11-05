@@ -79,8 +79,5 @@ def print_milestone(milestone, tasks):
 def print_milestones(source_dir=None):
     milestones = get_milestones()
 
-    for task in milestones["all-tasks"]:
-        print(task.summarize())
-
     for milestone, tasks in milestones.items():
         print_milestone(milestone, tasks)

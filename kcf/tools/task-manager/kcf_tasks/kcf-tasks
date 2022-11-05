@@ -1,14 +1,33 @@
 #!/usr/bin/python3
 import sys
 import os
+from argparse import ArgumentParser
 
 from kcf_tasks.milestones import print_milestones
-from argparse import ArgumentParser
+from kcf_tasks.list_tasks import list_tasks_
+
+def list_tasks(opts):
+    list_tasks_(opts.source)
+
+def list_milestones(opts):
+    print_milestones(opts.source)
 
 parser = ArgumentParser(
                       description="Get information about kcf style tasks")
+subparsers = parser.add_subparsers(title='subcommands',
+                                   description='valid subcommands',
+                                   help='additional help')
+
+parser.set_defaults(func = list_milestones)
+
+listtasks_parser = subparsers.add_parser('list-tasks')
+listtasks_parser.set_defaults(func = list_tasks)
+
+listmilestones_parser = subparsers.add_parser('list-milestones')
+listmilestones_parser.set_defaults(func = list_milestones)
+
 parser.add_argument('source', nargs='*', default=[os.getcwd()])
 
 opts = parser.parse_args()
 
-print_milestones(opts.source)
+opts.func(opts)
