@@ -104,6 +104,16 @@ ESTIMATED_TIME: W3 DONE
 MILESTONES: kcf-task-management-time-spent
 ```
 
+Here is how the task listing looks for completed tasks:
+
+```
+DONE in 0:35:34.700000 estimated 0:15:00-1:00:00: Set up CI to do `cargo fmt`
+DONE in 0:22:36.200000 estimated 0:15:00-1:00:00: Set up precommit hook to do `cargo fmt` everywhere
+DONE in 0:27:05.933000 estimated 1:00:00-16:00:00: Figure out why the test `ageing_cellar::organize_sockets_dir::tests::test_socket_dir_old_socket` is flaky
+DONE in 1:57:08.333000 estimated 1:00:00-16:00:00: Set up CI to show code coverage
+DONE in 1:57:08.333000 estimated 0:15:00-1:00:00: Set up CI to test kcf code
+```
+
 after that, I returned to the task involving milestone assessment and completed that task as well.
 
 Currently the output for the milestones is as follows:
