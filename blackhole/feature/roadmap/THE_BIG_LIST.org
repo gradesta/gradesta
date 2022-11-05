@@ -395,7 +395,7 @@ ESTIMATED_TIME: O5
 TASK_ID: 5ef97edd6a9a8f54c760b8eee54e6413
 CREATED: 2022-11-05 10:22
 ESTIMATED_TIME: W3
-MILESTONES: kcf-task-management-overhead-tasks
+MILESTONES: kcf-tasks/overhead-tasks
 * Test services
 ** TASK: Tick tack toe
 ** TASK: Chess

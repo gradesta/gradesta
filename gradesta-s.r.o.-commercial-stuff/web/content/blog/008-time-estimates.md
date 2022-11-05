@@ -16,7 +16,7 @@ TASK: Pairing screencast durations with tasks in kcf_tasks code
 TASK_ID: daad2f126cd66db5339249734364aae8
 CREATED: 2022-10-23 20:42
 ESTIMATED_TIME: W2 DONE
-MILESTONES: kcf-task-management-time-spent
+MILESTONES: kcf-tasks/time-spent
 ```
 
 {{<screencast "2022-10-23-73307410-e611-4f5f-bf66-e9b14133f89a" "daad2f126cd66db5339249734364aae8">}}
@@ -36,7 +36,7 @@ TASK: Pairing screencast dates with tasks
 TASK_ID: 0edbdaaa9e469846ff237523f03640ee
 CREATED: 2022-10-26 10:49
 ESTIMATED_TIME: W3 DONE
-MILESTONES: kcf-task-management-time-spent
+MILESTONES: kcf-tasks/time-spent
 ```
 
 {{<screencast "2022-10-26-11a8a013-5c46-4930-b2ce-4518ac45acec" "0edbdaaa9e469846ff237523f03640ee">}}
@@ -54,7 +54,7 @@ TASK: Pairing authorship data with time logs
 TASK_ID: 47e0901b6b2248ba7c38420ecc7b1043
 CREATED: 2022-11-04 17:39
 ESTIMATED_TIME: W2 DONE
-MILESTONES: kcf-task-management-time-spent
+MILESTONES: kcf-tasks/time-spent
 ```
 
 {{<screencast "2022-11-04-1c534448-8be0-442e-9adc-3d5afdc63c9c" "47e0901b6b2248ba7c38420ecc7b1043">}}
@@ -74,7 +74,7 @@ TASK: Fix CI/CD errors in kcf code
 TASK_ID: 27bf7514314933ff56da2b58c5aa0da5
 CREATED: 2022-11-05 10:22
 ESTIMATED_TIME: W3
-MILESTONES: kcf-task-management-time-spent
+MILESTONES: kcf-tasks/time-spent
 ```
 
 {{<screencast "2022-11-05-be1bf5dc-74c0-4bb7-a69d-944a3d7d8bda" "27bf7514314933ff56da2b58c5aa0da5">}}
@@ -89,7 +89,7 @@ TASK: Listing milestones by estimated time spend vs actual time spend
 TASK_ID: 31a55ad0bb8f87121a23ff95c81fe558
 CREATED: 2022-11-05 11:58
 ESTIMATED_TIME: W3 DONE
-MILESTONES: kcf-task-management-time-spent
+MILESTONES: kcf-tasks/time-spent
 ```
 
 however, half way through it occured to me that I already showed actual time spend next to milestones. I didn't realize that I needed to also show previously estimated time spend for already completed tasks to make a reasonbable comparison.
@@ -101,13 +101,13 @@ TASK: Listing completed tasks with actual vs estimated time spend
 TASK_ID: ce205fc194d577549e245aaa8a09d6cc
 CREATED: 2022-11-05 11:57
 ESTIMATED_TIME: W3 DONE
-MILESTONES: kcf-task-management-time-spent
+MILESTONES: kcf-tasks/time-spent
 
 TASK: Comparing time estimates with actual time spent
 TASK_ID: 28c9fe4ca2a1a2ea604eea0e6aee3ca0
 CREATED: 2022-09-01 19:04
 ESTIMATED_TIME: W3 DONE
-MILESTONES: kcf-task-management-time-spent
+MILESTONES: kcf-tasks/time-spent
 ```
 
 Here is how the task listing looks for completed tasks:
@@ -377,7 +377,7 @@ Total time spent:                0:00:00
 Completed tasks:                 0
 Incomplete tasks:                2
 
-MILESTONE:  kcf-task-management-overhead-tasks
+MILESTONE:  kcf-tasks/overhead-tasks
 Minimum decision time:           0:00:00
 Maximum decision time:           0:00:00
 Minimum team work time:          0.0  hours
@@ -389,7 +389,7 @@ Total time spent:                0:00:00
 Completed tasks:                 0
 Incomplete tasks:                2
 
-MILESTONE:  kcf-task-management-time-spent
+MILESTONE:  kcf-tasks/time-spent
 Minimum decision time:           0:00:00
 Maximum decision time:           0:00:00
 Minimum team work time:          0.0  hours
@@ -457,7 +457,7 @@ TASK: Listing estimate type by actual time spend
 TASK_ID: 5096c557109aa1292c40b00b39d76518
 CREATED: 2022-11-05 11:58
 ESTIMATED_TIME: W3 DONE
-MILESTONES: kcf-task-management-time-spent
+MILESTONES: kcf-tasks/time-spent
 
 So it would print a table like:
 
@@ -488,7 +488,7 @@ TASK: Graphing estimated vs actual time investment
 TASK_ID: 5ab6edc3f28466cb6bbfbb811bba78d3
 CREATED: 2022-10-23 20:43
 ESTIMATED_TIME: W3
-MILESTONES: kcf-task-management-time-spent
+MILESTONES: kcf-tasks/time-spent
 ```
 
 but I realized that I should really be breaking it up into sub-parts. It's deffinitely not going to be a `W3` more like a `W4` I think. So lets get to it. My next task is to:
@@ -497,9 +497,10 @@ but I realized that I should really be breaking it up into sub-parts. It's deffi
 TASK: Filtering task list output by milestone
 TASK_ID: 46afe22b50d294cd8374fdc7293fc46c
 CREATED: 2022-11-05 16:01
-ESTIMATED_TIME: W3
-MILESTONES: kcf-task-management-time-spent
+ESTIMATED_TIME: W3 DONE
+MILESTONES: kcf-tasks/time-spent
 ```
 
 I think that it would make a lot of sense to have some kind of hierarchical "directory structure" for milestones. Like rather than having this milestone be `kcf-task-management-time-spent` we would write `kcf-tasks/time-spent`. Then when we ran `kcf-tasks --milestone=kcf-tasks/ list-tasks` then we would get all tasks related to `kcf-task` milestones. So that's what I'm going to do.
 
+{{<screencast "2022-11-05-a58217ef-99c8-4169-8f65-34fd98d8dd9e" "46afe22b50d294cd8374fdc7293fc46c">}}
