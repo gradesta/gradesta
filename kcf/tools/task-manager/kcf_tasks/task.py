@@ -100,7 +100,9 @@ class Task:
             "MILESTONES": self.MILESTONES,
             "START_VALUE": self.START_VALUE,
             "MAX_VALUE": self.MAX_VALUE,
-            "BOUNTIED": self.BOUNTIED.strftime("%Y-%m-%d %H:%M") if self.BOUNTIED else None,
+            "BOUNTIED": self.BOUNTIED.strftime("%Y-%m-%d %H:%M")
+            if self.BOUNTIED
+            else None,
             "SOURCE_FILE": self.SOURCE_FILE,
             "START_LINE_IN_SOURCE_FILE": self.START_LINE_IN_SOURCE_FILE,
             "auto-describe-line": self.summarize(),
