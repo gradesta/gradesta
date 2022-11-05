@@ -8,7 +8,12 @@ from kcf_tasks.list_tasks import list_tasks_
 from kcf_tasks.estimate_assessment import assess_estimates_
 
 def get_milestones_(opts):
-    return get_milestones(opts.source, milestone=opts.milestone)
+    completion_filter = "ALL"
+    if opts.complete:
+        completion_filter = "COMPLETE"
+    if opts.incomplete:
+        completion_filter = "INCOMPLETE"
+    return get_milestones(opts.source, milestone=opts.milestone, completion_filter=completion_filter)
 
 def list_tasks(opts):
     list_tasks_(get_milestones_(opts))
@@ -36,7 +41,9 @@ listmilestones_parser.set_defaults(func = list_milestones)
 assess_estimates_parser = subparsers.add_parser('assess-estimates')
 assess_estimates_parser.set_defaults(func = assess_estimates)
 
-parser.add_argument('--milestone', default="/")
+parser.add_argument('--milestone', default="/", help="filter by milestone. You can filter by milestone group too by ending the milestone name with a /.")
+parser.add_argument('--complete', default=False, help="Only work with completed tasks.", action='store_true')
+parser.add_argument('--incomplete', default=False, help="Only work with incomplete tasks.", action='store_true')
 
 parser.add_argument('source', nargs='*', default=[os.getcwd()])
 

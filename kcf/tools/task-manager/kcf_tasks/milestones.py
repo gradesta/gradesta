@@ -18,7 +18,7 @@ def group_tasks_by_milestone(tasks):
     return milestones
 
 
-def get_milestones(paths=None, milestone="/"):
+def get_milestones(paths=None, milestone="/", completion_filter="ALL"):
     """
     Gather tasks and group them by milestone. If a list of paths are passed, look only in those paths.
     """
@@ -32,6 +32,7 @@ def get_milestones(paths=None, milestone="/"):
                 tasks += gather_from_file(path)
             else:
                 tasks += gather_from_git(path)
+
     if not milestone[-1] == "/":
 
         def check_milestone(task):
@@ -45,7 +46,18 @@ def get_milestones(paths=None, milestone="/"):
                     return True
             return False
 
-    tasks = [task for task in tasks if check_milestone(task)]
+    def task_filter(task):
+        if check_milestone(task):
+            if completion_filter == "ALL":
+                return True
+            if completion_filter == "INCOMPLETE":
+                return not "DONE" in task.TIME_COST_ESTIMATES
+            if completion_filter == "COMPLETE":
+                return "DONE" in task.TIME_COST_ESTIMATES
+            sys.exit("Invalid completion filter %s" % completion_filter)
+        return False
+
+    tasks = [task for task in tasks if task_filter(task)]
 
     gather_durations(tasks)
 

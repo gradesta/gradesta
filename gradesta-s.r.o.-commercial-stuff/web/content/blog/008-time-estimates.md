@@ -503,4 +503,103 @@ MILESTONES: kcf-tasks/time-spent
 
 I think that it would make a lot of sense to have some kind of hierarchical "directory structure" for milestones. Like rather than having this milestone be `kcf-task-management-time-spent` we would write `kcf-tasks/time-spent`. Then when we ran `kcf-tasks --milestone=kcf-tasks/ list-tasks` then we would get all tasks related to `kcf-task` milestones. So that's what I'm going to do.
 
+Now the output can be like this:
+
+```
+[nix-shell:~/pu/gradesta]$ kcf-tasks --milestone ci
+Could not decode file  /home/timothy/pu/gradesta/docs/gradesta-level-0.pdf
+Could not decode file  /home/timothy/pu/gradesta/frontend/wireframes/gradesta-mobile.fig
+Could not decode file  /home/timothy/pu/gradesta/gradesta-s.r.o.-commercial-stuff/web/static/images/blog/publish-screencasts-flow.png
+Could not decode file  /home/timothy/pu/gradesta/gradesta-s.r.o.-commercial-stuff/web/static/images/favicon.png
+Could not decode file  /home/timothy/pu/gradesta/gradesta-s.r.o.-commercial-stuff/web/static/images/hero/hero-mask-svg.png
+Could not decode file  /home/timothy/pu/gradesta/licenses/archive/AML/AML.xoj
+Could not decode file  /home/timothy/pu/gradesta/protocol/gradesta-level-0.odt
+
+MILESTONE:  without-milestone
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    0.0  hours
+Maximum individual work time:    0.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                1
+
+MILESTONE:  all-tasks
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    0.5  hours
+Maximum individual work time:    4.0  hours
+Original estimate for complete:  4.75  →  57.0  hours
+Total time spent:                14:21:39.997000
+Completed tasks:                 10
+Incomplete tasks:                2
+
+MILESTONE:  mvp
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    0.5  hours
+Maximum individual work time:    4.0  hours
+Original estimate for complete:  4.75  →  57.0  hours
+Total time spent:                14:21:39.997000
+Completed tasks:                 10
+Incomplete tasks:                2
+
+MILESTONE:  ci
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    0.5  hours
+Maximum individual work time:    4.0  hours
+Original estimate for complete:  4.75  →  57.0  hours
+Total time spent:                14:21:39.997000
+Completed tasks:                 10
+Incomplete tasks:                2
+(venv)
+[nix-shell:~/pu/gradesta]$
+```
+
+Here, I only show output relevant to `ci` tasks. I can also do:
+
+```
+[nix-shell:~/pu/gradesta]$ kcf-tasks --milestone ci list-tasks
+Could not decode file  /home/timothy/pu/gradesta/docs/gradesta-level-0.pdf
+Could not decode file  /home/timothy/pu/gradesta/frontend/wireframes/gradesta-mobile.fig
+Could not decode file  /home/timothy/pu/gradesta/gradesta-s.r.o.-commercial-stuff/web/static/images/blog/publish-screencasts-flow.png
+Could not decode file  /home/timothy/pu/gradesta/gradesta-s.r.o.-commercial-stuff/web/static/images/favicon.png
+Could not decode file  /home/timothy/pu/gradesta/gradesta-s.r.o.-commercial-stuff/web/static/images/hero/hero-mask-svg.png
+Could not decode file  /home/timothy/pu/gradesta/licenses/archive/AML/AML.xoj
+Could not decode file  /home/timothy/pu/gradesta/protocol/gradesta-level-0.odt
+0:30:00-4:00:00: Set up CI to test browser
+DONE in 0:30:11.033000 estimated 0:00:00-0:00:00: Find a universal CI config format if it exists
+DONE in 4:07:27.666000 estimated 1:00:00-16:00:00: Set up CI to test manager
+DONE 0:30:00-4:00:00: Set up CI to run tests conditionally based on changes
+DONE in 2:27:19.466000 estimated 0:15:00-1:00:00: Set up docker image with normal user in CI pipeline
+DONE in 0:35:34.700000 estimated 0:15:00-1:00:00: Set up CI to do `cargo fmt`
+DONE in 0:22:36.200000 estimated 0:15:00-1:00:00: Set up precommit hook to do `cargo fmt` everywhere
+DONE in 0:27:05.933000 estimated 1:00:00-16:00:00: Figure out why the test `ageing_cellar::organize_sockets_dir::tests::test_socket_dir_old_socket` is flaky
+DONE in 1:57:08.333000 estimated 1:00:00-16:00:00: Set up CI to show code coverage
+DONE in 1:57:08.333000 estimated 0:15:00-1:00:00: Set up CI to test kcf code
+DONE in 1:57:08.333000 estimated 0:15:00-1:00:00: Set up CI to ensure kcf code is black
+```
+
+So the whole reason I wanted to filter by milestone is actually so that I can generate JSON formatted lists of tasks which I can then graph using javascript. I still need one more set of filters. Filtering by complete vs incomplete tasks.
+
+```
+TASK: Fiter by complete vs incomplete tasks
+TASK_ID: 88df47824bd3b413574bff0dd647c400
+CREATED: 2022-11-05 16:39
+ESTIMATED_TIME: W1
+MILESTONES: kcf-tasks/time-spent
+```
+
+
+
 {{<screencast "2022-11-05-a58217ef-99c8-4169-8f65-34fd98d8dd9e" "46afe22b50d294cd8374fdc7293fc46c">}}
