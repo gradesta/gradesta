@@ -54,7 +54,7 @@ def get_empty_sums():
     }
 
 
-def get_estimates(estimates):
+def get_estimates(estimates, skip_done=True):
     """
     Takes a string in the format of a space separated list of costs, like "U3 W4 T8"
     Returns a dict in the form:
@@ -73,7 +73,8 @@ def get_estimates(estimates):
 
     if "DONE" in estimates:
         sums["completed"] = 1
-        estimates = []
+        if skip_done:
+            estimates = []
     else:
         sums["completed"] = 0
 

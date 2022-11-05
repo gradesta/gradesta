@@ -50,17 +50,32 @@ class Task:
         if d := get_tag_val(line, "DESCRIPTION"):
             self.DESCRIPTION = d
 
-    def estimate_time_cost(self):
-        return get_estimates(" ".join(self.TIME_COST_ESTIMATES or []))
+    def estimate_time_cost(self, skip_done=True):
+        return get_estimates(
+            " ".join(self.TIME_COST_ESTIMATES or []), skip_done=skip_done
+        )
+
+    def time_spent(self):
+        time_spent_ = timedelta(seconds=0)
+        for (date, author, time_spent) in self.TASK_TIME_LOGs:
+            time_spent_ += time_spent
+        return time_spent_
 
     def summarize(self):
-        return (
-            str(self.estimate_time_cost()["individual_work_min"])
+        estimates = self.estimate_time_cost(skip_done=False)
+        summary = (
+            str(estimates["individual_work_min"])
             + "-"
-            + str(self.estimate_time_cost()["individual_work_max"])
+            + str(estimates["individual_work_max"])
             + ": "
             + self.NAME
         )
+        if "DONE" in self.TIME_COST_ESTIMATES:
+            if time_spent_ := self.time_spent():
+                summary = "DONE in " + str(time_spent_) + " estimated " + summary
+            else:
+                summary = "DONE " + summary
+        return summary
 
     @property
     def MANUAL_MILESTONES(self):

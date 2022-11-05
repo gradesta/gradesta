@@ -38,15 +38,23 @@ def get_milestones(paths=None):
     return group_tasks_by_milestone(tasks)
 
 
-def print_milestone(milestone, tasks):
+def sum_estimates(tasks):
     sums = get_empty_sums()
     for task in tasks:
         add_sums(sums, task.estimate_time_cost())
+    return sums
+
+
+def sum_time_spend(tasks):
     total_time_spent = timedelta(seconds=0)
     for task in tasks:
-        for (date, author, time_spent) in task.TASK_TIME_LOGs:
-            total_time_spent += time_spent
+        total_time_spent += task.time_spent()
+    return total_time_spent
 
+
+def print_milestone(milestone, tasks):
+    sums = sum_estimates(tasks)
+    total_time_spent = sum_time_spend(tasks)
     print("\nMILESTONE: ", milestone)
     print("Minimum decision time:        ", sums["decision_min"])
     print("Maximum decision time:        ", sums["decision_max"])

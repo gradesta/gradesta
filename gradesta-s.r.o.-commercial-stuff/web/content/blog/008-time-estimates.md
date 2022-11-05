@@ -79,10 +79,40 @@ MILESTONES: kcf-task-management-time-spent
 
 {{<screencast "2022-11-05-be1bf5dc-74c0-4bb7-a69d-944a3d7d8bda" "27bf7514314933ff56da2b58c5aa0da5">}}
 
-Part 7: Table comparing task estimate types vs actual time spend
+Part 7: Comparing task estimates vs actual time spend
 ------------------------------------------------------------------------
 
-I initially listed task 28c9fe4ca2a1a2ea604eea0e6aee3ca0 "Comparing time estimates with actual time spent" but realized that it needs to be broken into subtasks. I decided to work on subtask:
+I initially listed task 28c9fe4ca2a1a2ea604eea0e6aee3ca0 "Comparing time estimates with actual time spent" but realized that it needs to be broken into subtasks. The first subtask I ended up starting was 
+
+```
+TASK: Listing milestones by estimated time spend vs actual time spend
+TASK_ID: 31a55ad0bb8f87121a23ff95c81fe558
+CREATED: 2022-11-05 11:58
+ESTIMATED_TIME: W3
+MILESTONES: kcf-task-management-time-spent
+```
+
+however, half way through it occured to me that I already showed actual time spend next to milestones. I didn't realize that I needed to also show previously estimated time spend for already completed tasks to make a reasonbable comparison.
+
+After that, I did
+
+```
+*** TASK: Listing completed tasks with actual vs estimated time spend
+TASK_ID: ce205fc194d577549e245aaa8a09d6cc
+CREATED: 2022-11-05 11:57
+ESTIMATED_TIME: W3 DONE
+MILESTONES: kcf-task-management-time-spent
+```
+
+after that, I returned to the task involving milestone assessment.
+
+
+{{<screencast "2022-11-05-959d265f-7ae6-4c3f-bfa4-1802ab819576" "ce205fc194d577549e245aaa8a09d6cc 31a55ad0bb8f87121a23ff95c81fe558">}}
+
+Part 8: Creating a table to compair time estimate types vs actual time spend
+---------------------------------------------------------
+
+This will let me find out how long each type actually takes so that I can see if I'm any good at estimates or not.
 
 ```
 TASK: Listing estimate type by actual time spend
@@ -97,11 +127,4 @@ So it would print a table like:
 W1     5min - 45 min        37 min              3
 W2     15min - 1 hour       45 min              7
 ......
-
-
 ```
-
-first.
-
-{{<screencast "2022-11-05-959d265f-7ae6-4c3f-bfa4-1802ab819576" "5096c557109aa1292c40b00b39d76518">}}
-
