@@ -14,6 +14,7 @@ def initial_milestones():
 class Task:
     NAME: str = ""
     TASK_ID: str = ""
+    PARENT: str = ""
     CREATED: datetime | None = None
     TIME_COST_ESTIMATES: [str] = field(default_factory=list)
     MILESTONES: [str] = field(default_factory=initial_milestones)
@@ -33,6 +34,8 @@ class Task:
             self.NAME = n
         if i := get_tag_val(line, "TASK_ID"):
             self.TASK_ID = i
+        if i := get_tag_val(line, "PARENT"):
+            self.PARENT = i
         if ms := get_symbols(line, "MILESTONES"):
             self.MILESTONES += ms
         if c := get_datetime(line, "CREATED"):
@@ -93,7 +96,8 @@ class Task:
                     end = when
         return {
             "NAME": self.NAME,
-            "SELF.ID": self.TASK_ID,
+            "TASK_ID": self.TASK_ID,
+            "PARENT": self.PARENT,
             "CREATED": self.CREATED.strftime("%Y-%m-%d %H:%M"),
             "COMPLETED": end.strftime("%Y-%m-%d %H:%M") if end else None,
             "TIME_COST_ESTIMATES": self.TIME_COST_ESTIMATES,
@@ -112,6 +116,8 @@ class Task:
         s = "TASK: " + self.NAME + "\n"  # NO_TASK
         if self.TASK_ID:  # NO_TASK
             s += "TASK_ID: {}\n".format(self.TASK_ID)  # NO_TASK
+        if self.PARENT:  # NO_TASK
+            s += "PARENT: {}\n".format(self.PARENT)  # NO_TASK
         if self.CREATED:  # NO_TASK
             s += "CREATED: {}\n".format(  # NO_TASK
                 self.CREATED.strftime("%Y-%m-%d %H:%M")
@@ -155,6 +161,8 @@ def test_read_line():
     assert task.TASK_ID == "abcd"
     task.read_line("TASK_ID: abcd  ")  # NO_TASK
     assert task.TASK_ID == "abcd"
+    task.read_line("PARENT: xyz  ")  # NO_TASK
+    assert task.PARENT == "xyz"
     task.read_line("CREATED: 2022-08-12 10:20  ")  # NO_TASK
     assert task.CREATED.hour == 10
     task.read_line("ESTIMATED_TIME: U2 W4  ")  # NO_TASK
@@ -178,6 +186,7 @@ def test_read_line():
         str(task)
         == """TASK: foo
 TASK_ID: abcd
+PARENT: xyz
 CREATED: 2022-08-12 10:20
 ESTIMATED_TIME: U2 W4
 MILESTONES: mvp abc

@@ -609,3 +609,55 @@ MILESTONES: kcf-tasks/time-spent
 ```
 
 {{<screencast "2022-11-05-a58217ef-99c8-4169-8f65-34fd98d8dd9e" "46afe22b50d294cd8374fdc7293fc46c 88df47824bd3b413574bff0dd647c400">}}
+
+
+Part 10: Subtasks
+--------------------
+
+```
+TASK: Subtasks
+TASK_ID: 678e179e1987129076401cde6c3e5004
+CREATED: 2022-11-05 18:34
+ESTIMATED_TIME: U1 W4
+MILESTONES: kcf-tasks/subtasks
+```
+
+So I thought for quite a bit about how to do sub tasks and 
+wasn't able to find a better way than simply listing the task's parent.
+
+This isn't perfect. Ergonomically it's annoying that you either have to have some special functionality in your editor or you need to spend time copying task parents around when breaking down tasks into subtasks.
+
+When evaluating estimates, we will either take the parent task's estimate, or the sum of the child task's estimates, depending on which is larger. It should also be possible to provide no estimate for a parent task of course. Indeed, we can't provide estimates for tasks that are likely to take more than 256 hours in our system, and probably shouldn't make estimates for tasks that take more than 16 hours.
+
+```
+TASK: My Subtask                             # NO_TASK
+TASK_ID: eaf6a0cf2f671ef5cd7932c4b177d60e    # NO_TASK
+PARENT: 678e179e1987129076401cde6c3e5004     # NO_TASK
+CREATED: 2022-11-05 18:42                    # NO_TASK
+ESTIMATED_TIME: W2                           # NO_TASK
+MILESTONES:  kcf-tasks/subtasks              # NO_TASK
+```
+
+(The NO_TASK directive prevents this example from being interpreted as an actual task...)
+
+Question: Should MILESTONES be automatically inherited from the parent task? Almost certainly.
+
+Question: Is this a DAG? Probably. In that case it should be `PARENTS` not `PARENT`. How does that effect time esitmates. How do the time estimates and time expenditures get divied up among parents? Probably by way of simple division. No, that actually doesn't make sense. If we want to know "how long until this feature will be complete" division won't help us. And task dependencies are not the same thing as sub-tasks, not by a long shot. Task dependencies are something different, almost every task depends on other tasks, but that shouldn't turn our todo list into a tree that extends rightwards rather than downwards... Making a DAG out of it and thinking of it as a dag would totally mess up the time estimates.
+
+Maybe we can add `DEPENDENCIES` as well. Like make a DAG of tasks, but at the same time, be able to cut up tasks into subtasks. Cutting and connecting are, apparently two very different things when it comes to tasks, though not always is the distinction %100 clear cut.
+
+```
+TASK: Subtasks auto-inherit milestones from parent tasks
+TASK_ID: 5bf3f2c74ac49bff9016e98b4eb42391
+CREATED: 2022-11-05 18:53
+ESTIMATED_TIME: W2
+PARENT: 678e179e1987129076401cde6c3e5004
+```
+
+So we have a number of closely related but distinct concept when it comes to dependency and sub-tasks. Sometimes, a dependency is unrelated to the task at hand, other times the subtask is simply a rephrasing of the main task. Sometimes you have multiple alternative ways of doing something.
+
+If I need to install OSB boards on my roof I can do it with a hammer and nails, a nail gun, screws and an electric screwdriver/impact driver/drill. So if I have the task install OSB boards, I might have 3 subtasks, "get hammer", "get nail gun", "get impact driver" and only one of them needs to be done, so we shouldn't sum these tasks, but rather choose the one that is best or easiest. In terms of estimation, if "get hammer" is a W2 and "get impact driver" is a W3 because we might have to charge it first, then our estimate range should be 15m to 4hours because that is the range of the fastest W2 to the slowest W3. But for now, we don't really have to deal with alternate tasks, it's just something to keep in mind for the future.
+
+Back to milestone inheritance. We have an unsorted list of tasks. If we want to do milestone inheritance, we can do multiple passes, going through all child tasks over and over again untill there are no new milestones being inherited. We can put all the tasks into a tree/dag strucure and do a topological sort and do it then in one pass. We can put them into a tree structure and simply walk the tree, we can do event based inheritance in which the roots would fire a "READY" event to their children when they had inherited from their parents.
+
+Or we can do a partial topological sort, putting tasks into layers based on how many parents they have. First pass we put in tasks with no parents, second pass we put in tasks who's parents are in the first pass. Well I guess that's only good for paralellism. I guess a normal toplogical sort is probably better, lets do that.
