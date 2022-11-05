@@ -1,6 +1,7 @@
 import subprocess
 import sys
 from datetime import timedelta, datetime
+import os
 import os.path
 
 from kcf_tasks.task import Task
@@ -33,7 +34,8 @@ def gather_from_file(file):
         try:
             lines = fd.readlines()
         except UnicodeDecodeError:
-            print("Could not decode file ", file, file=sys.stderr)
+            if "LOG" in os.getenv("KCF_VERBOSITY", "ERROR"):
+                print("Could not decode file ", file, file=sys.stderr)
             return tasks
         for line in lines:
             lineno += 1

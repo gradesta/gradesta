@@ -478,7 +478,7 @@ W4 1:00:00 - 16:00:00          2:10:33    3 67%      34%    0%
 
 {{<screencast "2022-11-05-69228f99-c194-4dc6-b0b7-0ae60012b9ce" "5096c557109aa1292c40b00b39d76518 28c9fe4ca2a1a2ea604eea0e6aee3ca0">}}
 
-Part 9: Graphing task creation and deletion over time
+Part 9: (preparing for) Graphing task creation and deletion over time
 ----------------------------------------------------------------
 
 So I finally wanted to get started on
@@ -491,7 +491,7 @@ ESTIMATED_TIME: W3
 MILESTONES: kcf-tasks/time-spent
 ```
 
-but I realized that I should really be breaking it up into sub-parts. It's deffinitely not going to be a `W3` more like a `W4` I think. So lets get to it. My next task is to:
+just kidding :D but I realized that I should really be breaking it up into sub-parts. It's deffinitely not going to be a `W3` more like a `W4` I think. So lets get to it. My next task is to:
 
 ```
 TASK: Filtering task list output by milestone
@@ -593,13 +593,19 @@ DONE in 1:57:08.333000 estimated 0:15:00-1:00:00: Set up CI to ensure kcf code i
 So the whole reason I wanted to filter by milestone is actually so that I can generate JSON formatted lists of tasks which I can then graph using javascript. I still need one more set of filters. Filtering by complete vs incomplete tasks.
 
 ```
-TASK: Fiter by complete vs incomplete tasks
+TASK: Filter by complete vs incomplete tasks
 TASK_ID: 88df47824bd3b413574bff0dd647c400
 CREATED: 2022-11-05 16:39
+ESTIMATED_TIME: W1 DONE
+MILESTONES: kcf-tasks/time-spent
+```
+
+```
+TASK: JSON output from list-tasks command for graphing purposes
+TASK_ID: 35905d199c7969fd463f8b03e93208bc
+CREATED: 2022-11-05 16:54
 ESTIMATED_TIME: W1
 MILESTONES: kcf-tasks/time-spent
 ```
 
-
-
-{{<screencast "2022-11-05-a58217ef-99c8-4169-8f65-34fd98d8dd9e" "46afe22b50d294cd8374fdc7293fc46c">}}
+{{<screencast "2022-11-05-a58217ef-99c8-4169-8f65-34fd98d8dd9e" "46afe22b50d294cd8374fdc7293fc46c 88df47824bd3b413574bff0dd647c400">}}

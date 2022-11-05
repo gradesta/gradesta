@@ -25,7 +25,7 @@ def assess_estimates(opts):
     assess_estimates_(get_milestones_(opts))
 
 parser = ArgumentParser(
-                      description="Get information about kcf style tasks")
+                      description="Get information about kcf style tasks. For more verbosity set the env var KCF_VERBOSITY to LOG.")
 subparsers = parser.add_subparsers(title='subcommands',
                                    description='valid subcommands',
                                    help='additional help')
