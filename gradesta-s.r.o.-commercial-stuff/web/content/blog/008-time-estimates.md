@@ -450,13 +450,24 @@ This will let me find out how long each type actually takes so that I can see if
 TASK: Listing estimate type by actual time spend
 TASK_ID: 5096c557109aa1292c40b00b39d76518
 CREATED: 2022-11-05 11:58
-ESTIMATED_TIME: W3
+ESTIMATED_TIME: W3 DONE
 MILESTONES: kcf-task-management-time-spent
 
 So it would print a table like:
 
-      estimate         actual average       datapoints
-W1     5min - 45 min        37 min              3
-W2     15min - 1 hour       45 min              7
+   estimate             actual average   n accuracy low  high
+W1 5min - 45 min        37 min           3 100%       0%   0%
+W2 15min - 1 hour       45 min           7 73%        3%   7%
 ......
 ```
+
+After having done this task, my current statistics are:
+
+```
+       estimate         actual average    n accuracy low  high
+W2 0:15:00 - 1:00:00           0:54:58    8 25%      38%   38%
+W3 0:30:00 - 4:00:00           0:22:49    7 29%      72%    0%
+W4 1:00:00 - 16:00:00          2:10:33    3 67%      34%    0%
+```
+
+{{<screencast "2022-11-05-69228f99-c194-4dc6-b0b7-0ae60012b9ce" "5096c557109aa1292c40b00b39d76518">}}
