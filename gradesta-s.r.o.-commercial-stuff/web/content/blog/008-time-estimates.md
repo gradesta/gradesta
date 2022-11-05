@@ -63,3 +63,16 @@ Part 5: Miscellania
 ----------------------
 
 {{<screencast "2022-11-05-80bfdf9a-c15d-4977-af1a-8bedbdf19ab9" "7938687258bb97ab6699a011ee7cdd6c">}}
+
+Part 6: Fix CI/CD errors in kcf code
+-------------------------------------------
+
+```
+TASK: Fix CI/CD errors in kcf code
+TASK_ID: 27bf7514314933ff56da2b58c5aa0da5
+CREATED: 2022-11-05 10:22
+ESTIMATED_TIME: W3
+MILESTONES: kcf-task-management-time-spent
+```
+
+{{<screencast "2022-11-05-be1bf5dc-74c0-4bb7-a69d-944a3d7d8bda" "27bf7514314933ff56da2b58c5aa0da5">}}
