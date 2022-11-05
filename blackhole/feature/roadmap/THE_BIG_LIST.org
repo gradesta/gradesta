@@ -396,17 +396,6 @@ TASK_ID: 5ef97edd6a9a8f54c760b8eee54e6413
 CREATED: 2022-11-05 10:22
 ESTIMATED_TIME: W3
 MILESTONES: kcf-task-management-overhead-tasks
-** TASK: Comparing time estimates with actual time spent
-TASK_ID: 28c9fe4ca2a1a2ea604eea0e6aee3ca0
-CREATED: 2022-09-01 19:04
-ESTIMATED_TIME: W3
-MILESTONES: kcf-task-management-time-spent
-** TASK: Graphing estimated vs actual time investment
-TASK_ID: 5ab6edc3f28466cb6bbfbb811bba78d3
-CREATED: 2022-10-23 20:43
-ESTIMATED_TIME: W3
-MILESTONES: kcf-task-management-time-spent
-
 * Test services
 ** TASK: Tick tack toe
 ** TASK: Chess

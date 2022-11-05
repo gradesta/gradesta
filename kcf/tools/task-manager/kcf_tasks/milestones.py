@@ -91,8 +91,6 @@ def print_milestone(milestone, tasks):
     print("Incomplete tasks:               ", sums["incomplete"])
 
 
-def print_milestones(source_dir=None):
-    milestones = get_milestones()
-
+def print_milestones(milestones):
     for milestone, tasks in milestones.items():
         print_milestone(milestone, tasks)

@@ -24,7 +24,7 @@ class EstimateType:
 
     def actual_average_str(self):
         avg = self.total_time_spend / self.n
-        avg = avg - timedelta(microseconds=avg.microseconds) # round to seconds
+        avg = avg - timedelta(microseconds=avg.microseconds)  # round to seconds
         return str(avg).rjust(14)
 
     def accuracy_str(self):
@@ -50,9 +50,7 @@ class EstimateType:
         )
 
 
-def assess_estimates(source_dir=None):
-    milestones = get_milestones()
-
+def assess_estimates(milestones):
     estimate_types = OrderedDict()
     for label, cost in costs.items():
         if label.startswith("W"):

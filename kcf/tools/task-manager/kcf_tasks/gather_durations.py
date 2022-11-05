@@ -27,7 +27,7 @@ def gather_durations(tasks, screencasts_folder=None):
             return
     for metadata_file in next(os.walk(screencasts_folder))[2]:
         with open(screencasts_folder + metadata_file, "r") as fd:
-            #print("Reading metadata file", screencasts_folder + metadata_file)
+            # print("Reading metadata file", screencasts_folder + metadata_file)
             md = yaml.load(fd, Loader=yaml.Loader)
             if "tasks" not in md:
                 continue

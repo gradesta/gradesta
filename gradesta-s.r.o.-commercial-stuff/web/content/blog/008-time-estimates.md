@@ -97,9 +97,15 @@ however, half way through it occured to me that I already showed actual time spe
 After that, I did
 
 ```
-*** TASK: Listing completed tasks with actual vs estimated time spend
+TASK: Listing completed tasks with actual vs estimated time spend
 TASK_ID: ce205fc194d577549e245aaa8a09d6cc
 CREATED: 2022-11-05 11:57
+ESTIMATED_TIME: W3 DONE
+MILESTONES: kcf-task-management-time-spent
+
+TASK: Comparing time estimates with actual time spent
+TASK_ID: 28c9fe4ca2a1a2ea604eea0e6aee3ca0
+CREATED: 2022-09-01 19:04
 ESTIMATED_TIME: W3 DONE
 MILESTONES: kcf-task-management-time-spent
 ```
@@ -439,7 +445,7 @@ Incomplete tasks:                2
 We can see that I did the tasks in 14.5 hours and estimtated that they would take 4.75 to 57 hours. So I completed (most of) that milestone on schedule in agregate. However, we still don't know how the estimate evolved over time. Perhaps most of those tasks were added at the last minute or during development, which would make the estimate far less valuable...
 
 
-{{<screencast "2022-11-05-959d265f-7ae6-4c3f-bfa4-1802ab819576" "ce205fc194d577549e245aaa8a09d6cc 31a55ad0bb8f87121a23ff95c81fe558">}}
+{{<screencast "2022-11-05-959d265f-7ae6-4c3f-bfa4-1802ab819576" "ce205fc194d577549e245aaa8a09d6cc 31a55ad0bb8f87121a23ff95c81fe558 28c9fe4ca2a1a2ea604eea0e6aee3ca0">}}
 
 Part 8: Creating a table to compair time estimate types vs actual time spend
 ---------------------------------------------------------
@@ -470,4 +476,30 @@ W3 0:30:00 - 4:00:00           0:22:49    7 29%      72%    0%
 W4 1:00:00 - 16:00:00          2:10:33    3 67%      34%    0%
 ```
 
-{{<screencast "2022-11-05-69228f99-c194-4dc6-b0b7-0ae60012b9ce" "5096c557109aa1292c40b00b39d76518">}}
+{{<screencast "2022-11-05-69228f99-c194-4dc6-b0b7-0ae60012b9ce" "5096c557109aa1292c40b00b39d76518 28c9fe4ca2a1a2ea604eea0e6aee3ca0">}}
+
+Part 9: Graphing task creation and deletion over time
+----------------------------------------------------------------
+
+So I finally wanted to get started on
+
+```
+TASK: Graphing estimated vs actual time investment
+TASK_ID: 5ab6edc3f28466cb6bbfbb811bba78d3
+CREATED: 2022-10-23 20:43
+ESTIMATED_TIME: W3
+MILESTONES: kcf-task-management-time-spent
+```
+
+but I realized that I should really be breaking it up into sub-parts. It's deffinitely not going to be a `W3` more like a `W4` I think. So lets get to it. My next task is to:
+
+```
+TASK: Filtering task list output by milestone
+TASK_ID: 46afe22b50d294cd8374fdc7293fc46c
+CREATED: 2022-11-05 16:01
+ESTIMATED_TIME: W3
+MILESTONES: kcf-task-management-time-spent
+```
+
+I think that it would make a lot of sense to have some kind of hierarchical "directory structure" for milestones. Like rather than having this milestone be `kcf-task-management-time-spent` we would write `kcf-tasks/time-spent`. Then when we ran `kcf-tasks --milestone=kcf-tasks/ list-tasks` then we would get all tasks related to `kcf-task` milestones. So that's what I'm going to do.
+
