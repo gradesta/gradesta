@@ -1,70 +1,9 @@
-* Infra
-** TASK: Find a universal CI config format if it exists
-TASK_ID: afdb8ee2feb8be6db7925837828dc2c0
-CREATED: 2022-09-18 19:11
-ESTIMATED_TIME: U1 DONE
-MILESTONES: mvp ci
-
-Will use github actions
-
-** TASK: Set up CI to test manager
-TASK_ID: e59db446d76a2ab972abb1bfab616376
-CREATED: 2022-09-01 18:49
-ESTIMATED_TIME: W4 DONE
-MILESTONES: mvp ci
-
-*** TASK: Set up docker image with normal user in CI pipeline
-TASK_ID: 8886c40d54bf08d3ef40ae5d7207ebf6
-CREATED: 2022-09-20 19:06
-ESTIMATED_TIME: W2 DONE
-MILESTONES: mvp ci
-
-Turns out it's not needed
-
-** TASK: Set up CI to do `cargo fmt`
-*** TASK_ID: c4cea87b7e9a0db374d6679570555e08
-*** CREATED: 2022-09-01 18:51
-*** ESTIMATED_TIME: W2 DONE
-*** MILESTONES: mvp ci
-
-** TASK: Set up precommit hook to do `cargo fmt` everywhere
-*** TASK_ID: f7b43334d359dd3d2aa47c3c28fbece4
-*** CREATED: 2022-09-01 18:51
-*** ESTIMATED_TIME: W2 DONE
-*** MILESTONES: mvp ci
-
+* CI/CD
 ** TASK: Set up CI to test browser
 *** TASK_ID: dd380b60bc0085acdb079403646ff9f9
 *** CREATED: 2022-09-01 18:52
 *** ESTIMATED_TIME: W3
 *** MILESTONES: mvp ci
-
-** TASK: Set up CI to run tests conditionally based on changes
-*** TASK_ID: 8c2b82fd591898b1807aeee26c793d7e
-*** CREATED: 2022-09-01 18:52
-*** ESTIMATED_TIME: W3 DONE
-*** MILESTONES: mvp ci
-
-Turns out this is very easy with github actions
-
-** TASK: Set up CI to show code coverage
-*** TASK_ID: 47c7ff403b446e8b42a87401d35fd450
-*** CREATED: 2022-09-01 18:52
-*** ESTIMATED_TIME: W4 DONE
-*** MILESTONES: mvp ci
-
-** TASK: Set up CI to test kcf code
-*** TASK_ID: 216868ec2a5f6adf295dd6688737c56c
-*** CREATED: 2022-09-01 18:53
-*** ESTIMATED_TIME: W2 DONE
-*** MILESTONES: mvp ci
-
-** TASK: Set up CI to ensure kcf code is black
-*** TASK_ID: 0f0a4c7c0df8a6683b9f292c3cc0c5f5
-*** CREATED: 2022-09-01 18:53
-*** ESTIMATED_TIME: W2 DONE
-*** MILESTONES: mvp ci
-
 * Manager
 ** TASK: figure out manager localization
 *** TASK_ID: 99ce23b59c7f33b4b63e442443fd1f88
@@ -447,11 +386,6 @@ Turns out this is very easy with github actions
 *** MILESTONES: critters
 * Studio
 * Screencast and task management
-** TASK: Pairing screencast durations with tasks in kcf_tasks code
-TASK_ID: daad2f126cd66db5339249734364aae8
-CREATED: 2022-10-23 20:42
-ESTIMATED_TIME: W2 DONE
-MILESTONES: kcf-task-management-time-spent
 ** TASK: Comparing time estimates with actual time spent
 TASK_ID: 28c9fe4ca2a1a2ea604eea0e6aee3ca0
 CREATED: 2022-09-01 19:04
@@ -461,17 +395,6 @@ MILESTONES: kcf-task-management-time-spent
 TASK_ID: 5ab6edc3f28466cb6bbfbb811bba78d3
 CREATED: 2022-10-23 20:43
 ESTIMATED_TIME: W3
-MILESTONES: kcf-task-management-time-spent
-*** TASK: Pairing screencast dates with tasks
-TASK_ID: 0edbdaaa9e469846ff237523f03640ee
-CREATED: 2022-10-26 10:49
-ESTIMATED_TIME: W3 DONE
-MILESTONES: kcf-task-management-time-spent
-
-*** TASK: Pairing authorship data with time logs
-TASK_ID: 47e0901b6b2248ba7c38420ecc7b1043
-CREATED: 2022-11-04 17:39
-ESTIMATED_TIME: W2 DONE
 MILESTONES: kcf-task-management-time-spent
 
 * Test services
