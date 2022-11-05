@@ -57,6 +57,22 @@ def get_milestones(paths=None, milestone="/", completion_filter="ALL"):
             sys.exit("Invalid completion filter %s" % completion_filter)
         return False
 
+    tasks_ = tasks
+    tasks = []
+    # We topologically sort tasks so that we can do milestone inheritance from parent tasks to child tasks.
+    # See task 5bf3f2c74ac49bff9016e98b4eb42391
+    milestones_by_task_id = {}
+    while tasks_:
+        task = tasks_[-1]
+        parent = task.PARENT
+        if parent == "" or parent in milestones_by_task_id:
+            if parent in milestones_by_task_id:
+                task.MILESTONES = task.MILESTONES.union(milestones_by_task_id[parent])
+            milestones_by_task_id[task.TASK_ID] = task.MILESTONES
+            tasks.append(tasks_.pop())
+        else:
+            tasks_ = [tasks_.pop()] + tasks_
+
     tasks = [task for task in tasks if task_filter(task)]
 
     gather_durations(tasks)

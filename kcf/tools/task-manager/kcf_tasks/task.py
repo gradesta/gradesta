@@ -7,7 +7,7 @@ import sys
 
 
 def initial_milestones():
-    return ["all-tasks"]
+    return set(["all-tasks"])
 
 
 @dataclass
@@ -17,7 +17,7 @@ class Task:
     PARENT: str = ""
     CREATED: datetime | None = None
     TIME_COST_ESTIMATES: [str] = field(default_factory=list)
-    MILESTONES: [str] = field(default_factory=initial_milestones)
+    MILESTONES: set[str] = field(default_factory=initial_milestones)
     INCOMPLETION_COST: float | None = None  # USD per hour
     START_VALUE: float | None = None  # USD
     MAX_VALUE: float | None = None  # USD
@@ -37,7 +37,7 @@ class Task:
         if i := get_tag_val(line, "PARENT"):
             self.PARENT = i
         if ms := get_symbols(line, "MILESTONES"):
-            self.MILESTONES += ms
+            self.MILESTONES = self.MILESTONES.union(set(ms))
         if c := get_datetime(line, "CREATED"):
             self.CREATED = c
         if b := get_datetime(line, "BOUNTIED"):
