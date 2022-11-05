@@ -18,7 +18,7 @@ def group_tasks_by_milestone(tasks):
     return milestones
 
 
-def get_milestones(paths=None):
+def get_milestones(paths=None, milestone="/"):
     """
     Gather tasks and group them by milestone. If a list of paths are passed, look only in those paths.
     """
@@ -32,6 +32,20 @@ def get_milestones(paths=None):
                 tasks += gather_from_file(path)
             else:
                 tasks += gather_from_git(path)
+    if not milestone[-1] == "/":
+
+        def check_milestone(task):
+            return milestone in task.MILESTONES
+
+    else:
+
+        def check_milestone(task):
+            for tm in task.MILESTONES:
+                if tm.startswith(milestone[:-1]):
+                    return True
+            return False
+
+    tasks = [task for task in tasks if check_milestone(task)]
 
     gather_durations(tasks)
 
