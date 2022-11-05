@@ -401,6 +401,16 @@ TASK_ID: 28c9fe4ca2a1a2ea604eea0e6aee3ca0
 CREATED: 2022-09-01 19:04
 ESTIMATED_TIME: W3
 MILESTONES: kcf-task-management-time-spent
+*** TASK: Listing completed tasks with actual vs estimated time spend
+TASK_ID: ce205fc194d577549e245aaa8a09d6cc
+CREATED: 2022-11-05 11:57
+ESTIMATED_TIME: W3
+MILESTONES: kcf-task-management-time-spent
+*** TASK: Listing milestones by estimated time spend vs actual time spend
+TASK_ID: 31a55ad0bb8f87121a23ff95c81fe558
+CREATED: 2022-11-05 11:58
+ESTIMATED_TIME: W3
+MILESTONES: kcf-task-management-time-spent
 ** TASK: Graphing estimated vs actual time investment
 TASK_ID: 5ab6edc3f28466cb6bbfbb811bba78d3
 CREATED: 2022-10-23 20:43

@@ -78,3 +78,30 @@ MILESTONES: kcf-task-management-time-spent
 ```
 
 {{<screencast "2022-11-05-be1bf5dc-74c0-4bb7-a69d-944a3d7d8bda" "27bf7514314933ff56da2b58c5aa0da5">}}
+
+Part 7: Table comparing task estimate types vs actual time spend
+------------------------------------------------------------------------
+
+I initially listed task 28c9fe4ca2a1a2ea604eea0e6aee3ca0 "Comparing time estimates with actual time spent" but realized that it needs to be broken into subtasks. I decided to work on subtask:
+
+```
+TASK: Listing estimate type by actual time spend
+TASK_ID: 5096c557109aa1292c40b00b39d76518
+CREATED: 2022-11-05 11:58
+ESTIMATED_TIME: W3
+MILESTONES: kcf-task-management-time-spent
+
+So it would print a table like:
+
+      estimate         actual average       datapoints
+W1     5min - 45 min        37 min              3
+W2     15min - 1 hour       45 min              7
+......
+
+
+```
+
+first.
+
+{{<screencast "2022-11-05-959d265f-7ae6-4c3f-bfa4-1802ab819576" "5096c557109aa1292c40b00b39d76518">}}
+
