@@ -88,7 +88,7 @@ I initially listed task 28c9fe4ca2a1a2ea604eea0e6aee3ca0 "Comparing time estimat
 TASK: Listing milestones by estimated time spend vs actual time spend
 TASK_ID: 31a55ad0bb8f87121a23ff95c81fe558
 CREATED: 2022-11-05 11:58
-ESTIMATED_TIME: W3
+ESTIMATED_TIME: W3 DONE
 MILESTONES: kcf-task-management-time-spent
 ```
 
@@ -104,7 +104,329 @@ ESTIMATED_TIME: W3 DONE
 MILESTONES: kcf-task-management-time-spent
 ```
 
-after that, I returned to the task involving milestone assessment.
+after that, I returned to the task involving milestone assessment and completed that task as well.
+
+Currently the output for the milestones is as follows:
+
+```
+MILESTONE:  without-milestone
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    0.0  hours
+Maximum individual work time:    0.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                7
+
+MILESTONE:  all-tasks
+Minimum decision time:           150 days, 6:30:00
+Maximum decision time:           538 days, 8:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    163.75  hours
+Maximum individual work time:    1469.0  hours
+Original estimate for complete:  8.0  →  80.0  hours
+Total time spent:                17:01:25.163000
+Completed tasks:                 20
+Incomplete tasks:                90
+
+MILESTONE:  mvp
+Minimum decision time:           10 days, 6:15:00
+Maximum decision time:           55 days, 4:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    61.25  hours
+Maximum individual work time:    593.0  hours
+Original estimate for complete:  4.75  →  57.0  hours
+Total time spent:                14:21:39.997000
+Completed tasks:                 10
+Incomplete tasks:                46
+
+MILESTONE:  ci
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    0.5  hours
+Maximum individual work time:    4.0  hours
+Original estimate for complete:  4.75  →  57.0  hours
+Total time spent:                14:21:39.997000
+Completed tasks:                 10
+Incomplete tasks:                2
+
+MILESTONE:  unix-sockets
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    1.0  hours
+Maximum individual work time:    16.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                2
+
+MILESTONE:  manager-mvp
+Minimum decision time:           7 days, 2:00:00
+Maximum decision time:           37 days, 0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    27.25  hours
+Maximum individual work time:    241.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                21
+
+MILESTONE:  cursor-sharing
+Minimum decision time:           3 days, 0:00:00
+Maximum decision time:           14 days, 0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    9.0  hours
+Maximum individual work time:    80.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                4
+
+MILESTONE:  websockets
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    8.0  hours
+Maximum individual work time:    64.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                2
+
+MILESTONE:  auth
+Minimum decision time:           115 days, 0:00:00
+Maximum decision time:           350 days, 0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    0.0  hours
+Maximum individual work time:    0.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                4
+
+MILESTONE:  encryption
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    9.5  hours
+Maximum individual work time:    84.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                4
+
+MILESTONE:  webscale
+Minimum decision time:           1 day, 0:00:00
+Maximum decision time:           7 days, 0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    0.0  hours
+Maximum individual work time:    0.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                2
+
+MILESTONE:  javascript-mvp
+Minimum decision time:           3 days, 0:00:00
+Maximum decision time:           14 days, 0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    16.5  hours
+Maximum individual work time:    172.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                16
+
+MILESTONE:  browser-mvp
+Minimum decision time:           0:15:00
+Maximum decision time:           4:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    15.0  hours
+Maximum individual work time:    144.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                8
+
+MILESTONE:  custom-elements
+Minimum decision time:           7 days, 0:00:00
+Maximum decision time:           28 days, 0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    0.0  hours
+Maximum individual work time:    0.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                2
+
+MILESTONE:  audio
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    12.0  hours
+Maximum individual work time:    96.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                3
+
+MILESTONE:  images
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    8.0  hours
+Maximum individual work time:    64.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                3
+
+MILESTONE:  video
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    8.0  hours
+Maximum individual work time:    64.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                3
+
+MILESTONE:  file-attachments
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    9.0  hours
+Maximum individual work time:    80.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                3
+
+MILESTONE:  read-write
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    34.0  hours
+Maximum individual work time:    288.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                9
+
+MILESTONE:  keyboard-accessibility
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    1.0  hours
+Maximum individual work time:    16.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                2
+
+MILESTONE:  critters
+Minimum decision time:           14 days, 0:00:00
+Maximum decision time:           84 days, 0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    0.0  hours
+Maximum individual work time:    0.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                2
+
+MILESTONE:  kcf-task-management-overhead-tasks
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    0.5  hours
+Maximum individual work time:    4.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                2
+
+MILESTONE:  kcf-task-management-time-spent
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    2.5  hours
+Maximum individual work time:    20.0  hours
+Original estimate for complete:  1.5  →  10.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 4
+Incomplete tasks:                6
+
+MILESTONE:  kcf-task-management
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    0.0  hours
+Maximum individual work time:    0.0  hours
+Original estimate for complete:  1.75  →  13.0  hours
+Total time spent:                2:39:45.166000
+Completed tasks:                 6
+Incomplete tasks:                1
+
+MILESTONE:  fast-ci
+Minimum decision time:           0:15:00
+Maximum decision time:           4:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    0.0  hours
+Maximum individual work time:    0.0  hours
+Original estimate for complete:  0.0  →  0.0  hours
+Total time spent:                0:00:00
+Completed tasks:                 0
+Incomplete tasks:                2
+```
+
+And if we zoom in on something complete like:
+
+```
+MILESTONE:  ci
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    0.5  hours
+Maximum individual work time:    4.0  hours
+Original estimate for complete:  4.75  →  57.0  hours
+Total time spent:                14:21:39.997000
+Completed tasks:                 10
+Incomplete tasks:                2
+```
+
+We can see that I did the tasks in 14.5 hours and estimtated that they would take 4.75 to 57 hours. So I completed (most of) that milestone on schedule in agregate. However, we still don't know how the estimate evolved over time. Perhaps most of those tasks were added at the last minute or during development, which would make the estimate far less valuable...
 
 
 {{<screencast "2022-11-05-959d265f-7ae6-4c3f-bfa4-1802ab819576" "ce205fc194d577549e245aaa8a09d6cc 31a55ad0bb8f87121a23ff95c81fe558">}}

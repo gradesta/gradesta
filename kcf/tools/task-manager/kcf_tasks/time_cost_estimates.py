@@ -46,11 +46,14 @@ def get_empty_sums():
     return {
         "decision_min": timedelta(seconds=0),
         "decision_max": timedelta(seconds=0),
+        "individual_work_estimated_completed_min": timedelta(seconds=0),
+        "individual_work_estimated_completed_max": timedelta(seconds=0),
         "individual_work_min": timedelta(seconds=0),
         "individual_work_max": timedelta(seconds=0),
         "team_work_min": timedelta(seconds=0),
         "team_work_max": timedelta(seconds=0),
         "completed": 0,
+        "incomplete": 1,
     }
 
 
@@ -64,6 +67,8 @@ def get_estimates(estimates, skip_done=True):
         "decision_max": timedelta,
         "individual_work_min": timedelta,
         "individual_work_max": timedelta,
+        "individual_work_estimated_completed_min": timedelta,
+        "individual_work_estimated_completed_max": timedelta,
         "team_work_min": timedelta,
         "team_work_max": timedelta,
         "completed": num_tasks,
@@ -71,15 +76,26 @@ def get_estimates(estimates, skip_done=True):
     """
     sums = get_empty_sums()
 
-    if "DONE" in estimates:
-        sums["completed"] = 1
-        if skip_done:
-            estimates = []
-    else:
-        sums["completed"] = 0
-
     for classification, (type, min, max) in costs.items():
         sums[type + "_min"] += estimates.count(classification) * min
         sums[type + "_max"] += estimates.count(classification) * max
+
+    if "DONE" in estimates:
+        sums["completed"] = 1
+        sums["individual_work_estimated_completed_min"] = sums["individual_work_min"]
+        sums["individual_work_estimated_completed_max"] = sums["individual_work_max"]
+        if skip_done:
+            for blank in (
+                "individual_work_min",
+                "individual_work_max",
+                "team_work_min",
+                "team_work_max",
+                "decision_min",
+                "decision_max",
+            ):
+                sums[blank] = timedelta(seconds=0)
+        sums["incomplete"] = 0
+    else:
+        sums["completed"] = 0
 
     return sums

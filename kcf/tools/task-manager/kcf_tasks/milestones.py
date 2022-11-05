@@ -56,32 +56,39 @@ def print_milestone(milestone, tasks):
     sums = sum_estimates(tasks)
     total_time_spent = sum_time_spend(tasks)
     print("\nMILESTONE: ", milestone)
-    print("Minimum decision time:        ", sums["decision_min"])
-    print("Maximum decision time:        ", sums["decision_max"])
-
+    print("Minimum decision time:          ", sums["decision_min"])
+    print("Maximum decision time:          ", sums["decision_max"])
     print(
-        "Minimum individual work time: ",
-        sums["individual_work_min"].total_seconds() / 3600,
-        " hours",
-    )
-    print(
-        "Maximum individual work time: ",
-        sums["individual_work_max"].total_seconds() / 3600,
-        " hours",
-    )
-
-    print(
-        "Minimum team work time:       ",
+        "Minimum team work time:         ",
         sums["team_work_min"].total_seconds() / 3600,
         " hours",
     )
     print(
-        "Maximum team work time:       ",
+        "Maximum team work time:         ",
         sums["team_work_max"].total_seconds() / 3600,
         " hours",
     )
-    print("Completed tasks:              ", sums["completed"])
-    print("Total time spent:             ", total_time_spent)
+
+    print(
+        "Minimum individual work time:   ",
+        sums["individual_work_min"].total_seconds() / 3600,
+        " hours",
+    )
+    print(
+        "Maximum individual work time:   ",
+        sums["individual_work_max"].total_seconds() / 3600,
+        " hours",
+    )
+    print(
+        "Original estimate for complete: ",
+        sums["individual_work_estimated_completed_min"].total_seconds() / 3600,
+        " → ",
+        sums["individual_work_estimated_completed_max"].total_seconds() / 3600,
+        " hours",
+    )
+    print("Total time spent:               ", total_time_spent)
+    print("Completed tasks:                ", sums["completed"])
+    print("Incomplete tasks:               ", sums["incomplete"])
 
 
 def print_milestones(source_dir=None):
