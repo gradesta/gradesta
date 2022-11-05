@@ -83,6 +83,29 @@ class Task:
     def MANUAL_MILESTONES(self):
         return [m for m in self.MILESTONES if m != "all-tasks"]
 
+    def json_like_dict(self):
+        end = None
+        if "DONE" in self.TIME_COST_ESTIMATES:
+            for (when, _, _) in self.TASK_TIME_LOGs:
+                if end is None:
+                    end = when
+                if when > end:
+                    end = when
+        return {
+            "NAME": self.NAME,
+            "SELF.ID": self.TASK_ID,
+            "CREATED": self.CREATED.strftime("%Y-%m-%d %H:%M"),
+            "COMPLETED": end.strftime("%Y-%m-%d %H:%M") if end else None,
+            "TIME_COST_ESTIMATES": self.TIME_COST_ESTIMATES,
+            "MILESTONES": self.MILESTONES,
+            "START_VALUE": self.START_VALUE,
+            "MAX_VALUE": self.MAX_VALUE,
+            "BOUNTIED": self.BOUNTIED.strftime("%Y-%m-%d %H:%M") if self.BOUNTIED else None,
+            "SOURCE_FILE": self.SOURCE_FILE,
+            "START_LINE_IN_SOURCE_FILE": self.START_LINE_IN_SOURCE_FILE,
+            "auto-describe-line": self.summarize(),
+        }
+
     def __str__(self):
         s = "TASK: " + self.NAME + "\n"  # NO_TASK
         if self.TASK_ID:  # NO_TASK

@@ -604,7 +604,7 @@ MILESTONES: kcf-tasks/time-spent
 TASK: JSON output from list-tasks command for graphing purposes
 TASK_ID: 35905d199c7969fd463f8b03e93208bc
 CREATED: 2022-11-05 16:54
-ESTIMATED_TIME: W1
+ESTIMATED_TIME: W1 DONE
 MILESTONES: kcf-tasks/time-spent
 ```
 
