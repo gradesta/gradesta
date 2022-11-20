@@ -698,3 +698,9 @@ Part 13: Continuing to work on subtasks
 -----------------------------------------------
 
 {{<screencast "2022-11-20-749df679-596f-443a-8839-722679a982d0" "a39954d3e274dce726f6d212464137f6">}}
+
+
+Part 14: Task graphing
+--------------------------
+
+{{<screencast "2022-11-20-113fc380-6db5-4eb0-9350-a433af7bd795" "5ab6edc3f28466cb6bbfbb811bba78d3">}}

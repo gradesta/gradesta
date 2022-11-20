@@ -127,7 +127,7 @@ class Task:
             "CREATED": self.CREATED.strftime("%Y-%m-%d %H:%M"),
             "COMPLETED": end.strftime("%Y-%m-%d %H:%M") if end else None,
             "TIME_COST_ESTIMATES": self.TIME_COST_ESTIMATES,
-            "MILESTONES": self.MILESTONES,
+            "MILESTONES": list(self.MILESTONES),
             "START_VALUE": self.START_VALUE,
             "MAX_VALUE": self.MAX_VALUE,
             "BOUNTIED": self.BOUNTIED.strftime("%Y-%m-%d %H:%M")
