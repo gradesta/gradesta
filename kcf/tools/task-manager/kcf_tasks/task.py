@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from kcf_tasks.time_cost_estimates import get_estimates
+from kcf_tasks.time_cost_estimates import get_estimates, add_sums, get_empty_sums, max_of_sums_minus_completed
 from kcf_tasks.parse_task_attributes import *
 
 import sys
@@ -26,6 +28,8 @@ class Task:
     SOURCE_FILE: str = ""
     START_LINE_IN_SOURCE_FILE: int = 0
     TASK_TIME_LOGs: [(datetime, timedelta, str)] = field(default_factory=list)
+    parent_ptr: Task | None = None
+    subtask_ptrs: [Task] = field(default_factory=list)
 
     def read_line(self, line):
         if "NO_TASK" in line:
@@ -54,15 +58,30 @@ class Task:
             self.DESCRIPTION = d
 
     def estimate_time_cost(self, skip_done=True):
-        return get_estimates(
+        subtask_time_estimate = get_empty_sums()
+        subtask_time_estimate["incomplete"] = 0
+        for subtask in self.subtask_ptrs:
+            add_sums(subtask_time_estimate, subtask.estimate_time_cost(skip_done=skip_done))
+        my_estimate = get_estimates(
             " ".join(self.TIME_COST_ESTIMATES or []), skip_done=skip_done
         )
+        r = max_of_sums_minus_completed(my_estimate, subtask_time_estimate)
+        return r
 
-    def time_spent(self):
+    def time_spent_without_subtasks(self):
         time_spent_ = timedelta(seconds=0)
         for (date, author, time_spent) in self.TASK_TIME_LOGs:
             time_spent_ += time_spent
         return time_spent_
+
+    def time_spent(self):
+        time_spent_ = self.time_spent_without_subtasks()
+        for subtask in self.subtask_ptrs:
+            time_spent_ += subtask.time_spent()
+        return time_spent_
+
+    def done(self):
+        return "DONE" in self.TIME_COST_ESTIMATES
 
     def summarize(self):
         estimates = self.estimate_time_cost(skip_done=False)
@@ -75,7 +94,7 @@ class Task:
             + " "
             + self.TASK_ID
         )
-        if "DONE" in self.TIME_COST_ESTIMATES:
+        if self.done:
             if time_spent_ := self.time_spent():
                 summary = "DONE in " + str(time_spent_) + " estimated " + summary
             else:

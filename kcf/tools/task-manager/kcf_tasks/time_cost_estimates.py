@@ -36,6 +36,25 @@ costs = OrderedDict(
 )
 
 
+def max_of_sums_minus_completed(s1, s2):
+    """
+    Returns a maxed dictionary so if s1[k] > s2[k] the new dict contains s1[k] and vice versa. If there are completed tasks in s2, ensures that their estimates are subtracted from total.
+    """
+    d = {}
+    for k in s2.keys():
+        if s1[k] > s2[k]:
+            d[k] = s1[k]
+            if k == "individual_work_min":
+                d[k] -= s2["individual_work_estimated_completed_min"]
+            if k == "individual_work_max":
+                d[k] -= s2["individual_work_estimated_completed_max"]
+        else:
+            d[k] = s2[k]
+    d["completed"] = s1["completed"] + s2["completed"]
+    d["incomplete"] = s1["incomplete"] + s2["incomplete"]
+    
+    return d
+
 def add_sums(s1, s2):
     """
     Adds s2 into s1
@@ -55,7 +74,7 @@ def get_empty_sums():
         "team_work_min": timedelta(seconds=0),
         "team_work_max": timedelta(seconds=0),
         "completed": 0,
-        "incomplete": 1,
+        "incomplete": 0,
     }
 
 
@@ -74,6 +93,7 @@ def get_estimates(estimates, skip_done=True):
         "team_work_min": timedelta,
         "team_work_max": timedelta,
         "completed": num_tasks,
+        "incomplete": num_tasks,
     }
     """
     sums = get_empty_sums()
@@ -84,6 +104,7 @@ def get_estimates(estimates, skip_done=True):
 
     if "DONE" in estimates:
         sums["completed"] = 1
+        sums["incomplete"] = 0
         sums["individual_work_estimated_completed_min"] = sums["individual_work_min"]
         sums["individual_work_estimated_completed_max"] = sums["individual_work_max"]
         if skip_done:
@@ -96,8 +117,8 @@ def get_estimates(estimates, skip_done=True):
                 "decision_max",
             ):
                 sums[blank] = timedelta(seconds=0)
-        sums["incomplete"] = 0
     else:
         sums["completed"] = 0
+        sums["incomplete"] = 1
 
     return sums

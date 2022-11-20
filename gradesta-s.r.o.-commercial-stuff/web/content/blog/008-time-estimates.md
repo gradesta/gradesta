@@ -618,7 +618,7 @@ Part 10: Subtasks(1) - milestone inheritance
 TASK: Subtasks
 TASK_ID: 678e179e1987129076401cde6c3e5004
 CREATED: 2022-11-05 18:34
-ESTIMATED_TIME: U1 W4
+ESTIMATED_TIME: U1 W4 DONE
 MILESTONES: kcf-tasks/subtasks
 ```
 
@@ -650,7 +650,7 @@ Maybe we can add `DEPENDENCIES` as well. Like make a DAG of tasks, but at the sa
 TASK: Subtasks auto-inherit milestones from parent tasks
 TASK_ID: 5bf3f2c74ac49bff9016e98b4eb42391
 CREATED: 2022-11-05 18:53
-ESTIMATED_TIME: W2
+ESTIMATED_TIME: W2 DONE
 PARENT: 678e179e1987129076401cde6c3e5004
 ```
 
@@ -663,3 +663,38 @@ Back to milestone inheritance. We have an unsorted list of tasks. If we want to 
 Or we can do a partial topological sort, putting tasks into layers based on how many parents they have. First pass we put in tasks with no parents, second pass we put in tasks who's parents are in the first pass. Well I guess that's only good for paralellism. I guess a normal toplogical sort is probably better, lets do that.
 
 {{<screencast "2022-11-05-9c0add23-8f2b-40e7-8708-b969507a912c" "5bf3f2c74ac49bff9016e98b4eb42391">}}
+
+Part 11: Subtasks (2) - passing on estimates from subtasks to parents
+----------------------------------------------------------
+
+```
+TASK: Subtasks don't contribute to overall estimate but parents (in some cases) inherit time cost estimates from subtasks
+TASK_ID: a39954d3e274dce726f6d212464137f6
+CREATED: 2022-11-05 20:57
+ESTIMATED_TIME: W3 DONE
+PARENT: 678e179e1987129076401cde6c3e5004
+```
+
+If the sum of the time cost estimates for a parent task's subtasks is greater than the initial estimate for that parent, then the parent inherits the greater estimate.
+
+In order to do this I've decided to modify the `ESTIMATED_TIME` field of the parent task by adding the sutbask estimates to the symbol list like so: ` | W2 W2 W2`. This allows for manual pseudo subtasks to be added directly in the estimate line like:
+
+```
+ESTIMATED_TIME: W3 | W2 W2 W2                              # NO_TASK
+```
+
+but this should be an uncommon usecase. In general, this is just a very convienient way to program. Rather than refactor my program, I do things POSIX style and make the user interface so powerfull that it can be used on programatically defined data and control panes as well. This type of coding has a *very* bad security track record, but I think it should be fine here, since we aren't actually executing anything that the user inputs.
+
+{{<screencast "2022-11-05-99ebe816-228a-4b6c-b01c-8e79ffbe3aa8" "a39954d3e274dce726f6d212464137f6">}}
+
+Part 12: Continuation of part 11
+----------------------------------------
+
+In part 11 I was thinking of using some kind of notation for the time estimates that would represent the time cost estimate tree but after further thought it seems that this is silly because this simply mirrors the task tree which we already liniked up. Copying the TCEs back through the tree just leads to duplicate data in the internal structures and the chance that user input would lead to weird notational syntax bugs that I have no desire to deal with. Instead, I'm going to do the TCE collation in the milestone estimation phase.
+
+{{<screencast "2022-11-16-53f692b4-9e75-4344-97fd-6c74266fa4b1" "a39954d3e274dce726f6d212464137f6">}}
+
+Part 13: Continuing to work on subtasks
+-----------------------------------------------
+
+{{<screencast "2022-11-20-749df679-596f-443a-8839-722679a982d0" "a39954d3e274dce726f6d212464137f6">}}
