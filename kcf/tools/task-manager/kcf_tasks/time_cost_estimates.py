@@ -52,8 +52,9 @@ def max_of_sums_minus_completed(s1, s2):
             d[k] = s2[k]
     d["completed"] = s1["completed"] + s2["completed"]
     d["incomplete"] = s1["incomplete"] + s2["incomplete"]
-    
+
     return d
+
 
 def add_sums(s1, s2):
     """

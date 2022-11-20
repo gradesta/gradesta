@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from kcf_tasks.time_cost_estimates import get_estimates, add_sums, get_empty_sums, max_of_sums_minus_completed
+from kcf_tasks.time_cost_estimates import (
+    get_estimates,
+    add_sums,
+    get_empty_sums,
+    max_of_sums_minus_completed,
+)
 from kcf_tasks.parse_task_attributes import *
 
 import sys
@@ -61,7 +66,9 @@ class Task:
         subtask_time_estimate = get_empty_sums()
         subtask_time_estimate["incomplete"] = 0
         for subtask in self.subtask_ptrs:
-            add_sums(subtask_time_estimate, subtask.estimate_time_cost(skip_done=skip_done))
+            add_sums(
+                subtask_time_estimate, subtask.estimate_time_cost(skip_done=skip_done)
+            )
         my_estimate = get_estimates(
             " ".join(self.TIME_COST_ESTIMATES or []), skip_done=skip_done
         )

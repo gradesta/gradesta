@@ -57,15 +57,12 @@ def get_milestones(paths=None, milestone="/", completion_filter="ALL"):
             sys.exit("Invalid completion filter %s" % completion_filter)
         return False
 
-
     # Link tasks into task tree
     tasks_by_task_id = {task.TASK_ID: task for task in tasks}
     for task in tasks:
         if task.PARENT:
             task.parent_ptr = tasks_by_task_id[task.PARENT]
             task.parent_ptr.subtask_ptrs.append(task)
-
-
 
     tasks_ = tasks
     tasks = []
