@@ -37,7 +37,7 @@ priceLevel:
   - content: >
       ### Email support and research
 
-      €40-€60 an hour *
+      $40-$60 an hour *
 
     image: images/contact/email.svg
     callToAction: Get support
@@ -46,7 +46,7 @@ priceLevel:
   - content: >
       ### Integration and development work
 
-      €50-€80 an hour *
+      $50-$80 an hour *
 
     callToAction: Integrate & develop
     callToActionLink: "mailto:tim@gradesta.com?subject=Development request: <subject>&body=In your initial email, please include the name, address, and VAT number (if applicable) of the organization to be invoiced."
@@ -55,7 +55,7 @@ priceLevel:
   - content: >
       ### High priority support
 
-      €120 an hour *
+      $120 an hour *
 
     callToAction: Get priority support
     callToActionLink: "mailto:tim@gradesta.com?subject=High priority support request: <subject>&body=In your initial email, please include the name, address, and VAT number (if applicable) of the organization to be invoiced."
