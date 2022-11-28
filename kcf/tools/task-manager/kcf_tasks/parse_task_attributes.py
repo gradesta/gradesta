@@ -108,8 +108,8 @@ def get_symbols(line, tag):
 
 
 def parse_timedelta(val):
-    if delta := timeparse(val) is not None:
-        return delta
+    if (delta := timeparse(val)) is not None:
+        return timedelta(seconds=delta)
     else:
         raise ParseError(
             "Excpected duration in a format accepted by https://pypi.org/project/pytimeparse/"

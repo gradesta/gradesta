@@ -77,7 +77,7 @@ class Task:
 
     def time_spent_without_subtasks(self):
         time_spent_ = timedelta(seconds=0)
-        for (date, author, time_spent) in self.TASK_TIME_LOGs:
+        for (date, time_spent, author) in self.TASK_TIME_LOGs:
             time_spent_ += time_spent
         return time_spent_
 
@@ -133,6 +133,7 @@ class Task:
             "BOUNTIED": self.BOUNTIED.strftime("%Y-%m-%d %H:%M")
             if self.BOUNTIED
             else None,
+            "TASK_TIME_LOGs": [{"when":when.strftime("%Y-%m-%d %H:%M"), "time_spent_seconds":  time_spent.seconds, "author": author} for (when, time_spent, author) in self.TASK_TIME_LOGs],
             "SOURCE_FILE": self.SOURCE_FILE,
             "START_LINE_IN_SOURCE_FILE": self.START_LINE_IN_SOURCE_FILE,
             "auto-describe-line": self.summarize(),

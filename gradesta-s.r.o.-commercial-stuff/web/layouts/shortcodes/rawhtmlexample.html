@@ -1,0 +1,13 @@
+{{.Inner | safeHTML }}
+
+<pre class="codeBox">
+        {{ trim .Inner "-\n" }}
+</pre>
+
+<style>
+ .codeBox {
+     border: 1px;
+     border-style: solid;
+     border-color: black;
+ }
+</style>

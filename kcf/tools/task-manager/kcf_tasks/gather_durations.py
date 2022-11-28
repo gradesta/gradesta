@@ -59,7 +59,7 @@ def gather_durations(tasks, screencasts_folder=None):
                     td[task_id].TASK_TIME_LOGs.append(
                         (
                             screencast_date,
-                            author,
                             (duration / balanced_weight) / len(md["authors"]),
+                            author,
                         )
                     )

@@ -9,7 +9,7 @@ def list_tasks_(milestones, json=False):
         task_representations = []
         for task in tasks:
             task_representations.append(task.json_like_dict())
-        print(json_.dumps(task_representations))
+        print(json_.dumps(task_representations, indent=4, sort_keys=True))
     else:
         for task in milestones["all-tasks"]:
             print(task.summarize())

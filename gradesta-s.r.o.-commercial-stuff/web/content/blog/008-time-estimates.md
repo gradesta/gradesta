@@ -3,7 +3,7 @@ title: "Analyzing the quality of time estimates and actual time spent"
 date: 2022-10-25
 featureimage: https://assets.gradesta.com/gradesta/img/dalle2-clock-and-coins.png
 author: timothy hobbs <tim@gradesta.com>
-draft: true
+draft: false
 ---
 
 Part 1: Loading time spent metadata
@@ -703,4 +703,211 @@ Part 13: Continuing to work on subtasks
 Part 14: Task graphing
 --------------------------
 
-{{<screencast "2022-11-20-113fc380-6db5-4eb0-9350-a433af7bd795" "5ab6edc3f28466cb6bbfbb811bba78d3">}}
+So the general theory here is that a command like:
+
+```
+kcf-tasks --milestone=kcf-tasks/subtasks --json  list-tasks
+```
+
+Dumps out a json object like:
+
+```
+[
+    {
+        "BOUNTIED": null,
+        "COMPLETED": null,
+        "CREATED": "2022-11-05 18:34",
+        "MAX_VALUE": null,
+        "MILESTONES": [
+            "all-tasks",
+            "kcf-tasks/subtasks"
+        ],
+        "NAME": "Subtasks",
+        "PARENT": "",
+        "SOURCE_FILE": "/home/timothy/pu/gradesta/gradesta-s.r.o.-commercial-stuff/web/content/blog/008-time-estimates.md",
+        "START_LINE_IN_SOURCE_FILE": 618,
+        "START_VALUE": null,
+        "TASK_ID": "678e179e1987129076401cde6c3e5004",
+        "TASK_TIME_LOGs": [],
+        "TIME_COST_ESTIMATES": [
+            "U1",
+            "W4",
+            "DONE"
+        ],
+        "auto-describe-line": "DONE in 3:00:00 estimated 0:15:00-11:00:00: Subtasks 678e179e1987129076401cde6c3e5004"
+    },
+    {
+        "BOUNTIED": null,
+        "COMPLETED": "2022-11-20 00:00",
+        "CREATED": "2022-11-05 20:57",
+        "MAX_VALUE": null,
+        "MILESTONES": [
+            "all-tasks",
+            "kcf-tasks/subtasks"
+        ],
+        "NAME": "Subtasks don't contribute to overall estimate but parents (in some cases) inherit time cost estimates from subtasks",
+        "PARENT": "678e179e1987129076401cde6c3e5004",
+        "SOURCE_FILE": "/home/timothy/pu/gradesta/gradesta-s.r.o.-commercial-stuff/web/content/blog/008-time-estimates.md",
+        "START_LINE_IN_SOURCE_FILE": 671,
+        "START_VALUE": null,
+        "TASK_ID": "a39954d3e274dce726f6d212464137f6",
+        "TASK_TIME_LOGs": [
+            {
+                "author": "Timothy Hobbs",
+                "time_spent_seconds": 10800,
+                "when": "2022-11-20 00:00"
+            }
+        ],
+        "TIME_COST_ESTIMATES": [
+            "W3",
+            "DONE"
+        ],
+        "auto-describe-line": "DONE in 3:00:00 estimated 0:30:00-4:00:00: Subtasks don't contribute to overall estimate but parents (in some cases) inherit time cost estimates from subtasks a39954d3e274dce726f6d212464137f6"
+    },
+    {
+        "BOUNTIED": null,
+        "COMPLETED": null,
+        "CREATED": "2022-11-05 18:53",
+        "MAX_VALUE": null,
+        "MILESTONES": [
+            "all-tasks",
+            "kcf-tasks/subtasks"
+        ],
+        "NAME": "Subtasks auto-inherit milestones from parent tasks",
+        "PARENT": "678e179e1987129076401cde6c3e5004",
+        "SOURCE_FILE": "/home/timothy/pu/gradesta/gradesta-s.r.o.-commercial-stuff/web/content/blog/008-time-estimates.md",
+        "START_LINE_IN_SOURCE_FILE": 650,
+        "START_VALUE": null,
+        "TASK_ID": "5bf3f2c74ac49bff9016e98b4eb42391",
+        "TASK_TIME_LOGs": [],
+        "TIME_COST_ESTIMATES": [
+            "W2",
+            "DONE"
+        ],
+        "auto-describe-line": "DONE 0:15:00-1:00:00: Subtasks auto-inherit milestones from parent tasks 5bf3f2c74ac49bff9016e98b4eb42391"
+    }
+]
+```
+
+This can then be put into a javascript var in the blog post and rendered using something like [charts.js](https://chartjs.org).
+
+{{<screencast "2022-11-20-113fc380-6db5-4eb0-9350-a433af7bd795" "5ab6edc3f28466cb6bbfbb811bba78d3 35905d199c7969fd463f8b03e93208bc">}}
+
+Part 15: Graphing continued - still in the planning stage
+--------------------------------
+
+It turns out that it is easy to say "I want to visualize the data and understand it" and somewhat harder to actually take that sentiment and decide what data should be graphed and how.
+
+So far, it seems to me that the following graphs would be really usefull:
+
+1. A graph of the time we've invested. It should show completed tasks over time, cumulatively. There are three lines, one showing the max amount of time it was estimated that those completed tasks would take. Another showing actual time. And a third showing the minimum estimate.
+
+{{<pic "Time investment example graph" "/images/blog/008/time-invested.png">}}
+
+
+2. The tasks remaining for each day. So we see how long the road in front of us is and how long it was.
+
+{{<pic "Estimated time remaining example graph" "/images/blog/008/est-time-remaining.png">}}
+
+3. A graph of how much time per day has been invested.
+
+{{<strike>}}
+Now it would be nice if each of these was a bar graph, one bar per day. The bars could be clicked on and a list of relevant tasks would be shown. Maybe there could be even a kind of spread chart or pie chart that would show how big an influence on the days total each task had.
+
+In this part I've really just been planning what to graph and how. In the next part, hopefully I can go back to looking at javascript graphing libraries and figure out which one will work best for me.
+
+It seems like I'll either have to use an old version of charts.js or find a different similar library. I need to be able to embed the charts into the blog posts but it seems like the most recent version of charts.js is meant to be compiled with NPM and no longer supports easy embedding (at least I couldn't find documentation on how to do so and found a few unanswered issues on gitub from people asking how...)
+
+{{</strike>}}
+
+(it turns out that I was totally wrong about this and there is a simple CDN compatible single js file version of chartjs)
+
+{{<screencast "2022-11-24-ff3cae2c-6141-43f0-815d-064aa439cded" "5ab6edc3f28466cb6bbfbb811bba78d3">}}
+
+Part 16: Setting up chartjs
+---------------------------------
+
+So I managed to get chartjs setup and running inline in the blog posts, but unfortunately, when you have a lot of datapoints in the horizontal access, things just get cut off at some point, no error, just incorrectly displayed data. Luckly, it appears that there is a plugin [chartjs-plugin-zoom](https://www.chartjs.org/chartjs-plugin-zoom/latest/guide/integration.html) that should hopefully fix this problem. In the next part, I'll try to get that one working.
+
+{{<screencast "2022-11-27-89cb4903-9d27-4cd3-b6cf-73e78488e456" "5ab6edc3f28466cb6bbfbb811bba78d3">}} 
+
+
+Part 17: Setting up chartjs-plugin-zoom
+------------------------------------------------
+
+So the plugin setup is pretty simple:
+
+```
+<script src="path/to/chartjs/dist/chart.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+<script src="path/to/chartjs-plugin-zoom/dist/chartjs-plugin-zoom.min.js"></script>
+<script>
+    var myChart = new Chart(ctx, {...});
+</script>
+```
+
+I just need to put jammerjs on my own CDN and find chartjs-plugin-zoom.min.js . Maybe I can steal that from the network tab of my browser's debug tools. It is licensed MIT anyways. 
+
+{{<rawhtmlexample>}}
+
+<div class="chart-container" style="width:70vw;">
+    <canvas id="panning-chart"></canvas>
+</div>
+
+
+<script src="https://assets.gradesta.com/gradesta/js/chart.js"></script>
+<script src="https://assets.gradesta.com/gradesta/js/hammerjs.2.0.8.js"></script>
+<script src="https://assets.gradesta.com/gradesta/js/chartjs-plugin-zoom.min.js"></script>
+
+<script>
+ const ctx = document.getElementById("panning-chart");
+
+ const scaleOpts = {
+     grid: {
+         color: 'rgba( 0, 0, 0, 0.1)',
+     },
+     title: {
+         display: true,
+         text: (ctx) => ctx.scale.axis + ' axis',
+     }
+ };
+ const scales = {
+     x: {
+         type: 'category',
+         min: 5,
+         max: 11,
+     },
+     y: {
+         min: 0,
+         max: 20,
+     },
+ };
+ Object.keys(scales).forEach(scale => Object.assign(scales[scale], scaleOpts));
+
+ new Chart(ctx, {
+     type: 'bar',
+     data: {
+         "labels": ["start","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","Red", "Blue", "Yellow", "Green", "Purple", "Orange","end"],
+         "datasets": [{
+             "label": "# of Votes",
+             "data": [12, 19, 3, 5, 2, 3,12, 19, 3, 5, 2, 3,12, 19, 3, 5, 2, 3,12, 19, 3, 5, 2, 3],
+             "borderWidth": 1
+         }]
+},
+     options: {
+         scales: scales,
+         plugins: {
+             zoom: {
+                 pan: {
+                     enabled: true,
+                     threshold: 14,
+                     mode: "x",
+                 }
+     }}}
+ });
+</script>
+{{</rawhtmlexample>}}
+
+So after fighting with the imports and configs for a while (javascript provideded me with very little feedback on why things were not working), I figued out that I need to configure "scales", and now things are working.
+
+{{<screencast "2022-11-28-728db710-5c46-4db8-9c08-1f746f317b77" "5ab6edc3f28466cb6bbfbb811bba78d3">}}
