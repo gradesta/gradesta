@@ -3,7 +3,7 @@ name: Test kcf-tasks
 on:
   push:
     paths:
-      - kcf/tools/task-manager/**
+      - kcf/tools/kcf_tasks/**
       - .github/workflows/test-kcf-tasks.yml
   workflow_dispatch: {}
 
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./kcf/tools/task-manager/
+        working-directory: ./kcf/tools/kcf_tasks/
     steps:
       - name: Checkout
         uses: actions/checkout@v2
