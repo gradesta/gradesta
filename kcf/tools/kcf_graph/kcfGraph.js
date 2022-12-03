@@ -1,4 +1,31 @@
 export default {
+
+    scales: {
+        x: {
+            type: 'category',
+            min: 5,
+            max: 11,
+            grid: {
+                color: 'rgba( 0, 0, 0, 0.1)',
+            },
+            title: {
+                display: true,
+                text: (ctx) => ctx.scale.axis + ' axis',
+            }
+        },
+        y: {
+            min: 0,
+            max: 20,
+            grid: {
+                color: 'rgba( 0, 0, 0, 0.1)',
+            },
+            title: {
+                display: true,
+                text: (ctx) => ctx.scale.axis + ' axis',
+            }
+        },
+    },
+
     get_date_range: (tasks) => {
         let earliest_relevant_date = null;
         let latest_relevant_date = null;

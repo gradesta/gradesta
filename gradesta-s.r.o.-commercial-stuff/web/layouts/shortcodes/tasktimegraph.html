@@ -11,28 +11,6 @@
 <script>
  const ctx = document.getElementById({{.Get 0}});
 
- const scaleOpts = {
-     grid: {
-         color: 'rgba( 0, 0, 0, 0.1)',
-     },
-     title: {
-         display: true,
-         text: (ctx) => ctx.scale.axis + ' axis',
-     }
- };
- const scales = {
-     x: {
-         type: 'category',
-         min: 5,
-         max: 11,
-     },
-     y: {
-         min: 0,
-         max: 20,
-     },
- };
- Object.keys(scales).forEach(scale => Object.assign(scales[scale], scaleOpts));
-
  let tasks = JSON.parse({{ .Inner | safeHTML}});
 
  let dates = []
