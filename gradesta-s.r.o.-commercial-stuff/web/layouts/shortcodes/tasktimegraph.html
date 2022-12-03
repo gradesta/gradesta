@@ -13,15 +13,6 @@
 
  let tasks = JSON.parse({{ .Inner | safeHTML}});
 
- let dates = []
- {
-     let day = Date.parse(earliest_relevant_date.split(" ")[0]);
-     let latest_day = Date.parse(latest_relevant_date.split(" ")[0])
-     while (day <= latest_day) {
-         dates.push(day+1000*60*60*24);
-         day += 1000*60*60*24;
-     }
- }
 
  days = {}
 
