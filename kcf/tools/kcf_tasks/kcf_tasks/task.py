@@ -236,5 +236,7 @@ MAX_VALUE{0} $500.0
 BOUNTIED{0} 2022-08-12 12:20
 DESCRIPTION{0} Hello this is a big task
 SOURCE{0} foo.py:23
-""".format(":")
+""".format(
+            ":"
+        )
     )
