@@ -44,7 +44,7 @@ export function get_date_range(tasks) {
         }
     }
 
-    return (earliest_relevant_date, latest_relevant_date)
+    return {start: earliest_relevant_date, end: latest_relevant_date}
 }
 
 export function get_dates_as_ms (earliest_relevant_date, latest_relevant_date) {
@@ -62,5 +62,58 @@ export function get_dates_as_strings(earliest_relevant_date, latest_relevant_dat
     return get_dates_as_ms(earliest_relevant_date, latest_relevant_date).map(date => {
         let d = new Date(date);
         return d.getFullYear() + "-" + ("0"+(d.getMonth()+1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2);
+    });
+}
+
+export function get_estimates_hours(tasks, dates) {
+    let min_estimates_hours = [];
+    let max_estimates_hours = [];
+    for (const date of dates) {
+        let min_estimate_sec = 0;
+        let max_estimate_sec = 0;
+        for (const task of tasks) {
+            if (task.CREATED <= date) {
+                if (task.COMPLETED <= date) {
+                    continue;
+                }
+                min_estimate_sec += task.TIME_COST_ESTIMATES_SUMMARY.individual_work_min;
+                max_estimate_sec += task.TIME_COST_ESTIMATES_SUMMARY.individual_work_max;
+            }
+        }
+        min_estimates_hours.push(min_estimate_sec / 60 / 60);
+        max_estimates_hours.push(max_estimate_sec / 60 / 60);
+    }
+    return {min: min_estimates_hours, max: max_estimates_hours}
+}
+
+export function estimated_time_remaining(element, tasks) {
+    let date_range = get_date_range(tasks);
+    let labels = get_dates_as_strings(date_range.start, date_range.end);
+    let estimated_hours = get_estimates_hours(tasks, labels);
+    new Chart(element, {
+        type: 'line',
+        labels: labels,
+        data: {
+            datasets: [
+                {
+                    label: "min estimated hours",
+                    data: estimated_hours.min,
+                },
+                {
+                    label: "max estimated hours",
+                    data: estimated_hours.max,
+                },
+            ]
+        },
+        options: {
+            scales: scales,
+            plugins: {
+                zoom: {
+                    pan: {
+                        enabled: true,
+                        threshold: 14,
+                        mode: "x",
+                    }
+                }}}
     });
 }

@@ -33,8 +33,11 @@ To use simply do:
 
 
 <script>
-kcfGraph.estimated_time_remaining("someId");
-kcfGraph.time_invested_vs_estimate("anotherId");
+
+const remaining_canvas = document.getElementById("someId");
+const invested_canvas = document.getElementById("onotherId");
+let tasks = <output of: kcf-tasks --json list_tasks>
+estimated_time_remaining(remaining_canvas, tasks);
+time_invested_vs_estimate(invested_canvas, tasks);
 </script>
 ```
-e

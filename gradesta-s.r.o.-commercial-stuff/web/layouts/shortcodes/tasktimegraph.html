@@ -1,6 +1,11 @@
 <div class="chart-container" style="width:70vw;">
     <span style="text-align: center"> Estimated time remaining </span>
-    <canvas id={{.Get 0}}></canvas>
+    <canvas id="{{.Get 0}}-remaining"></canvas>
+</div>
+
+<div class="chart-container" style="width:70vw;">
+    <span style="text-align: center"> Time invested vs estimates </span>
+    <canvas id="{{.Get 0}}-invested"></canvas>
 </div>
 
 
@@ -9,18 +14,13 @@
 <script src="https://assets.gradesta.com/gradesta/js/chartjs-plugin-zoom.min.js"></script>
 
 <script>
- const ctx = document.getElementById({{.Get 0}});
 
  let tasks = JSON.parse({{ .Inner | safeHTML}});
 
+ kcfGraph.estimated_time_remaining("{{.Get 0}}-remaining", tasks);
+ kcfGraph.time_invested_vs_estimate("{{.Get 0}}-invested", tasks);
 
- days = {}
-
- for (date of dates) {
-      ff
- }
  /*
-
     days = { date : (min_time, max_time) }
     for task in tasks {
         for day in days {
@@ -39,24 +39,5 @@
        min_time_dataset.push(min_time);
        max_time_dataset.push(max_time);
     }
-
-    labels = dates.map(day => str(day));
  */
-
-
- new Chart(ctx, {
-     type: 'bar',
-     labels: labels,
-     data: data,
-     options: {
-         scales: scales,
-         plugins: {
-             zoom: {
-                 pan: {
-                     enabled: true,
-                     threshold: 14,
-                     mode: "x",
-                 }
-     }}}
- });
 </script>
