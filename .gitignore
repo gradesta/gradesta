@@ -19,3 +19,4 @@ protocol/python/gradesta_level0/level0.capnp.h
 protocol/python/gradesta_level0/setup_capnp.py
 .eggs
 *.egg-info
+**/node_modules

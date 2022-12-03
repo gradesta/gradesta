@@ -19,7 +19,6 @@ setup(
     download_url="http://pypi.python.org/pypi/kcf-tasks/",
     description="Manage tasks in a Kanban Code Flow repo",
     long_description=codecs.open(os.path.join(here, "README.md"), "r", "utf-8").read(),
-    license="CC0",
     packages=find_packages(),
     include_package_data=True,
     zip_safe=False,
@@ -29,7 +28,11 @@ setup(
         "Programming Language :: Python :: 3.10",
     ],
     requires=["pytimeparse"],
-    scripts=["kcf_tasks/kcf-tasks"],
+    entry_points={
+        "console_scripts": [
+            "kcf-tasks= kcf_tasks.main:main",
+        ],
+    },
     setup_requires=["pytest-runner", "black"],
     tests_require=["pytest", "pytest-cov"],
 )

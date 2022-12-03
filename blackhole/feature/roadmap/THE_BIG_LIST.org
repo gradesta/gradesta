@@ -403,10 +403,25 @@ ESTIMATED_TIME: W5
 MILESTONES: kcf-tasks/kcf-and-unit-tests
 * Test services
 ** TASK: Tick tack toe
+TASK_ID: 1eefd47ff8f54d9363a22e8162e6c114
+CREATED: 2022-12-01 21:43
+MILESTONES: examples/tick-tack-toe
 ** TASK: Chess
+TASK_ID: c319b8638de97e0c9af14955e8245d7c
+CREATED: 2022-12-01 21:44
+MILESTONES: examples/chess
 ** TASK: Wiki
+TASK_ID: 3d8e9cdfa59ba1c00ad5205fff2c6231
+CREATED: 2022-12-01 21:44
+MILESTONES: examples/wiki
 ** TASK: Chat
+TASK_ID: d4dfa825d0fb57c30f10ebc5561b5e78
+CREATED: 2022-12-01 21:45
+MILESTONES: examples/chat
 ** TASK: File browser
+TASK_ID: 04dd72ed128f90019d973cd7d41d946d
+CREATED: 2022-12-01 21:45
+MILESTONES: examples/file-browser
 * Utils
 #+A emacs-lisp
 (defun create_task () (interactive)

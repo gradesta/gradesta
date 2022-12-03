@@ -50,8 +50,6 @@ def max_of_sums_minus_completed(s1, s2):
                 d[k] -= s2["individual_work_estimated_completed_max"]
         else:
             d[k] = s2[k]
-    d["completed"] = s1["completed"] + s2["completed"]
-    d["incomplete"] = s1["incomplete"] + s2["incomplete"]
 
     return d
 
@@ -74,8 +72,6 @@ def get_empty_sums():
         "individual_work_max": timedelta(seconds=0),
         "team_work_min": timedelta(seconds=0),
         "team_work_max": timedelta(seconds=0),
-        "completed": 0,
-        "incomplete": 0,
     }
 
 
@@ -93,8 +89,6 @@ def get_estimates(estimates, skip_done=True):
         "individual_work_estimated_completed_max": timedelta,
         "team_work_min": timedelta,
         "team_work_max": timedelta,
-        "completed": num_tasks,
-        "incomplete": num_tasks,
     }
     """
     sums = get_empty_sums()
@@ -104,8 +98,6 @@ def get_estimates(estimates, skip_done=True):
         sums[type + "_max"] += estimates.count(classification) * max
 
     if "DONE" in estimates:
-        sums["completed"] = 1
-        sums["incomplete"] = 0
         sums["individual_work_estimated_completed_min"] = sums["individual_work_min"]
         sums["individual_work_estimated_completed_max"] = sums["individual_work_max"]
         if skip_done:
@@ -118,8 +110,5 @@ def get_estimates(estimates, skip_done=True):
                 "decision_max",
             ):
                 sums[blank] = timedelta(seconds=0)
-    else:
-        sums["completed"] = 0
-        sums["incomplete"] = 1
 
     return sums

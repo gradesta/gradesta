@@ -89,10 +89,16 @@ def get_milestones(paths=None, milestone="/", completion_filter="ALL"):
 
 def sum_estimates(tasks):
     sums = get_empty_sums()
+    incomplete = 0
+    complete = 0
     for task in tasks:
         if not task.PARENT:
             add_sums(sums, task.estimate_time_cost())
-    return sums
+        if task.is_done():
+            complete += 1
+        else:
+            incomplete += 1
+    return sums, complete, incomplete
 
 
 def sum_time_spend(tasks):
@@ -104,7 +110,7 @@ def sum_time_spend(tasks):
 
 
 def print_milestone(milestone, tasks):
-    sums = sum_estimates(tasks)
+    sums, complete, incomplete = sum_estimates(tasks)
     total_time_spent = sum_time_spend(tasks)
     print("\nMILESTONE: ", milestone)
     print("Minimum decision time:          ", sums["decision_min"])
@@ -138,8 +144,8 @@ def print_milestone(milestone, tasks):
         " hours",
     )
     print("Total time spent:               ", total_time_spent)
-    print("Completed tasks:                ", sums["completed"])
-    print("Incomplete tasks:               ", sums["incomplete"])
+    print("Completed tasks:                ", complete)
+    print("Incomplete tasks:               ", incomplete)
 
 
 def print_milestones(milestones):

@@ -64,7 +64,6 @@ class Task:
 
     def estimate_time_cost(self, skip_done=True):
         subtask_time_estimate = get_empty_sums()
-        subtask_time_estimate["incomplete"] = 0
         for subtask in self.subtask_ptrs:
             add_sums(
                 subtask_time_estimate, subtask.estimate_time_cost(skip_done=skip_done)
@@ -120,24 +119,38 @@ class Task:
                     end = when
                 if when > end:
                     end = when
-        return {
-            "NAME": self.NAME,
-            "TASK_ID": self.TASK_ID,
-            "PARENT": self.PARENT,
-            "CREATED": self.CREATED.strftime("%Y-%m-%d %H:%M"),
-            "COMPLETED": end.strftime("%Y-%m-%d %H:%M") if end else None,
-            "TIME_COST_ESTIMATES": self.TIME_COST_ESTIMATES,
-            "MILESTONES": list(self.MILESTONES),
-            "START_VALUE": self.START_VALUE,
-            "MAX_VALUE": self.MAX_VALUE,
-            "BOUNTIED": self.BOUNTIED.strftime("%Y-%m-%d %H:%M")
-            if self.BOUNTIED
-            else None,
-            "TASK_TIME_LOGs": [{"when":when.strftime("%Y-%m-%d %H:%M"), "time_spent_seconds":  time_spent.seconds, "author": author} for (when, time_spent, author) in self.TASK_TIME_LOGs],
-            "SOURCE_FILE": self.SOURCE_FILE,
-            "START_LINE_IN_SOURCE_FILE": self.START_LINE_IN_SOURCE_FILE,
-            "auto-describe-line": self.summarize(),
-        }
+        try:
+            return {
+                "NAME": self.NAME,
+                "TASK_ID": self.TASK_ID,
+                "PARENT": self.PARENT,
+                "CREATED": self.CREATED.strftime("%Y-%m-%d %H:%M"),
+                "COMPLETED": end.strftime("%Y-%m-%d %H:%M") if end else None,
+                "TIME_COST_ESTIMATES": self.TIME_COST_ESTIMATES,
+                "TIME_COST_ESTIMATES_SUMMARY": {
+                    k: v.seconds
+                    for k, v in self.estimate_time_cost(skip_done=False).items()
+                },
+                "MILESTONES": list(self.MILESTONES),
+                "START_VALUE": self.START_VALUE,
+                "MAX_VALUE": self.MAX_VALUE,
+                "BOUNTIED": self.BOUNTIED.strftime("%Y-%m-%d %H:%M")
+                if self.BOUNTIED
+                else None,
+                "TASK_TIME_LOGs": [
+                    {
+                        "when": when.strftime("%Y-%m-%d %H:%M"),
+                        "time_spent_seconds": time_spent.seconds,
+                        "author": author,
+                    }
+                    for (when, time_spent, author) in self.TASK_TIME_LOGs
+                ],
+                "SOURCE_FILE": self.SOURCE_FILE,
+                "START_LINE_IN_SOURCE_FILE": self.START_LINE_IN_SOURCE_FILE,
+                "auto-describe-line": self.summarize(),
+            }
+        except AttributeError as e:
+            sys.exit("AttributeError {} when processing task {}.".format(e, self))
 
     def __str__(self):
         s = "TASK: " + self.NAME + "\n"  # NO_TASK

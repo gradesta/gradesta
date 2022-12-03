@@ -40,6 +40,8 @@ def gather_from_file(file):
         for line in lines:
             lineno += 1
             try:
+                if "NO_TASK" in line:
+                    continue
                 if "TASK_TIME_LOG:" in line:
                     (date, task_id, author, time_spent) = get_time_log(line)
                     if task_id in task_time_logs:

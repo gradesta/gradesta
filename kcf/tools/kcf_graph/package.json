@@ -1,0 +1,23 @@
+{
+    "name": "kcf-graph",
+    "version": "1.0.0",
+    "description": "Library for graphing kcf-task time investment/estimates using chart.js",
+    "main": "index.js",
+    "scripts": {
+        "cypress:open": "node_modules/cypress/bin/cypress open",
+        "cypress:run": "node_modules/cypress/bin/cypress run",
+        "start": "echo there is no web server to start in this project",
+        "test:ci": "npm run cypress:run",
+        "test:ci:firefox": "npm run cypress:run -- --browser firefox",
+        "test:ci:record": "npm run cypress:run -- --record"
+    },
+    "repository": {
+        "type": "git",
+        "url": "github.com/gradesta/gradesta"
+    },
+    "author": "Timothy Hobbs",
+    "license": "CC0-1.0",
+    "dependencies": {
+        "cypress": "^11.2.0"
+    }
+}

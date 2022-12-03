@@ -911,3 +911,442 @@ I just need to put jammerjs on my own CDN and find chartjs-plugin-zoom.min.js . 
 So after fighting with the imports and configs for a while (javascript provideded me with very little feedback on why things were not working), I figued out that I need to configure "scales", and now things are working.
 
 {{<screencast "2022-11-28-728db710-5c46-4db8-9c08-1f746f317b77" "5ab6edc3f28466cb6bbfbb811bba78d3">}}
+
+So now that I've figured out how to setup the graphs, in the next section I'll be writing some js to convert from kcf-tasks json task lists to graphjs data so we can display some data :)
+
+
+Part 18: Converting kcf-task json lists to chartjs data for display
+------------------------------------------------
+
+{{<tasktimegraph>}}
+[
+    {
+        "BOUNTIED": null,
+        "COMPLETED": "2022-10-23 00:00",
+        "CREATED": "2022-09-01 18:53",
+        "MAX_VALUE": null,
+        "MILESTONES": [
+            "mvp",
+            "all-tasks",
+            "ci"
+        ],
+        "NAME": "Set up CI to ensure kcf code is black",
+        "PARENT": "",
+        "SOURCE_FILE": "/home/timothy/pu/gradesta/gradesta-s.r.o.-commercial-stuff/web/content/blog/007-ci.md",
+        "START_LINE_IN_SOURCE_FILE": 180,
+        "START_VALUE": null,
+        "TASK_ID": "0f0a4c7c0df8a6683b9f292c3cc0c5f5",
+        "TASK_TIME_LOGs": [
+            {
+                "author": "Timothy Hobbs <tim@gradesta.com>",
+                "time_spent_seconds": 7028,
+                "when": "2022-10-23 00:00"
+            }
+        ],
+        "TIME_COST_ESTIMATES": [
+            "W2",
+            "DONE"
+        ],
+        "TIME_COST_ESTIMATES_SUMMARY": {
+            "decision_max": 0,
+            "decision_min": 0,
+            "individual_work_estimated_completed_max": 3600,
+            "individual_work_estimated_completed_min": 900,
+            "individual_work_max": 3600,
+            "individual_work_min": 900,
+            "team_work_max": 0,
+            "team_work_min": 0
+        },
+        "auto-describe-line": "DONE in 1:57:08.333000 estimated 0:15:00-1:00:00: Set up CI to ensure kcf code is black 0f0a4c7c0df8a6683b9f292c3cc0c5f5"
+    },
+    {
+        "BOUNTIED": null,
+        "COMPLETED": "2022-10-23 00:00",
+        "CREATED": "2022-09-01 18:53",
+        "MAX_VALUE": null,
+        "MILESTONES": [
+            "mvp",
+            "all-tasks",
+            "ci"
+        ],
+        "NAME": "Set up CI to test kcf code",
+        "PARENT": "",
+        "SOURCE_FILE": "/home/timothy/pu/gradesta/gradesta-s.r.o.-commercial-stuff/web/content/blog/007-ci.md",
+        "START_LINE_IN_SOURCE_FILE": 174,
+        "START_VALUE": null,
+        "TASK_ID": "216868ec2a5f6adf295dd6688737c56c",
+        "TASK_TIME_LOGs": [
+            {
+                "author": "Timothy Hobbs <tim@gradesta.com>",
+                "time_spent_seconds": 7028,
+                "when": "2022-10-23 00:00"
+            }
+        ],
+        "TIME_COST_ESTIMATES": [
+            "W2",
+            "DONE"
+        ],
+        "TIME_COST_ESTIMATES_SUMMARY": {
+            "decision_max": 0,
+            "decision_min": 0,
+            "individual_work_estimated_completed_max": 3600,
+            "individual_work_estimated_completed_min": 900,
+            "individual_work_max": 3600,
+            "individual_work_min": 900,
+            "team_work_max": 0,
+            "team_work_min": 0
+        },
+        "auto-describe-line": "DONE in 1:57:08.333000 estimated 0:15:00-1:00:00: Set up CI to test kcf code 216868ec2a5f6adf295dd6688737c56c"
+    },
+    {
+        "BOUNTIED": null,
+        "COMPLETED": "2022-10-23 00:00",
+        "CREATED": "2022-09-01 18:52",
+        "MAX_VALUE": null,
+        "MILESTONES": [
+            "mvp",
+            "all-tasks",
+            "ci"
+        ],
+        "NAME": "Set up CI to show code coverage",
+        "PARENT": "",
+        "SOURCE_FILE": "/home/timothy/pu/gradesta/gradesta-s.r.o.-commercial-stuff/web/content/blog/007-ci.md",
+        "START_LINE_IN_SOURCE_FILE": 167,
+        "START_VALUE": null,
+        "TASK_ID": "47c7ff403b446e8b42a87401d35fd450",
+        "TASK_TIME_LOGs": [
+            {
+                "author": "Timothy Hobbs <tim@gradesta.com>",
+                "time_spent_seconds": 7028,
+                "when": "2022-10-23 00:00"
+            }
+        ],
+        "TIME_COST_ESTIMATES": [
+            "W4",
+            "DONE"
+        ],
+        "TIME_COST_ESTIMATES_SUMMARY": {
+            "decision_max": 0,
+            "decision_min": 0,
+            "individual_work_estimated_completed_max": 57600,
+            "individual_work_estimated_completed_min": 3600,
+            "individual_work_max": 57600,
+            "individual_work_min": 3600,
+            "team_work_max": 0,
+            "team_work_min": 0
+        },
+        "auto-describe-line": "DONE in 1:57:08.333000 estimated 1:00:00-16:00:00: Set up CI to show code coverage 47c7ff403b446e8b42a87401d35fd450"
+    },
+    {
+        "BOUNTIED": null,
+        "COMPLETED": "2022-10-23 00:00",
+        "CREATED": "2022-10-23 16:01",
+        "MAX_VALUE": null,
+        "MILESTONES": [
+            "mvp",
+            "all-tasks",
+            "ci"
+        ],
+        "NAME": "Figure out why the test `ageing_cellar::organize_sockets_dir::tests::test_socket_dir_old_socket` is flaky",
+        "PARENT": "",
+        "SOURCE_FILE": "/home/timothy/pu/gradesta/gradesta-s.r.o.-commercial-stuff/web/content/blog/007-ci.md",
+        "START_LINE_IN_SOURCE_FILE": 140,
+        "START_VALUE": null,
+        "TASK_ID": "a70acc872494bb716e620fa735fd8eed",
+        "TASK_TIME_LOGs": [
+            {
+                "author": "Timothy Hobbs <tim@gradesta.com>",
+                "time_spent_seconds": 1625,
+                "when": "2022-10-23 00:00"
+            }
+        ],
+        "TIME_COST_ESTIMATES": [
+            "W4",
+            "DONE"
+        ],
+        "TIME_COST_ESTIMATES_SUMMARY": {
+            "decision_max": 0,
+            "decision_min": 0,
+            "individual_work_estimated_completed_max": 57600,
+            "individual_work_estimated_completed_min": 3600,
+            "individual_work_max": 57600,
+            "individual_work_min": 3600,
+            "team_work_max": 0,
+            "team_work_min": 0
+        },
+        "auto-describe-line": "DONE in 0:27:05.933000 estimated 1:00:00-16:00:00: Figure out why the test `ageing_cellar::organize_sockets_dir::tests::test_socket_dir_old_socket` is flaky a70acc872494bb716e620fa735fd8eed"
+    },
+    {
+        "BOUNTIED": null,
+        "COMPLETED": "2022-10-23 00:00",
+        "CREATED": "2022-09-01 18:51",
+        "MAX_VALUE": null,
+        "MILESTONES": [
+            "mvp",
+            "all-tasks",
+            "ci"
+        ],
+        "NAME": "Set up precommit hook to do `cargo fmt` everywhere",
+        "PARENT": "",
+        "SOURCE_FILE": "/home/timothy/pu/gradesta/gradesta-s.r.o.-commercial-stuff/web/content/blog/007-ci.md",
+        "START_LINE_IN_SOURCE_FILE": 124,
+        "START_VALUE": null,
+        "TASK_ID": "f7b43334d359dd3d2aa47c3c28fbece4",
+        "TASK_TIME_LOGs": [
+            {
+                "author": "Timothy Hobbs <tim@gradesta.com>",
+                "time_spent_seconds": 1356,
+                "when": "2022-10-23 00:00"
+            }
+        ],
+        "TIME_COST_ESTIMATES": [
+            "W2",
+            "DONE"
+        ],
+        "TIME_COST_ESTIMATES_SUMMARY": {
+            "decision_max": 0,
+            "decision_min": 0,
+            "individual_work_estimated_completed_max": 3600,
+            "individual_work_estimated_completed_min": 900,
+            "individual_work_max": 3600,
+            "individual_work_min": 900,
+            "team_work_max": 0,
+            "team_work_min": 0
+        },
+        "auto-describe-line": "DONE in 0:22:36.200000 estimated 0:15:00-1:00:00: Set up precommit hook to do `cargo fmt` everywhere f7b43334d359dd3d2aa47c3c28fbece4"
+    },
+    {
+        "BOUNTIED": null,
+        "COMPLETED": "2022-10-23 00:00",
+        "CREATED": "2022-09-01 18:51",
+        "MAX_VALUE": null,
+        "MILESTONES": [
+            "mvp",
+            "all-tasks",
+            "ci"
+        ],
+        "NAME": "Set up CI to do `cargo fmt`",
+        "PARENT": "",
+        "SOURCE_FILE": "/home/timothy/pu/gradesta/gradesta-s.r.o.-commercial-stuff/web/content/blog/007-ci.md",
+        "START_LINE_IN_SOURCE_FILE": 109,
+        "START_VALUE": null,
+        "TASK_ID": "c4cea87b7e9a0db374d6679570555e08",
+        "TASK_TIME_LOGs": [
+            {
+                "author": "Timothy Hobbs <tim@gradesta.com>",
+                "time_spent_seconds": 1356,
+                "when": "2022-10-23 00:00"
+            },
+            {
+                "author": "Timothy Hobbs <tim@gradesta.com>",
+                "time_spent_seconds": 778,
+                "when": "2022-10-19 00:00"
+            }
+        ],
+        "TIME_COST_ESTIMATES": [
+            "W2",
+            "DONE"
+        ],
+        "TIME_COST_ESTIMATES_SUMMARY": {
+            "decision_max": 0,
+            "decision_min": 0,
+            "individual_work_estimated_completed_max": 3600,
+            "individual_work_estimated_completed_min": 900,
+            "individual_work_max": 3600,
+            "individual_work_min": 900,
+            "team_work_max": 0,
+            "team_work_min": 0
+        },
+        "auto-describe-line": "DONE in 0:35:34.700000 estimated 0:15:00-1:00:00: Set up CI to do `cargo fmt` c4cea87b7e9a0db374d6679570555e08"
+    },
+    {
+        "BOUNTIED": null,
+        "COMPLETED": "2022-10-16 00:00",
+        "CREATED": "2022-09-20 19:06",
+        "MAX_VALUE": null,
+        "MILESTONES": [
+            "mvp",
+            "all-tasks",
+            "ci"
+        ],
+        "NAME": "Set up docker image with normal user in CI pipeline",
+        "PARENT": "",
+        "SOURCE_FILE": "/home/timothy/pu/gradesta/gradesta-s.r.o.-commercial-stuff/web/content/blog/007-ci.md",
+        "START_LINE_IN_SOURCE_FILE": 65,
+        "START_VALUE": null,
+        "TASK_ID": "8886c40d54bf08d3ef40ae5d7207ebf6",
+        "TASK_TIME_LOGs": [
+            {
+                "author": "Timothy Hobbs <tim@gradesta.com>",
+                "time_spent_seconds": 8839,
+                "when": "2022-10-16 00:00"
+            }
+        ],
+        "TIME_COST_ESTIMATES": [
+            "W2",
+            "DONE"
+        ],
+        "TIME_COST_ESTIMATES_SUMMARY": {
+            "decision_max": 0,
+            "decision_min": 0,
+            "individual_work_estimated_completed_max": 3600,
+            "individual_work_estimated_completed_min": 900,
+            "individual_work_max": 3600,
+            "individual_work_min": 900,
+            "team_work_max": 0,
+            "team_work_min": 0
+        },
+        "auto-describe-line": "DONE in 2:27:19.466000 estimated 0:15:00-1:00:00: Set up docker image with normal user in CI pipeline 8886c40d54bf08d3ef40ae5d7207ebf6"
+    },
+    {
+        "BOUNTIED": null,
+        "COMPLETED": null,
+        "CREATED": "2022-09-01 18:52",
+        "MAX_VALUE": null,
+        "MILESTONES": [
+            "mvp",
+            "all-tasks",
+            "ci"
+        ],
+        "NAME": "Set up CI to run tests conditionally based on changes",
+        "PARENT": "",
+        "SOURCE_FILE": "/home/timothy/pu/gradesta/gradesta-s.r.o.-commercial-stuff/web/content/blog/007-ci.md",
+        "START_LINE_IN_SOURCE_FILE": 46,
+        "START_VALUE": null,
+        "TASK_ID": "8c2b82fd591898b1807aeee26c793d7e",
+        "TASK_TIME_LOGs": [],
+        "TIME_COST_ESTIMATES": [
+            "W3",
+            "DONE"
+        ],
+        "TIME_COST_ESTIMATES_SUMMARY": {
+            "decision_max": 0,
+            "decision_min": 0,
+            "individual_work_estimated_completed_max": 14400,
+            "individual_work_estimated_completed_min": 1800,
+            "individual_work_max": 14400,
+            "individual_work_min": 1800,
+            "team_work_max": 0,
+            "team_work_min": 0
+        },
+        "auto-describe-line": "DONE 0:30:00-4:00:00: Set up CI to run tests conditionally based on changes 8c2b82fd591898b1807aeee26c793d7e"
+    },
+    {
+        "BOUNTIED": null,
+        "COMPLETED": "2022-10-16 00:00",
+        "CREATED": "2022-09-01 18:49",
+        "MAX_VALUE": null,
+        "MILESTONES": [
+            "mvp",
+            "all-tasks",
+            "ci"
+        ],
+        "NAME": "Set up CI to test manager",
+        "PARENT": "",
+        "SOURCE_FILE": "/home/timothy/pu/gradesta/gradesta-s.r.o.-commercial-stuff/web/content/blog/007-ci.md",
+        "START_LINE_IN_SOURCE_FILE": 40,
+        "START_VALUE": null,
+        "TASK_ID": "e59db446d76a2ab972abb1bfab616376",
+        "TASK_TIME_LOGs": [
+            {
+                "author": "Timothy Hobbs <tim@gradesta.com>",
+                "time_spent_seconds": 8839,
+                "when": "2022-10-16 00:00"
+            },
+            {
+                "author": "Timothy Hobbs <tim@gradesta.com>",
+                "time_spent_seconds": 6008,
+                "when": "2022-09-18 00:00"
+            }
+        ],
+        "TIME_COST_ESTIMATES": [
+            "W4",
+            "DONE"
+        ],
+        "TIME_COST_ESTIMATES_SUMMARY": {
+            "decision_max": 0,
+            "decision_min": 0,
+            "individual_work_estimated_completed_max": 57600,
+            "individual_work_estimated_completed_min": 3600,
+            "individual_work_max": 57600,
+            "individual_work_min": 3600,
+            "team_work_max": 0,
+            "team_work_min": 0
+        },
+        "auto-describe-line": "DONE in 4:07:27.666000 estimated 1:00:00-16:00:00: Set up CI to test manager e59db446d76a2ab972abb1bfab616376"
+    },
+    {
+        "BOUNTIED": null,
+        "COMPLETED": "2022-09-18 00:00",
+        "CREATED": "2022-09-18 19:11",
+        "MAX_VALUE": null,
+        "MILESTONES": [
+            "mvp",
+            "all-tasks",
+            "ci"
+        ],
+        "NAME": "Find a universal CI config format if it exists",
+        "PARENT": "",
+        "SOURCE_FILE": "/home/timothy/pu/gradesta/gradesta-s.r.o.-commercial-stuff/web/content/blog/007-ci.md",
+        "START_LINE_IN_SOURCE_FILE": 21,
+        "START_VALUE": null,
+        "TASK_ID": "afdb8ee2feb8be6db7925837828dc2c0",
+        "TASK_TIME_LOGs": [
+            {
+                "author": "Timothy Hobbs <tim@gradesta.com>",
+                "time_spent_seconds": 1811,
+                "when": "2022-09-18 00:00"
+            }
+        ],
+        "TIME_COST_ESTIMATES": [
+            "U1",
+            "DONE"
+        ],
+        "TIME_COST_ESTIMATES_SUMMARY": {
+            "decision_max": 14400,
+            "decision_min": 900,
+            "individual_work_estimated_completed_max": 0,
+            "individual_work_estimated_completed_min": 0,
+            "individual_work_max": 0,
+            "individual_work_min": 0,
+            "team_work_max": 0,
+            "team_work_min": 0
+        },
+        "auto-describe-line": "DONE in 0:30:11.033000 estimated 0:00:00-0:00:00: Find a universal CI config format if it exists afdb8ee2feb8be6db7925837828dc2c0"
+    },
+    {
+        "BOUNTIED": null,
+        "COMPLETED": null,
+        "CREATED": "2022-09-01 18:52",
+        "MAX_VALUE": null,
+        "MILESTONES": [
+            "mvp",
+            "all-tasks",
+            "ci"
+        ],
+        "NAME": "Set up CI to test browser",
+        "PARENT": "",
+        "SOURCE_FILE": "/home/timothy/pu/gradesta/blackhole/feature/roadmap/THE_BIG_LIST.org",
+        "START_LINE_IN_SOURCE_FILE": 7,
+        "START_VALUE": null,
+        "TASK_ID": "dd380b60bc0085acdb079403646ff9f9",
+        "TASK_TIME_LOGs": [],
+        "TIME_COST_ESTIMATES": [
+            "W3"
+        ],
+        "TIME_COST_ESTIMATES_SUMMARY": {
+            "decision_max": 0,
+            "decision_min": 0,
+            "individual_work_estimated_completed_max": 0,
+            "individual_work_estimated_completed_min": 0,
+            "individual_work_max": 14400,
+            "individual_work_min": 1800,
+            "team_work_max": 0,
+            "team_work_min": 0
+        },
+        "auto-describe-line": "DONE 0:30:00-4:00:00: Set up CI to test browser dd380b60bc0085acdb079403646ff9f9"
+    }
+]
+{{{</tasktimegraph>}}}
+
+{{<screencast "2022-12-01-1abb0c39-d5e3-4cdb-8c1a-a26d2250a823" "5ab6edc3f28466cb6bbfbb811bba78d3">}}
