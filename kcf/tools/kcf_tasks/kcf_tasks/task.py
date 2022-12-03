@@ -224,17 +224,17 @@ def test_read_line():
     assert task.estimate_time_cost()["individual_work_max"] == timedelta(hours=16)
     assert (
         str(task)
-        == """TASK: foo
-TASK_ID: abcd
-PARENT: xyz
-CREATED: 2022-08-12 10:20
-ESTIMATED_TIME: U2 W4
-MILESTONES: mvp abc
-INCOMPLETION_COST: $3.0 per hour
-START_VALUE: $50.0
-MAX_VALUE: $500.0
-BOUNTIED: 2022-08-12 12:20
-DESCRIPTION: Hello this is a big task
-SOURCE: foo.py:23
-"""
+        == """TASK{0} foo
+TASK_ID{0} abcd
+PARENT{0} xyz
+CREATED{0} 2022-08-12 10:20
+ESTIMATED_TIME{0} U2 W4
+MILESTONES{0} mvp abc
+INCOMPLETION_COST{0} $3.0 per hour
+START_VALUE{0} $50.0
+MAX_VALUE{0} $500.0
+BOUNTIED{0} 2022-08-12 12:20
+DESCRIPTION{0} Hello this is a big task
+SOURCE{0} foo.py:23
+""".format(":")
     )

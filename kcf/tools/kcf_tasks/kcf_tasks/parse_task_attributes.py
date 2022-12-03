@@ -122,7 +122,7 @@ def get_time_log(line):
         if len(symbols) != 4:
             raise ParseError(
                 "Expected the a comma separated line wiht date of the log entry, the task id, the author, and a duration in the format accepted by https://pypi.org/project/pytimeparse/. \
-                Example: TASK_TIME_LOG: 2022-02-22, kjlsk28343847298, Timothy Hobbs, 3h"
+                Example: TASK_TIME_LOG: 2022-02-22, kjlsk28343847298, Timothy Hobbs, 3h"  # NO_TASK
             )
         date = datetime.strptime(symbols[0].strip(), "%Y-%m-%d")
         task_id = symbols[1]

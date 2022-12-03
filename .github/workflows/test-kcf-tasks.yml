@@ -26,7 +26,7 @@ jobs:
       - name: Setup virtualenv
         run: python -m venv venv
       - name: install dependencies
-        run: ./venv/bin/pip install -r requirements-dev.txt -r requirements.txt
+        run: ./venv/bin/pip install .[test]
       - name: Check black on kcf_tasks
         run: ./venv/bin/black --check kcf_tasks
       - name: Test kcf_tasks

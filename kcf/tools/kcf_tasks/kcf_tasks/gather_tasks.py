@@ -42,13 +42,13 @@ def gather_from_file(file):
             try:
                 if "NO_TASK" in line:
                     continue
-                if "TASK_TIME_LOG:" in line:
+                if "TASK_TIME_LOG:" in line: # NO_TASK
                     (date, task_id, author, time_spent) = get_time_log(line)
                     if task_id in task_time_logs:
                         task_time_logs[task_id].append((date, time_spent, author))
                     else:
                         task_time_logs[task_id] = [(date, time_spent, author)]
-                if "TASK:" in line:
+                if "TASK:" in line: # NO_TASK
                     if current_task:
                         tasks.append(current_task)
                     current_task = Task()

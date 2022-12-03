@@ -94,7 +94,7 @@ def sum_estimates(tasks):
     for task in tasks:
         if not task.PARENT:
             add_sums(sums, task.estimate_time_cost())
-        if task.is_done():
+        if task.done():
             complete += 1
         else:
             incomplete += 1
