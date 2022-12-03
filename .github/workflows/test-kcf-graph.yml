@@ -1,0 +1,26 @@
+name: Test kcf-graph library
+
+on:
+  push:
+    paths:
+      - kcf/tools/kcf_graph/**
+      - .github/workflows/test-kcf-graph.yml
+  workflow_dispatch: {}
+
+jobs:
+  run-ci-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          submodules: recursive
+      - uses: cachix/install-nix-action@v17
+        with:
+           nix_path: nixpkgs=channel:nixos-22.05
+
+      - name: npm install
+        run: nix-shell --command "cd kcf/tools/kcf_graph ; npm install"
+
+      - name: Run tests
+        run: nix-shell --command "cd kcf/tools/kcf_graph ; npm run cypress:run"
