@@ -103,10 +103,10 @@ export function estimated_time_remaining (element, tasks) {
   let max_hours = 0
   for (const duration of estimated_hours.max) {
     if (duration > max_hours) {
-      max_hours = duration + 1
+      max_hours = duration
     }
   }
-  scales.y.max = max_hours;
+  scales.y.max = max_hours + 4;
   console.log(estimated_hours)
   console.log(labels)
   return new Chart(element, {
