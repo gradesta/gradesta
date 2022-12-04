@@ -999,6 +999,81 @@ This screencast part is already almost 8 hours long though. So I decided to brea
 
 {{<screencast "2022-12-01-1abb0c39-d5e3-4cdb-8c1a-a26d2250a823" "5ab6edc3f28466cb6bbfbb811bba78d3">}}
 
+
+Part 19: Graphing roadmap
+------------------------------
+
+So I need to break up task `5ab6edc3f28466cb6bbfbb811bba78d3` into some subtasks before I continue. It's just way bigger than I somehow stupidly assumed. I still need to:
+
+```
+TASK: Configure cypress to run web server and capture and test estimated_time_remaining graph
+TASK_ID: 1ae984a704ea6cd346d56adfeaafec85
+CREATED: 2022-12-04 07:04
+ESTIMATED_TIME: W4
+PARENT: 5ab6edc3f28466cb6bbfbb811bba78d3
+```
+
+```
+TASK: Implement dataset gathering functions for time_invested graph
+TASK_ID: 91ab0076ae3ec0b6984e7705d2d3fc09
+CREATED: 2022-12-04 07:04
+ESTIMATED_TIME: W3
+PARENT: 5ab6edc3f28466cb6bbfbb811bba78d3
+```
+
+```
+TASK: Ensure graphs work correctly for tasks that were created and completed on same day
+TASK_ID: 9fde3b27d52b472d9c5f26bd91582132
+CREATED: 2022-12-04 07:05
+ESTIMATED_TIME: W2
+PARENT: 5ab6edc3f28466cb6bbfbb811bba78d3
+```
+
+```
+TASK: Implement visual tests for time invested graph
+TASK_ID: 242024c6668b19938449b7f3d7d36777
+CREATED: 2022-12-04 07:06
+ESTIMATED_TIME: W2
+PARENT: 5ab6edc3f28466cb6bbfbb811bba78d3
+```
+
+```
+TASK: Integrate graphs into hugo shortcode
+TASK_ID: 58653d78a451f3a49a43a1caaadc2c31
+CREATED: 2022-12-04 07:06
+ESTIMATED_TIME: W2
+PARENT: 5ab6edc3f28466cb6bbfbb811bba78d3
+```
+
+```
+TASK: Implement storing JSON for task graph outside of blog post but make it still simple to use shortcode
+TASK_ID: c92b94b0ad5cbc11e70ce0a2f68b16a8
+CREATED: 2022-12-04 07:08
+ESTIMATED_TIME: W3
+PARENT: 5ab6edc3f28466cb6bbfbb811bba78d3
+```
+
+So the new estimate looks like this. Looks like I'll be done in somewhere between 3 and 31 hours (if my estimates are worth anything which they probably aren't).
+
+```
+MILESTONE:  kcf-tasks/time-spent
+Minimum decision time:           0:00:00
+Maximum decision time:           0:00:00
+Minimum team work time:          0.0  hours
+Maximum team work time:          0.0  hours
+Minimum individual work time:    3.25  hours
+Maximum individual work time:    31.0  hours
+Original estimate for complete:  3.6666666666666665  →  27.5  hours
+Total time spent:                0:00:00
+Completed tasks:                 10
+Incomplete tasks:                8
+```
+
+Note that the total time spent will only be filled in once I upload the screencasts.
+
+{{<screencast "2022-12-04-05647097-0cae-4358-90e7-bdf8d4090f15" "5ab6edc3f28466cb6bbfbb811bba78d3">}}
+
+
 {{<tasktimegraph>}}
 [
     {
