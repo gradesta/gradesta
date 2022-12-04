@@ -100,7 +100,7 @@ class Task:
             + " "
             + self.TASK_ID
         )
-        if self.done:
+        if self.done():
             if time_spent_ := self.time_spent():
                 summary = "DONE in " + str(time_spent_) + " estimated " + summary
             else:
