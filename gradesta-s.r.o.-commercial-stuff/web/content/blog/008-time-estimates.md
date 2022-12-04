@@ -918,6 +918,85 @@ So now that I've figured out how to setup the graphs, in the next section I'll b
 Part 18: Converting kcf-task json lists to chartjs data for display
 ------------------------------------------------
 
+So I started out just throwing a bunch of javascript pseudocode into an html file. When I realized that I had forgotten most javascript syntax, I decided to test my snippets by running them in a jupyter notebook using [ijavascript](https://github.com/n-riesco/ijavascript). Unfortunatelly, I found this to be unworkable because jupyter would throw errors if I ran the same code block twice:
+
+```
+evalmachine.<anonymous>:1
+let earliest_relevant_date = null;
+^
+
+SyntaxError: Identifier 'earliest_relevant_date' has already been declared
+    at Script.runInThisContext (vm.js:134:12)
+    at Object.runInThisContext (vm.js:310:38)
+    at run ([eval]:1020:15)
+    at onRunRequest ([eval]:864:18)
+    at onMessage ([eval]:828:13)
+    at process.emit (events.js:400:28)
+    at emit (internal/child_process.js:935:14)
+    at processTicksAndRejections (internal/process/task_queues.js:83:21)
+```
+
+The only way to work around this was to restart the kernel. Not very good for quick prototyping/development.
+
+Then I tried [RunKit](https://runkit.com/timthelion/638b6ab68e6345000864bdbb#), which worked well untill I had about 4 code blocks. Then the thing slowed to a crawl. Every time I pressed a key on the keyboard I had to wait around a second for it to respond.
+
+So I decided to drop that tack and go with unit testing and TDD. I chose to try out [cypress](https://www.cypress.io/). After some initial configuration. I was happy to see that unit tests were quite easy to write, and the in browser test runner is (mostly) a joy to use.
+
+I relatively quickly got to the point where most of my application code was working. Now for the fun part. Cypress supports in browser integration tests too! :O
+
+Unfortunatelly, it wasn't nearly so easy to figure out how to get those working. The test suit looks pretty easy to use, but the very first example looks like this:
+
+```
+it('adds todos', () => {
+  cy.visit('https://todo.app.com')
+  cy.get('[data-testid="new-todo"]')
+    .type('write code{enter}')
+    .type('write tests{enter}')
+  // confirm the application is showing two items
+  cy.get('[data-testid="todos"]').should('have.length', 2)
+})
+```
+
+The thing is, I didn't want to test `todo.app.com`. Nor do I want to upload my code to some web server. I want to test my code Locally, Instantly, As I write it. In other examples, they show accessing localhost. But no where do I see them launching the web server. Does this mean that they just want you to launch the web server BEFORE launching the test suit? Weird...
+
+Maybe that IS what they expect you to do though. I guess I need a web server that automatically updates as the code is edited and serves the current code. They don't really explain that [in the docs linked on the home page](https://docs.cypress.io/guides/overview/why-cypress#Cypress-in-the-Real-World). But I'm just going to assume for now, that that's the case, and configure my CI to launch the server first. Indeed, that appears to be best practice. Just run your own web server. In the official Cypress "Real World App" example they do it [like this](https://github.com/cypress-io/cypress-realworld-app/blob/a221bdb42e49f52bb07944cee9b9dff3644c3bb4/.github/workflows/main.yml#L98) in ci:
+
+```
+      - name: "UI Tests - Chrome"
+        uses: cypress-io/github-action@v4
+        with:
+          start: yarn start:ci
+          wait-on: "http://localhost:3000"
+          wait-on-timeout: 120
+          browser: chrome
+          record: true
+          parallel: true
+          group: "UI - Chrome"
+          spec: cypress/tests/ui/*
+          config-file: cypress.config.js
+        env:
+          CYPRESS_PROJECT_ID: ${{ secrets.CYPRESS_PROJECT_ID }}
+          CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
+          # Recommended: pass the GitHub token lets this action correctly
+          # determine the unique run id necessary to re-run the checks
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEBUG: "cypress:server:args"
+```
+
+Apparently the paid web service associated with cypress allows you to easilly view the screenshots that are collected during the tests.
+
+Here is what [`start:ci`](https://github.com/cypress-io/cypress-realworld-app/blob/a221bdb42e49f52bb07944cee9b9dff3644c3bb4/package.json#L143) does in their instance:
+
+```
+    "start:ci": "cross-env NODE_ENV=test concurrently yarn:start:react:proxy-server yarn:start:api",
+```
+
+In my case I'll probably just use a basic node server. I don't need any of that fancy react stuff for putting a few charts in a blog.
+
+Before doing that I just wanted to finish setting up the project, so I configured [eslint](https://eslint.org/docs/latest/user-guide/command-line-interface#fixing-problems) to format my code as well.
+
+{{<screencast "2022-12-01-1abb0c39-d5e3-4cdb-8c1a-a26d2250a823" "5ab6edc3f28466cb6bbfbb811bba78d3">}}
+
 {{<tasktimegraph>}}
 [
     {
@@ -1347,6 +1426,4 @@ Part 18: Converting kcf-task json lists to chartjs data for display
         "auto-describe-line": "DONE 0:30:00-4:00:00: Set up CI to test browser dd380b60bc0085acdb079403646ff9f9"
     }
 ]
-{{{</tasktimegraph>}}}
-
-{{<screencast "2022-12-01-1abb0c39-d5e3-4cdb-8c1a-a26d2250a823" "5ab6edc3f28466cb6bbfbb811bba78d3">}}
+{{</tasktimegraph>}}

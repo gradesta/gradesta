@@ -1,3 +1,5 @@
+import Chart from 'chart.js/auto'
+
 export const scales = {
   x: {
     type: 'category',
@@ -90,7 +92,7 @@ export function estimated_time_remaining (element, tasks) {
   const date_range = get_date_range(tasks)
   const labels = get_dates_as_strings(date_range.start, date_range.end)
   const estimated_hours = get_estimates_hours(tasks, labels)
-  new Chart(element, {
+  Chart(element, {
     type: 'line',
     labels,
     data: {

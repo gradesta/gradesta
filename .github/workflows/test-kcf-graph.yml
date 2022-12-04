@@ -22,5 +22,8 @@ jobs:
       - name: npm install
         run: nix-shell --command "cd kcf/tools/kcf_graph ; npm install"
 
+      - name: Run eslint
+        run: nix-shell --command "cd kcf/tools/kcf_graph ; npm run lint:ci"
+
       - name: Run tests
         run: nix-shell --command "cd kcf/tools/kcf_graph ; npm run cypress:run"
