@@ -1,4 +1,12 @@
-import Chart from 'chart.js/auto'
+import { Chart, CategoryScale, LinearScale, LineController, LineElement, PointElement } from 'chart.js'
+import zoomPlugin from 'chartjs-plugin-zoom'
+
+Chart.register(zoomPlugin)
+Chart.register(CategoryScale)
+Chart.register(LinearScale)
+Chart.register(LineController)
+Chart.register(LineElement)
+Chart.register(PointElement)
 
 export const scales = {
   x: {
@@ -10,7 +18,7 @@ export const scales = {
     },
     title: {
       display: true,
-      text: (ctx) => ctx.scale.axis + ' axis'
+      text: (ctx) => 'Date'
     }
   },
   y: {
@@ -21,7 +29,7 @@ export const scales = {
     },
     title: {
       display: true,
-      text: (ctx) => ctx.scale.axis + ' axis'
+      text: (ctx) => 'Hours remainig'
     }
   }
 }
@@ -92,10 +100,19 @@ export function estimated_time_remaining (element, tasks) {
   const date_range = get_date_range(tasks)
   const labels = get_dates_as_strings(date_range.start, date_range.end)
   const estimated_hours = get_estimates_hours(tasks, labels)
-  Chart(element, {
+  let max_hours = 0
+  for (const duration of estimated_hours.max) {
+    if (duration > max_hours) {
+      max_hours = duration + 1
+    }
+  }
+  scales.y.max = max_hours;
+  console.log(estimated_hours)
+  console.log(labels)
+  return new Chart(element, {
     type: 'line',
-    labels,
     data: {
+      labels,
       datasets: [
         {
           label: 'min estimated hours',

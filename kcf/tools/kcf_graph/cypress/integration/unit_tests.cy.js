@@ -1,6 +1,6 @@
 /// <reference types="cypress" />
 
-import { get_date_range, get_dates_as_strings, get_estimates_hours } from '../../kcfGraph'
+import { get_date_range, get_dates_as_strings, get_estimates_hours } from '../../src/kcf-graph'
 
 describe('Unit tests', function () {
   before(() => {
@@ -8,7 +8,7 @@ describe('Unit tests', function () {
     expect(get_date_range, 'get_date_range').to.be.a('function')
   })
 
-  context('kcfGraph.js', function () {
+  context('kcf-graph.js', function () {
     it("get_date_range doesn't crash when an empty task list is passed.", function () {
       expect(get_date_range([]).start).to.eq((null))
       expect(get_date_range([]).end).to.eq((null))

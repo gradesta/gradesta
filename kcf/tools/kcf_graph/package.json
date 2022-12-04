@@ -10,8 +10,8 @@
         "test:ci": "npm run cypress:run",
         "test:ci:firefox": "npm run cypress:run -- --browser firefox",
         "test:ci:record": "npm run cypress:run -- --record",
-        "lint": "npx eslint --fix .",
-        "lint:ci": "npx eslint ."
+        "lint": "npx eslint --fix src; npx eslint --fix cypress",
+        "lint:ci": "npx eslint src ; npx eslint cypress"
     },
     "repository": {
         "type": "git",
@@ -28,9 +28,13 @@
         "eslint-plugin-import": "^2.26.0",
         "eslint-plugin-n": "^15.5.1",
         "eslint-plugin-promise": "^6.1.1",
-        "typescript": "^4.9.3"
+        "http-server": "^14.1.1",
+        "typescript": "^4.9.3",
+        "webpack-cli": "^5.0.0"
     },
     "dependencies": {
-        "chart.js": "^3.9.1"
+        "chart.js": "^3.9.1",
+        "chartjs-plugin-zoom": "^2.0.0",
+        "webpack": "^5.75.0"
     }
 }

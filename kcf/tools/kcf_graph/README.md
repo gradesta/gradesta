@@ -14,9 +14,6 @@ command and graph those tasks using [chart.js](https://www.chartjs.org/).
 To use simply do:
 
 ```
-<script src="https://assets.gradesta.com/gradesta/js/chart.js"></script>
-<script src="https://assets.gradesta.com/gradesta/js/hammerjs.2.0.8.js"></script>
-<script src="https://assets.gradesta.com/gradesta/js/chartjs-plugin-zoom.min.js"></script>
 <script src="https://assets.gradesta.com/gradesta/js/kcf-graph.js"></script>
 
 ...
@@ -37,7 +34,34 @@ To use simply do:
 const remaining_canvas = document.getElementById("someId");
 const invested_canvas = document.getElementById("onotherId");
 let tasks = <output of: kcf-tasks --json list_tasks>
-estimated_time_remaining(remaining_canvas, tasks);
-time_invested_vs_estimate(invested_canvas, tasks);
+kcfGraph.estimated_time_remaining(remaining_canvas, tasks);
+kcfGraph.time_invested_vs_estimate(invested_canvas, tasks);
 </script>
+```
+
+Development
+--------------
+
+Build with (needed to get examples to work)
+
+```
+npx webpack
+```
+
+test with
+
+```
+npm run cypress:open
+```
+
+you can play with examples by loading the webserver
+
+```
+
+```
+
+And visiting
+
+```
+http://localhost:<port>/examples/index.html
 ```

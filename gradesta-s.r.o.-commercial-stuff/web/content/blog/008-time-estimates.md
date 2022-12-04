@@ -883,7 +883,7 @@ I just need to put jammerjs on my own CDN and find chartjs-plugin-zoom.min.js . 
      },
  };
  Object.keys(scales).forEach(scale => Object.assign(scales[scale], scaleOpts));
-
+ 
  new Chart(ctx, {
      type: 'bar',
      data: {
@@ -1073,6 +1073,63 @@ Note that the total time spent will only be filled in once I upload the screenca
 
 {{<screencast "2022-12-04-05647097-0cae-4358-90e7-bdf8d4090f15" "5ab6edc3f28466cb6bbfbb811bba78d3">}}
 
+Part 20: Configuring webpack
+-------------------------------------------------------------------------
+
+In part 18 I examined how to work with cypress's integration/e2e tests. For these, I need to run a webserver to display the charts. I will probably do this by creating a new tiny web app in the kcf_graph examples directory. This will allow my test case to also inform users on how to use the library. I guess the first thing I need to do is pack/build the kcf_graph library using webpack. This actually becomes a task of its own. IIRC, just setting up webpack can be a significant ordeal.
+
+```
+TASK: Pack/build kcf_graph with webpack
+TASK_ID: 9b640aff70b4b48b99106f4f3299e9c6
+CREATED: 2022-12-04 07:36
+ESTIMATED_TIME: W3 DONE
+PARENT: 5ab6edc3f28466cb6bbfbb811bba78d3
+```
+
+So you'd think this would be easy. They say you don't even need a config, though I ended up having to write one anyways:
+
+```
+const path = require('path');
+
+module.exports = {
+    entry: './src/kcf-graph.js',
+    output: {
+        path: path.resolve(__dirname, 'dist'),
+        filename: 'kcf-graph.js',
+    },
+};
+```
+
+Running
+
+```
+$ npx webpack
+asset kcf-graph.js 202 KiB [compared for emit] [minimized] (name: main) 1 related asset
+orphan modules 442 KiB [orphan] 5 modules
+runtime modules 663 bytes 3 modules
+cacheable modules 517 KiB
+  ./src/kcf-graph.js + 5 modules 445 KiB [built] [code generated]
+  ./node_modules/hammerjs/hammer.js 72.1 KiB [built] [code generated]
+
+WARNING in configuration
+The 'mode' option has not been set, webpack will fallback to 'production' for this value.
+Set 'mode' option to 'development' or 'production' to enable defaults for each environment.
+You can also set it to 'none' to disable any default behavior. Learn more: https://webpack.js.org/configuration/mode/
+
+webpack 5.75.0 compiled with 1 warning in 2194 ms
+```
+
+Returns seemingly with no errors. But the generated 200+Kb `dist/kcf-graph.js` file does not contain any of my code. No, it's not obfuscated or twisted, it's just not there. This is why I continue to bang my head against those rust lifetime errors. At least `cargo build` includes my code in the executable. Anyhow... Luckly we have [stack overflow](https://stackoverflow.com/questions/56102640/how-to-export-a-function-with-webpack-and-use-it-in-an-html-page). It was enough to add the `library: "libraryName"` property to the output object in the webpack config.
+
+```
+TASK: Show relevant tasks when mouse is over point in graph
+TASK_ID: 5de1af83fb9a703d080e94c8686e1820
+CREATED: 2022-12-04 08:43
+ESTIMATED_TIME: W3
+PARENT: 5ab6edc3f28466cb6bbfbb811bba78d3
+```
+
+{{<screencast "2022-12-04-0734e900-fff9-48aa-8ba3-2cc612d123ad" "9b640aff70b4b48b99106f4f3299e9c6">}}
 
 {{<tasktimegraph>}}
 [
