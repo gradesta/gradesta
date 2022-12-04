@@ -995,6 +995,8 @@ In my case I'll probably just use a basic node server. I don't need any of that 
 
 Before doing that I just wanted to finish setting up the project, so I configured [eslint](https://eslint.org/docs/latest/user-guide/command-line-interface#fixing-problems) to format my code as well.
 
+This screencast part is already almost 8 hours long though. So I decided to break this task up into subtasks and record another part.
+
 {{<screencast "2022-12-01-1abb0c39-d5e3-4cdb-8c1a-a26d2250a823" "5ab6edc3f28466cb6bbfbb811bba78d3">}}
 
 {{<tasktimegraph>}}
