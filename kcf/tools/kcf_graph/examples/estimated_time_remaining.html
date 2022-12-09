@@ -3,10 +3,12 @@
 <div class="chart-container" style="width:70vw;">
     <span style="text-align: center"> Estimated time remaining </span>
     <canvas id="time_remaining_graph"></canvas>
+    <div id="time_remaining_graph_tooltip"></div>
 </div>
 
 <script>
  const remaining_canvas = document.getElementById("time_remaining_graph");
+ const remaining_tooltip = document.getElementById("time_remaining_graph_tooltip");
  let tasks = [
     {
         "BOUNTIED": null,
@@ -436,5 +438,5 @@
     }
 ];
 
- kcfGraph.estimated_time_remaining(remaining_canvas, tasks);
+ kcfGraph.estimated_time_remaining(remaining_canvas, remaining_tooltip, tasks);
 </script>

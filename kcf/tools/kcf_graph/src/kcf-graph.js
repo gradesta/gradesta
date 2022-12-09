@@ -61,7 +61,7 @@ export function get_dates_as_ms (earliest_relevant_date, latest_relevant_date) {
   const dates = []
   let day = Date.parse(earliest_relevant_date.split(' ')[0])
   const latest_day = Date.parse(latest_relevant_date.split(' ')[0])
-  while (day <= latest_day) {
+  while (day <= (latest_day + 2 * 1000 * 60 * 60 * 24)) {
     dates.push(day)
     day += 1000 * 60 * 60 * 24
   }
@@ -96,7 +96,7 @@ export function get_estimates_hours (tasks, dates) {
   return { min: min_estimates_hours, max: max_estimates_hours }
 }
 
-export function estimated_time_remaining (element, tasks) {
+export function estimated_time_remaining (element, tooltipEl, tasks) {
   const date_range = get_date_range(tasks)
   const labels = get_dates_as_strings(date_range.start, date_range.end)
   const estimated_hours = get_estimates_hours(tasks, labels)
@@ -106,10 +106,10 @@ export function estimated_time_remaining (element, tasks) {
       max_hours = duration
     }
   }
-  scales.y.max = max_hours + 4;
+  scales.y.max = max_hours + 4
   console.log(estimated_hours)
   console.log(labels)
-  return new Chart(element, {
+  const chart = new Chart(element, {
     type: 'line',
     data: {
       labels,
@@ -137,4 +137,25 @@ export function estimated_time_remaining (element, tasks) {
       }
     }
   })
+
+  function clickHandler (evt) {
+    const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true)
+
+    if (points.length) {
+      const firstPoint = points[0]
+      const label = chart.data.labels[firstPoint.index]
+      let tooltip = '<list>'
+      for (const task of tasks) {
+        if (task.CREATED <= label) {
+          if (task.COMPLETED == null || task.COMPLETED > label) {
+            tooltip += '<li>' + task['auto-describe-line'] + '</li>'
+          }
+        }
+      }
+      tooltipEl.innerHTML = tooltip + '</list>'
+    }
+  }
+
+  element.onclick = clickHandler
+  return chart
 }

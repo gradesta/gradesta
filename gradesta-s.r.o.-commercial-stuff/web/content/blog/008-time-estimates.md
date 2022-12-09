@@ -1131,10 +1131,10 @@ PARENT: 5ab6edc3f28466cb6bbfbb811bba78d3
 
 {{<screencast "2022-12-04-0734e900-fff9-48aa-8ba3-2cc612d123ad" "9b640aff70b4b48b99106f4f3299e9c6">}}
 
-Part 21: More kcf_graph work
----------------------------------
+Part 21: Showing task lists when clicking on point in graph
+-----------------------------------------------------------------------
 
-{{<screencast "2022-12-04-3459ecb6-8e70-4442-b114-08e1b4b87b6d">}}
+{{<screencast "2022-12-04-3459ecb6-8e70-4442-b114-08e1b4b87b6d" "5de1af83fb9a703d080e94c8686e1820">}}
 
 {{<tasktimegraph>}}
 [

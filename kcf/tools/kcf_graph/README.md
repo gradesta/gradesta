@@ -25,6 +25,7 @@ To use simply do:
 
 <div class="chart-container" style="width:70vw;">
     <span style="text-align: center"> Time invested vs estimates </span>
+    <div id="tooltip"></div>
     <canvas id="anotherId"></canvas>
 </div>
 
@@ -33,9 +34,10 @@ To use simply do:
 
 const remaining_canvas = document.getElementById("someId");
 const invested_canvas = document.getElementById("onotherId");
+const tooltipEl = document.getElementById("tooltip");
 let tasks = <output of: kcf-tasks --json list_tasks>
-kcfGraph.estimated_time_remaining(remaining_canvas, tasks);
-kcfGraph.time_invested_vs_estimate(invested_canvas, tasks);
+kcfGraph.estimated_time_remaining(remaining_canvas, tooltipEl, tasks);
+kcfGraph.time_invested_vs_estimate(invested_canvas, tooltipEl, tasks);
 </script>
 ```
 
