@@ -2,42 +2,46 @@
     <span style="text-align: center"> Estimated time remaining </span>
     <canvas id="{{.Get 0}}-remaining"></canvas>
 </div>
+<div id="{{.Get 0}}-remaining-tooltip"></div>
 
 <div class="chart-container" style="width:70vw;">
     <span style="text-align: center"> Time invested vs estimates </span>
     <canvas id="{{.Get 0}}-invested"></canvas>
 </div>
+<div id="{{.Get 0}}-invested-tooltip"></div>
 
 
 <script src="https://assets.gradesta.com/gradesta/js/chart.js"></script>
 <script src="https://assets.gradesta.com/gradesta/js/hammerjs.2.0.8.js"></script>
 <script src="https://assets.gradesta.com/gradesta/js/chartjs-plugin-zoom.min.js"></script>
+<script type="text/javascript" src="/js/kcf-graph.js"></script>
 
 <script>
+ // https://stackoverflow.com/a/35970894
+ var getJSON = function(url, callback) {
+     var xhr = new XMLHttpRequest();
+     xhr.open('GET', url, true);
+     xhr.responseType = 'json';
+     xhr.onload = function() {
+         var status = xhr.status;
+         if (status === 200) {
+             callback(null, xhr.response);
+         } else {
+             callback(status, xhr.response);
+         }
+     };
+     xhr.send();
+ };
+ // Load task json from file at {{ .Inner | safeHTML}}
+ let task_json_url = "{{ .Inner | safeHTML}}";
+ getJSON(task_json_url, function(err, tasks) {
+     console.log(tasks);
 
- let tasks = JSON.parse({{ .Inner | safeHTML}});
-
- kcfGraph.estimated_time_remaining("{{.Get 0}}-remaining", tasks);
- kcfGraph.time_invested_vs_estimate("{{.Get 0}}-invested", tasks);
-
- /*
-    days = { date : (min_time, max_time) }
-    for task in tasks {
-        for day in days {
-            if task.created >= day {
-                 if task.completed <= day {
-                     days[day] = (days[day][0].min_estimate + task.min_estimate, days[day][1].max_estimate + task.max_estimate);
-                 }
-            }
-        }
-    }
-
-    let min_time_dataset = [];
-    let max_time_dataset = [];
-
-    for date in dates {
-       min_time_dataset.push(min_time);
-       max_time_dataset.push(max_time);
-    }
- */
+     let etr_el = document.getElementById("{{.Get 0}}-remaining");
+     let etr_tooltip = document.getElementById("{{.Get 0}}-remaining-tooltip");
+     let tive_el = document.getElementById("{{.Get 0}}-invested");
+     let tive_tooltip = document.getElementById("{{.Get 0}}-invested-tooltip");
+     kcfGraph.estimated_time_remaining(etr_el, etr_tooltip, tasks);
+     kcfGraph.time_invested_vs_estimate(tive_el, tive_tooltip, tasks);
+ })
 </script>
