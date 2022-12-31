@@ -27,7 +27,10 @@ describe('Unit tests', function () {
       expect(dates[0]).to.eq('2022-09-01')
       expect(dates[1]).to.eq('2022-09-02')
       expect(dates[2]).to.eq('2022-09-03')
-      expect(dates.length).to.eq(3)
+      // Plus two days extra for context
+      expect(dates[3]).to.eq('2022-09-04')
+      expect(dates[4]).to.eq('2022-09-05')
+      expect(dates.length).to.eq(5)
     })
 
     it('get_estimates_hours works with valid data', function () {
@@ -42,7 +45,8 @@ describe('Unit tests', function () {
         expect(estimated_hours.max[0]).to.eq(0)
         expect(estimated_hours.max[1]).to.eq(44)
         expect(estimated_hours.min.length).to.eq(estimated_hours.max.length)
-        expect(estimated_hours.min.length).to.eq(53)
+        // All days plus two extra for context
+        expect(estimated_hours.min.length).to.eq(53 + 2)
       })
     })
   })

@@ -57,6 +57,8 @@ export function get_date_range (tasks) {
   return { start: earliest_relevant_date, end: latest_relevant_date }
 }
 
+// Gets a list of strings representing the dates between the start and end dates
+// plus two days extra to give context to the graph
 export function get_dates_as_ms (earliest_relevant_date, latest_relevant_date) {
   const dates = []
   let day = Date.parse(earliest_relevant_date.split(' ')[0])

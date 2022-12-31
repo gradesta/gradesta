@@ -1158,6 +1158,170 @@ PARENT: 5ab6edc3f28466cb6bbfbb811bba78d3
 
 {{<screencast "2022-12-31-2a1456ef-3a75-45a7-80a3-568f994b0573" "21af48b56c50dc7758d94f6cb85151e0">}}
 
+I thought that this was going to be easy but then it turned out that the tests weren't working in CI. I tried running them locally, but I get this annoying error that I'm sure I've seen before:
+
+`$ npm run test:ci
+
+> kcf-graph@1.0.0 test:ci
+> npm run cypress:run
+
+
+> kcf-graph@1.0.0 cypress:run
+> node_modules/cypress/bin/cypress run
+
+It looks like this is your first time using Cypress: 11.2.0
+
+
+Cypress failed to start.
+
+This may be due to a missing library or dependency. https://on.cypress.io/required-dependencies
+
+Please refer to the error below for more details.
+
+----------
+
+Command failed with ENOENT: /home/timothy/.cache/Cypress/11.2.0/Cypress/Cypress --no-sandbox --smoke-test --ping=832
+spawn /home/timothy/.cache/Cypress/11.2.0/Cypress/Cypress ENOENT
+
+----------
+
+Platform: linux-x64 (Ubuntu - )
+Cypress Version: 11.2.0``
+```
+
+Searching through my notes though, I don't find any mentions of the error, so I'm not sure.  In any case, the first thing I try is `rm /home/timothy/.cache/Cypress`, to see if I can't get it to regenerate a working cache. Now it tells me to run `cypress install`, which only works via `npx cypress install`. The install completes sucessfully, but the error is the same.
+
+So I look to see if I can launch the file manually:
+
+```
+$ /home/timothy/.cache/Cypress/11.2.0/Cypress/Cypress
+bash: /home/timothy/.cache/Cypress/11.2.0/Cypress/Cypress: No such file or directory
+
+[timothy@nixos:~/pu/gradesta/kcf/tools/kcf_graph]$ head /home/timothy/.cache/Cypress/11.2.0/Cypress/Cypress
+ELF>
+...
+```
+
+Hm, so the `Cypress` file exists, it is an executable... But BASH says that it doesn't exist when I try to run it. WTF? 
+
+It exists, it's marked as executable, but I cannot run it:
+
+```
+$ ls -l /home/timothy/.cache/Cypress/11.2.0/Cypress/Cypress
+-rwxr-xr-x 1 timothy users 158697928 Dec 31 22:13 /home/timothy/.cache/Cypress/11.2.0/Cypress/Cypress
+```
+
+And `sh` agrees with bash:
+
+```
+$ sh -c /home/timothy/.cache/Cypress/11.2.0/Cypress/Cypress
+sh: line 1: /home/timothy/.cache/Cypress/11.2.0/Cypress/Cypress: No such file or directory
+```
+
+Both Kagi and Google make me feel lonely, nothing seems to match my error message :O.
+
+I'm not an expert on linux dynamic linking, but I tried running `ldd` on the `Cypress` executable. It complained of lots of dependencies not being found.
+
+```
+> ldd Cypress
+	linux-vdso.so.1 (0x00007ffce0979000)
+	libffmpeg.so => /home/timothy/.cache/Cypress/11.2.0/Cypress/./libffmpeg.so (0x00007fbd4551c000)
+	libdl.so.2 => /nix/store/cynvahq5hc4g8hg99vajx6p1gw7sqhm7-glibc-2.34-210/lib/libdl.so.2 (0x00007fbd45517000)
+	libpthread.so.0 => /nix/store/cynvahq5hc4g8hg99vajx6p1gw7sqhm7-glibc-2.34-210/lib/libpthread.so.0 (0x00007fbd45512000)
+	libgobject-2.0.so.0 => not found
+	libglib-2.0.so.0 => not found
+	libgio-2.0.so.0 => not found
+	libnss3.so => not found
+	libnssutil3.so => not found
+	libsmime3.so => not found
+	libnspr4.so => not found
+	libatk-1.0.so.0 => not found
+	libatk-bridge-2.0.so.0 => not found
+	libcups.so.2 => not found
+	libdbus-1.so.3 => not found
+	libdrm.so.2 => not found
+	libgtk-3.so.0 => not found
+	libpango-1.0.so.0 => not found
+	libcairo.so.2 => not found
+	libm.so.6 => /nix/store/cynvahq5hc4g8hg99vajx6p1gw7sqhm7-glibc-2.34-210/lib/libm.so.6 (0x00007fbd45433000)
+	libX11.so.6 => not found
+	libXcomposite.so.1 => not found
+	libXdamage.so.1 => not found
+	libXext.so.6 => not found
+	libXfixes.so.3 => not found
+	libXrandr.so.2 => not found
+	libgbm.so.1 => not found
+	libexpat.so.1 => not found
+	libxcb.so.1 => not found
+	libxkbcommon.so.0 => not found
+	libasound.so.2 => not found
+	libatspi.so.0 => not found
+	libgcc_s.so.1 => /nix/store/cynvahq5hc4g8hg99vajx6p1gw7sqhm7-glibc-2.34-210/lib/libgcc_s.so.1 (0x00007fbd45415000)
+	libc.so.6 => /nix/store/cynvahq5hc4g8hg99vajx6p1gw7sqhm7-glibc-2.34-210/lib/libc.so.6 (0x00007fbd45215000)
+	/lib64/ld-linux-x86-64.so.2 => /nix/store/cynvahq5hc4g8hg99vajx6p1gw7sqhm7-glibc-2.34-210/lib64/ld-linux-x86-64.so.2 (0x00007fbd4f10c000)
+timothy@nixos ~/.c/C/1/Cypress> ldd chrome-sandbox
+	linux-vdso.so.1 (0x00007ffdd0891000)
+	libpthread.so.0 => /nix/store/cynvahq5hc4g8hg99vajx6p1gw7sqhm7-glibc-2.34-210/lib/libpthread.so.0 (0x00007ff66462c000)
+	libc.so.6 => /nix/store/cynvahq5hc4g8hg99vajx6p1gw7sqhm7-glibc-2.34-210/lib/libc.so.6 (0x00007ff66442e000)
+	/lib64/ld-linux-x86-64.so.2 => /nix/store/cynvahq5hc4g8hg99vajx6p1gw7sqhm7-glibc-2.34-210/lib64/ld-linux-x86-64.so.2 (0x00007ff66463a000)
+timothy@nixos ~/.c/C/1/Cypress> ldd Cypress
+	linux-vdso.so.1 (0x00007ffea4bf0000)
+	libffmpeg.so => /home/timothy/.cache/Cypress/11.2.0/Cypress/./libffmpeg.so (0x00007f10edf97000)
+	libdl.so.2 => /nix/store/cynvahq5hc4g8hg99vajx6p1gw7sqhm7-glibc-2.34-210/lib/libdl.so.2 (0x00007f10edf92000)
+	libpthread.so.0 => /nix/store/cynvahq5hc4g8hg99vajx6p1gw7sqhm7-glibc-2.34-210/lib/libpthread.so.0 (0x00007f10edf8d000)
+	libgobject-2.0.so.0 => not found
+	libglib-2.0.so.0 => not found
+	libgio-2.0.so.0 => not found
+	libnss3.so => not found
+	libnssutil3.so => not found
+	libsmime3.so => not found
+	libnspr4.so => not found
+	libatk-1.0.so.0 => not found
+	libatk-bridge-2.0.so.0 => not found
+	libcups.so.2 => not found
+	libdbus-1.so.3 => not found
+	libdrm.so.2 => not found
+	libgtk-3.so.0 => not found
+	libpango-1.0.so.0 => not found
+	libcairo.so.2 => not found
+	libm.so.6 => /nix/store/cynvahq5hc4g8hg99vajx6p1gw7sqhm7-glibc-2.34-210/lib/libm.so.6 (0x00007f10edeae000)
+	libX11.so.6 => not found
+	libXcomposite.so.1 => not found
+	libXdamage.so.1 => not found
+	libXext.so.6 => not found
+	libXfixes.so.3 => not found
+	libXrandr.so.2 => not found
+	libgbm.so.1 => not found
+	libexpat.so.1 => not found
+	libxcb.so.1 => not found
+	libxkbcommon.so.0 => not found
+	libasound.so.2 => not found
+	libatspi.so.0 => not found
+	libgcc_s.so.1 => /nix/store/cynvahq5hc4g8hg99vajx6p1gw7sqhm7-glibc-2.34-210/lib/libgcc_s.so.1 (0x00007f10ede90000)
+	libc.so.6 => /nix/store/cynvahq5hc4g8hg99vajx6p1gw7sqhm7-glibc-2.34-210/lib/libc.so.6 (0x00007f10edc90000)
+	/lib64/ld-linux-x86-64.so.2 => /nix/store/cynvahq5hc4g8hg99vajx6p1gw7sqhm7-glibc-2.34-210/lib64/ld-linux-x86-64.so.2 (0x00007f10f7b87000)
+```
+
+That actually led me in the right direction. It turns out that I simply needed to bring those dependencies into my path by running `nix-shell` in the root of this repo :)
+
+Now at least I can see the test error locally and try to fix it.
+
+```
+  1) Unit tests
+       kcf-graph.js
+         get_dates_as_strings works with valid data (simultaneously tests get_dates_as_ms):
+
+      AssertionError: expected 5 to equal 3
+      + expected - actual
+
+      -5
+      +3
+```
+
+It turns out that I had added 2 extra days onto the end of my date ranges to make it so that the graphs would show a continuation at the end of the range. This is because if you have a bunch of tasks completed on the last relevant day, you don't actually see the graph go down untill the next day. So in this case, simply updating the tests suffices.
+
+
+
 
 
 
