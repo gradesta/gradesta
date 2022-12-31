@@ -1,4 +1,4 @@
-name: Test kcf-graph library
+name: Test & build kcf-graph library
 
 on:
   push:
@@ -27,3 +27,18 @@ jobs:
 
       - name: Run tests
         run: nix-shell --command "cd kcf/tools/kcf_graph ; npm run cypress:run"
+
+      - name: Build kcf-graph - creates asset in kcf/tools/kcf_graph/dist/kcf-graph.js
+        run: nix-shell --command "cd kcf/tools/kcf_graph ; npx webpack"
+      
+      - name: 📂 Sync files
+        uses: SamKirkland/FTP-Deploy-Action@4.2.0
+        with:
+          server: "${{ secrets.FTP_SERVER }}"
+          username: "${{ secrets.FTP_USERNAME }}"
+          password: "${{ secrets.FTP_PASSWORD }}"
+          protocol: ftps
+          local-dir: kcf/tools/kcf_graph/dist/
+          server-dir: www/domains/gradesta.com/js/
+          state-name: ../.ftp-deploy-sync-state.json
+

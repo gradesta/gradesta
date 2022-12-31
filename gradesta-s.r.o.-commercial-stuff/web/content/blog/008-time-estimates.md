@@ -1156,6 +1156,11 @@ ESTIMATED_TIME: W3
 PARENT: 5ab6edc3f28466cb6bbfbb811bba78d3
 ```
 
+{{<screencast "2022-12-31-2a1456ef-3a75-45a7-80a3-568f994b0573" "21af48b56c50dc7758d94f6cb85151e0">}}
+
+
+
+
 
 {{<tasktimegraph>}}
 /json/blog/008/ci-cd.json
