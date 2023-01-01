@@ -1152,7 +1152,7 @@ Part 24: TASK: Building kcf_graph and automatically installing it in the static 
 ```
 TASK_ID: 21af48b56c50dc7758d94f6cb85151e0
 CREATED: 2022-12-31 20:00
-ESTIMATED_TIME: W3
+ESTIMATED_TIME: W3 DONE
 PARENT: 5ab6edc3f28466cb6bbfbb811bba78d3
 ```
 
@@ -1320,9 +1320,10 @@ Now at least I can see the test error locally and try to fix it.
 
 It turns out that I had added 2 extra days onto the end of my date ranges to make it so that the graphs would show a continuation at the end of the range. This is because if you have a bunch of tasks completed on the last relevant day, you don't actually see the graph go down untill the next day. So in this case, simply updating the tests suffices.
 
+Part 25: Time invested vs estimates graphs
+------------
 
-
-
+{{<screencast "2023-01-01-17eca8c4-9ef7-4c38-8bfe-b6ccb4b8186a" "91ab0076ae3ec0b6984e7705d2d3fc09">}}
 
 
 

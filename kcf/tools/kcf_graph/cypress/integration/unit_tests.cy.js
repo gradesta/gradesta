@@ -1,6 +1,6 @@
 /// <reference types="cypress" />
 
-import { get_date_range, get_dates_as_strings, get_estimates_hours } from '../../src/kcf-graph'
+import { get_date_range, get_dates_as_strings, get_estimates_hours, time_invested_per_day, max_hours_invested_or_estimated } from '../../src/kcf-graph'
 
 describe('Unit tests', function () {
   before(() => {
@@ -47,6 +47,26 @@ describe('Unit tests', function () {
         expect(estimated_hours.min.length).to.eq(estimated_hours.max.length)
         // All days plus two extra for context
         expect(estimated_hours.min.length).to.eq(53 + 2)
+      })
+    })
+
+    it('time_invested_per_day sorts tasks correctly according to time logs', function () {
+      cy.fixture('tasks').then((tasks) => {
+        expect(tasks.length).to.eq(11)
+        const tipd = time_invested_per_day(tasks)
+        expect(tipd['2022-10-19'].time_invested).to.eq(778)
+        expect(tipd['2022-10-19'].tasks[0].TASK_ID).to.eq('c4cea87b7e9a0db374d6679570555e08')
+      })
+    })
+
+    it('max_hours_invested_or_estimated calculates reasonable value', function () {
+      cy.fixture('tasks').then((tasks) => {
+        expect(tasks.length).to.eq(11)
+        const date_range = get_date_range(tasks)
+        const days = get_dates_as_strings(date_range.start, date_range.end)
+        const tipd = time_invested_per_day(tasks)
+        const max_hours = max_hours_invested_or_estimated(tasks, days, tipd)
+        expect(max_hours).to.eq(53)
       })
     })
   })
