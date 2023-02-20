@@ -4,6 +4,21 @@ productsTitle: >
 
 product:
   - content: >
+     #### Custom development & consulting work
+     
+     We can improve existing solutions and build new ones.
+     
+  - content: >
+     #### Code archeology and legacy systems support
+     
+     We can examine legacy solutions, improve them, document them, and train developers on their internals
+     
+  - content: >
+     #### CI/CD implementation DevEx support
+     
+     We can improve your development experience with new documentation and CI/CD workflows
+     
+  - content: >
       ####  gradesta ∼ integrations & support
 
       We provide support for integrating the gradesta protocol into your applications.
