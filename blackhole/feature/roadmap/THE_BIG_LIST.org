@@ -10,11 +10,6 @@ ESTIMATED_TIME: O5
 *** ESTIMATED_TIME: W3
 *** MILESTONES: mvp ci
 * Manager
-** TASK: figure out manager localization
-*** TASK_ID: 99ce23b59c7f33b4b63e442443fd1f88
-*** CREATED: 2022-09-01 18:49
-*** ESTIMATED_TIME: U2 W4
-*** MILESTONES: mvp
 ** TASK: Watching for new unix sockets
 *** TASK_ID: a28c678f9cb4684164b62b8730b34155
 *** CREATED: 2022-08-31 14:38
