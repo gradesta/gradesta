@@ -10,11 +10,6 @@ ESTIMATED_TIME: O5
 *** ESTIMATED_TIME: W3
 *** MILESTONES: mvp ci
 * Manager
-** TASK: Watching for new unix sockets
-*** TASK_ID: a28c678f9cb4684164b62b8730b34155
-*** CREATED: 2022-08-31 14:38
-*** ESTIMATED_TIME: W4
-*** MILESTONES: unix-sockets
 ** TASK: Listening for websocket connections
 *** TASK_ID: ba859b09bcf396f4e026ab075a9539fc
 *** CREATED: 2022-08-31 14:38
