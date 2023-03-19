@@ -1,3 +1,5 @@
+extern crate lazy_static;
+
 mod ageing_cellar;
 mod work_table;
 
