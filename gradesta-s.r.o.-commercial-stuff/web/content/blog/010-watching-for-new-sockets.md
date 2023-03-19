@@ -76,4 +76,8 @@ Trying to figure out hang when watching for new sockets
 
 {{<screencast "2023-03-14-f434f500-b082-40d9-82bc-18d26dfaf655" "a28c678f9cb4684164b62b8730b34155">}}
 
+Trying to figure out hang when watching for new sockets again
+-----------------------------------------------------------------
+
+{{<screencast "2023-03-19-901d9435-895a-41d6-9a8e-9e8382ee3432"  "a28c678f9cb4684164b62b8730b34155">}}
 

@@ -1,8 +1,9 @@
 extern crate notify;
 
-use notify::{Watcher};
+use notify::{Watcher, RecommendedWatcher};
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc;
+use tokio::runtime::Handle;
 use std::path::Path;
 use anyhow;
 
@@ -12,24 +13,33 @@ enum UnixSocketEvent {
     SocketClosed(String),
 }
 
+
 struct SocketDirWatcher {
-    sender: mpsc::Sender<UnixSocketEvent>,
+    pub sender: mpsc::Sender<UnixSocketEvent>,
+    watcher: RecommendedWatcher,
     receiver: mpsc::Receiver<notify::Result<notify::event::Event>>,
 }
 
 impl SocketDirWatcher {
     fn new(sender: mpsc::Sender<UnixSocketEvent>, path: String) -> anyhow::Result<Self> {
         let (tx_socket_dir_changes, rx_socket_dir_changes) = channel(100);
-        let mut watcher: notify::RecommendedWatcher =
-            Watcher::new(tx_socket_dir_changes, notify::Config::default())?;
+        let handle = Handle::try_current()?;
+        let mut watcher = RecommendedWatcher::new(move |res| {
+            handle.block_on(async {
+                tx_socket_dir_changes.send(res).await.unwrap();
+            })
+        },
+        notify::Config::default())?;
         watcher.watch(Path::new(&path), notify::RecursiveMode::Recursive)?;
 
         Ok(SocketDirWatcher {
             sender,
+            watcher,
             receiver: rx_socket_dir_changes,
         })
     }
-    fn process_event(&mut self, event: notify::event::Event) -> anyhow::Result<()> {
+
+    async fn process_event(&mut self, event: notify::event::Event) -> anyhow::Result<()> {
         match event.kind {
             notify::EventKind::Create(notify::event::CreateKind::Folder) => {
                 for(_, path) in event.paths.iter().enumerate() {
@@ -45,6 +55,7 @@ impl SocketDirWatcher {
     }
 }
 
+
 /// Watches for new sockets in the socket directory.
 /// Sends evets to the Sender in the form of a UnixSocketEvent.
 ///
@@ -55,24 +66,23 @@ impl SocketDirWatcher {
 ///  let watcher = SocketDirWatcher::new(sender, Path::new("/tmp/sockets_dir"));
 ///  tokio::spawn(watch_for_new_sockets(watcher));
 /// ```
-async fn watch_for_new_sockets(mut watcher: SocketDirWatcher) {
+async fn watch_for_new_sockets(mut watcher: SocketDirWatcher) -> anyhow::Result<()> {
     loop {
-        match watcher.receiver.recv() {
-            Ok(Ok(event)) => watcher.process_event(event),
-            Ok(Err(e)) => {
+        match watcher.receiver.recv().await {
+            Some(Ok(event)) => {
+                watcher.process_event(event).await
+            },
+            Some(Err(e)) => {
                 println!("watch error: {:?}", e);
                 Ok(())
             },
-            Err(e) => {
-                assert!(false, "{:?}", e);
-                // Not sure why but I'm getting this error:
-                // thread 'ageing_cellar::watch_sockets_dir::tests::test_socket_dir_watcher' panicked at 'RecvError', src/ageing_cellar/watch_sockets_dir.rs:67:17
-                // note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+            None => {
                 break;
             }
-        }.unwrap();
+        }?;
     }
     assert!(false, "watch_for_new_sockets should never exit");
+    Ok(())
 }
 
 
@@ -84,17 +94,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_socket_dir_watcher() {
-        let (sender, receiver) = mpsc::channel(8);
+        let (sender, mut receiver) = mpsc::channel(8);
         // Delete previous test socket dir if it exists
-        let _ = tokio::fs::remove_dir_all("/tmp/sockets_dir");
-        tokio::fs::create_dir_all("/tmp/sockets_dir").await.unwrap();
-        let watcher = SocketDirWatcher::new(sender, "/tmp/sockets_dir".to_string()).unwrap();
+        let _ = tokio::fs::remove_dir_all("/tmp/socket_dir").await;
+        tokio::fs::create_dir_all("/tmp/socket_dir").await.unwrap();
+        let watcher = SocketDirWatcher::new(sender, "/tmp/socket_dir".to_string()).unwrap();
+
         tokio::spawn(watch_for_new_sockets(watcher));
+        // Sleep to give the watcher time to start
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         // Create new socket directory
-        tokio::fs::create_dir_all("/tmp/sockets_dir/new-socket-dir").await.unwrap();
+        tokio::fs::create_dir_all("/tmp/socket_dir/new-socket-dir").await.unwrap();
         let event = receiver.recv().await.unwrap();
 
 
-        assert_eq!(event, UnixSocketEvent::NewSocket("ipc:///tmp/sockets_dir/new-socket-dir/PAIR.zmq".to_string()));
+        assert_eq!(event, UnixSocketEvent::NewSocket("ipc:///tmp/socket_dir/new-socket-dir/PAIR.zmq".to_string()));
     }
 }
