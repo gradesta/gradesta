@@ -87,7 +87,7 @@ MILESTONES: mvp
 
 {{<screencast "2023-03-07-4f7140d2-56cd-42a8-96a6-11ccd4f650ff" "99ce23b59c7f33b4b63e442443fd1f88">}}
 
-Part 2: Selecting a sollution
+Part 2: Selecting a solution
 ----------------------------------
 
 {{<screencast "2023-03-07-19a422c5-d619-4666-bb14-e05d6fc5c63e" "99ce23b59c7f33b4b63e442443fd1f88">}**
@@ -159,3 +159,133 @@ Unfortunately it appears that the twine format [is not able to handle plurals at
 
 So this leads us back to fluent. It appears that fluent is pure rust so there shouldn't be any weird compilation shinanigans. It also uses a sane file format that won't change in random huge ways each time line numbers get shifted like with PO files. This will reduce the weirdness of the git diffs. The only thing that I don't like is the need to pass the `bundle` object around. 
 
+
+Part 3: More examination of fluent
+-----------------------------------------
+
+{{<screencast "2023-03-15-bfdc889b-dfdd-4fa1-9819-1657f30d8ef2">}}
+
+I found the following in the fluent docs:
+
+```
+Ergonomics & Higher Level APIs
+
+Reading the example, you may notice how verbose it feels. Many core methods are fallible, others accumulate errors, and there are intermediate structures used in operations.
+
+This is intentional as it serves as building blocks for variety of different scenarios allowing implementations to handle errors, cache and optimize results.
+
+At the moment it is expected that users will use the fluent-bundle crate directly, while the ecosystem matures and higher level APIs are being developed.
+```
+
+This suggests to me that perhaps rust's fluent API is not particularly stable. This gives me pause. It really does look not-fun to work with :/
+
+I decided to take a look at fluent's [dependency graph](https://github.com/projectfluent/fluent-rs/network/dependents) on github. Apparently it is used by 3.5 thousand repos. Not bad, probably is usable then (unless those are all dups...) 
+
+Delving in I found [this commit](https://github.com/crypt0kitty/czkawka/commit/77a48ca6aa1b1b34908a98ff97c6e05d17457df3) in some random repo. This repo isn't using fluent directly, but rather is using [i18n-embed].
+
+What the end up doing is actually [defining](https://github.com/crypt0kitty/czkawka/commit/77a48ca6aa1b1b34908a98ff97c6e05d17457df3?diff=unified#diff-cb9d429954f216ede69c4b8d3d36b3c950a22865e103d319b6a9bb854c5c36a2) an `fl!` macro for themselves to make the fluent calls less verbose. Then their diff looks like:
+
+
+```
+                    format!("Very High {}", *h)
+                    format!("{} {}", fl!("core_similarity_very_high"), *h)
+```
+
+So the fluent system is replacing easy to read english language strings with these string slugs. Certainly makes the codebase harder to read and a bit more verbose. But hm. I'll have to experience it to see if it works out. I see a lot of problems with this. Less context for co-pilot, less context for the coder. Perhaps I'd do something like:
+
+```
+-                   format!("Very High {}", *h)
++                   format!("{} {}", fl!("core_similarity_very_high" /*Very High*/), *h)
+```
+
+
+I kind of like this, and the macro appears to be MIT license. I think I'll just end up copying it.
+
+Acutally, unfortunately, it turns out that this isn't a very good system. It locks word order/message formatting into the source code. This isn't really good because some languages have different natural word order.
+
+```
+-                    entry_info.set_text(format!("Found {} broken files.", broken_files_number).as_str());
++                    entry_info.set_text(format!("{} {} {}.", fl!("compute_found"), broken_files_number, fl!("compute_broken_files")).as_str());
+```
+
+here if a language's natural word order was something like "Broken files {} found" rather than "Found {} broken files" it would be impossible for the translator to put in the correct word order.  So this macro method is probably a non-starter... Off to looking at more fluent examples to see if there's a better way...
+
+While doing this I cam accross an interesting repo description: "If the broad light of day could be let in upon men’s actions, it would purify them as the sun disinfects. " [source](https://github.com/garthtrickett/light). It turns out that the only reason this repo is showing up in the dependency graph is that it contains a copy of tauri which apparently uses fluent for localization. Other repos in the "used by" list appear not to import fluent at all.
+
+
+I was able to find [another project using fluent](https://github.com/fastn-stack/fastn/blob/58f5307761167e5ded52cab4b464668ea0985eb7/fastn-core/i18n/en/translation.ftl#L25) and this one is doing so in a way that encodes word order in the translations.
+
+From the ftl file:
+
+```
+out-dated-body = The { $lang } document was last modified on { $last-modified-on }. Since then, the { $primary-lang } version has the following changes.
+```
+
+But the way of sending these context variables to fluent is downright strange. There is this [large source file](https://github.com/fastn-stack/fastn/blob/aa237f510b1bc3bc05990587ecec75f0218d2c37/fastn-core/src/library/fastn_dot_ftd.rs) in wich every single message is loaded into variables, and the variables are loaded by passing all possible context vars to all possible strings, regardless of whether they need that context :O
+
+```
+        out_dated_body = fastn_core::i18n::translation::search(
+            &lang,
+            &primary_lang,
+            "out-dated-body",
+            &current_document_last_modified_on
+        ),
+        out_dated_heading = fastn_core::i18n::translation::search(
+            &lang,
+            &primary_lang,
+            "out-dated-heading",
+            &current_document_last_modified_on
+        ),
+        show_latest_version = fastn_core::i18n::translation::search(
+            &lang,
+            &primary_lang,
+            "show-latest-version",
+            &current_document_last_modified_on
+        ),
+```
+
+{{<screencast "2023-03-22-10ba1845-bcb4-47c8-b8dd-582b43d15154" "99ce23b59c7f33b4b63e442443fd1f88">}}
+
+So after looking at things closely, fluent does have [full pluralization support](https://mozilla-l10n.github.io/localizer-documentation/tools/fluent/basic_syntax.html#selectors-and-plurals). Now we just need to deal with passing the `bundle` arround. I guess that logging and localization are kind of special cases in which global variables make sense.
+
+So I spent a lot of time trying to figure out how to do a global fluent bundle variable. [According to stackoverflow](https://stackoverflow.com/questions/19605132/is-it-possible-to-use-global-variables-in-rust), I should be storing it in a Mutex in a `lazy_static`. However, when I try that I get an error (even with Arc):
+
+```
+error[E0277]: `(dyn Any + 'static)` cannot be sent between threads safely
+  --> src/ageing_cellar/localizer.rs:10:1
+   |
+10 | / lazy_static! {
+11 | |     static ref FLUENT_BUNDLE: Arc<Mutex<FluentBundle<FluentResource>>> = {
+12 | |
+13 | |         let langid_en: LanguageIdentifier = "en-US".parse().expect("Parsing failed");
+...  |
+31 | |     };
+32 | | }
+   | |_^ `(dyn Any + 'static)` cannot be sent between threads safely
+   |
+   = help: the trait `Send` is not implemented for `(dyn Any + 'static)`
+   = note: required because of the requirements on the impl of `Send` for `std::ptr::Unique<(dyn Any + 'static)>`
+   = note: required because it appears within the type `Box<(dyn Any + 'static)>`
+   = note: required because it appears within the type `(TypeId, Box<(dyn Any + 'static)>)`
+   = note: required because of the requirements on the impl of `Send` for `hashbrown::raw::RawTable<(TypeId, Box<(dyn Any + 'static)>)>`
+   = note: required because it appears within the type `hashbrown::map::HashMap<TypeId, Box<(dyn Any + 'static)>, BuildHasherDefault<rustc_hash::FxHasher>>`
+   = note: required because it appears within the type `HashMap<TypeId, Box<(dyn Any + 'static)>, BuildHasherDefault<rustc_hash::FxHasher>>`
+   = note: required because it appears within the type `Option<HashMap<TypeId, Box<(dyn Any + 'static)>, BuildHasherDefault<rustc_hash::FxHasher>>>`
+   = note: required because it appears within the type `type_map::TypeMap`
+   = note: required because of the requirements on the impl of `Send` for `RefCell<type_map::TypeMap>`
+   = note: required because it appears within the type `intl_memoizer::IntlLangMemoizer`
+   = note: required because it appears within the type `FluentBundle<FluentResource, intl_memoizer::IntlLangMemoizer>`
+   = note: required because of the requirements on the impl of `Sync` for `std::sync::Mutex<FluentBundle<FluentResource, intl_memoizer::IntlLangMemoizer>>`
+   = note: 1 redundant requirement hidden
+   = note: required because of the requirements on the impl of `Sync` for `Arc<std::sync::Mutex<FluentBundle<FluentResource, intl_memoizer::IntlLangMemoizer>>>`
+```
+
+Looking closely at the end of that error message it appears that the trouble comes from `intl_memoizer::IntlLangMemoizer` having a type? of `(dyn Any + 'static)`. I'm not quite familliar enough with Rust to understand how a type can have a type, but that's how I understand it...
+
+A little snooping around the web with kagi tells me [I'm not alone](https://github.com/projectfluent/fluent-rs/issues/167). So I finally figured out how to do it. Strangely, I had to use fluent 0.14.4 because there is a regression in the latest version and the concurrent version of fluent bundle is missing. I looked through the git history and I could not figure out for the life of me how that happened. It just dissapears with no suspicious looking commits.
+
+In the next session I am going to try to figure out how to include the fluent files as resources in the rust binaries and to load the locale from `LANG`.
+
+{{<screencast "2023-03-22-292d553b-779d-4afd-82b1-f1b28e762c70" "99ce23b59c7f33b4b63e442443fd1f88">}}
+
+{{<screencast "2023-03-23-f1cffe0c-e479-49cd-9396-9487de81d172" "99ce23b59c7f33b4b63e442443fd1f88">}}
