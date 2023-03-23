@@ -1,27 +1,27 @@
 ---
 productsTitle: >
-  # What we can provide
+  # What I can provide
 
 product:
   - content: >
      #### Custom development & consulting work
      
-     We can improve existing solutions and build new ones.
+     I can improve existing solutions and build new ones.
      
   - content: >
      #### Code archeology and legacy systems support
      
-     We can examine legacy solutions, improve them, document them, and train developers on their internals
+     I can examine legacy solutions, improve them, document them, and train developers on their internals
      
   - content: >
      #### CI/CD implementation DevEx support
      
-     We can improve your development experience with new documentation and CI/CD workflows
+     I can improve your development experience with new documentation and CI/CD workflows
      
   - content: >
       ####  gradesta ∼ integrations & support
 
-      We provide support for integrating the gradesta protocol into your applications.
+      I can provide support for integrating the gradesta protocol into your applications.
 
   - content: >
       ####  django-import-export-celery ∼ integrations & support
@@ -52,16 +52,12 @@ priceLevel:
   - content: >
       ### Email support and research
 
-      $65 an hour *
-
     image: images/contact/email.svg
     callToAction: Get support
     callToActionLink: "mailto:tim@gradesta.com?subject=Email support request: <subject>&body=In your initial email, please include the name, address, and VAT number (if applicable) of the organization to be invoiced."
 
   - content: >
       ### Integration and development work
-
-      $75-90 an hour *
 
     callToAction: Integrate & develop
     callToActionLink: "mailto:tim@gradesta.com?subject=Development request: <subject>&body=In your initial email, please include the name, address, and VAT number (if applicable) of the organization to be invoiced."
@@ -70,11 +66,6 @@ priceLevel:
   - content: >
       ### High priority support
 
-      $120 an hour *
-
     callToAction: Get priority support
     callToActionLink: "mailto:tim@gradesta.com?subject=High priority support request: <subject>&body=In your initial email, please include the name, address, and VAT number (if applicable) of the organization to be invoiced."
     image: images/contact/time.svg
-
-pricingNotes: >
-  \* Work is billed with a 15 minute minimum, prices vary based on industry
