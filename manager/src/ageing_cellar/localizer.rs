@@ -1,6 +1,7 @@
 use lazy_static::lazy_static;
 use tokio::sync::{Mutex};
 use std::sync::Arc;
+use std::convert::From;
 
 use fluent::concurrent::FluentBundle;
 use fluent::{FluentValue, FluentResource, FluentArgs};
@@ -40,7 +41,7 @@ lazy_static! {
     };
 }
 
-pub async fn get_localized_string<'a> (key: &str, args: Option<&FluentArgs<'a>>) -> String {
+async fn get_localized_string<'a> (key: &str, args: Option<&FluentArgs<'a>>) -> String {
     let bundle = FLUENT_BUNDLE.lock().await;
     let msg = bundle.get_message(key).expect("Message not found.");
     let pattern = msg.value.expect("Message has no value.");
@@ -49,17 +50,56 @@ pub async fn get_localized_string<'a> (key: &str, args: Option<&FluentArgs<'a>>)
     value.to_string()
 }
 
+/// Get the localized string for a given key.
+pub async fn l (key: &str) -> String {
+    get_localized_string(key, None).await
+}
+
+/// Get the localized string for a given key passing one argument.
+pub async fn l1 <'a, A> (key: &str, arg: &str, value: A) -> String
+    where FluentValue<'a>: From<A>
+    {
+    let mut args = FluentArgs::new();
+    args.add(arg, FluentValue::from(value));
+    get_localized_string(key, Some(&args)).await
+}
+
+/// Get the localized string for a given key passing two arguments.
+pub async fn l2 <'a, A, B> (key: &str, arg1: &str, value1: A, arg2: &str, value2: B) -> String
+    where FluentValue<'a>: From<A> + From<B>
+    {
+    let mut args = FluentArgs::new();
+    args.add(arg1, FluentValue::from(value1));
+    args.add(arg2, FluentValue::from(value2));
+    get_localized_string(key, Some(&args)).await
+}
+
+/// Get the localized string for a given key passing three arguments.
+pub async fn l3 <'a, A, B, C> (key: &str, arg1: &str, value1: A, arg2: &str, value2: B, arg3: &str, value3: C) -> String
+    where FluentValue<'a>: From<A> + From<B> + From<C>
+    {
+    let mut args = FluentArgs::new();
+    args.add(arg1, FluentValue::from(value1));
+    args.add(arg2, FluentValue::from(value2));
+    args.add(arg3, FluentValue::from(value3));
+    get_localized_string(key, Some(&args)).await
+}
+
 // Test
 #[tokio::test]
 async fn test_localizer() {
-    let mut args = FluentArgs::new();
-    args.add("name", FluentValue::from("John"));
-    let localized_string = get_localized_string("test_case_intro", Some(&args)).await;
+    let hello_world = l("test_case_simple").await;
+    assert_eq!(hello_world, "Hello world!");
+
+    let localized_string = l1("test_case_intro", "name", "John").await;
     assert_eq!(localized_string, "Welcome, \u{2068}John\u{2069}.");
 
-    let mut plural_args = FluentArgs::new();
-    plural_args.add("num", FluentValue::from(3));
-
-    let localized_plural = get_localized_string("test_case_plural", Some(&plural_args)).await;
+    let localized_plural = l1("test_case_plural", "num", 3).await;
     assert_eq!(localized_plural, "You have a few new messages.");
+
+    let two_params = l2("test_case_two_params", "one", "John", "two", 30).await;
+    assert_eq!(two_params, "1. \u{2068}John\u{2069} 2. \u{2068}30\u{2069}");
+
+    let three_params = l3("test_case_three_params", "one", "John", "two", 30, "three", "Doe").await;
+    assert_eq!(three_params, "1. \u{2068}John\u{2069} 2. \u{2068}30\u{2069} 3. \u{2068}Doe\u{2069}");
 }

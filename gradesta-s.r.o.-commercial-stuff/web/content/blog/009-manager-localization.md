@@ -289,3 +289,8 @@ In the next session I am going to try to figure out how to include the fluent fi
 {{<screencast "2023-03-22-292d553b-779d-4afd-82b1-f1b28e762c70" "99ce23b59c7f33b4b63e442443fd1f88">}}
 
 {{<screencast "2023-03-23-f1cffe0c-e479-49cd-9396-9487de81d172" "99ce23b59c7f33b4b63e442443fd1f88">}}
+
+Making it so that the localization code does not leak fluent dependent implementation details
+----------------------------------------------------------------------------------------------------------------
+
+{{<screencast "2023-03-25-e77275df-6e0d-42f5-8f5b-f97c0211d887" "99ce23b59c7f33b4b63e442443fd1f88">}}
