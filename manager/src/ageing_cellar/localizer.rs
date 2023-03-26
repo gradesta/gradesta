@@ -116,6 +116,13 @@ pub fn l3 <'a, A, B, C> (key: &str, arg1: &str, value1: A, arg2: &str, value2: B
     get_localized_string(key, Some(&args))
 }
 
+/// Remove unicode text direction characters from a string.
+/// This is useful for testing as it makes things cleaner and nicer to work with.
+/// \u{2068}GR1\u{2069} -> GR1
+pub fn remove_unicode_direction_chars (s: &str) -> String {
+    s.replace("\u{2068}", "").replace("\u{2069}", "")
+}
+
 // Test
 #[tokio::test]
 async fn test_localizer() {
@@ -124,6 +131,7 @@ async fn test_localizer() {
 
     let localized_string = l1("test_case_intro", "name", "John");
     assert_eq!(localized_string, "Welcome, \u{2068}John\u{2069}.");
+    assert_eq!(remove_unicode_direction_chars(&localized_string), "Welcome, John.");
 
     let localized_plural = l1("test_case_plural", "num", 3);
     assert_eq!(localized_plural, "You have a few new messages.");
@@ -133,4 +141,5 @@ async fn test_localizer() {
 
     let three_params = l3("test_case_three_params", "one", "John", "two", 30, "three", "Doe");
     assert_eq!(three_params, "1. \u{2068}John\u{2069} 2. \u{2068}30\u{2069} 3. \u{2068}Doe\u{2069}");
+
 }
