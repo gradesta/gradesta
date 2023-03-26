@@ -9,6 +9,8 @@ use std::collections;
 use std::fs;
 use std::path;
 
+use super::localizer::*;
+
 /// 1. Deletes any left over directories from socket dir
 /// 2. Deletes any left over/non-connected sockets from socket dir
 ///
@@ -28,9 +30,14 @@ pub fn organize_sockets_dir(
     // https://natclark.com/tutorials/rust-list-all-files/
     let entries = fs::read_dir(top_dir).or_else(|err| {
         Err(anyhow!(
-            "Could not read dir {} \n {}",
-            sockets_dir.as_os_str().to_str().unwrap_or("Cannot display sockets dir path because it contains really really weird characters or something.").to_owned(),
-            err.to_string()
+            "{}",
+            l3("could-not-read-dir" // "Could not read dir {} \n {}",
+               ,"dir"
+               ,sockets_dir.as_os_str().to_str().unwrap_or("Cannot display sockets dir path because it contains really really weird characters or something.").to_owned()
+               ,"error"
+               ,err.to_string()
+               ,"err_code"
+               ,"GR1")
         ))
     })?;
 
@@ -162,8 +169,10 @@ mod tests {
             Err(e) => assert_eq!(
                 e.to_string(),
                 format!(
-                    "Could not read dir {} \n Permission denied (os error 13)",
-                    temp_dir_path
+                    "{}{}{}",
+                    "\u{2068}GR1\u{2069}: Could not read dir \u{2068}",
+                    temp_dir_path,
+                    "\u{2069} \\n \u{2068}Permission denied (os error 13)\u{2069}",
                 )
             ),
         };

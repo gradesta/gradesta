@@ -1,3 +1,6 @@
+could-not-read-dir = { $err_code }: Could not read dir { $dir } \n { $error }
+
+# Test cases for testing the fluent system
 test_case_simple = Hello world!
 test_case_intro = Welcome, { $name }.
 test_case_plural = { $num ->
@@ -7,3 +10,6 @@ test_case_plural = { $num ->
 }
 test_case_two_params = 1. { $one } 2. { $two }
 test_case_three_params = 1. { $one } 2. { $two } 3. { $three }
+
+
+
