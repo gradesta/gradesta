@@ -167,12 +167,10 @@ mod tests {
         match organize_sockets_dir(&tmp_dir.path(), &collections::HashSet::new()) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
-                e.to_string(),
+                remove_unicode_direction_chars(&e.to_string()),
                 format!(
-                    "{}{}{}",
-                    "\u{2068}GR1\u{2069}: Could not read dir \u{2068}",
+                    "GR1: Could not read dir {}\nPermission denied (os error 13)",
                     temp_dir_path,
-                    "\u{2069} \\n \u{2068}Permission denied (os error 13)\u{2069}",
                 )
             ),
         };

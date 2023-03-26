@@ -1,4 +1,5 @@
-could-not-read-dir = { $err_code }: Could not read dir { $dir } \n { $error }
+could-not-read-dir = { $err_code }: Could not read dir { $dir }
+ { $error }
 
 # Test cases for testing the fluent system
 test_case_simple = Hello world!
