@@ -47,9 +47,10 @@ pub fn organize_sockets_dir(
         // The only possible error here from glibc's standpoint is EBADF which is irrelivant as we just got
         // a valid FD from glibc.
         let entry = entry_r.unwrap();
-        let report_str = format!(
-            "Reading first level dir entry. {}",
-            entry.path().to_string_lossy()
+        let report_str = l1("log-reading-first-level-dir-entry",
+            /* "Reading first level dir entry. {}",*/
+               "dir",
+               entry.path().to_string_lossy()
         );
 
         test_channels::report(&report_str);
@@ -61,9 +62,13 @@ pub fn organize_sockets_dir(
         let mut empty = true;
         let entries1 = fs::read_dir(socket_dir.clone()).or_else(|err| {
             Err(anyhow!(
-                "Could not read directory {}\n{}",
-                socket_dir.as_path().display(),
-                err.to_string()
+                l3("could-not-read-dir" // "Could not read dir {} \n {}",
+                   ,"dir"
+                   ,socket_dir.as_os_str().to_str().unwrap_or("Cannot display sockets dir path because it contains really really weird characters or something.").to_owned()
+                   ,"error"
+                   ,err.to_string()
+                   ,"err_code"
+                   ,"GR2")
             ))
         })?;
 
@@ -230,9 +235,9 @@ mod tests {
         match organize_sockets_dir(&tmp_dir.path(), &collections::HashSet::new()) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
-                e.to_string(),
+                remove_unicode_direction_chars(&e.to_string()),
                 format!(
-                    "Could not read directory {}\nPermission denied (os error 13)",
+                    "GR2: Could not read dir {}\nPermission denied (os error 13)",
                     empty_socket_dir.as_os_str().to_str().unwrap().to_owned()
                 )
             ),

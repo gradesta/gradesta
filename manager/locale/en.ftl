@@ -1,3 +1,4 @@
+log-reading-first-level-dir-entry = Reading first level dir entry. { $dir }{ $dir }
 could-not-read-dir = { $err_code }: Could not read dir { $dir }
  { $error }
 
