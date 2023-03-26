@@ -81,10 +81,15 @@ pub fn organize_sockets_dir(
                 // https://docs.rs/ofiles/0.2.0/ofiles/fn.opath.html
                 let pids = ofiles::osocket(entry1.path()).or_else(|err| {
                     Err(anyhow!(
-                        "Error looking up socket information for socket {}\n{}.",
-                        socket.to_string_lossy(),
-                        err.to_string()
-                    ))
+                        l3("error-looking-up-socket-information",
+                           // "Error looking up socket information for socket {}\n{}.",
+                           "err_code",
+                           "GR3",
+                           "socket",
+                           socket.to_string_lossy(),
+                           "error",
+                           err.to_string()
+                    )))
                 })?;
                 let mut active = false;
                 for pid in &pids {
@@ -208,9 +213,9 @@ mod tests {
         match organize_sockets_dir(&tmp_dir.path(), &collections::HashSet::new()) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
-                e.to_string(),
+                remove_unicode_direction_chars(&e.to_string()),
                 format!(
-                    "Error looking up socket information for socket {}/PAIR.zmq\nNo such file or directory (os error 2).",
+                    "GR3: Error looking up socket information for socket {}/PAIR.zmq\nNo such file or directory (os error 2)",
                     socket_dir.as_os_str().to_str().unwrap().to_owned()
                 )
             ),

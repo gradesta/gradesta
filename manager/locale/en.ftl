@@ -1,6 +1,8 @@
 log-reading-first-level-dir-entry = Reading first level dir entry. { $dir }{ $dir }
 could-not-read-dir = { $err_code }: Could not read dir { $dir }
  { $error }
+error-looking-up-socket-information = { $err_code }: Error looking up socket information for socket { $socket }
+ { $error }
 
 # Test cases for testing the fluent system
 test_case_simple = Hello world!
