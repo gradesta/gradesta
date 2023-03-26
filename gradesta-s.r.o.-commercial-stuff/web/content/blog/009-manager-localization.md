@@ -294,3 +294,17 @@ Making it so that the localization code does not leak fluent dependent implement
 ----------------------------------------------------------------------------------------------------------------
 
 {{<screencast "2023-03-25-e77275df-6e0d-42f5-8f5b-f97c0211d887" "99ce23b59c7f33b4b63e442443fd1f88">}}
+
+
+Adopting the new localization system
+--------------------------------------------
+
+I created a quick utility for generating unique error codes. Usage looks like:
+
+```
+$ ../dev-utils/error-code.py
+GR2
+```
+
+
+{{<screencast "2023-03-26-30bbc6c0-dd90-4a4c-b4f9-77e0dc3ab823" "99ce23b59c7f33b4b63e442443fd1f88">}}
