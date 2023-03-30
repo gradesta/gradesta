@@ -112,10 +112,15 @@ pub fn organize_sockets_dir(
         if empty {
             fs::remove_dir(socket_dir.clone()).or_else(|err| {
                 Err(anyhow!(
-                    "Could not remove dir {}\n{}",
-                    socket_dir.as_path().display(),
-                    err.to_string(),
-                ))
+                    l3("could-not-remove-dir",
+                       /* "Could not remove dir {}\n{}", */
+                       "err_code",
+                       "GR4",
+                       "dir",
+                       socket_dir.as_os_str().to_str().unwrap_or("Cannot display sockets dir path because it contains really really weird characters or something.").to_owned(),
+                       "error",
+                       err.to_string(),
+                )))
             })?;
         }
     }
@@ -281,9 +286,9 @@ mod tests {
         match organize_sockets_dir(&tmp_dir.path(), &collections::HashSet::new()) {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(
-                e.to_string(),
+                remove_unicode_direction_chars(&e.to_string()),
                 format!(
-                    "Could not remove dir {}\nPermission denied (os error 13)",
+                    "GR4: Could not remove dir {}\nPermission denied (os error 13)",
                     empty_socket_dir.as_os_str().to_str().unwrap().to_owned()
                 )
             ),
