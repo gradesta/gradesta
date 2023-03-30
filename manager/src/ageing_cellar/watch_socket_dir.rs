@@ -1,6 +1,9 @@
 extern crate notify;
 
 use notify::{Watcher, RecommendedWatcher};
+
+use super::localizer::*;
+
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc;
 use tokio::runtime::Handle;
@@ -69,11 +72,17 @@ impl SocketDirWatcher {
 async fn watch_for_new_sockets(mut watcher: SocketDirWatcher) -> anyhow::Result<()> {
     loop {
         match watcher.receiver.recv().await {
-            Some(Ok(event)) => {
-                watcher.process_event(event).await
-            },
+            Some(Ok(event)) => watcher.process_event(event).await,
             Some(Err(e)) => {
-                println!("watch error: {:?}", e);
+                println!(
+                    "{}",
+                    l2(
+                        "watch-error", /*"watch error: {:?}" */
+                        "err_code",
+                        "GR5",
+                        "error",
+                        e.to_string()
+                    ));
                 Ok(())
             },
             None => {

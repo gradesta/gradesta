@@ -5,6 +5,8 @@ could-not-read-dir = { $err_code }: Could not read dir { $dir }
  { $error }
 error-looking-up-socket-information = { $err_code }: Error looking up socket information for socket { $socket }
  { $error }
+watch-error = { $err_code }: Watch error
+ { $error }
 
 # Test cases for testing the fluent system
 test_case_simple = Hello world!
