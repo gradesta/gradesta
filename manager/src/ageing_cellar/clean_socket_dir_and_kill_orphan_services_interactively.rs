@@ -9,6 +9,8 @@ use std::time::Duration;
 use sysinfo;
 use sysinfo::{ProcessExt, SystemExt};
 
+use super::localizer::*;
+
 /// Deletes left over sockets.
 /// If these sockets are in use and in terminal
 ///  asks user if we should send TERM/KILL signal to the user
@@ -22,7 +24,14 @@ pub fn clean(sockets_dir: &path::Path) -> anyhow::Result<()> {
         // Just print error message about dangling sockets
         let dangling_sockets = organize_sockets_dir(sockets_dir, &collections::HashSet::new())?;
         if dangling_sockets.len() > 0 {
-            Err(anyhow!("Could not start because the following gradesta service sockets are still in use: \n{}", display_dangling_sockets(dangling_sockets)?))
+            Err(anyhow!(l2(
+                "sockets-still-in-use",
+                /* "Could not start because the following gradesta service sockets are still in use: \n{}" */
+                "error_code",
+                "GR6",
+                "sockets",
+                display_dangling_sockets(dangling_sockets)?
+            ), ))
         } else {
             Ok(())
         }
@@ -37,7 +46,11 @@ fn display_pid(pid: ofiles::Pid) -> anyhow::Result<String> {
         Some(process) => {
             return Ok(format!("    {} - {}\n", i32pid, process.name()));
         }
-        None => return Ok(format!("    {} - no longer running\n", i32pid)),
+        None => return Ok(l1(
+            "process-listing.no-longer-running",
+            /* "    {} - no longer running */
+            "pid",
+            i32pid)),
     };
 }
 
@@ -58,7 +71,11 @@ fn display_dangling_sockets(
 ) -> anyhow::Result<String> {
     let mut display = String::new();
     for (socket, pids) in dangling_sockets {
-        let socket_header: String = format!("{}\n    PID - name\n", socket.to_string_lossy());
+        let socket_header: String = l1(
+            "process-listing.socket-header",
+            /* "{}\n    PID - name\n" */
+            "socket",
+            socket.to_string_lossy());
         display.push_str(&socket_header);
         for pid in pids {
             display.push_str(&display_pid(pid)?);
@@ -82,7 +99,15 @@ where
         for (socket, pids) in dangling_sockets {
             for pid in pids {
                 // Prompt the user as to what to do with the pid
-                writeln!(stdout, "The socket {} is currently in use by the following program\n    PID - name\n{}Would you like to [t term, k kill, i ignore, w wait 1 sec] this process?", socket.to_string_lossy(), display_pid(pid)?)?;
+                writeln!(stdout, "{}", l3(
+                    "process-listing.socket-in-use",
+                    /* "The socket {} is currently in use by the following program\n    PID - name\n{}Would you like to [t term, k kill, i ignore, w wait 1 sec] this process?" */
+                    "error_code",
+                    "GR7",
+                    "socket",
+                    socket.to_string_lossy(),
+                    "pid",
+                    display_pid(pid)?))?;
                 // Actually do the killing/terminating/ignoring
                 let mut s = String::new();
                 stdin.read_line(&mut s)?;
@@ -104,7 +129,7 @@ where
                         ignored_pids.insert(pid);
                     }
                     _ => {
-                        write!(stdout, "Unknown option.")?;
+                        write!(stdout, "{}", l("process-listing.unknown-option"))?;
                     }
                 };
                 continue 'main_loop;

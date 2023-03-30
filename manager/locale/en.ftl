@@ -7,6 +7,16 @@ error-looking-up-socket-information = { $err_code }: Error looking up socket inf
  { $error }
 watch-error = { $err_code }: Watch error
  { $error }
+sockets-still-in-use = { $err_code }: Could not start because the following gradesta service sockets are still in use:
+ { $error }
+process-listing = ...
+  .no-longer-running = "    { $pid } - no longer running"
+  .socket-header = "{ $socket }\n    PID - name\n
+  .socket-in-use = The socket { $socket } is currently in use by the following program
+  PID - name
+  { $pid }
+  Would you like to [t term, k kill, i ignore, w wait 1 sec] this process?
+  .unkown-option = Unknown option
 
 # Test cases for testing the fluent system
 test_case_simple = Hello world!
