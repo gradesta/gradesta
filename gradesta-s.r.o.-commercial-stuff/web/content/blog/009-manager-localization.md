@@ -90,7 +90,7 @@ MILESTONES: mvp
 Part 2: Selecting a solution
 ----------------------------------
 
-{{<screencast "2023-03-07-19a422c5-d619-4666-bb14-e05d6fc5c63e" "99ce23b59c7f33b4b63e442443fd1f88">}**
+{{<screencast "2023-03-07-19a422c5-d619-4666-bb14-e05d6fc5c63e" "99ce23b59c7f33b4b63e442443fd1f88">}}
 
 **Fluent**
 
@@ -122,7 +122,7 @@ fn main() {
 }
 ```
 
-Everything I see here is `bundle.**. While this is technically quite a good thing, in practice this is a huge hassle. I'm going to skip fluent for this reason.
+Everything I see here is `bundle.**`. While this is technically quite a good thing, in practice this is a huge hassle. I'm going to skip fluent for this reason.
 
 **rust-icu**
 
@@ -163,7 +163,7 @@ So this leads us back to fluent. It appears that fluent is pure rust so there sh
 Part 3: More examination of fluent
 -----------------------------------------
 
-{{<screencast "2023-03-15-bfdc889b-dfdd-4fa1-9819-1657f30d8ef2">}}
+{{<screencast "2023-03-15-bfdc889b-dfdd-4fa1-9819-1657f30d8ef2" "99ce23b59c7f33b4b63e442443fd1f88">}}
 
 I found the following in the fluent docs:
 
