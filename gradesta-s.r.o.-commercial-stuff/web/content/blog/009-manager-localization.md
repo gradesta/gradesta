@@ -1,9 +1,9 @@
 ---
 title: "Localization of the manager"
 date: 2023-03-07
-featureimage: https://assets.gradesta.com/gradesta/img/dalle2-clock-and-coins.png
+featureimage: https://assets.gradesta.com/gradesta/img/dalle2-localization.png
 author: timothy hobbs <tim@gradesta.com>
-draft: true
+draft: false
 ---
 
 Part 1: Researching localization methods
