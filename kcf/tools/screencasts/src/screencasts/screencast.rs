@@ -70,7 +70,7 @@ mod tests {
         assert_eq!(metadata.id, "screencast-metadata");
         assert_eq!(
             metadata.authors,
-            vec!["Timothy Hobbs <timothyhobbs@seznam.cz>"]
+            vec!["Timothy Hobbs <tim@gradesta.com>"]
         );
         assert_eq!(metadata.tasks, vec!["100", "200"]);
         assert_eq!(metadata.duration_seconds, 3.4);
