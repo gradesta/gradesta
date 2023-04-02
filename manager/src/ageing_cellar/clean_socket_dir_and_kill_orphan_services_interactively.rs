@@ -31,7 +31,7 @@ pub fn clean(sockets_dir: &path::Path) -> anyhow::Result<()> {
                 "GR6",
                 "sockets",
                 display_dangling_sockets(dangling_sockets)?
-            ), ))
+            ),))
         } else {
             Ok(())
         }
@@ -44,13 +44,16 @@ fn display_pid(pid: ofiles::Pid) -> anyhow::Result<String> {
     system_info.refresh_process(i32pid);
     match system_info.process(i32pid) {
         Some(process) => {
-            return Ok(format!("    {} - {}\n", i32pid, process.name()));
+            return Ok(format!("    {} - {}", i32pid, process.name()));
         }
-        None => return Ok(l1(
-            "process-listing.no-longer-running",
-            /* "    {} - no longer running */
-            "pid",
-            i32pid)),
+        None => {
+            return Ok(l1(
+                "process-listing-no-longer-running",
+                /* "    {} - no longer running */
+                "pid",
+                i32pid,
+            ));
+        }
     };
 }
 
@@ -72,10 +75,11 @@ fn display_dangling_sockets(
     let mut display = String::new();
     for (socket, pids) in dangling_sockets {
         let socket_header: String = l1(
-            "process-listing.socket-header",
+            "process-listing-socket-header",
             /* "{}\n    PID - name\n" */
             "socket",
-            socket.to_string_lossy());
+            socket.to_string_lossy(),
+        );
         display.push_str(&socket_header);
         for pid in pids {
             display.push_str(&display_pid(pid)?);
@@ -99,15 +103,20 @@ where
         for (socket, pids) in dangling_sockets {
             for pid in pids {
                 // Prompt the user as to what to do with the pid
-                writeln!(stdout, "{}", l3(
-                    "process-listing.socket-in-use",
-                    /* "The socket {} is currently in use by the following program\n    PID - name\n{}Would you like to [t term, k kill, i ignore, w wait 1 sec] this process?" */
-                    "error_code",
-                    "GR7",
-                    "socket",
-                    socket.to_string_lossy(),
-                    "pid",
-                    display_pid(pid)?))?;
+                writeln!(
+                    stdout,
+                    "{}",
+                    l3(
+                        "process-listing-socket-in-use",
+                        /* "The socket {} is currently in use by the following program\n    PID - name\n{}Would you like to [t term, k kill, i ignore, w wait 1 sec] this process?" */
+                        "error_code",
+                        "GR7",
+                        "socket",
+                        socket.to_string_lossy(),
+                        "pid",
+                        display_pid(pid)?
+                    )
+                )?;
                 // Actually do the killing/terminating/ignoring
                 let mut s = String::new();
                 stdin.read_line(&mut s)?;
@@ -129,7 +138,7 @@ where
                         ignored_pids.insert(pid);
                     }
                     _ => {
-                        write!(stdout, "{}", l("process-listing.unknown-option"))?;
+                        write!(stdout, "{}", l("process-listing-unknown-option"))?;
                     }
                 };
                 continue 'main_loop;
@@ -177,7 +186,7 @@ mod tests {
         let input = b"t\nk\n";
         let mut output = Vec::new();
         let (pid, socket_path) = test_interactive_clean(input, &mut output);
-        assert_eq!(std::str::from_utf8(&output).unwrap(), format!("The socket {0} is currently in use by the following program\n    PID - name\n    {1} - test-socket-hol\nWould you like to [t term, k kill, i ignore, w wait 1 sec] this process?\nThe socket {0} is currently in use by the following program\n    PID - name\n    {1} - test-socket-hol\nWould you like to [t term, k kill, i ignore, w wait 1 sec] this process?\n", &socket_path, pid));
+        assert_eq!(remove_unicode_direction_chars(std::str::from_utf8(&output).unwrap()), format!("The socket {0} is currently in use by the following program\n    PID - name\n    {1} - test-socket-hol\nWould you like to [t term, k kill, i ignore, w wait 1 sec] this process?\nThe socket {0} is currently in use by the following program\n    PID - name\n    {1} - test-socket-hol\nWould you like to [t term, k kill, i ignore, w wait 1 sec] this process?\n", &socket_path, pid));
         match procfs::process::Process::new(pid) {
             Err(_) => assert!(true), //Process was killed.
             Ok(process) => assert!(!process.is_alive()),
@@ -190,7 +199,7 @@ mod tests {
         let input = b"t\ni\n";
         let mut output = Vec::new();
         let (pid, socket_path) = test_interactive_clean(input, &mut output);
-        assert_eq!(std::str::from_utf8(&output).unwrap(), format!("The socket {0} is currently in use by the following program\n    PID - name\n    {1} - test-socket-hol\nWould you like to [t term, k kill, i ignore, w wait 1 sec] this process?\nThe socket {0} is currently in use by the following program\n    PID - name\n    {1} - test-socket-hol\nWould you like to [t term, k kill, i ignore, w wait 1 sec] this process?\n", &socket_path, pid));
+        assert_eq!(remove_unicode_direction_chars(std::str::from_utf8(&output).unwrap()), format!("The socket {0} is currently in use by the following program\n    PID - name\n    {1} - test-socket-hol\nWould you like to [t term, k kill, i ignore, w wait 1 sec] this process?\nThe socket {0} is currently in use by the following program\n    PID - name\n    {1} - test-socket-hol\nWould you like to [t term, k kill, i ignore, w wait 1 sec] this process?\n", &socket_path, pid));
         match procfs::process::Process::new(pid) {
             Err(_) => assert!(false), //Process was not killed.
             Ok(process) => assert!(process.is_alive()),

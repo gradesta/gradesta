@@ -11,6 +11,8 @@ use std::os::unix::io::AsRawFd;
 #[cfg(target_os = "wasi")]
 use std::os::wasi::io::{AsRawFd, RawFd};
 
+use super::localizer::*;
+
 use anyhow::anyhow;
 
 /// Locks the socket dir by writing the current PID into
@@ -33,32 +35,64 @@ pub fn lock_sockets_dir(dir: &path::Path) -> anyhow::Result<()> {
         .open(&lockfile)
         .or_else(|err| {
             Err(anyhow!(
-                "Error opening lock file {:?}: {}",
-                lockfile.as_os_str(),
-                err.to_string()
+                "{}",
+                l3(
+                    "lock-sockets-dir-open-lock-error",
+                    /* "Error opening lock file {:?}: {}" */
+                    "err_code",
+                    "GR9",
+                    "file",
+                    lockfile.as_os_str().to_string_lossy().to_string(),
+                    "error",
+                    err.to_string()
+                )
             ))
         })?;
     fcntl::flock(f.as_raw_fd(), fcntl::FlockArg::LockExclusive).or_else(|err| {
         Err(anyhow!(
-            "Error locking file {:?}: {}",
-            lockfile.as_os_str(),
-            err
+            "{}",
+            l3(
+                "lock-sockets-dir-lock-error",
+                /* "Error locking lock file {:?}: {}" */
+                "err_code",
+                "GR10",
+                "file",
+                lockfile.as_os_str().to_string_lossy().to_string(),
+                "error",
+                err.to_string()
+            )
         ))
     })?;
     if exists {
         let mut contents = String::new();
         f.read_to_string(&mut contents).or_else(|err| {
             Err(anyhow!(
-                "Error reading lock file {:?}: {}",
-                lockfile.as_os_str(),
-                err
+                "{}",
+                l3(
+                    "lock-sockets-dir-read-error",
+                    /* "Error reading lock file {:?}: {}" */
+                    "err_code",
+                    "GR11",
+                    "file",
+                    lockfile.as_os_str().to_string_lossy().to_string(),
+                    "error",
+                    err.to_string()
+                )
             ))
         })?;
         let old_pid: i32 = contents.parse::<i32>().or_else(|err| {
             Err(anyhow!(
-                "Corrupted lock file {:?}: {}",
-                lockfile.as_os_str(),
-                err.to_string()
+                "{}",
+                l3(
+                    "lock-sockets-dir-parse-error",
+                    /* "Error parsing lock file {:?}: {}" */
+                    "err_code",
+                    "GR12",
+                    "file",
+                    lockfile.as_os_str().to_string_lossy().to_string(),
+                    "error",
+                    err.to_string()
+                )
             ))
         })?;
         let mut system_info = sysinfo::System::new();
@@ -66,10 +100,18 @@ pub fn lock_sockets_dir(dir: &path::Path) -> anyhow::Result<()> {
         match system_info.process(old_pid) {
             Some(process) => {
                 return Err(anyhow!(
-                    "The sockets directory is already locked by pid {} {}",
-                    process.pid(),
-                    process.name()
-                ))
+                    "{}",
+                    l3(
+                        "lock-sockets-dir-already-locked",
+                        /* "The sockets directory is already locked by pid {} {}" */
+                        "err_code",
+                        "GR13",
+                        "pid",
+                        old_pid.to_string(),
+                        "process_name",
+                        process.name().to_string()
+                    )
+                ));
             }
             None => (),
         };
@@ -79,16 +121,32 @@ pub fn lock_sockets_dir(dir: &path::Path) -> anyhow::Result<()> {
     f.write(&format!("{}", std::process::id()).as_bytes())
         .or_else(|err| {
             Err(anyhow!(
-                "Error writing to lock file {:?}: {}",
-                lockfile.as_os_str(),
-                err
+                "{}",
+                l3(
+                    "lock-sockets-dir-write-error",
+                    /* "Error writing lock file {:?}: {}" */
+                    "err_code",
+                    "GR14",
+                    "file",
+                    lockfile.as_os_str().to_string_lossy().to_string(),
+                    "error",
+                    err.to_string()
+                )
             ))
         })?;
     fcntl::flock(f.as_raw_fd(), fcntl::FlockArg::Unlock).or_else(|err| {
         Err(anyhow!(
-            "Error unlocking lock file {:?}: {}",
-            lockfile.as_os_str(),
-            err
+            "{}",
+            l3(
+                "lock-sockets-dir-unlock-error",
+                /* "Error unlocking lock file {:?}: {}" */
+                "err_code",
+                "GR15",
+                "file",
+                lockfile.as_os_str().to_string_lossy().to_string(),
+                "error",
+                err.to_string()
+            )
         ))
     })?;
     Ok(())
@@ -112,20 +170,26 @@ mod tests {
         lockfile.read_to_string(&mut contents).unwrap();
         assert_eq!(contents, format!("{}", std::process::id()));
         drop(lockfile);
+        let start_of_error = "GR13: The sockets directory is already locked by pid ";
         match lock_sockets_dir(&tmp_dir.path()) {
             Ok(_) => unreachable!(),
-            Err(e) => assert!(e
-                .to_string()
-                .starts_with("The sockets directory is already locked by pid ")),
+            Err(e) => assert_eq!(
+                &remove_unicode_direction_chars(&e.to_string())[0..start_of_error.len()],
+                start_of_error
+            ),
         }
         let mut lockfile = fs::OpenOptions::new()
             .write(true)
             .open(lockfile_path)
             .unwrap();
         lockfile.write("not a pid".as_bytes()).unwrap();
+        let start_of_error = "GR12: Error parsing lock file";
         match lock_sockets_dir(&tmp_dir.path()) {
             Ok(_) => unreachable!(),
-            Err(e) => assert!(e.to_string().starts_with("Corrupted lock file ")),
+            Err(e) => assert_eq!(
+                &remove_unicode_direction_chars(&e.to_string())[0..start_of_error.len()],
+                start_of_error
+            ),
         }
     }
 }

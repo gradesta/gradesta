@@ -47,10 +47,11 @@ pub fn organize_sockets_dir(
         // The only possible error here from glibc's standpoint is EBADF which is irrelivant as we just got
         // a valid FD from glibc.
         let entry = entry_r.unwrap();
-        let report_str = l1("log-reading-first-level-dir-entry",
+        let report_str = l1(
+            "log-reading-first-level-dir-entry",
             /* "Reading first level dir entry. {}",*/
-               "dir",
-               entry.path().to_string_lossy()
+            "dir",
+            entry.path().to_string_lossy(),
         );
 
         test_channels::report(&report_str);
@@ -80,15 +81,15 @@ pub fn organize_sockets_dir(
             if entry1.file_name() == "PAIR.zmq" {
                 // https://docs.rs/ofiles/0.2.0/ofiles/fn.opath.html
                 let pids = ofiles::osocket(entry1.path()).or_else(|err| {
-                    Err(anyhow!(
-                        l3("error-looking-up-socket-information",
-                           // "Error looking up socket information for socket {}\n{}.",
-                           "err_code",
-                           "GR3",
-                           "socket",
-                           socket.to_string_lossy(),
-                           "error",
-                           err.to_string()
+                    Err(anyhow!(l3(
+                        "error-looking-up-socket-information",
+                        // "Error looking up socket information for socket {}\n{}.",
+                        "err_code",
+                        "GR3",
+                        "socket",
+                        socket.to_string_lossy(),
+                        "error",
+                        err.to_string()
                     )))
                 })?;
                 let mut active = false;

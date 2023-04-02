@@ -3,44 +3,46 @@ use anyhow::anyhow;
 use clap::{crate_version, Arg, ArgAction, Command};
 use std::path::PathBuf;
 
+use super::localizer::*;
+
 pub fn parse_args_and_environment() -> anyhow::Result<Configuration> {
     let default_sockets_dir: &str = &format!(
         "{}/.cache/gradesta/services/",
         std::env::var("HOME").unwrap()
     );
-    let matches = Command::new("gradesta manager")
-        .about("Connects clients and services via websockets and ZMQ unix PAIR sockets. Evaluates walk trees.")
+    let matches = Command::new(l("gradesta-command") /* "gradesta manager" */)
+        .about(l("gradesta-command-about").as_ref() /* "Connects clients and services via websockets and ZMQ unix PAIR sockets. Evaluates walk trees." */)
         .version(crate_version!())
         .arg(Arg::new("sockets_dir")
              .long("sockets-dir")
              .takes_value(true)
-             .help("Directory where ZMQ unix sockets are found")
+             .help(l("gradesta-command-sockets-dir-help").as_ref() /* "Directory where ZMQ unix sockets are found" */)
              .default_value(default_sockets_dir.into()))
         .arg(Arg::new("init")
              .long("init")
              .takes_value(true)
-             .help("Init binary for launching services after manager startup"))
+             .help(l("gradesta-command-init-help").as_ref() /* "Init binary for launching services after manager startup" */))
         .arg(Arg::new("port")
              .short('p')
              .long("port")
              .takes_value(true)
-             .help("Port for websockets to connect")
+             .help(l("gradesta-command-port-help").as_ref() /* "Port for websockets to connect" */)
              .default_value("443"))
         .arg(Arg::new("no-websockets")
              .long("no-websockets")
-             .help("Dissable websockets")
+             .help(l("gradesta-command-no-websockets-help").as_ref() /* "Dissable websockets" */)
              .action(ArgAction::SetTrue)
         )
         .arg(Arg::new("no-unix-sockets")
              .long("no-unix-sockets")
              .takes_value(false)
-             .help("Dissable unix sockets")
+             .help(l("gradesta-command-no-unix-sockets-help").as_ref() /* "Dissable unix sockets" */)
              .action(ArgAction::SetTrue)
         )
         .arg(Arg::new("service-heartbeat-timeout")
              .long("heartbeat-timeout")
              .takes_value(true)
-             .help("Amount of time to wait after heartbeat before closing connection")
+             .help(l("gradesta-command-service-heartbeat-timeout-help").as_ref() /* "Amount of time to wait after heartbeat before closing connection" */)
              .default_value("15s"))
         .get_matches();
     let sockets_dir = if *matches.get_one::<bool>("no-unix-sockets").unwrap() {
@@ -55,7 +57,7 @@ pub fn parse_args_and_environment() -> anyhow::Result<Configuration> {
     };
     if sockets_dir == None && port == None {
         return Err(anyhow!(
-            "Either UNIX sockets or websockets must be enabled."
+            l1("gradesta-command-no-sockets-error", "err_code", "GR8") /* "Either UNIX sockets or websockets must be enabled." */
         ));
     }
     let init = match matches.value_of_t::<PathBuf>("init") {
