@@ -14,7 +14,10 @@ use std::process::ExitStatus;
 use tokio::process::{Child, Command};
 
 pub async fn publish(blog_post_path: &str, video_files: Vec<&str>) -> anyhow::Result<()> {
-    let blogpost = fs::read_to_string(blog_post_path).unwrap();
+    let blogpost = match fs::read_to_string(blog_post_path){
+        Ok(blogpost) => blogpost,
+        Err(e) => return Err(anyhow!("Failed to read blogpost at path {}: {}", blog_post_path, e)),
+    };
     let config = load_config(blog_post_path).await?;
 
     let mut screencasts = load_screencasts_from_blogpost(&blogpost)?;
