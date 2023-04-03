@@ -24,4 +24,4 @@ jobs:
       - name: Test manager
         run: nix-shell --command "cd manager ; LANG=en cargo tarpaulin --implicit-test-threads --fail-under 64"
       - name: Test that one flaky test that fails if other threads are working with disk
-        run: nix-shell --command "cd manager ; cargo test -- --ignored"
+        run: nix-shell --command "cd manager ; LANG=en cargo test -- --ignored"
