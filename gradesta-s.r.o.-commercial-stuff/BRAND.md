@@ -11,3 +11,8 @@ What our software is not:
 --------------------------
 
 Our software does not try to be **familiar**. We aren't afraid to teach users something new.
+
+References:
+-----------
+
+I came across this not to long ago which seems to be using the word cozy in a similar way to what I mean: https://maggieappleton.com/cozy-web
