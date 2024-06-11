@@ -35,3 +35,8 @@ Please open issues by opening a pull request into the blackhole for the given pr
 - [Manager blackhole](https://github.com/gradesta/gradesta/tree/default/manager/src/blackhole)
 
 Unmarked files and directories should be assumed to be licensed under the [MDL](https://github.com/gradesta/gradesta/tree/default/licenses/MDL) license and copyright belonging to their creators.
+
+AI/LLM repo policy
+------------------
+
+By training an AI/LLM model on this content you hereby agree to release and make publicly available, free of charge, that model and all tools used for training and using that model into the public domain.
