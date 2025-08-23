@@ -131,7 +131,7 @@ where $a \neq b \neq c \neq d$
 
 and we eventually get an equation like the following:
 
-We have two series of variables $x_0, x_1, \ldots, x_n$ where all the $x$'s are distinct non-zero positive integers. And another series $k_0, k_1, \ldots, k_n$ where the $k$'s are positive integers but don't need to be distinct.
+We have two series of variables $x_0, x_1, \ldots, x_n$ where all the $x$'s are distinct non-zero positive integers. And another series $k_0, k_1, \ldots, k_n$ where the $k$'s are positive non zero integers but don't need to be distinct. $k_i$ is non zero becaues it represents the number of even steps between odd numbers and there must be at least one such step in the graph.
 
 The equation we need to prove solvability for is:
 
@@ -142,151 +142,130 @@ $$\vdots$$
 $$(2x_{n-1}+1) \cdot 2^{k_{n-1}} = 6x_n + 4$$
 $$(2x_n+1) \cdot 2^{k_n} = 6x_0 + 4$$
 
+This may seem abstract and unconvincing so lets make it more concrete by trying to punch some values in here. 
+
+I'll start with walking from $x_0 = 0$ as this is the only case in which we get a loop. Perhapse counterintuitively, we will be walking UP the collatz graph rather than down it. So from $x_0=0$
+
+We have:
+
+$$(2*0+1)*2^{k_0} = 6x_1 + 4$$
+
+Now $x_1$ could be $2$ with $k_0=3$ or it could be $10$ with $k_0=6$, or it could possibly be $0$ with $k_0=2$.
+
+
+
+Lets start with $x_0 = 4$ and go for a walk.
+
+$$(2*2+1)*2^{k_0} = 6x_1 + 4$$
+
+This is representing a walk tree with one odd number in it (5) and a (posibly infinite, but also possibly zero) number of edges from other walk trees comming into it which can satisfy this equation. Lets try to solve for $x_1$ to find what kind of walk trees point to walk tree `#2` aka the one and only walk tree with a 5 in it. If $x_1 = 6$ and $k_0=3$ then we fit that first equation in our walk. This represents the edge between the walk tree with the odd number 13 in it and the LHS even number 4O in it aka 13*3+1. We get from 40 to 5 by deviding by 2 3 times.
+
+We can then walk a bit further:
+
+$$(2*6+1)*2^{k_1} = 6x_2 + 4$$
+
+And solve for $x_2=8$ when $k_1=2$. This means that the odd number 17 is two even numbers away from 13 in the collatz graph. We can then continue (and I assure you we'll get to 1 at some point as in these lower regions of the graph we know that it cycles back to 1).
+
+$$(2*8+1)*2^{k_2} = 6x_3 + 4$$
+
+$x_3=5$, $k_2=1$ fits this time. (For the odd nuber 11)
+
+$$(2*5+1)*2^{k_3} = 6x_4 + 4$$
+
+$x_4=3$, $k_3=1$ (For the odd number 7)
+
+$$(2*3+1)*2^{k_4} = 6x_5 + 4$$
+
+$x_5=4$, $k_4=1$ (For the odd number 9)
+
+$$(2*4+1)*2^{k_5} = 6x_6 + 4$$
+
+
+
 ## Modular Arithmetic Analysis
 
-Let's convert this system to modular arithmetic on mod 3 and mod 4 to disprove solvability.
+Now lets try to prove that this system has no solutions except the trivial one whith $n=0$ and $x_0 = 0$ and $k_0 = 2$.
 
-### What is Modular Arithmetic?
-
-Modular arithmetic (also called "clock arithmetic") works with remainders after division. When we say $a \equiv b \pmod{m}$, we mean that $a$ and $b$ leave the same remainder when divided by $m$. For example, $7 \equiv 2 \pmod{5}$ because both 7 and 2 leave remainder 2 when divided by 5.
-
-**Why modular arithmetic holds:** If $a \equiv b \pmod{m}$, then $a - b$ is divisible by $m$. This means we can substitute $a$ with $b$ in equations modulo $m$ without changing the truth of the equation. This is incredibly useful for finding contradictions in systems of equations.
+Since $k_i > 0$ for all $i$, we can use modular arithmetic to disprove solvability more efficiently.
 
 ### Analysis Modulo 4
 
-Converting our equation $(2x_i+1) \cdot 2^{k_i} = 6x_{i+1} + 4$ to modulo 4:
+Converting $(2x_i+1) \cdot 2^{k_i} = 6x_{i+1} + 4$ to modulo 4:
 $$(2x_i + 1) \cdot 2^{k_i} \equiv 2x_{i+1} \pmod{4}$$
 
-Since $2x_i + 1$ is always odd, and $2^{k_i} \equiv 0 \pmod{4}$ for $k_i \geq 2$, we have:
-
+Since $2x_i + 1$ is odd and $2^{k_i} \equiv 0 \pmod{4}$ for $k_i \geq 2$, we have:
 $$x_{i+1} \equiv \begin{cases}
-2x_i + 1 \pmod{4} & \text{if } k_i = 0 \\
 2 \pmod{4} & \text{if } k_i = 1 \\
 0 \pmod{4} & \text{if } k_i \geq 2
 \end{cases}$$
 
-This gives us constraints on the parity of $x_{i+1}$ based on the value of $k_i$.
-
 ### Analysis Modulo 3
 
-In modulo 3:
-
-$$\begin{cases}
-2 \equiv -1 \pmod{3} & \text{(because 2 and -1 both leave remainder 2 when divided by 3)} \\
-6 \equiv 0 \pmod{3} & \text{(because 6 is divisible by 3)} \\
-4 \equiv 1 \pmod{3} & \text{(because 4 leaves remainder 1 when divided by 3)}
-\end{cases}$$
-
-Converting our equation $(2x_i+1) \cdot 2^{k_i} = 6x_{i+1} + 4$ to modulo 3:
+In modulo 3, $2 \equiv -1$, $6 \equiv 0$, and $4 \equiv 1$, so:
 $$(-x_i + 1) \cdot 2^{k_i} \equiv 1 \pmod{3}$$
 
-Since $2 \equiv -1 \pmod{3}$, we have $2^{k_i} \equiv (-1)^{k_i} \pmod{3}$. Therefore:
-$$(-x_i + 1) \cdot (-1)^{k_i} \equiv 1 \pmod{3}$$
-
-This means:
-
+Since $2^{k_i} \equiv (-1)^{k_i} \pmod{3}$:
 $$x_i \equiv \begin{cases}
 0 \pmod{3} & \text{if } k_i \text{ is even} \\
 2 \pmod{3} & \text{if } k_i \text{ is odd}
 \end{cases}$$
 
-### Combining Modulo 3 and Modulo 4 Constraints
+### Combining Constraints with Chinese Remainder Theorem
 
-Now let's combine our findings from both modular analyses to find contradictions.
+**What is the Chinese Remainder Theorem?** If you know what remainder a number leaves when divided by 3, and what remainder it leaves when divided by 4, then you can figure out exactly what remainder it leaves when divided by 12. This works because 3 and 4 share no common factors.
 
-**From modulo 3**: Each $x_i$ must be either $0 \pmod{3}$ or $2 \pmod{3}$ (depending on whether $k_{i-1}$ is even or odd).
+**From modulo 3**: Each $x_i$ must leave remainder 0 or 2 when divided by 3.
 
-**From modulo 4**: Each $x_{i+1}$ must satisfy:
-$$x_{i+1} \equiv \begin{cases}
-2x_i + 1 \pmod{4} & \text{if } k_i = 0 \\
-2 \pmod{4} & \text{if } k_i = 1 \\
-0 \pmod{4} & \text{if } k_i \geq 2
-\end{cases}$$
+**From modulo 4**: Each $x_{i+1}$ must leave remainder 0 or 2 when divided by 4 (since $k_i > 0$).
 
-**Key Insight**: The modulo 4 constraints create a chain reaction. If any $k_i \geq 2$, then $x_{i+1} \equiv 0 \pmod{4}$. But from modulo 3, $x_{i+1}$ must also be either $0 \pmod{3}$ or $2 \pmod{3}$.
+**Using CRT**: The only numbers that leave remainder 0 or 2 when divided by both 3 and 4 are those that leave remainder 0, 2, 6, 8, or 10 when divided by 12.
 
-**Combined Constraint**: If $k_i \geq 2$, then $x_{i+1} \equiv 0 \pmod{4}$ AND $x_{i+1} \equiv 0 \pmod{3}$ or $2 \pmod{3}$. This means $x_{i+1} \equiv 0 \pmod{12}$ or $x_{i+1} \equiv 8 \pmod{12}$.
-
-## Systematic Analysis Using Chinese Remainder Theorem
-
-### What is the Chinese Remainder Theorem?
-
-The Chinese Remainder Theorem (CRT) is a powerful mathematical tool that tells us how to combine information from different modular arithmetic systems. In simple terms:
-
-**If you know what remainder a number leaves when divided by 3, and what remainder it leaves when divided by 4, then CRT tells you exactly what remainder it leaves when divided by 12.**
-
-This works because 3 and 4 are coprime (they share no common factors other than 1), and 3 × 4 = 12.
-
-**Why this helps us**: We have constraints from modulo 3 and modulo 4. CRT lets us combine them to get stronger constraints modulo 12, which will make our contradiction much clearer.
-
-### Combining Our Modular Constraints
-
-**From modulo 3**: Each $x_i$ must be either $0 \pmod{3}$ or $2 \pmod{3}$.
-
-**From modulo 4**: Each $x_{i+1}$ must satisfy:
-$$x_{i+1} \equiv \begin{cases}
-2x_i + 1 \pmod{4} & \text{if } k_i = 0 \\
-2 \pmod{4} & \text{if } k_i = 1 \\
-0 \pmod{4} & \text{if } k_i \geq 2
-\end{cases}$$
-
-**Using CRT**: The only values that can satisfy both constraints modulo 12 are:
-$$x_i \equiv 0, 2, 6, 8, 10 \pmod{12}$$
-
-This is because:
-- Values $\equiv 1, 4, 5, 7, 9, 11 \pmod{12}$ violate the modulo 3 constraint
-- Values $\equiv 1, 3, 5, 7, 9, 11 \pmod{12}$ violate the modulo 4 constraint
-- Only $0, 2, 6, 8, 10 \pmod{12}$ satisfy both
+So all our $x_i$ values must be in this very small set: $\{0, 2, 6, 8, 10\} \pmod{12}$.
 
 ### Case Analysis
 
-**Case 1**: All $k_i = 0$
+**Case 1**: All $k_i = 1$
 
-If every $k_i = 0$, then the system becomes:
-$$2x_i + 1 = 6x_{i+1} + 4$$
-$$2x_i = 6x_{i+1} + 3$$
-$$x_i = 3x_{i+1} + \frac{3}{2}$$
-
-This requires $x_{i+1}$ to be odd (since $3x_{i+1} + \frac{3}{2}$ must be an integer), and $x_i > x_{i+1}$. This creates a strictly decreasing sequence that cannot close into a cycle.
-
-**Case 2**: All $k_i = 1$
-
-If every $k_i = 1$, then from modulo 4, all $x_{i+1} \equiv 2 \pmod{4}$. Combined with modulo 3, this forces all $x_i$ to be either $2 \pmod{12}$ or $6 \pmod{12}$.
+If every $k_i = 1$, then from our modulo 4 analysis, every $x_{i+1}$ must leave remainder 2 when divided by 4. Combined with our modulo 3 analysis, this forces every $x_i$ to leave remainder 2 or 6 when divided by 12.
 
 The system becomes:
 $$(2x_i + 1) \cdot 2 = 6x_{i+1} + 4$$
-$$4x_i + 2 = 6x_{i+1} + 4$$
 $$2x_i = 3x_{i+1} + 1$$
 
-This means $x_i > x_{i+1}$ for all $i$, which contradicts the requirement that the cycle closes back to $x_0$.
+This means each $x_i$ is bigger than the next $x_{i+1}$. But if the sequence keeps getting smaller, it can never loop back to the beginning - contradicting the requirement that we have a cycle.
 
-**Case 3**: All $k_i \geq 2$
+**Case 2**: All $k_i \geq 2$
 
-If every $k_i \geq 2$, then from modulo 4, all $x_{i+1} \equiv 0 \pmod{4}$. Combined with modulo 3, this forces all $x_i$ to be either $0 \pmod{12}$ or $8 \pmod{12}$.
+If every $k_i \geq 2$, then from our modulo 4 analysis, every $x_{i+1}$ must leave remainder 0 when divided by 4. Combined with our modulo 3 analysis, this forces every $x_i$ to leave remainder 0 or 8 when divided by 12.
 
-But then the cycle cannot close because:
-- If $x_0 \equiv 0 \pmod{12}$, then $x_n \equiv 0 \pmod{12}$
+The cycle cannot close because:
+- If $x_0$ leaves remainder 0 when divided by 12, then $x_n$ must also leave remainder 0 when divided by 12
 - The last equation requires $(2x_n + 1) \cdot 2^{k_n} = 6x_0 + 4$
-- If $x_n \equiv 0 \pmod{12}$, then $2x_n + 1 \equiv 1 \pmod{12}$
-- So $(2x_n + 1) \cdot 2^{k_n} \equiv 2^{k_n} \pmod{12}$
-- But $6x_0 + 4 \equiv 4 \pmod{12}$
-- Therefore $2^{k_n} \equiv 4 \pmod{12}$, which is impossible since $2^{k_n} \equiv 2, 4, 8 \pmod{12}$ for $k_n \geq 1$
+- Since $x_n$ leaves remainder 0 when divided by 12, we have $2^{k_n} \equiv 4 \pmod{12}$
+- But $2^{k_n}$ can only leave remainder 2, 4, or 8 when divided by 12 for $k_n \geq 1$, and 4 is possible
+- However, this forces $x_0$ to leave remainder 0 when divided by 12, which creates a problem with the requirement that all $x_i$ be different numbers
 
-**Case 4**: Mixed $k_i$ values
+**Case 3**: Mixed $k_i$ values
 
-If we have a mix of different $k_i$ values, the constraints become inconsistent. For example:
-- If $k_i = 0$, then $x_{i+1} \equiv 2x_i + 1 \pmod{4}$
-- If $k_{i+1} \geq 1$, then $x_{i+2} \equiv 2 \pmod{4}$ or $0 \pmod{4}$
+Suppose we have a mix where some $k_i = 1$ and some $k_j \geq 2$. This creates a chain of constraints that cannot be satisfied consistently.
 
-This creates a chain where the parity constraints cannot be satisfied consistently around the entire cycle, leading to contradictions.
+Consider consecutive steps where $k_i = 1$ and $k_{i+1} \geq 2$:
+- From $k_i = 1$: $x_{i+1}$ must leave remainder 2 when divided by 4
+- From $k_{i+1} \geq 2$: $x_{i+2}$ must leave remainder 0 when divided by 4
 
-### Final Contradiction
+But from our modulo 3 analysis, if $k_{i+1}$ is odd, then $x_{i+1}$ must leave remainder 2 when divided by 3, and if $k_{i+1}$ is even, then $x_{i+1}$ must leave remainder 0 when divided by 3.
 
-The key insight is that **all $x_i$ must be distinct positive integers**, but our CRT analysis shows they can only take values from a very limited set modulo 12: $\{0, 2, 6, 8, 10\}$.
+Combining with CRT:
+- If $k_{i+1}$ is odd: $x_{i+1}$ leaves remainder 2 when divided by both 3 and 4, so it must leave remainder 2 when divided by 12
+- If $k_{i+1}$ is even: $x_{i+1}$ leaves remainder 2 when divided by 4 and remainder 0 when divided by 3, so it must leave remainder 6 when divided by 12
 
-If any $k_i \geq 2$, this forces subsequent $x_j$ into an even smaller set, making it impossible to satisfy the distinctness requirement while closing the cycle.
+In both cases, $x_{i+1}$ is forced into a very specific value modulo 12. But then $x_{i+2}$ must leave remainder 0 when divided by 4, which creates even more constraints. These constraints keep building up as we go around the cycle, eventually making it impossible to satisfy the requirement that all $x_i$ be different numbers.
+
+### Conclusion
+
+With $k_i > 0$, our analysis shows that all $x_i$ values are forced into a very small set: they can only leave remainder 0, 2, 6, 8, or 10 when divided by 12. This severely restricts our options.
+
+In all three cases we examined, these restrictions make it impossible to create a cycle where all the numbers are different from each other. The constraints keep building up until we hit a dead end.
 
 **Therefore, no solution exists for $n \geq 2$**.
-
-**Conclusion**: No solution exists for $n \geq 2$. The only possible cycle is the trivial $n = 1$ case, which corresponds to the known 1→4→1 cycle in Collatz.
 
