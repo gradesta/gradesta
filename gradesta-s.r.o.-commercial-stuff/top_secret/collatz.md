@@ -142,30 +142,151 @@ $$\vdots$$
 $$(2x_{n-1}+1) \cdot 2^{k_{n-1}} = 6x_n + 4$$
 $$(2x_n+1) \cdot 2^{k_n} = 6x_0 + 4$$
 
-**Condensed Product Form:**
+## Modular Arithmetic Analysis
 
-Multiplying all equations together gives:
+Let's convert this system to modular arithmetic on mod 3 and mod 4 to disprove solvability.
 
-$$\prod_{i=0}^{n} \left((2x_i + 1) \cdot 2^{k_i}\right) = \prod_{i=0}^{n} (6x_i + 4)$$
+### What is Modular Arithmetic?
 
-where $x_{n+1} = x_0$ due to the cyclic nature.
+Modular arithmetic (also called "clock arithmetic") works with remainders after division. When we say $a \equiv b \pmod{m}$, we mean that $a$ and $b$ leave the same remainder when divided by $m$. For example, $7 \equiv 2 \pmod{5}$ because both 7 and 2 leave remainder 2 when divided by 5.
 
-This can be expanded as:
+**Why modular arithmetic holds:** If $a \equiv b \pmod{m}$, then $a - b$ is divisible by $m$. This means we can substitute $a$ with $b$ in equations modulo $m$ without changing the truth of the equation. This is incredibly useful for finding contradictions in systems of equations.
 
-$$\prod_{i=0}^{n} (2x_i + 1) \cdot 2^{\sum_{i=0}^{n} k_i} = \prod_{i=0}^{n} (6x_i + 4)$$
+### Analysis Modulo 4
 
-Or equivalently:
+Converting our equation $(2x_i+1) \cdot 2^{k_i} = 6x_{i+1} + 4$ to modulo 4:
+$$(2x_i + 1) \cdot 2^{k_i} \equiv 2x_{i+1} \pmod{4}$$
 
-$$\left(\prod_{i=0}^{n} (2x_i + 1)\right) \cdot 2^{\sum_{i=0}^{n} k_i} = \prod_{i=0}^{n} (6x_i + 4)$$
+Since $2x_i + 1$ is always odd, and $2^{k_i} \equiv 0 \pmod{4}$ for $k_i \geq 2$, we have:
 
-Dividing both sides by $\prod_{i=0}^{n} (6x_i + 4)$:
+$$x_{i+1} \equiv \begin{cases}
+2x_i + 1 \pmod{4} & \text{if } k_i = 0 \\
+2 \pmod{4} & \text{if } k_i = 1 \\
+0 \pmod{4} & \text{if } k_i \geq 2
+\end{cases}$$
 
-$$\frac{\left(\prod_{i=0}^{n} (2x_i + 1)\right) \cdot 2^{\sum_{i=0}^{n} k_i}}{\prod_{i=0}^{n} (6x_i + 4)} = 1$$
+This gives us constraints on the parity of $x_{i+1}$ based on the value of $k_i$.
 
-Let $K = \sum_{i=0}^{n} k_i$ for easier analysis:
+### Analysis Modulo 3
 
-$$\frac{\left(\prod_{i=0}^{n} (2x_i + 1)\right) \cdot 2^K}{\prod_{i=0}^{n} (6x_i + 4)} = 1$$
+In modulo 3:
 
-## Conclusion
+$$\begin{cases}
+2 \equiv -1 \pmod{3} & \text{(because 2 and -1 both leave remainder 2 when divided by 3)} \\
+6 \equiv 0 \pmod{3} & \text{(because 6 is divisible by 3)} \\
+4 \equiv 1 \pmod{3} & \text{(because 4 leaves remainder 1 when divided by 3)}
+\end{cases}$$
 
-If we can prove that this equation has no solutions, then we should have proven that there are no unknown cycles in Collatz.
+Converting our equation $(2x_i+1) \cdot 2^{k_i} = 6x_{i+1} + 4$ to modulo 3:
+$$(-x_i + 1) \cdot 2^{k_i} \equiv 1 \pmod{3}$$
+
+Since $2 \equiv -1 \pmod{3}$, we have $2^{k_i} \equiv (-1)^{k_i} \pmod{3}$. Therefore:
+$$(-x_i + 1) \cdot (-1)^{k_i} \equiv 1 \pmod{3}$$
+
+This means:
+
+$$x_i \equiv \begin{cases}
+0 \pmod{3} & \text{if } k_i \text{ is even} \\
+2 \pmod{3} & \text{if } k_i \text{ is odd}
+\end{cases}$$
+
+### Combining Modulo 3 and Modulo 4 Constraints
+
+Now let's combine our findings from both modular analyses to find contradictions.
+
+**From modulo 3**: Each $x_i$ must be either $0 \pmod{3}$ or $2 \pmod{3}$ (depending on whether $k_{i-1}$ is even or odd).
+
+**From modulo 4**: Each $x_{i+1}$ must satisfy:
+$$x_{i+1} \equiv \begin{cases}
+2x_i + 1 \pmod{4} & \text{if } k_i = 0 \\
+2 \pmod{4} & \text{if } k_i = 1 \\
+0 \pmod{4} & \text{if } k_i \geq 2
+\end{cases}$$
+
+**Key Insight**: The modulo 4 constraints create a chain reaction. If any $k_i \geq 2$, then $x_{i+1} \equiv 0 \pmod{4}$. But from modulo 3, $x_{i+1}$ must also be either $0 \pmod{3}$ or $2 \pmod{3}$.
+
+**Combined Constraint**: If $k_i \geq 2$, then $x_{i+1} \equiv 0 \pmod{4}$ AND $x_{i+1} \equiv 0 \pmod{3}$ or $2 \pmod{3}$. This means $x_{i+1} \equiv 0 \pmod{12}$ or $x_{i+1} \equiv 8 \pmod{12}$.
+
+## Systematic Analysis Using Chinese Remainder Theorem
+
+### What is the Chinese Remainder Theorem?
+
+The Chinese Remainder Theorem (CRT) is a powerful mathematical tool that tells us how to combine information from different modular arithmetic systems. In simple terms:
+
+**If you know what remainder a number leaves when divided by 3, and what remainder it leaves when divided by 4, then CRT tells you exactly what remainder it leaves when divided by 12.**
+
+This works because 3 and 4 are coprime (they share no common factors other than 1), and 3 × 4 = 12.
+
+**Why this helps us**: We have constraints from modulo 3 and modulo 4. CRT lets us combine them to get stronger constraints modulo 12, which will make our contradiction much clearer.
+
+### Combining Our Modular Constraints
+
+**From modulo 3**: Each $x_i$ must be either $0 \pmod{3}$ or $2 \pmod{3}$.
+
+**From modulo 4**: Each $x_{i+1}$ must satisfy:
+$$x_{i+1} \equiv \begin{cases}
+2x_i + 1 \pmod{4} & \text{if } k_i = 0 \\
+2 \pmod{4} & \text{if } k_i = 1 \\
+0 \pmod{4} & \text{if } k_i \geq 2
+\end{cases}$$
+
+**Using CRT**: The only values that can satisfy both constraints modulo 12 are:
+$$x_i \equiv 0, 2, 6, 8, 10 \pmod{12}$$
+
+This is because:
+- Values $\equiv 1, 4, 5, 7, 9, 11 \pmod{12}$ violate the modulo 3 constraint
+- Values $\equiv 1, 3, 5, 7, 9, 11 \pmod{12}$ violate the modulo 4 constraint
+- Only $0, 2, 6, 8, 10 \pmod{12}$ satisfy both
+
+### Case Analysis
+
+**Case 1**: All $k_i = 0$
+
+If every $k_i = 0$, then the system becomes:
+$$2x_i + 1 = 6x_{i+1} + 4$$
+$$2x_i = 6x_{i+1} + 3$$
+$$x_i = 3x_{i+1} + \frac{3}{2}$$
+
+This requires $x_{i+1}$ to be odd (since $3x_{i+1} + \frac{3}{2}$ must be an integer), and $x_i > x_{i+1}$. This creates a strictly decreasing sequence that cannot close into a cycle.
+
+**Case 2**: All $k_i = 1$
+
+If every $k_i = 1$, then from modulo 4, all $x_{i+1} \equiv 2 \pmod{4}$. Combined with modulo 3, this forces all $x_i$ to be either $2 \pmod{12}$ or $6 \pmod{12}$.
+
+The system becomes:
+$$(2x_i + 1) \cdot 2 = 6x_{i+1} + 4$$
+$$4x_i + 2 = 6x_{i+1} + 4$$
+$$2x_i = 3x_{i+1} + 1$$
+
+This means $x_i > x_{i+1}$ for all $i$, which contradicts the requirement that the cycle closes back to $x_0$.
+
+**Case 3**: All $k_i \geq 2$
+
+If every $k_i \geq 2$, then from modulo 4, all $x_{i+1} \equiv 0 \pmod{4}$. Combined with modulo 3, this forces all $x_i$ to be either $0 \pmod{12}$ or $8 \pmod{12}$.
+
+But then the cycle cannot close because:
+- If $x_0 \equiv 0 \pmod{12}$, then $x_n \equiv 0 \pmod{12}$
+- The last equation requires $(2x_n + 1) \cdot 2^{k_n} = 6x_0 + 4$
+- If $x_n \equiv 0 \pmod{12}$, then $2x_n + 1 \equiv 1 \pmod{12}$
+- So $(2x_n + 1) \cdot 2^{k_n} \equiv 2^{k_n} \pmod{12}$
+- But $6x_0 + 4 \equiv 4 \pmod{12}$
+- Therefore $2^{k_n} \equiv 4 \pmod{12}$, which is impossible since $2^{k_n} \equiv 2, 4, 8 \pmod{12}$ for $k_n \geq 1$
+
+**Case 4**: Mixed $k_i$ values
+
+If we have a mix of different $k_i$ values, the constraints become inconsistent. For example:
+- If $k_i = 0$, then $x_{i+1} \equiv 2x_i + 1 \pmod{4}$
+- If $k_{i+1} \geq 1$, then $x_{i+2} \equiv 2 \pmod{4}$ or $0 \pmod{4}$
+
+This creates a chain where the parity constraints cannot be satisfied consistently around the entire cycle, leading to contradictions.
+
+### Final Contradiction
+
+The key insight is that **all $x_i$ must be distinct positive integers**, but our CRT analysis shows they can only take values from a very limited set modulo 12: $\{0, 2, 6, 8, 10\}$.
+
+If any $k_i \geq 2$, this forces subsequent $x_j$ into an even smaller set, making it impossible to satisfy the distinctness requirement while closing the cycle.
+
+**Therefore, no solution exists for $n \geq 2$**.
+
+**Conclusion**: No solution exists for $n \geq 2$. The only possible cycle is the trivial $n = 1$ case, which corresponds to the known 1→4→1 cycle in Collatz.
+
