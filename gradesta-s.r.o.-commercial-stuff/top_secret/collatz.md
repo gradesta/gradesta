@@ -61,11 +61,37 @@ Just as when iterating from 0 we can iterate through the odd numbers using the e
 
 Earlier I told you that we wish to build a graph of the "double stack" walk trees. So far I have shown that these "double stack" walk trees can be iterated over for every odd number, thus defining the set of such walk trees. But I have so far not shown you the edges between such walk trees. These edges can be represented by the relationship:
 
-$$6a + 4 = (2b + 1) \cdot 2^k$$
+$$(2b + 1) \cdot 2^k = 6a + 4$$
 
 where $a$ and $b$ are the indexes of the given walk tree.
 
 We create the edges this way because if an odd number points to an even number, then that even number is going to be of the form $6a+4$. We know this because $3n+1$ in the Collatz conjecture is how we get from odd numbers to even numbers, and if $n = 2a+1$ then $3(2a+1)+1$ happens to be $6a+4$.
+
+Lets look at a quick table of such edges to better visualize this.
+
+| a | LHS | LHS-binary | RHS | RHS-binary |
+|---|-----|------------|-----|------------|
+| 0 | 1   | 1          | 4   | 100        |
+| 1 | 3   | 11         | 10  | 1010       |
+| 2 | 5   | 101        | 16  | 1000       |
+| 3 | 7   | 111        | 22  | 10110      |
+| 4 | 9   | 1001       | 28  | 1110       |
+| 5 | 11  | 1011       | 34  | 100010     |
+| 6 | 13  | 1101       | 40  | 101000     |
+| 7 | 15  | 1111       | 46  | 101110     |
+| 8 | 17  | 10001      | 52  | 110100     |
+| 9 | 19  | 10011      | 58  | 111000     |
+| 10| 21  | 10101      | 64  | 1000000    |
+
+You can see that going from left to right we directly have the relationship 3n+1.
+
+We can then use the binary representation to find indirect paths between the walk trees. Like our 10th walk tree points to the 0th walk tree because the binary representation of 64 1000000 looks like the binary representation of 1 if we cut all the zeros off the end.
+
+And the 8th walk tree points to the 6th becaues 52 is 110100 in binary wich looks like 13 (1101) without the ending zeros.
+
+You can also use this table to verify the original equation:
+
+$$(2b + 1) \cdot 2^k = 6a + 4$$
 
 ## Graph Topology
 
