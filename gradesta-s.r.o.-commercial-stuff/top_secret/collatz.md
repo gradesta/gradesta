@@ -11,7 +11,7 @@ This can be viewed as a directed graph with a known cycle:
 
 We can then label the edges on this graph to give different labels for the halving and the tripple + 1ing. I'll use right arrows to represent halving and up arrows to represent trippling plus one.
 
-4 → 2 → 1 ↑ 4
+4 →D 2 →D 1 →U 4
 
 Now lets define a new type of Topological Graph Query language called walk trees. Walk trees can be  used to select portions of an edge labeled graph with a certain topology.
 
@@ -19,11 +19,19 @@ Walk trees can be defined in many ways but their simplest form would be a tree g
 
 So if we had rules like:
 
-↑: →
+D → D
 and
-→:→
+D → U
 
-This walk "tree" would represent any linear walk of N edges with label → and exactly one edge with label ↑. We'll name this particular walk tree "double stack" as it represents the stacks of numbers in Collatz which double ad infinitum.
+This walk "tree" would represent any linear walk of N edges with label D and exactly one edge with label U. We'll name this particular walk tree "double stack" as it represents the stacks of numbers in Collatz which double ad infinitum.
+
+Generally this would select walks like:
+
+(even) →D (even) →D (event) →D...(odd) →U (even)
+
+More generally
+
+n2^(infinity even)...(n2^3 even) →D (n2^2 even) →D (n2^1 even) →D (n odd) →U (3n+1 even)
 
 Lets now make a graph of the walk trees that match the "double stack" walk tree.
 
@@ -39,7 +47,7 @@ We can also represent this iteration as an iteration of:
 
 2a+1  starting at 0.
 
-When we do this we can then represent all of the even numbers "to the right" of our odd number (as well as our odd number) with the expression (2a+1)*2^k. That said the starting edge in our walk tree is ↑ and that is actually an edge from the odd number to one other even number. So we have one even number then an edge labeled ↑ and then an odd number and then a bunch of edges labeled → that all point from even numbers in each walk tree.
+When we do this we can then represent all of the even numbers "to the left" of our odd number (as well as our odd number) with the expression (2a+1)*2^k. That said the starting edge in our walk tree is U and that is actually an edge from the odd number to one other even number. So we have one even number then an edge labeled U and then an odd number and then a bunch of edges labeled → that all point from even numbers in each walk tree.
 
 Just as when iterating from 0 we can iterate through the odd numbers using the expression 2a+1, when iterating through the left hand side even numbers we can use the expression 6a+4. For example, 6*0+4↑2*0+1 represents the connection between 4 and 1.
 
@@ -55,29 +63,29 @@ First off. We know that no cycle can exist with only even numbers. We need an od
 
 Such a cycle with two edges would require that:
 
-6a+4=(2a+1)2^k
+(2a+1)2^k=6a+4
 
-be solved. Because we would need the right hand side of the graph to point to the left hand side and the left hand side to point to the right hand side.
+be solved. Because we would need the left hand side of the graph to point to the right hand side and the right hand side to point to the left hand side.
 
 This is solvable for a=0. Interestingly, k then represents the number of → labeled edges in the walk (or if you prefer) the number of even numbers in the non-condensed cyclic walk.
 
 In order for a cycle between walk trees with two edges to exist, we would need
 
 
-6a+4=(2b+1)2^k
+(2a+1)2^k=6b+4
 and
 
-6b+4=(2a+1)2^l
+(2b+1)2^l=6a+4
 
 
-To hold. That is, such a cycle consists of two distinct walk trees. And the the left hand side of the first walk tree must point to the right hand side of the second and the left hand side of the second must point to the right hand side of the first. This is, however unsolvable for distinct positive integer values of a and b and positive integer values of k and l
+To hold. That is, such a cycle consists of two distinct walk trees. And the the right hand side of the first walk tree must point to the left hand side of the second and the right hand side of the second must point to the left hand side of the first. This is, however unsolvable for distinct positive integer values of a and b and positive integer values of k and l
 
 We can go onwards to larger cycles like:
 
-6a + 4 = (2b+1)2^k
-6b + 4 = (2c+1)2^l
-6c + 4 = (2d+1)2^m
-6d + 4 = (2a+1)2^n
+(2a+1)2^k = 6b + 4 
+(2b+1)2^l = 6c + 4 
+(2c+1)2^m = 6d + 4
+(2d+1)2^n = 6a + 4 
 a!=b!=c!=d
 
 and we eventually get an equation like the following:
@@ -86,6 +94,12 @@ We have two series of variables x_0,x_1...x_n where the x es all of those are di
 
 The equation we need to prove solvability for is:
 
-2x-4=-x_0(3+2^k_n)+x_1(3+2^k_0)+x_2(3-2^k_1)+...{repeating the negative terms k_0...k_(n-1) & x_1..x_(n-1)} + 2^(k_0-1)-2^(k_1-1)-2^(k_2-1)...{repeating the negative terms for k_1...k_(x-1)}
+
+(2x_0+1)2^k_0 = 6x_1 + 4 
+(2x_1+1)2^k_1 = 6x_2 + 4 
+(2x_2+1)2^k_2 = 6x_3 + 4
+...
+(2x_(n-1)+1)2^k_(n-1) = 6x_n + 4
+(2x_n+1)2^k_(n) = 6x_0 + 4 
 
 If we can prove that this equation has no solutions. Then we should have proven that there are no unkown cycles in Collatz
