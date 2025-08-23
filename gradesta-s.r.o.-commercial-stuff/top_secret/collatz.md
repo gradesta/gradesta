@@ -1,105 +1,121 @@
-Lets try to prove or disprove the collatz conjecture together. Lets start by defining the conjecture:
+# Collatz Conjecture Analysis
 
-    For even numbers, divide by 2;
-    For odd numbers, multiply by 3 and add 1.
+Let's try to prove or disprove the Collatz conjecture together. Let's start by defining the conjecture:
 
-With enough repetition, do all positive integers converge to 1?
+> **Collatz Conjecture**: For any positive integer n:
+> - If n is even, divide by 2
+> - If n is odd, multiply by 3 and add 1
+> 
+> With enough repetition, do all positive integers converge to 1?
+
+## Graph Representation
 
 This can be viewed as a directed graph with a known cycle:
 
-4 → 2 → 1 → 4
+$$4 \rightarrow 2 \rightarrow 1 \rightarrow 4$$
 
-We can then label the edges on this graph to give different labels for the halving and the tripple + 1ing. I'll use right arrows to represent halving and up arrows to represent trippling plus one.
+We can then label the edges on this graph to give different labels for the halving and the triple + 1 operations. I'll use right arrows (→) to represent halving and up arrows (↑) to represent tripling plus one.
 
-4 →D 2 →D 1 →U 4
+$$4 \xrightarrow{D} 2 \xrightarrow{D} 1 \xrightarrow{U} 4$$
 
-Now lets define a new type of Topological Graph Query language called walk trees. Walk trees can be  used to select portions of an edge labeled graph with a certain topology.
+## Walk Trees
 
-Walk trees can be defined in many ways but their simplest form would be a tree generation algorithm which is evaluated in a similar way to the tree of a CFG is generated.
+Now let's define a new type of Topological Graph Query language called **walk trees**. Walk trees can be used to select portions of an edge-labeled graph with a certain topology.
+
+Walk trees can be defined in many ways, but their simplest form would be a tree generation algorithm which is evaluated in a similar way to how the tree of a CFG is generated.
 
 So if we had rules like:
 
-D → D
-and
-D → U
+- $D \rightarrow D$
+- $D \rightarrow U$
 
-This walk "tree" would represent any linear walk of N edges with label D and exactly one edge with label U. We'll name this particular walk tree "double stack" as it represents the stacks of numbers in Collatz which double ad infinitum.
+This walk "tree" would represent any linear walk of N edges with label D and exactly one edge with label U. We'll name this particular walk tree **"double stack"** as it represents the stacks of numbers in Collatz which double ad infinitum.
 
-Generally this would select walks like:
+Generally, this would select walks like:
 
-(even) →D (even) →D (event) →D...(odd) →U (even)
+$$(\text{even}) \xrightarrow{D} (\text{even}) \xrightarrow{D} (\text{even}) \xrightarrow{D} \cdots (\text{odd}) \xrightarrow{U} (\text{even})$$
 
-More generally
+More generally:
 
-n2^(infinity even)...(n2^3 even) →D (n2^2 even) →D (n2^1 even) →D (n odd) →U (3n+1 even)
+$$n \cdot 2^{\infty} (\text{even}) \cdots (n \cdot 2^3 \text{ even}) \xrightarrow{D} (n \cdot 2^2 \text{ even}) \xrightarrow{D} (n \cdot 2^1 \text{ even}) \xrightarrow{D} (n \text{ odd}) \xrightarrow{U} (3n+1 \text{ even})$$
 
-Lets now make a graph of the walk trees that match the "double stack" walk tree.
+## Condensed Collatz Graph
 
-Each of these walk trees cover exactly one odd number and an infinite number of even numbers.
+Let's now make a graph of the walk trees that match the "double stack" walk tree.
 
-We an iterate through all of the odd numbers by simply counting up:
+Each of these walk trees covers exactly one odd number and an infinite number of even numbers.
 
-1,3,5,7...
+We can iterate through all of the odd numbers by simply counting up:
+
+$$1, 3, 5, 7, \ldots$$
 
 And thus iterate through all of the walk trees in our graph.
 
 We can also represent this iteration as an iteration of:
 
-2a+1  starting at 0.
+$$2a + 1 \text{ starting at } 0$$
 
-When we do this we can then represent all of the even numbers "to the left" of our odd number (as well as our odd number) with the expression (2a+1)*2^k. That said the starting edge in our walk tree is U and that is actually an edge from the odd number to one other even number. So we have one even number then an edge labeled U and then an odd number and then a bunch of edges labeled → that all point from even numbers in each walk tree.
+When we do this, we can then represent all of the even numbers "to the left" of our odd number (as well as our odd number) with the expression $(2a+1) \cdot 2^k$. That said, the starting edge in our walk tree is U and that is actually an edge from the odd number to one other even number. So we have one even number, then an edge labeled U, and then an odd number, and then a bunch of edges labeled → that all point from even numbers in each walk tree.
 
-Just as when iterating from 0 we can iterate through the odd numbers using the expression 2a+1, when iterating through the left hand side even numbers we can use the expression 6a+4. For example, 6*0+4↑2*0+1 represents the connection between 4 and 1.
+Just as when iterating from 0 we can iterate through the odd numbers using the expression $2a+1$, when iterating through the left-hand side even numbers we can use the expression $6a+4$. For example, $6 \cdot 0 + 4 \xrightarrow{U} 2 \cdot 0 + 1$ represents the connection between 4 and 1.
 
-Earlier I told you that we wish to build a graph of the "double stack" walk trees. So far I have shown that these "double stack" walk trees can be iterated over for every odd number, thus defining the set of such walk trees. But I have so far not shown you the edges between such walk trees. These edges can be represented by the relationship 6a+4=(2b+1)2^k where a and b are the indexes of the given walk tree.
+Earlier I told you that we wish to build a graph of the "double stack" walk trees. So far I have shown that these "double stack" walk trees can be iterated over for every odd number, thus defining the set of such walk trees. But I have so far not shown you the edges between such walk trees. These edges can be represented by the relationship:
 
-We create the edges this way because if an odd number points to an even number, then that even number is going to be of the form 6a+4. We know this because 3n+1 in the Collatz conjecture is how we get from odd numbers to even numbers and if n = 2a+1 then 3(2a+1)+1 happens to be 6a+4.
+$$6a + 4 = (2b + 1) \cdot 2^k$$
 
-We have now defined a condensed collatz graph consisting of subwalks of the collatz graph. The interesting thing about grouping the walks like this, is that the topology of a graph of walks happens to exactly match the topology of a graph. If you can walk to a walk then you can walk that walk to wherever that walk goes.
+where $a$ and $b$ are the indexes of the given walk tree.
 
-Now lets go on to show something about the cycles of our condensed Collatz graph.
+We create the edges this way because if an odd number points to an even number, then that even number is going to be of the form $6a+4$. We know this because $3n+1$ in the Collatz conjecture is how we get from odd numbers to even numbers, and if $n = 2a+1$ then $3(2a+1)+1$ happens to be $6a+4$.
 
-First off. We know that no cycle can exist with only even numbers. We need an odd number for there to be a cycle. So the only way for the Collatz graph to cycle is if our condensed Collatz graph of walk trees cycles.
+## Graph Topology
+
+We have now defined a condensed Collatz graph consisting of subwalks of the Collatz graph. The interesting thing about grouping the walks like this is that the topology of a graph of walks happens to exactly match the topology of a graph. If you can walk to a walk, then you can walk that walk to wherever that walk goes.
+
+## Cycles in the Condensed Graph
+
+Now let's go on to show something about the cycles of our condensed Collatz graph.
+
+First off, we know that no cycle can exist with only even numbers. We need an odd number for there to be a cycle. So the only way for the Collatz graph to cycle is if our condensed Collatz graph of walk trees cycles.
 
 Such a cycle with two edges would require that:
 
-(2a+1)2^k=6a+4
+$$(2a+1) \cdot 2^k = 6a + 4$$
 
-be solved. Because we would need the left hand side of the graph to point to the right hand side and the right hand side to point to the left hand side.
+be solved. Because we would need the left-hand side of the graph to point to the right-hand side and the right-hand side to point to the left-hand side.
 
-This is solvable for a=0. Interestingly, k then represents the number of → labeled edges in the walk (or if you prefer) the number of even numbers in the non-condensed cyclic walk.
+This is solvable for $a=0$. Interestingly, $k$ then represents the number of → labeled edges in the walk (or if you prefer) the number of even numbers in the non-condensed cyclic walk.
 
-In order for a cycle between walk trees with two edges to exist, we would need
+In order for a cycle between walk trees with two edges to exist, we would need:
 
+$$(2a+1) \cdot 2^k = 6b + 4$$
+$$(2b+1) \cdot 2^l = 6a + 4$$
 
-(2a+1)2^k=6b+4
-and
+To hold. That is, such a cycle consists of two distinct walk trees. And the right-hand side of the first walk tree must point to the left-hand side of the second and the right-hand side of the second must point to the left-hand side of the first. This is, however, unsolvable for distinct positive integer values of $a$ and $b$ and positive integer values of $k$ and $l$.
 
-(2b+1)2^l=6a+4
-
-
-To hold. That is, such a cycle consists of two distinct walk trees. And the the right hand side of the first walk tree must point to the left hand side of the second and the right hand side of the second must point to the left hand side of the first. This is, however unsolvable for distinct positive integer values of a and b and positive integer values of k and l
+## Larger Cycles
 
 We can go onwards to larger cycles like:
 
-(2a+1)2^k = 6b + 4 
-(2b+1)2^l = 6c + 4 
-(2c+1)2^m = 6d + 4
-(2d+1)2^n = 6a + 4 
-a!=b!=c!=d
+$$(2a+1) \cdot 2^k = 6b + 4$$
+$$(2b+1) \cdot 2^l = 6c + 4$$
+$$(2c+1) \cdot 2^m = 6d + 4$$
+$$(2d+1) \cdot 2^n = 6a + 4$$
+
+where $a \neq b \neq c \neq d$
 
 and we eventually get an equation like the following:
 
-We have two series of variables x_0,x_1...x_n where the x es all of those are distinct non zero positive integers. And another series k_0,k_1...k_n where the k s are positive integers but don't need to be distinct.
+We have two series of variables $x_0, x_1, \ldots, x_n$ where all the $x$'s are distinct non-zero positive integers. And another series $k_0, k_1, \ldots, k_n$ where the $k$'s are positive integers but don't need to be distinct.
 
 The equation we need to prove solvability for is:
 
+$$(2x_0+1) \cdot 2^{k_0} = 6x_1 + 4$$
+$$(2x_1+1) \cdot 2^{k_1} = 6x_2 + 4$$
+$$(2x_2+1) \cdot 2^{k_2} = 6x_3 + 4$$
+$$\vdots$$
+$$(2x_{n-1}+1) \cdot 2^{k_{n-1}} = 6x_n + 4$$
+$$(2x_n+1) \cdot 2^{k_n} = 6x_0 + 4$$
 
-(2x_0+1)2^k_0 = 6x_1 + 4 
-(2x_1+1)2^k_1 = 6x_2 + 4 
-(2x_2+1)2^k_2 = 6x_3 + 4
-...
-(2x_(n-1)+1)2^k_(n-1) = 6x_n + 4
-(2x_n+1)2^k_(n) = 6x_0 + 4 
+## Conclusion
 
-If we can prove that this equation has no solutions. Then we should have proven that there are no unkown cycles in Collatz
+If we can prove that this equation has no solutions, then we should have proven that there are no unknown cycles in Collatz.
