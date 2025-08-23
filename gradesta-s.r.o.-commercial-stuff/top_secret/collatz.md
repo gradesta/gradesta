@@ -61,7 +61,7 @@ Just as when iterating from 0 we can iterate through the odd numbers using the e
 
 Earlier I told you that we wish to build a graph of the "double stack" walk trees. So far I have shown that these "double stack" walk trees can be iterated over for every odd number, thus defining the set of such walk trees. But I have so far not shown you the edges between such walk trees. These edges can be represented by the relationship:
 
-$$(2b + 1) \cdot 2^k = 6a + 4$$
+$$(2a + 1) \cdot 2^k = 6b + 4$$
 
 where $a$ and $b$ are the indexes of the given walk tree.
 
@@ -91,7 +91,7 @@ And the 8th walk tree points to the 6th becaues 52 is 110100 in binary wich look
 
 You can also use this table to verify the original equation:
 
-$$(2b + 1) \cdot 2^k = 6a + 4$$
+$$(2a + 1) \cdot 2^k = 6b + 4$$
 
 ## Graph Topology
 
