@@ -116,6 +116,30 @@ $$\vdots$$
 $$(2x_{n-1}+1) \cdot 2^{k_{n-1}} = 6x_n + 4$$
 $$(2x_n+1) \cdot 2^{k_n} = 6x_0 + 4$$
 
+**Condensed Product Form:**
+
+Multiplying all equations together gives:
+
+$$\prod_{i=0}^{n} \left((2x_i + 1) \cdot 2^{k_i}\right) = \prod_{i=0}^{n} (6x_i + 4)$$
+
+where $x_{n+1} = x_0$ due to the cyclic nature.
+
+This can be expanded as:
+
+$$\prod_{i=0}^{n} (2x_i + 1) \cdot 2^{\sum_{i=0}^{n} k_i} = \prod_{i=0}^{n} (6x_i + 4)$$
+
+Or equivalently:
+
+$$\left(\prod_{i=0}^{n} (2x_i + 1)\right) \cdot 2^{\sum_{i=0}^{n} k_i} = \prod_{i=0}^{n} (6x_i + 4)$$
+
+Dividing both sides by $\prod_{i=0}^{n} (6x_i + 4)$:
+
+$$\frac{\left(\prod_{i=0}^{n} (2x_i + 1)\right) \cdot 2^{\sum_{i=0}^{n} k_i}}{\prod_{i=0}^{n} (6x_i + 4)} = 1$$
+
+Let $K = \sum_{i=0}^{n} k_i$ for easier analysis:
+
+$$\frac{\left(\prod_{i=0}^{n} (2x_i + 1)\right) \cdot 2^K}{\prod_{i=0}^{n} (6x_i + 4)} = 1$$
+
 ## Conclusion
 
 If we can prove that this equation has no solutions, then we should have proven that there are no unknown cycles in Collatz.
