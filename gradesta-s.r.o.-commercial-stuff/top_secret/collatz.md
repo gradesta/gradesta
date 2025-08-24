@@ -124,143 +124,121 @@ $$
 
 To hold. That is, such a cycle consists of two distinct walk trees. And the right-hand side of the first walk tree must point to the left-hand side of the second and the right-hand side of the second must point to the left-hand side of the first. This is, however, unsolvable for distinct positive integer values of $a$ and $b$ and positive integer values of $k$ and $l$.
 
-To show this is unsolvable lets first simplify the equations.
+Re-writing the Two Given Equations
+-------------------------------
+
+Start with:
 
 $$
-\left\{
 \begin{aligned}
-    6a + 4 &= b \cdot 2^{k+1} + 2^k \\
-    6b + 4 &= a \cdot 2^{l+1} + 2^l
+6a+4 &= (2b+1)\,2^{k},\\
+6b+4 &= (2a+1)\,2^{l}.
 \end{aligned}
-\right.
 $$
 
-If $k=1$ then $b>a$ and if that's true than $l>1$. If $k=2 (or greater)$ then $b<a$ this means that $k\neq l$.
-
+Distribute the brackets:
 
 $$
-\left\{
 \begin{aligned}
-    a &= \frac{b \cdot 2^{k} + 2^{k-1} - 2}{3} \\
-    b &= \frac{a \cdot 2^{l} + 2^{l-1} -2}{3}
+6a+4 &= b\,2^{k+1} + 2^{k},\\
+6b+4 &= a\,2^{l+1} + 2^{l}.
 \end{aligned}
-\right.
 $$
 
-Since a and b are both whole numbers we know that.
+Now isolate $a$ and $b$:
 
-$$b \cdot 2^{k} + 2^{k-1} - 2$$
+$$
+\boxed{a=\dfrac{b\,2^{k}+2^{k-1}-2}{3}},\qquad
+\boxed{b=\dfrac{a\,2^{l}+2^{l-1}-2}{3}}.
+$$
 
-and
+Because $a$ and $b$ are (positive) integers, the two numerators must each be **divisible by 3**.
 
-$$a \cdot 2^{l} + 2^{l-1} -2$$
+## When is Each Numerator Divisible by 3?
 
-are both divisible by 3.
+### The First Numerator
 
-Let us analyze the divisibility by 3 for the expressions in question.
+Call it $N_1=b\,2^{k}+2^{k-1}-2$.
 
-Recall:
-- $a = \frac{b \cdot 2^{k} + 2^{k-1} - 2}{3}$
-- $b = \frac{a \cdot 2^{l} + 2^{l-1} - 2}{3}$
+- If $k$ is **even**: $2^{k}\equiv1$, $2^{k-1}\equiv2$  
+  ⇒ $N_1\equiv b\cdot1+2-2\equiv b\bmod3$.  
+  So we need $b\equiv0\pmod3$.
 
-For $a$ and $b$ to be integers, the numerators must be divisible by 3.
+- If $k$ is **odd**: $2^{k}\equiv2$, $2^{k-1}\equiv1$  
+  ⇒ $N_1\equiv b\cdot2+1-2\equiv2b-1\pmod3$.  
+  For this to be 0 we need $2b\equiv1\pmod3$, i.e. $b\equiv2\pmod3$.
 
-Let us consider $2^n \bmod 3$:
-- $2^1 \equiv 2 \pmod{3}$
-- $2^2 \equiv 1 \pmod{3}$
-- $2^3 \equiv 2 \pmod{3}$
-- $2^4 \equiv 1 \pmod{3}$
-- and so on, so $2^n \equiv 2$ if $n$ is odd, $1$ if $n$ is even.
+### 3.2 The Second Numerator
 
-Now, analyze $b \cdot 2^k + 2^{k-1} - 2 \bmod 3$:
+Exactly the same reasoning with $a$ and $l$ gives:
 
-- If $k$ is even: $2^k \equiv 1$, $2^{k-1} \equiv 2$
-- If $k$ is odd: $2^k \equiv 2$, $2^{k-1} \equiv 1$
+- $l$ even ⇒ $a\equiv0\pmod3$,
+- $l$ odd ⇒ $a\equiv2\pmod3$.
 
-So, for $k$ even:
-- $b \cdot 1 + 2 - 2 \equiv b \pmod{3}$
+All possibilities are therefore:
 
-For $k$ odd:
-- $b \cdot 2 + 1 - 2 \equiv 2b - 1 \pmod{3}$
+| parity of $k$ | parity of $l$ | $b\bmod3$ | $a\bmod3$ |
+|---------------|---------------|-----------|-----------|
+| even          | even          | 0         | 0         |
+| even          | odd           | 0         | 2         |
+| odd           | even          | 2         | 0         |
+| odd           | odd           | 2         | 2         |
 
-For the numerator to be divisible by 3, we require:
-- If $k$ even: $b \equiv 0 \pmod{3}$
-- If $k$ odd: $2b - 1 \equiv 0 \pmod{3} \implies 2b \equiv 1 \pmod{3} \implies b \equiv 2 \pmod{3}$
+We now check each row.
 
-Similarly, for $a \cdot 2^l + 2^{l-1} - 2$:
-- If $l$ even: $a \equiv 0 \pmod{3}$
-- If $l$ odd: $a \equiv 2 \pmod{3}$
+## Case-by-Case Check
 
-Now, let's consider all possible parity combinations for $k$ and $l$:
+### Both $k$ and $l$ Even
 
----
+Put $b=3B$ ($B$ integer) in the equation for $a$:
 
-**Case 1: $k$ and $l$ both even**
+$$a = B\,2^{k}+\frac{2^{k-1}-2}{3}.$$
 
-From above:
-- $b \equiv 0 \pmod{3}$
-- $a \equiv 0 \pmod{3}$
+Because $k$ is even, $2^{k-1}\equiv2\pmod3$ so the fraction is 0, hence $a\equiv B\cdot1\pmod3$.
 
-Let $a = 3A$, $b = 3B$ for integers $A, B \geq 0$.
+But we also require $a\equiv0\pmod3$, forcing $B\equiv0\pmod3$; say $B=3B_1$. Repeating the argument forces $b$ (and then $a$) to be divisible by higher and higher powers of 3, which is only possible for $a=b=0$. We need positive integers, so **no solution**.
 
-Plug $b = 3B$ into the formula for $a$:
-- $a = \frac{3B \cdot 2^k + 2^{k-1} - 2}{3} = B \cdot 2^k + \frac{2^{k-1} - 2}{3}$
+### $k$ Even, $l$ Odd
 
-But $a$ must also be a multiple of 3, so $a = 3A$:
-- $3A = B \cdot 2^k + \frac{2^{k-1} - 2}{3}$
-- $3A - B \cdot 2^k = \frac{2^{k-1} - 2}{3}$
+Here $b=3B$, $a\equiv2\pmod3$.
 
-The right side is an integer only if $2^{k-1} \equiv 2 \pmod{3}$, i.e., $k-1$ is odd, i.e., $k$ is even (which it is in this case). So $2^{k-1} - 2 \equiv 0 \pmod{3}$, so the right side is an integer.
+From the equation for $a$:
 
-But for $A, B \geq 0$, $3A - B \cdot 2^k$ is only divisible by 3 if $B \cdot 2^k \equiv 0 \pmod{3}$, i.e., $B \equiv 0 \pmod{3}$ or $2^k \equiv 0 \pmod{3}$, but $2^k$ is never $0 \pmod{3}$, so $B \equiv 0 \pmod{3}$, i.e., $b$ is a multiple of 9, and so on. But then, recursively, $a$ and $b$ must be divisible by higher and higher powers of 3, and the only solution is $a = b = 0$.
+$$a = B\,2^{k}+\frac{2^{k-1}-2}{3}.$$
 
----
+Again $2^{k-1}\equiv2$, so the fraction is 0 and $a\equiv B\pmod3$. But $B\equiv0$, which would give $a\equiv0$, contradicting $a\equiv2$. **Impossible.**
 
-**Case 2: $k$ even, $l$ odd**
+### $k$ Odd, $l$ Even
 
-- $b \equiv 0 \pmod{3}$
-- $a \equiv 2 \pmod{3}$
+Symmetric to the previous case: $b\equiv2$, $a\equiv0$. A direct substitution shows the same contradiction, so **impossible**.
 
-Let $b = 3B$, $a = 3A + 2$.
+### Both $k$ and $l$ Odd
 
-Plug $b$ into the formula for $a$:
-- $a = B \cdot 2^k + \frac{2^{k-1} - 2}{3}$
+Write $a=3A+2$, $b=3B+2$.
 
-But $a \equiv 2 \pmod{3}$, so $B \cdot 2^k + \frac{2^{k-1} - 2}{3} \equiv 2 \pmod{3}$. But $B \cdot 2^k \equiv 0 \pmod{3}$, so $\frac{2^{k-1} - 2}{3} \equiv 2 \pmod{3}$. But as above, $\frac{2^{k-1} - 2}{3}$ is $0$ or $1$ mod 3, never $2$. Contradiction.
+Take $k=1$ (the smallest odd) – this already suffices to get a contradiction:
 
----
+$$a=\frac{b\cdot2+1-2}{3}=\frac{2b-1}{3}.$$
 
-**Case 3: $k$ odd, $l$ even**
+Substitute $b=3B+2$:
 
-- $b \equiv 2 \pmod{3}$
-- $a \equiv 0 \pmod{3}$
+$$a=\frac{2(3B+2)-1}{3}=2B+1.$$
 
-Let $b = 3B + 2$, $a = 3A$.
+Now use the second equation with $l=1$:
 
-Plug $b$ into the formula for $a$:
-- $a = \frac{(3B + 2) \cdot 2^k + 2^{k-1} - 2}{3} = B \cdot 2^{k+1} + \frac{2 \cdot 2^k + 2^{k-1} - 2}{3}$
+$$b=\frac{2a-1}{3}.$$
 
-But $a$ is a multiple of 3, so $B \cdot 2^{k+1}$ is always even, but the remaining term must also be divisible by 3. But $2 \cdot 2^k + 2^{k-1} - 2$ is not generally divisible by 3 for $k$ odd, and checking small values shows no positive integer solutions for $A, B$.
+Insert the expression for $a$ into it:
 
----
+$$b=\frac{2(2B+1)-1}{3}=\frac{4B+1}{3}.$$
 
-**Case 4: $k$ and $l$ both odd**
+But the left-hand side is $3B+2$. Equating and clearing denominators gives $9B+6 = 4B+1$, i.e. $5B=-5$, impossible for positive $B$. So **no solution** in this last case either.
 
-- $b \equiv 2 \pmod{3}$
-- $a \equiv 2 \pmod{3}$
+## Conclusion on 2 odd cycles
 
-Let $a = 3A + 2$, $b = 3B + 2$.
+Every possible choice of parities for $k$ and $l$ leads to a contradiction with the remainder conditions that $a$ and $b$ must satisfy. Therefore the original system of equations has **no solution in positive integers**.
 
-Plug $b$ into the formula for $a$:
-- $a = B \cdot 2^{k+1} + \frac{2 \cdot 2^k + 2^{k-1} - 2}{3}$
-
-But $a \equiv 2 \pmod{3}$, so $B \cdot 2^{k+1}$ is always even, and the remaining term must be congruent to 2 mod 3. But as above, this is not possible for any $k \geq 1$ and integer $B$.
-
----
-
-In all cases, the only integer solution is $a = b = 0$. For all other positive integer values, the system is unsolvable modulo 3, and thus unsolvable in integers.
-
-This completes the proof for the simple case, with all cases checked explicitly.
+The only integer solution is the trivial $a=b=0$, which does not create the desired two-edge cycle.
 
 
 
@@ -486,3 +464,25 @@ $$
 \end{align*}
 $$
 $$\sum k_i > n$$
+
+# Returning to the $x_i$ is divisible by 3 argument
+
+Lets rewrite:
+
+$$6x_0 + 4 = (2x_1+1) \cdot 2^{k_0}$$
+$$6x_1 + 4 = (2x_2+1) \cdot 2^{k_1}$$
+$$6x_2 + 4 = (2x_3+1) \cdot 2^{k_2}$$
+$$\vdots$$
+$$6x_{n-1} + 4 = (2x_n+1) \cdot 2^{k_{n-1}}$$
+$$6x_n + 4 = (2x_0+1) \cdot 2^{k_n}$$
+
+As
+
+$$x_0 = \frac{(2x_1+1) \cdot 2^{k_0-1} - 2}{3}$$
+$$x_1 = \frac{(2x_2+1) \cdot 2^{k_1-1} - 2}{3}$$
+$$x_2 = \frac{(2x_3+1) \cdot 2^{k_2-1} - 4}{3}$$
+$$\vdots$$
+$$x_{n-1} = \frac{(2x_n+1) \cdot 2^{k_{n-1}-1} - 2}{3}$$
+$$x_n = \frac{(2x_0+1) \cdot 2^{k_n} - 2}{3}$$
+
+This suggests that any cycle must have all $(2x_i) \cdot 2^{k_i-1} - 2$ divisible by 3. In order for this to happen $x_{i+1} > x_i$ which is a contradiction with the cycle.
