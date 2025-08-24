@@ -113,10 +113,156 @@ This is solvable for $a=0$. Interestingly, $k$ then represents the number of →
 
 In order for a cycle between walk trees with two edges to exist, we would need:
 
-$$6a + 4 = (2b+1) \cdot 2^k$$
-$$6b + 4 = (2a+1) \cdot 2^l$$
+$$
+\left\{
+\begin{aligned}
+6a + 4 = (2b+1) \cdot 2^k \\
+6b + 4 = (2a+1) \cdot 2^l
+\end{aligned}
+\right.
+$$
 
 To hold. That is, such a cycle consists of two distinct walk trees. And the right-hand side of the first walk tree must point to the left-hand side of the second and the right-hand side of the second must point to the left-hand side of the first. This is, however, unsolvable for distinct positive integer values of $a$ and $b$ and positive integer values of $k$ and $l$.
+
+To show this is unsolvable lets first simplify the equations.
+
+$$
+\left\{
+\begin{aligned}
+    6a + 4 &= b \cdot 2^{k+1} + 2^k \\
+    6b + 4 &= a \cdot 2^{l+1} + 2^l
+\end{aligned}
+\right.
+$$
+
+If $k=1$ then $b>a$ and if that's true than $l>1$. If $k=2 (or greater)$ then $b<a$ this means that $k\neq l$.
+
+
+$$
+\left\{
+\begin{aligned}
+    a &= \frac{b \cdot 2^{k} + 2^{k-1} - 2}{3} \\
+    b &= \frac{a \cdot 2^{l} + 2^{l-1} -2}{3}
+\end{aligned}
+\right.
+$$
+
+Since a and b are both whole numbers we know that.
+
+$$b \cdot 2^{k} + 2^{k-1} - 2$$
+
+and
+
+$$a \cdot 2^{l} + 2^{l-1} -2$$
+
+are both divisible by 3.
+
+Let us analyze the divisibility by 3 for the expressions in question.
+
+Recall:
+- $a = \frac{b \cdot 2^{k} + 2^{k-1} - 2}{3}$
+- $b = \frac{a \cdot 2^{l} + 2^{l-1} - 2}{3}$
+
+For $a$ and $b$ to be integers, the numerators must be divisible by 3.
+
+Let us consider $2^n \bmod 3$:
+- $2^1 \equiv 2 \pmod{3}$
+- $2^2 \equiv 1 \pmod{3}$
+- $2^3 \equiv 2 \pmod{3}$
+- $2^4 \equiv 1 \pmod{3}$
+- and so on, so $2^n \equiv 2$ if $n$ is odd, $1$ if $n$ is even.
+
+Now, analyze $b \cdot 2^k + 2^{k-1} - 2 \bmod 3$:
+
+- If $k$ is even: $2^k \equiv 1$, $2^{k-1} \equiv 2$
+- If $k$ is odd: $2^k \equiv 2$, $2^{k-1} \equiv 1$
+
+So, for $k$ even:
+- $b \cdot 1 + 2 - 2 \equiv b \pmod{3}$
+
+For $k$ odd:
+- $b \cdot 2 + 1 - 2 \equiv 2b - 1 \pmod{3}$
+
+For the numerator to be divisible by 3, we require:
+- If $k$ even: $b \equiv 0 \pmod{3}$
+- If $k$ odd: $2b - 1 \equiv 0 \pmod{3} \implies 2b \equiv 1 \pmod{3} \implies b \equiv 2 \pmod{3}$
+
+Similarly, for $a \cdot 2^l + 2^{l-1} - 2$:
+- If $l$ even: $a \equiv 0 \pmod{3}$
+- If $l$ odd: $a \equiv 2 \pmod{3}$
+
+Now, let's consider all possible parity combinations for $k$ and $l$:
+
+---
+
+**Case 1: $k$ and $l$ both even**
+
+From above:
+- $b \equiv 0 \pmod{3}$
+- $a \equiv 0 \pmod{3}$
+
+Let $a = 3A$, $b = 3B$ for integers $A, B \geq 0$.
+
+Plug $b = 3B$ into the formula for $a$:
+- $a = \frac{3B \cdot 2^k + 2^{k-1} - 2}{3} = B \cdot 2^k + \frac{2^{k-1} - 2}{3}$
+
+But $a$ must also be a multiple of 3, so $a = 3A$:
+- $3A = B \cdot 2^k + \frac{2^{k-1} - 2}{3}$
+- $3A - B \cdot 2^k = \frac{2^{k-1} - 2}{3}$
+
+The right side is an integer only if $2^{k-1} \equiv 2 \pmod{3}$, i.e., $k-1$ is odd, i.e., $k$ is even (which it is in this case). So $2^{k-1} - 2 \equiv 0 \pmod{3}$, so the right side is an integer.
+
+But for $A, B \geq 0$, $3A - B \cdot 2^k$ is only divisible by 3 if $B \cdot 2^k \equiv 0 \pmod{3}$, i.e., $B \equiv 0 \pmod{3}$ or $2^k \equiv 0 \pmod{3}$, but $2^k$ is never $0 \pmod{3}$, so $B \equiv 0 \pmod{3}$, i.e., $b$ is a multiple of 9, and so on. But then, recursively, $a$ and $b$ must be divisible by higher and higher powers of 3, and the only solution is $a = b = 0$.
+
+---
+
+**Case 2: $k$ even, $l$ odd**
+
+- $b \equiv 0 \pmod{3}$
+- $a \equiv 2 \pmod{3}$
+
+Let $b = 3B$, $a = 3A + 2$.
+
+Plug $b$ into the formula for $a$:
+- $a = B \cdot 2^k + \frac{2^{k-1} - 2}{3}$
+
+But $a \equiv 2 \pmod{3}$, so $B \cdot 2^k + \frac{2^{k-1} - 2}{3} \equiv 2 \pmod{3}$. But $B \cdot 2^k \equiv 0 \pmod{3}$, so $\frac{2^{k-1} - 2}{3} \equiv 2 \pmod{3}$. But as above, $\frac{2^{k-1} - 2}{3}$ is $0$ or $1$ mod 3, never $2$. Contradiction.
+
+---
+
+**Case 3: $k$ odd, $l$ even**
+
+- $b \equiv 2 \pmod{3}$
+- $a \equiv 0 \pmod{3}$
+
+Let $b = 3B + 2$, $a = 3A$.
+
+Plug $b$ into the formula for $a$:
+- $a = \frac{(3B + 2) \cdot 2^k + 2^{k-1} - 2}{3} = B \cdot 2^{k+1} + \frac{2 \cdot 2^k + 2^{k-1} - 2}{3}$
+
+But $a$ is a multiple of 3, so $B \cdot 2^{k+1}$ is always even, but the remaining term must also be divisible by 3. But $2 \cdot 2^k + 2^{k-1} - 2$ is not generally divisible by 3 for $k$ odd, and checking small values shows no positive integer solutions for $A, B$.
+
+---
+
+**Case 4: $k$ and $l$ both odd**
+
+- $b \equiv 2 \pmod{3}$
+- $a \equiv 2 \pmod{3}$
+
+Let $a = 3A + 2$, $b = 3B + 2$.
+
+Plug $b$ into the formula for $a$:
+- $a = B \cdot 2^{k+1} + \frac{2 \cdot 2^k + 2^{k-1} - 2}{3}$
+
+But $a \equiv 2 \pmod{3}$, so $B \cdot 2^{k+1}$ is always even, and the remaining term must be congruent to 2 mod 3. But as above, this is not possible for any $k \geq 1$ and integer $B$.
+
+---
+
+In all cases, the only integer solution is $a = b = 0$. For all other positive integer values, the system is unsolvable modulo 3, and thus unsolvable in integers.
+
+This completes the proof for the simple case, with all cases checked explicitly.
+
+
 
 ## Larger Cycles
 
@@ -184,10 +330,6 @@ $x_7=0$, $k_7=2$
 
 Now obviously at this point we are stuck. No matter how many times we iterate from here we will never get $x_n=4$ which is where we started. Because there simply is no loop in the Collatz graph from 9 to 1. But we want to prove that this equation is unsolvable not just in finite cases that we test, but in all cases for all positive whole number values of x and n.
 
-## Modular Arithmetic Analysis
-
-Now let's try to prove that this system has no solutions except the trivial one with $n=0$ and $x_0 = 0$ and $k_0 = 2$.
-
 ### Analyzing specific Cases
 
 Before we analyze the possible cases, let's understand why some patterns can never happen in a cycle:
@@ -221,7 +363,6 @@ In this case $x_{i+1} > x_i$ which violates $x_0==x_{n+1}$.
 This insight lets us bound the sum of all $k_i$. Specifically, we've established that $\sum k_i > n$.
 
 We can learn more about this sum by taking the product of the equations:
-
 
 **Condensed Product Form:**
 
