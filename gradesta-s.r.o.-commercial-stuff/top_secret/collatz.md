@@ -465,6 +465,8 @@ $$
 $$
 $$\sum k_i > n$$
 
+We can now solve for $k_{max}$ which is at most $2(n+1)- n$ or $n + 2$.
+
 # Returning to the $x_i$ is divisible by 3 argument
 
 Lets rewrite:
@@ -480,9 +482,41 @@ As
 
 $$x_0 = \frac{(2x_1+1) \cdot 2^{k_0-1} - 2}{3}$$
 $$x_1 = \frac{(2x_2+1) \cdot 2^{k_1-1} - 2}{3}$$
-$$x_2 = \frac{(2x_3+1) \cdot 2^{k_2-1} - 4}{3}$$
+$$x_2 = \frac{(2x_3+1) \cdot 2^{k_2-1} - 2}{3}$$
 $$\vdots$$
 $$x_{n-1} = \frac{(2x_n+1) \cdot 2^{k_{n-1}-1} - 2}{3}$$
 $$x_n = \frac{(2x_0+1) \cdot 2^{k_n} - 2}{3}$$
 
-This suggests that any cycle must have all $(2x_i) \cdot 2^{k_i-1} - 2$ divisible by 3. In order for this to happen $x_{i+1} > x_i$ which is a contradiction with the cycle.
+Lets go more concrete for a bit so we don't loose our heads in the clouds and set n=5 and all $k_i$ to $k_{max}$. This is of course impossible but it should give us a lower bound on the growth of $x_i$.
+
+So $k_i$ for the sake of argument is always 7.
+
+$$x_0 = \frac{(2x_1+1) \cdot 2^6 - 2}{3}$$
+$$x_1 = \frac{(2x_2+1) \cdot 2^6 - 2}{3}$$
+$$x_2 = \frac{(2x_3+1) \cdot 2^6 - 4}{3}$$
+$$x_3 = \frac{(2x_4+1) \cdot 2^6 - 2}{3}$$
+$$x_4 = \frac{(2x_0+1) \cdot 2^6 - 2}{3}$$
+
+Lets expand some terms.
+
+$$x_0 = \frac{x_1 \cdot 2^7+2^6 - 2}{3}$$
+$$x_1 = \frac{x_2 \cdot 2^7+2^6 - 2}{3}$$
+$$x_2 = \frac{x_3 \cdot 2^7+2^6 - 2}{3}$$
+$$x_3 = \frac{x_4 \cdot 2^7+2^6 - 2}{3}$$
+$$x_4 = \frac{x_0 \cdot 2^7+2^6 - 2}{3}$$
+
+And convert to decimal.
+
+$$x_0 = \frac{x_1 \cdot 128 + 62 }{3}$$
+$$x_1 = \frac{x_2 \cdot 128 + 62 }{3}$$
+$$x_2 = \frac{x_3 \cdot 128 + 62 }{3}$$
+$$x_3 = \frac{x_4 \cdot 128 + 62 }{3}$$
+$$x_4 = \frac{x_0 \cdot 128 + 62 }{3}$$
+
+What is the lowest possible value of $x_1$ that makes $x_1 \cdot 128 + 62$ divisible by 3?
+
+2
+
+That would make $x_0 = 106$
+
+We can then go on to the last equation and solve for $x_4$. Unfortunately $ 106*128+62$ is not divisible by 3, so we need to try a higher value of $x_1$. The modular arithmatic means that this will never line up and for each step we need to go back and select a higher value. This holds regardless of the value of k.
