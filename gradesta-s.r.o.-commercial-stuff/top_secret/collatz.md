@@ -105,7 +105,7 @@ First off, we know that no cycle can exist with only even numbers. We need an od
 
 Such a cycle with two edges would require that:
 
-$$(2a+1) \cdot 2^k = 6a + 4$$
+$$6a + 4 = (2a+1) \cdot 2^k$$
 
 be solved. Because we would need the left-hand side of the graph to point to the right-hand side and the right-hand side to point to the left-hand side.
 
@@ -113,8 +113,8 @@ This is solvable for $a=0$. Interestingly, $k$ then represents the number of →
 
 In order for a cycle between walk trees with two edges to exist, we would need:
 
-$$(2a+1) \cdot 2^k = 6b + 4$$
-$$(2b+1) \cdot 2^l = 6a + 4$$
+$$6a + 4 = (2b+1) \cdot 2^k$$
+$$6b + 4 = (2a+1) \cdot 2^l$$
 
 To hold. That is, such a cycle consists of two distinct walk trees. And the right-hand side of the first walk tree must point to the left-hand side of the second and the right-hand side of the second must point to the left-hand side of the first. This is, however, unsolvable for distinct positive integer values of $a$ and $b$ and positive integer values of $k$ and $l$.
 
@@ -122,10 +122,10 @@ To hold. That is, such a cycle consists of two distinct walk trees. And the righ
 
 We can go onwards to larger cycles like:
 
-$$(2a+1) \cdot 2^k = 6b + 4$$
-$$(2b+1) \cdot 2^l = 6c + 4$$
-$$(2c+1) \cdot 2^m = 6d + 4$$
-$$(2d+1) \cdot 2^n = 6a + 4$$
+$$6a + 4 = (2b+1) \cdot 2^k$$
+$$6b + 4 = (2c+1) \cdot 2^l$$
+$$6c + 4 = (2d+1) \cdot 2^m$$
+$$6d + 4 = (2a+1) \cdot 2^n$$
 
 where $a \neq b \neq c \neq d$
 
@@ -135,137 +135,213 @@ We have two series of variables $x_0, x_1, \ldots, x_n$ where all the $x$'s are 
 
 The equation we need to prove solvability for is:
 
-$$(2x_0+1) \cdot 2^{k_0} = 6x_1 + 4$$
-$$(2x_1+1) \cdot 2^{k_1} = 6x_2 + 4$$
-$$(2x_2+1) \cdot 2^{k_2} = 6x_3 + 4$$
+$$6x_0 + 4 = (2x_1+1) \cdot 2^{k_0}$$
+$$6x_1 + 4 = (2x_2+1) \cdot 2^{k_1}$$
+$$6x_2 + 4 = (2x_3+1) \cdot 2^{k_2}$$
 $$\vdots$$
-$$(2x_{n-1}+1) \cdot 2^{k_{n-1}} = 6x_n + 4$$
-$$(2x_n+1) \cdot 2^{k_n} = 6x_0 + 4$$
+$$6x_{n-1} + 4 = (2x_n+1) \cdot 2^{k_{n-1}}$$
+$$6x_n + 4 = (2x_0+1) \cdot 2^{k_n}$$
 
 This may seem abstract and unconvincing so lets make it more concrete by trying to punch some values in here. 
 
-I'll start with walking from $x_0 = 0$ as this is the only case in which we get a loop. Perhapse counterintuitively, we will be walking UP the collatz graph rather than down it. So from $x_0=0$
+I'll start with walking from $x_0 = 0$ as this is the only case in which we get a loop. So from $x_0=0$
 
 We have:
 
-$$(2*0+1)*2^{k_0} = 6x_1 + 4$$
+$$6*0 + 4 = (2*x_1+1)*2^{k_0}$$
 
-Now $x_1$ could be $2$ with $k_0=3$ or it could be $10$ with $k_0=6$, or it could possibly be $0$ with $k_0=2$.
+Now obviously the only possible value for $x_1$ is 0. There is always only one possible value in this direction.
 
+Lets start with $x_0 = 4$ and go for a walk. $x_0=4$ represents starting anywhere on the walk tree with the odd number 9 in it and walking down the Collatz graph. From this walk tree we can get to exactly one other walk tree.
 
+$$6*4 + 4 = (2*x_1+1)*2^{k_1}$$
 
-Lets start with $x_0 = 4$ and go for a walk.
+$x_1=3$ and $k_1=2$ here clearly. Thus we've gotten to the walk tree with a 7 in it.
 
-$$(2*2+1)*2^{k_0} = 6x_1 + 4$$
+$$6*3 + 4 = (2*x_2+1)*2^{k_2}$$
 
-This is representing a walk tree with one odd number in it (5) and a (posibly infinite, but also possibly zero) number of edges from other walk trees comming into it which can satisfy this equation. Lets try to solve for $x_1$ to find what kind of walk trees point to walk tree `#2` aka the one and only walk tree with a 5 in it. If $x_1 = 6$ and $k_0=3$ then we fit that first equation in our walk. This represents the edge between the walk tree with the odd number 13 in it and the LHS even number 4O in it aka 13*3+1. We get from 40 to 5 by deviding by 2 3 times.
+$x_2=5$, $k_2=1$.
 
-We can then walk a bit further:
+$$6*5 + 4 = (2*x_3+1)*2^{k_3}$$
 
-$$(2*6+1)*2^{k_1} = 6x_2 + 4$$
+$x_3=8$, $k_3=1$
 
-And solve for $x_2=8$ when $k_1=2$. This means that the odd number 17 is two even numbers away from 13 in the collatz graph. We can then continue (and I assure you we'll get to 1 at some point as in these lower regions of the graph we know that it cycles back to 1).
+$$6*8 + 4 = (2*x_4+1)*2^{k_4}$$
 
-$$(2*8+1)*2^{k_2} = 6x_3 + 4$$
+$x_4=6$, $k_4=3$
 
-$x_3=5$, $k_2=1$ fits this time. (For the odd nuber 11)
+$$6*6 + 4 = (2*x_5+1)*2^{k_5}$$
 
-$$(2*5+1)*2^{k_3} = 6x_4 + 4$$
+$x_5=2$, $k_5=3$
 
-$x_4=3$, $k_3=1$ (For the odd number 7)
+$$6*2 + 4 = (2*x_6+1)*2^{k_6}$$
 
-$$(2*3+1)*2^{k_4} = 6x_5 + 4$$
+$x_6=0$, $k_6=4$
 
-$x_5=4$, $k_4=1$ (For the odd number 9)
+$$6*0 + 4 = (2*x_7+1)*2^{k_7}$$
 
-$$(2*4+1)*2^{k_5} = 6x_6 + 4$$
+$x_7=0$, $k_7=2$
 
-
+Now obviously at this point we are stuck. No matter how many times we iterate from here we will never get $x_n=4$ which is where we started. Because there simply is no loop in the Collatz graph from 9 to 1. But we want to prove that this equation is unsolvable not just in finite cases that we test, but in all cases for all positive whole number values of x and n.
 
 ## Modular Arithmetic Analysis
 
-Now lets try to prove that this system has no solutions except the trivial one whith $n=0$ and $x_0 = 0$ and $k_0 = 2$.
+Now let's try to prove that this system has no solutions except the trivial one with $n=0$ and $x_0 = 0$ and $k_0 = 2$.
 
-Since $k_i > 0$ for all $i$, we can use modular arithmetic to disprove solvability more efficiently.
+### Analyzing specific Cases
 
-### Analysis Modulo 4
+Before we analyze the possible cases, let's understand why some patterns can never happen in a cycle:
 
-Converting $(2x_i+1) \cdot 2^{k_i} = 6x_{i+1} + 4$ to modulo 4:
-$$(2x_i + 1) \cdot 2^{k_i} \equiv 2x_{i+1} \pmod{4}$$
+**"All $k_i$ ≥ 2 cannot happen"**: 
 
-Since $2x_i + 1$ is odd and $2^{k_i} \equiv 0 \pmod{4}$ for $k_i \geq 2$, we have:
-$$x_{i+1} \equiv \begin{cases}
-2 \pmod{4} & \text{if } k_i = 1 \\
-0 \pmod{4} & \text{if } k_i \geq 2
-\end{cases}$$
+Returning to our equation:
 
-### Analysis Modulo 3
+$$6x_i + 4 = (2x_{i+1}+1) \cdot 2^{k_i}$$
 
-In modulo 3, $2 \equiv -1$, $6 \equiv 0$, and $4 \equiv 1$, so:
-$$(-x_i + 1) \cdot 2^{k_i} \equiv 1 \pmod{3}$$
+We can rewrite as
 
-Since $2^{k_i} \equiv (-1)^{k_i} \pmod{3}$:
-$$x_i \equiv \begin{cases}
-0 \pmod{3} & \text{if } k_i \text{ is even} \\
-2 \pmod{3} & \text{if } k_i \text{ is odd}
-\end{cases}$$
+$$6x_i + 4 = x_{i+1} 2^{k_i+1}+2^{k_i} $$
 
-### Combining Constraints with Chinese Remainder Theorem
+If $k_i$ is 2 then:
 
-**What is the Chinese Remainder Theorem?** If you know what remainder a number leaves when divided by 3, and what remainder it leaves when divided by 4, then you can figure out exactly what remainder it leaves when divided by 12. This works because 3 and 4 share no common factors.
+$$6x_i + 4 = x_{i+1} 2^3+2^2 $$
 
-**From modulo 3**: Each $x_i$ must leave remainder 0 or 2 when divided by 3.
+$$6x_i + 4 = 8x_{i+1}+4$$
 
-**From modulo 4**: Each $x_{i+1}$ must leave remainder 0 or 2 when divided by 4 (since $k_i > 0$).
+Clearly $x_{i+1} < x_i$ if all $k_i ≥ 2$ but this violates the contstraint $x_0==x_{n+1}$.
 
-**Using CRT**: The only numbers that leave remainder 0 or 2 when divided by both 3 and 4 are those that leave remainder 0, 2, 6, 8, or 10 when divided by 12.
+**"All $k_i = 1$ cannot happen"**
 
-So all our $x_i$ values must be in this very small set: $\{0, 2, 6, 8, 10\} \pmod{12}$.
+If $k_i$ is 1 then:
 
-### Case Analysis
+$$6x_i + 4 = x_{i+1} 2+2 $$
 
-**Case 1**: All $k_i = 1$
+In this case $x_{i+1} > x_i$ which violates $x_0==x_{n+1}$.
 
-If every $k_i = 1$, then from our modulo 4 analysis, every $x_{i+1}$ must leave remainder 2 when divided by 4. Combined with our modulo 3 analysis, this forces every $x_i$ to leave remainder 2 or 6 when divided by 12.
+This insight lets us bound the sum of all $k_i$. Specifically, we've established that $\sum k_i > n$.
 
-The system becomes:
-$$(2x_i + 1) \cdot 2 = 6x_{i+1} + 4$$
-$$2x_i = 3x_{i+1} + 1$$
+We can learn more about this sum by taking the product of the equations:
 
-This means each $x_i$ is bigger than the next $x_{i+1}$. But if the sequence keeps getting smaller, it can never loop back to the beginning - contradicting the requirement that we have a cycle.
 
-**Case 2**: All $k_i \geq 2$
+**Condensed Product Form:**
 
-If every $k_i \geq 2$, then from our modulo 4 analysis, every $x_{i+1}$ must leave remainder 0 when divided by 4. Combined with our modulo 3 analysis, this forces every $x_i$ to leave remainder 0 or 8 when divided by 12.
+Multiplying all equations together gives:
 
-The cycle cannot close because:
-- If $x_0$ leaves remainder 0 when divided by 12, then $x_n$ must also leave remainder 0 when divided by 12
-- The last equation requires $(2x_n + 1) \cdot 2^{k_n} = 6x_0 + 4$
-- Since $x_n$ leaves remainder 0 when divided by 12, we have $2^{k_n} \equiv 4 \pmod{12}$
-- But $2^{k_n}$ can only leave remainder 2, 4, or 8 when divided by 12 for $k_n \geq 1$, and 4 is possible
-- However, this forces $x_0$ to leave remainder 0 when divided by 12, which creates a problem with the requirement that all $x_i$ be different numbers
+$$\prod_{i=0}^{n} (6x_i + 4) = \prod_{i=0}^{n} \left((2x_i + 1) \cdot 2^{k_i}\right)$$
 
-**Case 3**: Mixed $k_i$ values
+where $x_{n+1} = x_0$ due to the cyclic nature.
 
-Suppose we have a mix where some $k_i = 1$ and some $k_j \geq 2$. This creates a chain of constraints that cannot be satisfied consistently.
+Let's expand the right-hand side:
 
-Consider consecutive steps where $k_i = 1$ and $k_{i+1} \geq 2$:
-- From $k_i = 1$: $x_{i+1}$ must leave remainder 2 when divided by 4
-- From $k_{i+1} \geq 2$: $x_{i+2}$ must leave remainder 0 when divided by 4
+$$\prod_{i=0}^{n} \left((2x_i + 1) \cdot 2^{k_i}\right) = \left(\prod_{i=0}^{n} (2x_i + 1)\right) \cdot \left(\prod_{i=0}^{n} 2^{k_i}\right)$$
 
-But from our modulo 3 analysis, if $k_{i+1}$ is odd, then $x_{i+1}$ must leave remainder 2 when divided by 3, and if $k_{i+1}$ is even, then $x_{i+1}$ must leave remainder 0 when divided by 3.
+Recall that the product of exponents is the exponent of the sum:
 
-Combining with CRT:
-- If $k_{i+1}$ is odd: $x_{i+1}$ leaves remainder 2 when divided by both 3 and 4, so it must leave remainder 2 when divided by 12
-- If $k_{i+1}$ is even: $x_{i+1}$ leaves remainder 2 when divided by 4 and remainder 0 when divided by 3, so it must leave remainder 6 when divided by 12
+$$\prod_{i=0}^{n} 2^{k_i} = 2^{\sum_{i=0}^{n} k_i}$$
 
-In both cases, $x_{i+1}$ is forced into a very specific value modulo 12. But then $x_{i+2}$ must leave remainder 0 when divided by 4, which creates even more constraints. These constraints keep building up as we go around the cycle, eventually making it impossible to satisfy the requirement that all $x_i$ be different numbers.
+So the equation becomes:
 
-### Conclusion
+$$\prod_{i=0}^{n} (6x_i + 4) = \left(\prod_{i=0}^{n} (2x_i + 1)\right) \cdot 2^{\sum_{i=0}^{n} k_i}$$
 
-With $k_i > 0$, our analysis shows that all $x_i$ values are forced into a very small set: they can only leave remainder 0, 2, 6, 8, or 10 when divided by 12. This severely restricts our options.
+Now, to solve for the sum $\sum_{i=0}^{n} k_i$, divide both sides by $\prod_{i=0}^{n} (2x_i + 1)$:
 
-In all three cases we examined, these restrictions make it impossible to create a cycle where all the numbers are different from each other. The constraints keep building up until we hit a dead end.
+$$\frac{\prod_{i=0}^{n} (6x_i + 4)}{\prod_{i=0}^{n} (2x_i + 1)} = 2^{\sum_{i=0}^{n} k_i}$$
 
-**Therefore, no solution exists for $n \geq 2$**.
+Taking the base-2 logarithm of both sides gives:
 
+$$\log_2\left(\frac{\prod_{i=0}^{n} (6x_i + 4)}{\prod_{i=0}^{n} (2x_i + 1)}\right) = \sum_{i=0}^{n} k_i$$
+
+Thus, the sum of all $k_i$ is:
+
+$$\boxed{\sum_{i=0}^{n} k_i = \log_2\left(\frac{\prod_{i=0}^{n} (6x_i + 4)}{\prod_{i=0}^{n} (2x_i + 1)}\right)}$$
+
+---
+
+**Interpreting the quantity $k_i$**
+
+Because a logarithm turns products into sums, the boxed identity tells us that every term $k_i$ must satisfy
+
+$$
+k_i = \log_2\left(\frac{6x_i+4}{2x_i+1}\right)
+$$
+
+Hence the problem is equivalent to finding an upper bound for
+
+$$
+S = \sum_{i=0}^{n} \log_2\left(\frac{6x_i+4}{2x_i+1}\right)
+$$
+
+given the admissible values of the $x_i$.
+
+**Bounding a single term**
+
+Put $f(x) = \frac{6x+4}{2x+1}$, with $x > -\frac{1}{2}$.
+
+A straightforward derivative check shows
+
+$$
+f'(x) = \frac{6(2x+1) - 2(6x+4)}{(2x+1)^2} = \frac{-2}{(2x+1)^2} < 0,
+$$
+
+so $f(x)$ is strictly decreasing on its domain. Therefore, the largest value of $f(x)$ occurs at the smallest allowed $x$.
+
+Assume throughout that all $x_i \ge 0$ (the usual setting in combinatorial or number-theoretic problems). Then
+
+$$
+\begin{align*}
+&\text{At } x=0: \quad f(0) = 4. \\
+&\text{As } x \to \infty: \quad f(x) \to 3.
+\end{align*}
+$$
+
+Thus for every $x_i \ge 0$ we have
+
+$$
+3 < f(x_i) \le 4,
+$$
+
+and consequently
+
+$$
+1.585\ldots = \log_2 3 < k_i \le \log_2 4 = 2.
+$$
+
+**A universal upper bound (non-negative $x_i$)**
+
+Because each $k_i \le 2$,
+
+$$
+\boxed{S \le 2(n+1)}
+$$
+
+Equality occurs precisely when every $x_i = 0$.
+
+**Tighter bounds under stronger hypotheses**
+
+If the $x_i$ are additionally bounded below by some integer $m \ge 1$, you can sharpen the estimate using the same monotonicity argument:
+
+$$
+k_i \le \log_2\left(\frac{6m+4}{2m+1}\right)
+\implies
+S \le (n+1)\log_2\left(\frac{6m+4}{2m+1}\right)
+$$
+
+Examples:
+
+$$
+\begin{align*}
+&x_i \ge 1: \quad k_i \le \log_2\left(\frac{10}{3}\right) \approx 1.737 \implies S \le 1.737(n+1). \\
+&x_i \ge 2: \quad k_i \le \log_2\left(\frac{16}{5}\right) \approx 1.678 \implies S \le 1.678(n+1).
+\end{align*}
+$$
+
+**Summary**
+
+
+For the typical case $x_i \ge 0$, the simple and sharp bound is
+$$
+\begin{align*}
+&\sum_{i=0}^{n} k_i \le 2(n+1). \\
+\end{align*}
+$$
+$$\sum k_i > n$$
