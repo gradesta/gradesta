@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Condensed Collatz Sequence Calculator</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .input-section {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .step {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #e9ecef;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        .step-number {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .binary-value {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .decimal-value {
+            color: #6c757d;
+            font-style: italic;
+        }
+        .error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Condensed Collatz Sequence Calculator</h1>
+        
+        <div class="info">
+            <strong>How it works:</strong> Enter a binary number, then click calculate. The algorithm will:
+            <ol>
+                <li>Multiply by 3 and add 2</li>
+                <li>Remove trailing zeros and the last 1 from the right</li>
+                <li>Repeat until reaching zero</li>
+            </ol>
+            <br><strong>g and k values (from Collatz analysis):</strong>
+            <ul>
+                <li><strong>g</strong> = number of extra digits gained on the left when multiplying by 3 and adding 2 (typically 1 or 2)</li>
+                <li><strong>k</strong> = number of digits removed from the right (trailing zeros + last 1)</li>
+                <li>For Collatz conjecture to hold: cumulative g should be less than cumulative k over multiple steps</li>
+            </ul>
+        </div>
+
+        <div class="input-section">
+            <label for="binaryInput">Enter Binary Number:</label>
+            <input type="text" id="binaryInput" placeholder="e.g., 1010" value="1010">
+        </div>
+
+        <button onclick="calculateCollatz()" id="calculateBtn">Calculate Condensed Collatz Sequence</button>
+
+        <div id="result" class="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        function binaryToDecimal(binary) {
+            return parseInt(binary, 2);
+        }
+
+        function decimalToBinary(decimal) {
+            if (decimal === 0) return '0';
+            return decimal.toString(2);
+        }
+
+        function removeTrailingZerosAndLastOne(binary) {
+            // Remove trailing zeros
+            let trimmed = binary.replace(/0+$/, '');
+            // Remove the last 1 if it exists
+            if (trimmed.endsWith('1')) {
+                trimmed = trimmed.slice(0, -1);
+            }
+            // If we removed everything, return '0'
+            return trimmed || '0';
+        }
+
+        function calculateGandK(binary, multipliedBinary) {
+            // Count trailing zeros
+            const trailingZeros = (multipliedBinary.match(/0*$/) || [''])[0].length;
+            
+            // g = growth in binary length when multiplying by 3 and adding 2
+            const originalLength = binary.length;
+            const multipliedLength = multipliedBinary.length;
+            const g = Math.max(0, multipliedLength - originalLength);
+            
+            // k = number of digits removed from the right (trailing zeros + last 1)
+            const k = trailingZeros + 1;
+            
+            return { g, k };
+        }
+
+        function calculateCollatz() {
+            const binaryInput = document.getElementById('binaryInput').value.trim();
+            const resultDiv = document.getElementById('result');
+            const calculateBtn = document.getElementById('calculateBtn');
+
+            // Validate input
+            if (!binaryInput) {
+                resultDiv.innerHTML = '<div class="error">Please enter a binary number.</div>';
+                resultDiv.style.display = 'block';
+                return;
+            }
+
+            // Check if input is valid binary
+            if (!/^[01]+$/.test(binaryInput)) {
+                resultDiv.innerHTML = '<div class="error">Please enter a valid binary number (only 0s and 1s).</div>';
+                resultDiv.style.display = 'block';
+                return;
+            }
+
+            // Disable button during calculation
+            calculateBtn.disabled = true;
+            calculateBtn.textContent = 'Calculating...';
+
+            // Start calculation
+            let currentBinary = binaryInput;
+            let step = 1;
+            let sequence = [];
+
+            resultDiv.innerHTML = '<h3>Calculation Steps:</h3>';
+
+            while (currentBinary !== '0' && step <= 100) { // Safety limit
+                const currentDecimal = binaryToDecimal(currentBinary);
+                
+                // Store current state
+                sequence.push({
+                    step: step,
+                    binary: currentBinary,
+                    decimal: currentDecimal
+                });
+
+                // Display current step
+                const stepDiv = document.createElement('div');
+                stepDiv.className = 'step';
+                stepDiv.innerHTML = `
+                    <span class="step-number">Step ${step}:</span> 
+                    <span class="binary-value">${currentBinary}</span> 
+                    <span class="decimal-value">(${currentDecimal})</span>
+                `;
+                resultDiv.appendChild(stepDiv);
+
+                // If we've reached zero, break
+                if (currentBinary === '0') {
+                    break;
+                }
+
+                // Multiply by 3 and add 2
+                const multiplied = currentDecimal * 3 + 2;
+                const multipliedBinary = decimalToBinary(multiplied);
+                
+                // Calculate g and k values
+                const { g, k } = calculateGandK(currentBinary, multipliedBinary);
+                
+                // Remove trailing zeros and last 1
+                const nextBinary = removeTrailingZerosAndLastOne(multipliedBinary);
+                
+                // Show the transformation
+                const transformDiv = document.createElement('div');
+                transformDiv.style.marginLeft = '20px';
+                transformDiv.style.marginBottom = '10px';
+                transformDiv.style.fontSize = '14px';
+                transformDiv.innerHTML = `
+                    → ${currentDecimal} × 3 + 2 = ${multiplied} (${multipliedBinary})
+                    <br>→ g=${g} (growth), k=${k} (digits removed)
+                    <br>→ Remove trailing zeros and last 1: ${nextBinary}
+                `;
+                resultDiv.appendChild(transformDiv);
+
+                currentBinary = nextBinary;
+                step++;
+            }
+
+            if (step > 100) {
+                const warningDiv = document.createElement('div');
+                warningDiv.className = 'error';
+                warningDiv.innerHTML = '<br><strong>Warning: Calculation stopped after 100 steps to prevent infinite loops.</strong>';
+                resultDiv.appendChild(warningDiv);
+            }
+
+            // Show summary
+            const summaryDiv = document.createElement('div');
+            summaryDiv.style.marginTop = '20px';
+            summaryDiv.style.padding = '15px';
+            summaryDiv.style.backgroundColor = '#d4edda';
+            summaryDiv.style.border = '1px solid #c3e6cb';
+            summaryDiv.style.borderRadius = '5px';
+            summaryDiv.innerHTML = `
+                <strong>Summary:</strong> Reached zero in ${step - 1} steps.
+                <br>Final sequence length: ${sequence.length}
+            `;
+            resultDiv.appendChild(summaryDiv);
+
+            resultDiv.style.display = 'block';
+            
+            // Re-enable button
+            calculateBtn.disabled = false;
+            calculateBtn.textContent = 'Calculate Condensed Collatz Sequence';
+        }
+
+        // Allow Enter key to trigger calculation
+        document.getElementById('binaryInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                calculateCollatz();
+            }
+        });
+
+        // Focus on input when page loads
+        window.onload = function() {
+            document.getElementById('binaryInput').focus();
+        };
+    </script>
+</body>
+</html>

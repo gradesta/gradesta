@@ -97,154 +97,9 @@ $$(2a + 1) \cdot 2^k = 6b + 4$$
 
 We have now defined a condensed Collatz graph consisting of subwalks of the Collatz graph. The interesting thing about grouping the walks like this is that the topology of a graph of walks happens to exactly match the topology of a graph. If you can walk to a walk, then you can walk that walk to wherever that walk goes.
 
-## Cycles in the Condensed Graph
+## Walks of the Condensed Graph
 
-Now let's go on to show something about the cycles of our condensed Collatz graph.
-
-First off, we know that no cycle can exist with only even numbers. We need an odd number for there to be a cycle. So the only way for the Collatz graph to cycle is if our condensed Collatz graph of walk trees cycles.
-
-Such a cycle with two edges would require that:
-
-$$6a + 4 = (2a+1) \cdot 2^k$$
-
-be solved. Because we would need the left-hand side of the graph to point to the right-hand side and the right-hand side to point to the left-hand side.
-
-This is solvable for $a=0$. Interestingly, $k$ then represents the number of → labeled edges in the walk (or if you prefer) the number of even numbers in the non-condensed cyclic walk.
-
-In order for a cycle between walk trees with two edges to exist, we would need:
-
-$$
-\left\{
-\begin{aligned}
-6a + 4 = (2b+1) \cdot 2^k \\
-6b + 4 = (2a+1) \cdot 2^l
-\end{aligned}
-\right.
-$$
-
-To hold. That is, such a cycle consists of two distinct walk trees. And the right-hand side of the first walk tree must point to the left-hand side of the second and the right-hand side of the second must point to the left-hand side of the first. This is, however, unsolvable for distinct positive integer values of $a$ and $b$ and positive integer values of $k$ and $l$.
-
-Re-writing the Two Given Equations
--------------------------------
-
-Start with:
-
-$$
-\begin{aligned}
-6a+4 &= (2b+1)\,2^{k},\\
-6b+4 &= (2a+1)\,2^{l}.
-\end{aligned}
-$$
-
-Distribute the brackets:
-
-$$
-\begin{aligned}
-6a+4 &= b\,2^{k+1} + 2^{k},\\
-6b+4 &= a\,2^{l+1} + 2^{l}.
-\end{aligned}
-$$
-
-Now isolate $a$ and $b$:
-
-$$
-\boxed{a=\dfrac{b\,2^{k}+2^{k-1}-2}{3}},\qquad
-\boxed{b=\dfrac{a\,2^{l}+2^{l-1}-2}{3}}.
-$$
-
-Because $a$ and $b$ are (positive) integers, the two numerators must each be **divisible by 3**.
-
-## When is Each Numerator Divisible by 3?
-
-### The First Numerator
-
-Call it $N_1=b\,2^{k}+2^{k-1}-2$.
-
-- If $k$ is **even**: $2^{k}\equiv1$, $2^{k-1}\equiv2$  
-  ⇒ $N_1\equiv b\cdot1+2-2\equiv b\bmod3$.  
-  So we need $b\equiv0\pmod3$.
-
-- If $k$ is **odd**: $2^{k}\equiv2$, $2^{k-1}\equiv1$  
-  ⇒ $N_1\equiv b\cdot2+1-2\equiv2b-1\pmod3$.  
-  For this to be 0 we need $2b\equiv1\pmod3$, i.e. $b\equiv2\pmod3$.
-
-### 3.2 The Second Numerator
-
-Exactly the same reasoning with $a$ and $l$ gives:
-
-- $l$ even ⇒ $a\equiv0\pmod3$,
-- $l$ odd ⇒ $a\equiv2\pmod3$.
-
-All possibilities are therefore:
-
-| parity of $k$ | parity of $l$ | $b\bmod3$ | $a\bmod3$ |
-|---------------|---------------|-----------|-----------|
-| even          | even          | 0         | 0         |
-| even          | odd           | 0         | 2         |
-| odd           | even          | 2         | 0         |
-| odd           | odd           | 2         | 2         |
-
-We now check each row.
-
-## Case-by-Case Check
-
-### Both $k$ and $l$ Even
-
-Put $b=3B$ ($B$ integer) in the equation for $a$:
-
-$$a = B\,2^{k}+\frac{2^{k-1}-2}{3}.$$
-
-Because $k$ is even, $2^{k-1}\equiv2\pmod3$ so the fraction is 0, hence $a\equiv B\cdot1\pmod3$.
-
-But we also require $a\equiv0\pmod3$, forcing $B\equiv0\pmod3$; say $B=3B_1$. Repeating the argument forces $b$ (and then $a$) to be divisible by higher and higher powers of 3, which is only possible for $a=b=0$. We need positive integers, so **no solution**.
-
-### $k$ Even, $l$ Odd
-
-Here $b=3B$, $a\equiv2\pmod3$.
-
-From the equation for $a$:
-
-$$a = B\,2^{k}+\frac{2^{k-1}-2}{3}.$$
-
-Again $2^{k-1}\equiv2$, so the fraction is 0 and $a\equiv B\pmod3$. But $B\equiv0$, which would give $a\equiv0$, contradicting $a\equiv2$. **Impossible.**
-
-### $k$ Odd, $l$ Even
-
-Symmetric to the previous case: $b\equiv2$, $a\equiv0$. A direct substitution shows the same contradiction, so **impossible**.
-
-### Both $k$ and $l$ Odd
-
-Write $a=3A+2$, $b=3B+2$.
-
-Take $k=1$ (the smallest odd) – this already suffices to get a contradiction:
-
-$$a=\frac{b\cdot2+1-2}{3}=\frac{2b-1}{3}.$$
-
-Substitute $b=3B+2$:
-
-$$a=\frac{2(3B+2)-1}{3}=2B+1.$$
-
-Now use the second equation with $l=1$:
-
-$$b=\frac{2a-1}{3}.$$
-
-Insert the expression for $a$ into it:
-
-$$b=\frac{2(2B+1)-1}{3}=\frac{4B+1}{3}.$$
-
-But the left-hand side is $3B+2$. Equating and clearing denominators gives $9B+6 = 4B+1$, i.e. $5B=-5$, impossible for positive $B$. So **no solution** in this last case either.
-
-## Conclusion on 2 odd cycles
-
-Every possible choice of parities for $k$ and $l$ leads to a contradiction with the remainder conditions that $a$ and $b$ must satisfy. Therefore the original system of equations has **no solution in positive integers**.
-
-The only integer solution is the trivial $a=b=0$, which does not create the desired two-edge cycle.
-
-
-
-## Larger Cycles
-
-We can go onwards to larger cycles like:
+We can go onwards to larger walks like:
 
 $$6a + 4 = (2b+1) \cdot 2^k$$
 $$6b + 4 = (2c+1) \cdot 2^l$$
@@ -272,251 +127,245 @@ I'll start with walking from $x_0 = 0$ as this is the only case in which we get 
 
 We have:
 
-$$6*0 + 4 = (2*x_1+1)*2^{k_0}$$
+$$6\cdot 0 + 4 = (2\cdot x_1+1)\cdot 2^{k_0}$$
 
 Now obviously the only possible value for $x_1$ is 0. There is always only one possible value in this direction.
 
 Lets start with $x_0 = 4$ and go for a walk. $x_0=4$ represents starting anywhere on the walk tree with the odd number 9 in it and walking down the Collatz graph. From this walk tree we can get to exactly one other walk tree.
 
-$$6*4 + 4 = (2*x_1+1)*2^{k_1}$$
+$$6\cdot 4 + 4 = (2\cdot x_1+1)\cdot 2^{k_1}$$
 
 $x_1=3$ and $k_1=2$ here clearly. Thus we've gotten to the walk tree with a 7 in it.
 
-$$6*3 + 4 = (2*x_2+1)*2^{k_2}$$
+$$6\cdot 3 + 4 = (2\cdot x_2+1)\cdot 2^{k_2}$$
 
 $x_2=5$, $k_2=1$.
 
-$$6*5 + 4 = (2*x_3+1)*2^{k_3}$$
+$$6\cdot 5 + 4 = (2\cdot x_3+1)\cdot 2^{k_3}$$
 
 $x_3=8$, $k_3=1$
 
-$$6*8 + 4 = (2*x_4+1)*2^{k_4}$$
+$$6\cdot 8 + 4 = (2\cdot x_4+1)\cdot 2^{k_4}$$
 
 $x_4=6$, $k_4=3$
 
-$$6*6 + 4 = (2*x_5+1)*2^{k_5}$$
+$$6\cdot 6 + 4 = (2\cdot x_5+1)\cdot 2^{k_5}$$
 
 $x_5=2$, $k_5=3$
 
-$$6*2 + 4 = (2*x_6+1)*2^{k_6}$$
+$$6\cdot 2 + 4 = (2\cdot x_6+1)\cdot 2^{k_6}$$
 
 $x_6=0$, $k_6=4$
 
-$$6*0 + 4 = (2*x_7+1)*2^{k_7}$$
+$$6\cdot 0 + 4 = (2\cdot x_7+1)\cdot 2^{k_7}$$
 
 $x_7=0$, $k_7=2$
 
 Now obviously at this point we are stuck. No matter how many times we iterate from here we will never get $x_n=4$ which is where we started. Because there simply is no loop in the Collatz graph from 9 to 1. But we want to prove that this equation is unsolvable not just in finite cases that we test, but in all cases for all positive whole number values of x and n.
 
-### Analyzing specific Cases
 
-Before we analyze the possible cases, let's understand why some patterns can never happen in a cycle:
+Solving for $x_{n+1}$
+----------------------
 
-**"All $k_i$ ≥ 2 cannot happen"**: 
+Starting from our equation:
 
-Returning to our equation:
+$$6x_{n} + 4 = (2x_{n+1}+1) \cdot 2^{k_n}$$
 
-$$6x_i + 4 = (2x_{i+1}+1) \cdot 2^{k_i}$$
-
-We can rewrite as
-
-$$6x_i + 4 = x_{i+1} 2^{k_i+1}+2^{k_i} $$
-
-If $k_i$ is 2 then:
-
-$$6x_i + 4 = x_{i+1} 2^3+2^2 $$
-
-$$6x_i + 4 = 8x_{i+1}+4$$
-
-Clearly $x_{i+1} < x_i$ if all $k_i ≥ 2$ but this violates the contstraint $x_0==x_{n+1}$.
-
-**"All $k_i = 1$ cannot happen"**
-
-If $k_i$ is 1 then:
-
-$$6x_i + 4 = x_{i+1} 2+2 $$
-
-In this case $x_{i+1} > x_i$ which violates $x_0==x_{n+1}$.
-
-This insight lets us bound the sum of all $k_i$. Specifically, we've established that $\sum k_i > n$.
-
-We can learn more about this sum by taking the product of the equations:
-
-**Condensed Product Form:**
-
-Multiplying all equations together gives:
-
-$$\prod_{i=0}^{n} (6x_i + 4) = \prod_{i=0}^{n} \left((2x_i + 1) \cdot 2^{k_i}\right)$$
-
-where $x_{n+1} = x_0$ due to the cyclic nature.
-
-Let's expand the right-hand side:
-
-$$\prod_{i=0}^{n} \left((2x_i + 1) \cdot 2^{k_i}\right) = \left(\prod_{i=0}^{n} (2x_i + 1)\right) \cdot \left(\prod_{i=0}^{n} 2^{k_i}\right)$$
-
-Recall that the product of exponents is the exponent of the sum:
-
-$$\prod_{i=0}^{n} 2^{k_i} = 2^{\sum_{i=0}^{n} k_i}$$
-
-So the equation becomes:
-
-$$\prod_{i=0}^{n} (6x_i + 4) = \left(\prod_{i=0}^{n} (2x_i + 1)\right) \cdot 2^{\sum_{i=0}^{n} k_i}$$
-
-Now, to solve for the sum $\sum_{i=0}^{n} k_i$, divide both sides by $\prod_{i=0}^{n} (2x_i + 1)$:
-
-$$\frac{\prod_{i=0}^{n} (6x_i + 4)}{\prod_{i=0}^{n} (2x_i + 1)} = 2^{\sum_{i=0}^{n} k_i}$$
-
-Taking the base-2 logarithm of both sides gives:
-
-$$\log_2\left(\frac{\prod_{i=0}^{n} (6x_i + 4)}{\prod_{i=0}^{n} (2x_i + 1)}\right) = \sum_{i=0}^{n} k_i$$
-
-Thus, the sum of all $k_i$ is:
-
-$$\boxed{\sum_{i=0}^{n} k_i = \log_2\left(\frac{\prod_{i=0}^{n} (6x_i + 4)}{\prod_{i=0}^{n} (2x_i + 1)}\right)}$$
-
----
-
-**Interpreting the quantity $k_i$**
-
-Because a logarithm turns products into sums, the boxed identity tells us that every term $k_i$ must satisfy
+We devide by $2^{k_n}$
 
 $$
-k_i = \log_2\left(\frac{6x_i+4}{2x_i+1}\right)
+\frac{6x_{n} + 4}{2^{k_n}} = 2x_{n+1} + 1
 $$
 
-Hence the problem is equivalent to finding an upper bound for
+Then we subtract by 1.
 
 $$
-S = \sum_{i=0}^{n} \log_2\left(\frac{6x_i+4}{2x_i+1}\right)
+\frac{6x_{n} + 4}{2^{k_n}} - 1 = 2x_{n+1}
 $$
 
-given the admissible values of the $x_i$.
-
-**Bounding a single term**
-
-Put $f(x) = \frac{6x+4}{2x+1}$, with $x > -\frac{1}{2}$.
-
-A straightforward derivative check shows
+And devide by 2
 
 $$
-f'(x) = \frac{6(2x+1) - 2(6x+4)}{(2x+1)^2} = \frac{-2}{(2x+1)^2} < 0,
+\frac{6x_{n} + 4}{2^{k_n+1}} - 0.5 = x_{n+1}
 $$
 
-so $f(x)$ is strictly decreasing on its domain. Therefore, the largest value of $f(x)$ occurs at the smallest allowed $x$.
-
-Assume throughout that all $x_i \ge 0$ (the usual setting in combinatorial or number-theoretic problems). Then
+And reduce the fraction.
 
 $$
-\begin{align*}
-&\text{At } x=0: \quad f(0) = 4. \\
-&\text{As } x \to \infty: \quad f(x) \to 3.
-\end{align*}
+\frac{3x_{n} + 2}{2^{k_n}} - 0.5 = x_{n+1}
 $$
 
-Thus for every $x_i \ge 0$ we have
+Now we know $x_{n+1}$ must be a whole number, so we're going to want to end up with the fraction resolving to $x_{n+1}.5$
+
+If the nominator is odd then $k_n$ must be 1. If it is even, we must keep on dividing by two untill we get to a whole number.
+
+Lets look at how this looks in binary.
+
+Imagine $x_n$ is 5
+
+```
+0101
+```
+
+We multiply by 3 and add 2. This is best visualized as simply 3 binary addition operations.
+
+```
+ 00101
+ 00101
+ 00101
++00010
+-----
+
+```
+
+```
+ 00101
+ 00101
+=01010
+ 00101
+=01111
++00010
+-----
+=10001
+```
+
+Now in this case our result is odd. So $k$ must be 1.
+
+In this case, to get $x_{n+1}$ we simply snip off the last 1 to get:
 
 $$
-3 < f(x_i) \le 4,
+1000\sout{1}\\
+x_{n+1}=1000
 $$
 
-and consequently
+Or 8.
+
+Now lets do this again with our 8.
+
+```
+ 01000
+ 01000
+ 01000
++00010
+-----
+=11010
+```
+
+In this case, $k = 2$. If $x_n$ is odd, $k = 1$. If $x_n$ is even, $k \geq 2$.
 
 $$
-1.585\ldots = \log_2 3 < k_i \le \log_2 4 = 2.
+110\sout{10}\\
+x_{n+1}=110
 $$
 
-**A universal upper bound (non-negative $x_i$)**
+```
+ 00110
+ 00110
+ 00110
+=10010
++00010
+-----
+=10100
+```
 
-Because each $k_i \le 2$,
-
-$$
-\boxed{S \le 2(n+1)}
-$$
-
-Equality occurs precisely when every $x_i = 0$.
-
-**Tighter bounds under stronger hypotheses**
-
-If the $x_i$ are additionally bounded below by some integer $m \ge 1$, you can sharpen the estimate using the same monotonicity argument:
+This is an interesting case in that the $+2$ step pushed one of the ones farther to the left thus increasing the value of $k$ from $2$ to $3$, so now we strike out 3 binary digits from the left.
 
 $$
-k_i \le \log_2\left(\frac{6m+4}{2m+1}\right)
-\implies
-S \le (n+1)\log_2\left(\frac{6m+4}{2m+1}\right)
+10\sout{100}\\
+x_{n+1}=10
 $$
 
-Examples:
+Here we gained two digits on the right, and lost 3 digits on the left.
+
+We can understand the loop in the Collatz Cycle as follows.
+
+```
+ 0000
+ 0000
+ 0000
++0010
+-----
+ 0010
+```
 
 $$
-\begin{align*}
-&x_i \ge 1: \quad k_i \le \log_2\left(\frac{10}{3}\right) \approx 1.737 \implies S \le 1.737(n+1). \\
-&x_i \ge 2: \quad k_i \le \log_2\left(\frac{16}{5}\right) \approx 1.678 \implies S \le 1.678(n+1).
-\end{align*}
+x_n=0\\
+0\sout{10}\\
+x_{n+1}=0
 $$
 
-**Summary**
+The possibility of endless growth or loops
+------------------------------------------
 
+If we can somehow figure out the growth on the right and prove that it is always less than culling on the right over time, then we will have proven the Collatz conjecture.
 
-For the typical case $x_i \ge 0$, the simple and sharp bound is
+So far we have a variable $k$ for culling on the right. I'd like to define a new variable $g$ for growth on the left. $g$ is equal to the number of extra digits we gain on the left before culling. I will also define a variable $l$ which is the length of the binary number in digits. So $0100$ has an $l$ of 3.
+
+```
+ 00100
+ 00100
+ 00100
++00010
+-----
+=01110
+```
+
+Has a $g$ of 1 and a $k$ of 2. $l+g-k=2$ in this case.
+
+I want this proof to be simple enough that ordinary people can understand it, so I am going use a table to compare possible values for $g$ and $k$ and see if I can prove that the cumulative value $\sum{g}<\sum{k}$.
+
+Obviously over a single step $g$ can be greater than $k$ but what about over 4 steps?
+
+What are the possible values of $g$?
+
+If the first two digits are:
+
+|0011|0010|
+|----|----|
+|1001|0110|
+| g=2| g=1|
+
+Even if we were to carry from below. these results don't seem to change:
+
+|0011|0010|with 1 carry|
+|----|----|-|
+|1010|0111||
+| g=2| g=1||
+
+|0011|0010|with 2 carries|
+|----|----|-|
+|1011|1000||
+| g=2| g=2||
+
+So $g$ is always either 1 or 2.
+
+Furthermore, we know that if $g$ is 2 than the next $g$ is 1. If $g$ is 1 then the next $g$ is 2 or ocasionally 1 is there is a double carry.
+
+Finally. Two carries can only come from the +2 step pushing 1's all the way from the right. This means that if there are two carries, $k$ will either be 1 (if $x_n$ is odd), or it will be $l+g$ (thus landing us at $x_{n+1}=0$).
+
+$k$ is always somewhere between 1 and $l+g$
+
+$$1\leq k \leq l+g$$
+
+Right now we can confidently say that:
+
 $$
-\begin{align*}
-&\sum_{i=0}^{n} k_i \le 2(n+1). \\
-\end{align*}
+\sum_{i=1}^{n} g_i \leq \frac n 2 \cdot 3
 $$
-$$\sum k_i > n$$
 
-We can now solve for $k_{max}$ which is at most $2(n+1)- n$ or $n + 2$.
+Lets make a table for the right side. This table is simpler because there are no carries.
 
-# Returning to the $x_i$ is divisible by 3 argument
+|step |0000|0001|0010|0011|0100|0101|0110|0111|1000|1001|1010|1011|1111|
+|-----|----|----|----|----|----|----|----|----|----|----|----|----|----|
+|    1|0010|0101|1000|1011|1110|0001|0100|0111|0010|0100|1000|0010|1111|
+|    k|   2|   1|   4|   1|   2|   1|   3|   1|   2|   3|   4|   2|   1|
+|start|??00|?010|????|?101|??11|?000|???0|?011|??00|???0|????|??00|?111|
+|    2|??10|?000|????|?001|??11|?010|???0|?101|??10|???0|????|??10|?111|
+|    k|   2|  ≥3|  ≥1|   1|   1|   2|  ≥2|   1|   2|  ≥2|  ≥1|   2|   1|
+|start|????|????|????|??00|???1|???1|????|??10|????|????|????|????|??11|
+|    3|????|????|????|??10|???1|???1|????|??00|????|????|????|????|??01|
+|    k|  ≥1|  ≥1|  ≥1|   2|   1|   1|  ≥1|  ≥3|  ≥1|  ≥1|  ≥1|  ≥1|   1|
+|total|  ≥5|  ≥5|  ≥6|   4|   4|   4|  ≥6|  ≥5|  ≥5|  ≥6|  ≥6|  ≥5|   3|
 
-Lets rewrite:
+If we were to then fill the ? marks with the least favorable column here (straight ones `1111`) the Collatz conjecture would not hold. We would grow faster than we ate.
 
-$$6x_0 + 4 = (2x_1+1) \cdot 2^{k_0}$$
-$$6x_1 + 4 = (2x_2+1) \cdot 2^{k_1}$$
-$$6x_2 + 4 = (2x_3+1) \cdot 2^{k_2}$$
-$$\vdots$$
-$$6x_{n-1} + 4 = (2x_n+1) \cdot 2^{k_{n-1}}$$
-$$6x_n + 4 = (2x_0+1) \cdot 2^{k_n}$$
-
-As
-
-$$x_0 = \frac{(2x_1+1) \cdot 2^{k_0-1} - 2}{3}$$
-$$x_1 = \frac{(2x_2+1) \cdot 2^{k_1-1} - 2}{3}$$
-$$x_2 = \frac{(2x_3+1) \cdot 2^{k_2-1} - 2}{3}$$
-$$\vdots$$
-$$x_{n-1} = \frac{(2x_n+1) \cdot 2^{k_{n-1}-1} - 2}{3}$$
-$$x_n = \frac{(2x_0+1) \cdot 2^{k_n} - 2}{3}$$
-
-Lets go more concrete for a bit so we don't loose our heads in the clouds and set n=5 and all $k_i$ to $k_{max}$. This is of course impossible but it should give us a lower bound on the growth of $x_i$.
-
-So $k_i$ for the sake of argument is always 7.
-
-$$x_0 = \frac{(2x_1+1) \cdot 2^6 - 2}{3}$$
-$$x_1 = \frac{(2x_2+1) \cdot 2^6 - 2}{3}$$
-$$x_2 = \frac{(2x_3+1) \cdot 2^6 - 4}{3}$$
-$$x_3 = \frac{(2x_4+1) \cdot 2^6 - 2}{3}$$
-$$x_4 = \frac{(2x_0+1) \cdot 2^6 - 2}{3}$$
-
-Lets expand some terms.
-
-$$x_0 = \frac{x_1 \cdot 2^7+2^6 - 2}{3}$$
-$$x_1 = \frac{x_2 \cdot 2^7+2^6 - 2}{3}$$
-$$x_2 = \frac{x_3 \cdot 2^7+2^6 - 2}{3}$$
-$$x_3 = \frac{x_4 \cdot 2^7+2^6 - 2}{3}$$
-$$x_4 = \frac{x_0 \cdot 2^7+2^6 - 2}{3}$$
-
-And convert to decimal.
-
-$$x_0 = \frac{x_1 \cdot 128 + 62 }{3}$$
-$$x_1 = \frac{x_2 \cdot 128 + 62 }{3}$$
-$$x_2 = \frac{x_3 \cdot 128 + 62 }{3}$$
-$$x_3 = \frac{x_4 \cdot 128 + 62 }{3}$$
-$$x_4 = \frac{x_0 \cdot 128 + 62 }{3}$$
-
-What is the lowest possible value of $x_1$ that makes $x_1 \cdot 128 + 62$ divisible by 3?
-
-2
-
-That would make $x_0 = 106$
-
-We can then go on to the last equation and solve for $x_4$. Unfortunately $ 106*128+62$ is not divisible by 3, so we need to try a higher value of $x_1$. The modular arithmatic means that this will never line up and for each step we need to go back and select a higher value. This holds regardless of the value of k.
