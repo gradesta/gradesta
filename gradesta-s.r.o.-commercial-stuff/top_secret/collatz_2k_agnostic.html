@@ -356,6 +356,7 @@
                 this.scrollOffset = 0;
                 this.horizontalScrollOffset = -Math.floor(this.visibleCols / 2);
                 this.maxCol = 0; // Track the rightmost column we've been to
+                this.sequenceComplete = false; // Track if we've reached the end of the sequence
                 
                 // Initialize with a single row containing one bit at position 0
                 this.rows[0] = new SparseRow([0]);
@@ -451,9 +452,19 @@
                 
                 // Clear all rows after the first one
                 this.rows = [this.rows[0] || new SparseRow([0])];
+                this.sequenceComplete = false; // Reset sequence completion flag
                 
-                // Generate sequence
-                for (let i = 0; i < 100; i++) { // Limit to prevent infinite loops
+                // Generate initial sequence (enough to fill the visible area plus some buffer)
+                const initialSteps = this.visibleRows + 50;
+                this.generateSequenceSteps(initialSteps);
+            }
+            
+            generateSequenceSteps(maxSteps) {
+                let currentRowIndex = 0;
+                const startLength = this.rows.length;
+                
+                // Generate sequence steps
+                for (let i = 0; i < maxSteps; i++) {
                     const currentRow = this.rows[currentRowIndex].clone();
                     
                     // Create shifted row (2n) - shift left by 1 position
@@ -475,6 +486,7 @@
                     
                     // Check if we've reached a cycle or zero
                     if (nextRow.isZero() || this.isCycleSparse(nextRow, currentRowIndex)) {
+                        this.sequenceComplete = true;
                         break;
                     }
                     
@@ -486,6 +498,9 @@
                     
                     currentRowIndex = this.rows.length - 1;
                 }
+                
+                // Return true if we generated new rows, false if we hit a cycle/zero
+                return this.rows.length > startLength;
             }
 
             isCycleSparse(row, startIndex) {
@@ -501,6 +516,19 @@
             scrollGrid(direction) {
                 this.scrollOffset += direction;
                 this.scrollOffset = Math.max(0, this.scrollOffset);
+                
+                // Check if we need to generate more sequence (only if not complete)
+                if (!this.sequenceComplete) {
+                    const currentEndRow = this.scrollOffset + this.visibleRows;
+                    const bufferSize = 20; // Generate more when we're within 20 rows of the end
+                    
+                    if (currentEndRow >= this.rows.length - bufferSize) {
+                        // Generate more sequence steps
+                        const moreSteps = this.visibleRows + bufferSize;
+                        this.generateSequenceSteps(moreSteps);
+                    }
+                }
+                
                 this.render();
             }
             
