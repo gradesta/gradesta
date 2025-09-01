@@ -70,6 +70,20 @@
             line-height: 1;
         }
 
+        .row-number {
+            display: inline-block;
+            width: 30px;
+            height: 16px;
+            text-align: right;
+            line-height: 16px;
+            font-size: 12px;
+            color: #666;
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            margin-right: 2px;
+            box-sizing: border-box;
+        }
+
         .cell.grey {
             background-color: #e0e0e0;
             color: #666;
@@ -495,6 +509,14 @@
                 const startCol = this.horizontalScrollOffset;
                 const endCol = startCol + this.visibleCols;
                 
+                // Calculate green row numbers (count from beginning of sequence)
+                let greenRowNumber = 0;
+                for (let i = 0; i < startRow; i++) {
+                    if (i % (this.enablePlusOne.checked ? 3 : 2) === 0) {
+                        greenRowNumber++;
+                    }
+                }
+                
                 for (let i = startRow; i < endRow; i++) {
                     const rowDiv = document.createElement('div');
                     
@@ -502,8 +524,23 @@
                     let rowType = 'grey';
                     if (i % (this.enablePlusOne.checked ? 3 : 2) === 0) {
                         rowType = 'green';
+                        greenRowNumber++;
                     } else {
                         rowType = 'red';
+                    }
+                    
+                    // Add row number for green rows
+                    if (rowType === 'green') {
+                        const rowNumberSpan = document.createElement('span');
+                        rowNumberSpan.className = 'row-number';
+                        rowNumberSpan.textContent = greenRowNumber.toString();
+                        rowDiv.appendChild(rowNumberSpan);
+                    } else {
+                        // Add empty space for non-green rows to align with numbered rows
+                        const emptySpan = document.createElement('span');
+                        emptySpan.className = 'row-number';
+                        emptySpan.style.visibility = 'hidden';
+                        rowDiv.appendChild(emptySpan);
                     }
                     
                     // Create cells for the visible area
