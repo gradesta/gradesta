@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collatz Binary Visualization</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+            overflow-x: auto;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .controls {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .controls label {
+            font-size: 16px;
+            margin-left: 10px;
+        }
+
+        .grid-container {
+            border: 2px solid #333;
+            background-color: #fff;
+            overflow: auto;
+            max-height: 70vh;
+            position: relative;
+            width: 100%;
+        }
+
+        .grid {
+            display: inline-block;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1;
+            white-space: nowrap;
+        }
+
+        .cell {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            text-align: center;
+            line-height: 16px;
+            border: 1px solid #ccc;
+            margin: 0;
+            padding: 0;
+            position: relative;
+            box-sizing: border-box;
+        }
+
+        .grid > div {
+            margin: 0;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .cell.grey {
+            background-color: #e0e0e0;
+            color: #666;
+        }
+
+        .cell.green {
+            background-color: #90EE90;
+            color: #006400;
+            font-weight: bold;
+        }
+
+        .cell.red {
+            background-color: #FFB6C1;
+            color: #8B0000;
+            font-weight: bold;
+        }
+
+        .cell.cursor {
+            background-color: #FFD700 !important;
+            color: #000 !important;
+            box-shadow: 0 0 5px #FFD700;
+        }
+
+        .explanation {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        .explanation h2 {
+            color: #333;
+            margin-top: 0;
+        }
+
+        .explanation p {
+            line-height: 1.6;
+            color: #555;
+        }
+
+        .status {
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Collatz Binary Visualization</h1>
+        
+        <div class="controls">
+            <label>
+                <input type="checkbox" id="enablePlusOne" checked> Enable +1 operation (3n+1)
+            </label>
+            <button id="resetButton" style="margin-left: 20px; padding: 5px 10px; font-size: 14px;">Reset</button>
+        </div>
+
+        <div class="status" id="status">
+            Position: 0 | Value: 0 | Use arrow keys to move, space to flip bit
+        </div>
+
+        <div class="grid-container" id="gridContainer">
+            <div class="grid" id="grid"></div>
+        </div>
+
+        <div class="explanation">
+            <h2>About This Visualization</h2>
+            <p>
+                This visualization shows the Collatz operations 3n+1 in a special type of binary arithmetic 
+                where leading zeros are automatically trimmed, so that n×2^k ≡ n×2^l for any k,l ≥ 0.
+            </p>
+            <p>
+                <strong>Grid Colors:</strong><br>
+                • <span style="background-color: #e0e0e0; padding: 2px 4px;">Grey cells</span> represent binary 0s<br>
+                • <span style="background-color: #90EE90; padding: 2px 4px;">Green cells</span> represent binary 1s in the main sequence<br>
+                • <span style="background-color: #FFB6C1; padding: 2px 4px;">Red cells</span> represent intermediate calculations (shifted left and +1)
+            </p>
+            <p>
+                <strong>Controls:</strong><br>
+                • Use ← → arrow keys to move the cursor<br>
+                • Press spacebar to flip the current bit<br>
+                • Use ↑ ↓ arrow keys to scroll vertically through the grid<br>
+                • Hold Shift + ← → arrow keys to scroll horizontally<br>
+                • Toggle the checkbox to enable/disable the +1 operation<br>
+                • Click Reset button to clear the editable row
+            </p>
+            <p>
+                The algorithm works as follows: For each green row, we create red rows below it:
+                1. A red row with the same bits shifted one position to the left (representing 2n)
+                2. A red row with a single 1 bit aligned to the rightmost position (representing +1, if enabled)
+                Then we add these rows together to get the next green row, which becomes the input for the next iteration.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        class SparseRow {
+            constructor(positions = []) {
+                // positions is an array of integers representing where 1s are located
+                // positions are sorted in descending order (most significant first)
+                this.positions = [...positions].sort((a, b) => b - a);
+            }
+            
+            // Check if there's a 1 at the given position
+            hasBitAt(position) {
+                return this.positions.includes(position);
+            }
+            
+            // Flip the bit at the given position
+            flipBit(position) {
+                const index = this.positions.indexOf(position);
+                if (index === -1) {
+                    // Add a 1 at this position
+                    this.positions.push(position);
+                    this.positions.sort((a, b) => b - a); // Keep sorted
+                } else {
+                    // Remove the 1 at this position
+                    this.positions.splice(index, 1);
+                }
+            }
+            
+            // Shift left by n positions (multiply by 2^n)
+            shiftLeft(n = 1) {
+                return new SparseRow(this.positions.map(pos => pos - n));
+            }
+            
+            // Shift right by n positions (divide by 2^n)
+            shiftRight(n = 1) {
+                return new SparseRow(this.positions.map(pos => pos + n));
+            }
+            
+            // Create a row with a single 1 at the rightmost position
+            static createPlusOne(rightmostPosition) {
+                return new SparseRow([rightmostPosition]);
+            }
+            
+            // Add two sparse rows together
+            static add(row1, row2) {
+                // Find min and max positions across both rows
+                const allPositions = [...row1.positions, ...row2.positions];
+                if (allPositions.length === 0) return new SparseRow();
+                
+                const minPos = Math.min(...allPositions);
+                const maxPos = Math.max(...allPositions);
+                
+                // Create dense arrays with extra space for carries
+                const length = maxPos - minPos + 3; // +3 for extra carry space
+                const dense1 = new Array(length).fill(0);
+                const dense2 = new Array(length).fill(0);
+                
+                // Convert sparse to dense
+                for (const pos of row1.positions) {
+                    const index = pos - minPos + 1; // +1 for carry space
+                    dense1[index] = 1;
+                }
+                
+                for (const pos of row2.positions) {
+                    const index = pos - minPos + 1; // +1 for carry space
+                    dense2[index] = 1;
+                }
+                
+                // Add dense arrays with carry propagation
+                const result = new Array(length).fill(0);
+                let carry = 0;
+                
+                // Add from right to left (least significant to most significant)
+                for (let i = length - 1; i >= 0; i--) {
+                    const sum = dense1[i] + dense2[i] + carry;
+                    result[i] = sum % 2;
+                    carry = Math.floor(sum / 2);
+                }
+                
+                // Convert result back to sparse
+                const resultPositions = [];
+                for (let i = 0; i < length; i++) {
+                    if (result[i] === 1) {
+                        const pos = minPos - 1 + i; // -1 because of carry space
+                        resultPositions.push(pos);
+                    }
+                }
+                
+                return new SparseRow(resultPositions);
+            }
+            
+            // Add multiple sparse rows together
+            static addMultiple(rows) {
+                if (rows.length === 0) return new SparseRow();
+                if (rows.length === 1) return new SparseRow(rows[0].positions);
+                
+                let result = rows[0];
+                for (let i = 1; i < rows.length; i++) {
+                    result = SparseRow.add(result, rows[i]);
+                }
+                return result;
+            }
+            
+            // Check if the row is zero (no 1s)
+            isZero() {
+                return this.positions.length === 0;
+            }
+            
+            // Get the rightmost (least significant) position
+            getRightmostPosition() {
+                if (this.positions.length === 0) return null;
+                return Math.max(...this.positions);
+            }
+            
+            // Get the leftmost (most significant) position
+            getLeftmostPosition() {
+                if (this.positions.length === 0) return null;
+                return Math.min(...this.positions);
+            }
+            
+            // Convert to decimal value
+            toDecimal() {
+                let result = 0;
+                for (const pos of this.positions) {
+                    result += Math.pow(2, pos);
+                }
+                return result;
+            }
+            
+            // Check if this row equals another row
+            equals(other) {
+                if (this.positions.length !== other.positions.length) return false;
+                return this.positions.every((pos, i) => pos === other.positions[i]);
+            }
+            
+            // Create a copy of this row
+            clone() {
+                return new SparseRow(this.positions);
+            }
+        }
+
+        class CollatzVisualization {
+            constructor() {
+                this.grid = document.getElementById('grid');
+                this.gridContainer = document.getElementById('gridContainer');
+                this.status = document.getElementById('status');
+                this.enablePlusOne = document.getElementById('enablePlusOne');
+                this.resetButton = document.getElementById('resetButton');
+                
+                this.currentRow = 0;
+                this.currentCol = 0;
+                this.rows = [];
+                this.visibleRows = 30; // Number of rows to render at once
+                this.visibleCols = 50; // Number of columns to render at once
+                this.scrollOffset = 0;
+                this.horizontalScrollOffset = -Math.floor(this.visibleCols / 2);
+                this.maxCol = 0; // Track the rightmost column we've been to
+                
+                // Initialize with a single row containing one bit at position 0
+                this.rows[0] = new SparseRow([0]);
+                this.render();
+                this.updateStatus();
+                
+                this.setupEventListeners();
+            }
+
+            setupEventListeners() {
+                document.addEventListener('keydown', (e) => {
+                    if (e.shiftKey) {
+                        // Horizontal scrolling
+                        switch(e.key) {
+                            case 'ArrowLeft':
+                                e.preventDefault();
+                                this.scrollHorizontal(-1);
+                                break;
+                            case 'ArrowRight':
+                                e.preventDefault();
+                                this.scrollHorizontal(1);
+                                break;
+                        }
+                    } else {
+                        // Normal cursor movement and vertical scrolling
+                        switch(e.key) {
+                            case 'ArrowLeft':
+                                e.preventDefault();
+                                this.moveCursor(-1);
+                                break;
+                            case 'ArrowRight':
+                                e.preventDefault();
+                                this.moveCursor(1);
+                                break;
+                            case 'ArrowUp':
+                                e.preventDefault();
+                                this.scrollGrid(-1);
+                                break;
+                            case 'ArrowDown':
+                                e.preventDefault();
+                                this.scrollGrid(1);
+                                break;
+                            case ' ':
+                                e.preventDefault();
+                                this.flipBit();
+                                break;
+                        }
+                    }
+                });
+
+                this.enablePlusOne.addEventListener('change', () => {
+                    this.generateSequence();
+                    this.render();
+                });
+
+                this.resetButton.addEventListener('click', () => {
+                    this.resetEditableRow();
+                });
+            }
+
+            moveCursor(direction) {
+                const newCol = this.currentCol + direction;
+                this.currentCol = newCol;
+                this.maxCol = Math.max(this.maxCol, this.currentCol);
+                
+                // Center the view around the current column (allow negative positions)
+                this.horizontalScrollOffset = this.currentCol - Math.floor(this.visibleCols / 2);
+                
+                this.render();
+                this.updateStatus();
+            }
+
+            flipBit() {
+                if (!this.rows[this.currentRow]) {
+                    this.rows[this.currentRow] = new SparseRow();
+                }
+                
+                this.rows[this.currentRow].flipBit(this.currentCol);
+                
+                this.generateSequence();
+                this.render();
+                this.updateStatus();
+            }
+
+            // No longer needed with sparse representation
+
+            generateSequence() {
+                let currentRowIndex = 0;
+                
+                // Clear all rows after the first one
+                this.rows = [this.rows[0] || new SparseRow([0])];
+                
+                // Generate sequence
+                for (let i = 0; i < 100; i++) { // Limit to prevent infinite loops
+                    const currentRow = this.rows[currentRowIndex].clone();
+                    
+                    // Create shifted row (2n) - shift left by 1 position
+                    const shiftedRow = currentRow.shiftLeft(1);
+                    
+                    // Create +1 row (if enabled) - single 1 at the rightmost position of shifted row
+                    let plusOneRow = new SparseRow();
+                    if (this.enablePlusOne.checked && !shiftedRow.isZero()) {
+                        const rightmostPos = currentRow.getRightmostPosition();
+                        plusOneRow = SparseRow.createPlusOne(rightmostPos);
+                    }
+                    
+                    // Add the rows together: original + shifted + plusOne
+                    const rowsToAdd = [currentRow, shiftedRow];
+                    if (this.enablePlusOne.checked) {
+                        rowsToAdd.push(plusOneRow);
+                    }
+                    const nextRow = SparseRow.addMultiple(rowsToAdd);
+                    
+                    // Check if we've reached a cycle or zero
+                    if (nextRow.isZero() || this.isCycleSparse(nextRow, currentRowIndex)) {
+                        break;
+                    }
+                    
+                    this.rows.push(shiftedRow);
+                    if (this.enablePlusOne.checked) {
+                        this.rows.push(plusOneRow);
+                    }
+                    this.rows.push(nextRow);
+                    
+                    currentRowIndex = this.rows.length - 1;
+                }
+            }
+
+            isCycleSparse(row, startIndex) {
+                // Check if this row matches any previous row
+                for (let i = 0; i < startIndex; i++) {
+                    if (row.equals(this.rows[i])) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            scrollGrid(direction) {
+                this.scrollOffset += direction;
+                this.scrollOffset = Math.max(0, this.scrollOffset);
+                this.render();
+            }
+            
+            scrollHorizontal(direction) {
+                this.horizontalScrollOffset += direction;
+                
+                // Update current column to stay centered (allow negative positions)
+                this.currentCol = this.horizontalScrollOffset + Math.floor(this.visibleCols / 2);
+                this.maxCol = Math.max(this.maxCol, this.currentCol);
+                
+                this.render();
+                this.updateStatus();
+            }
+            
+            resetEditableRow() {
+                // Clear the first row (the editable row)
+                this.rows[0] = new SparseRow();
+                this.currentCol = 0;
+                this.horizontalScrollOffset = -Math.floor(this.visibleCols / 2);
+                this.generateSequence();
+                this.render();
+                this.updateStatus();
+            }
+
+            render() {
+                this.grid.innerHTML = '';
+                
+                const startRow = this.scrollOffset;
+                const endRow = startRow + this.visibleRows;
+                const startCol = this.horizontalScrollOffset;
+                const endCol = startCol + this.visibleCols;
+                
+                for (let i = startRow; i < endRow; i++) {
+                    const rowDiv = document.createElement('div');
+                    
+                    // Determine row type
+                    let rowType = 'grey';
+                    if (i % (this.enablePlusOne.checked ? 3 : 2) === 0) {
+                        rowType = 'green';
+                    } else {
+                        rowType = 'red';
+                    }
+                    
+                    // Create cells for the visible area
+                    for (let j = startCol; j < endCol; j++) {
+                        const cell = document.createElement('span');
+                        
+                        // Get the bit value for this position (sparse representation)
+                        const row = this.rows[i] || new SparseRow();
+                        const hasOne = row.hasBitAt(j);
+                        
+                        // Set cell class based on bit value and row type
+                        if (!hasOne) {
+                            cell.className = 'cell grey';
+                        } else if (rowType === 'green') {
+                            cell.className = 'cell green';
+                        } else {
+                            cell.className = 'cell red';
+                        }
+                        
+                        // Don't show numbers, just colors
+                        cell.textContent = '';
+                        
+                        // Add cursor if this is the current position
+                        if (i === this.currentRow && j === this.currentCol) {
+                            cell.classList.add('cursor');
+                        }
+                        
+                        rowDiv.appendChild(cell);
+                    }
+                    
+                    this.grid.appendChild(rowDiv);
+                }
+                
+                // Center the grid horizontally around the current column
+                this.centerGridHorizontally();
+            }
+            
+            centerGridHorizontally() {
+                // Calculate the position of the current column in pixels
+                const cellWidth = 16; // Match the CSS width
+                const currentColPixelPosition = (this.currentCol - this.horizontalScrollOffset) * cellWidth;
+                
+                // Calculate the center of the container
+                const containerWidth = this.gridContainer.clientWidth;
+                const gridWidth = this.visibleCols * cellWidth;
+                
+                // Calculate the offset needed to center the current column
+                const centerOffset = (containerWidth - gridWidth) / 2;
+                const targetScrollLeft = currentColPixelPosition - centerOffset;
+                
+                // Apply the scroll (allow negative values for negative positions)
+                this.gridContainer.scrollLeft = targetScrollLeft;
+            }
+
+            updateStatus() {
+                const currentRowData = this.rows[this.currentRow] || new SparseRow();
+                const value = currentRowData.toDecimal();
+                this.status.textContent = `Position: ${this.currentCol} | Value: ${value} | Use arrow keys to move, space to flip bit`;
+            }
+        }
+
+        // Initialize the visualization when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new CollatzVisualization();
+        });
+    </script>
+</body>
+</html>

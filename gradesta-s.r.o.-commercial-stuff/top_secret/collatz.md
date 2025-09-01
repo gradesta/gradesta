@@ -337,35 +337,16 @@ Even if we were to carry from below. these results don't seem to change:
 |1011|1000||
 | g=2| g=2||
 
+
 So $g$ is always either 1 or 2.
 
-Furthermore, we know that if $g$ is 2 than the next $g$ is 1. If $g$ is 1 then the next $g$ is 2 or ocasionally 1 is there is a double carry.
-
-Finally. Two carries can only come from the +2 step pushing 1's all the way from the right. This means that if there are two carries, $k$ will either be 1 (if $x_n$ is odd), or it will be $l+g$ (thus landing us at $x_{n+1}=0$).
+Furthermore, we know that if $g$ is 2 than the next $g$ is 1 unless there are two carries.
 
 $k$ is always somewhere between 1 and $l+g$
 
 $$1\leq k \leq l+g$$
 
-Right now we can confidently say that:
+After some analysis I had trouble finding a good way to prove this so I moved to a different technique.
 
-$$
-\sum_{i=1}^{n} g_i \leq \frac n 2 \cdot 3
-$$
-
-Lets make a table for the right side. This table is simpler because there are no carries.
-
-|step |0000|0001|0010|0011|0100|0101|0110|0111|1000|1001|1010|1011|1111|
-|-----|----|----|----|----|----|----|----|----|----|----|----|----|----|
-|    1|0010|0101|1000|1011|1110|0001|0100|0111|0010|0100|1000|0010|1111|
-|    k|   2|   1|   4|   1|   2|   1|   3|   1|   2|   3|   4|   2|   1|
-|start|??00|?010|????|?101|??11|?000|???0|?011|??00|???0|????|??00|?111|
-|    2|??10|?000|????|?001|??11|?010|???0|?101|??10|???0|????|??10|?111|
-|    k|   2|  ≥3|  ≥1|   1|   1|   2|  ≥2|   1|   2|  ≥2|  ≥1|   2|   1|
-|start|????|????|????|??00|???1|???1|????|??10|????|????|????|????|??11|
-|    3|????|????|????|??10|???1|???1|????|??00|????|????|????|????|??01|
-|    k|  ≥1|  ≥1|  ≥1|   2|   1|   1|  ≥1|  ≥3|  ≥1|  ≥1|  ≥1|  ≥1|   1|
-|total|  ≥5|  ≥5|  ≥6|   4|   4|   4|  ≥6|  ≥5|  ≥5|  ≥6|  ≥6|  ≥5|   3|
-
-If we were to then fill the ? marks with the least favorable column here (straight ones `1111`) the Collatz conjecture would not hold. We would grow faster than we ate.
-
+Collatz in Mod 2
+----------------
