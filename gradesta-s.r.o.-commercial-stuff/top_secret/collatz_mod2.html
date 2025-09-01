@@ -68,6 +68,8 @@
             margin: 0;
             padding: 0;
             line-height: 1;
+            height: 16px;
+            overflow: hidden;
         }
 
         .row-number {
@@ -154,6 +156,9 @@
         <div class="controls">
             <label>
                 <input type="checkbox" id="enablePlusOne" checked> Enable +1 operation (3n+1)
+            </label>
+            <label style="margin-left: 20px;">
+                <input type="checkbox" id="hideRedRows"> Hide red rows
             </label>
             <button id="resetButton" style="margin-left: 20px; padding: 5px 10px; font-size: 14px;">Reset</button>
         </div>
@@ -341,6 +346,7 @@
                 this.gridContainer = document.getElementById('gridContainer');
                 this.status = document.getElementById('status');
                 this.enablePlusOne = document.getElementById('enablePlusOne');
+                this.hideRedRows = document.getElementById('hideRedRows');
                 this.resetButton = document.getElementById('resetButton');
                 
                 this.currentRow = 0;
@@ -403,6 +409,10 @@
 
                 this.enablePlusOne.addEventListener('change', () => {
                     this.generateSequence();
+                    this.render();
+                });
+
+                this.hideRedRows.addEventListener('change', () => {
                     this.render();
                 });
 
@@ -533,8 +543,6 @@
                 }
                 
                 for (let i = startRow; i < endRow; i++) {
-                    const rowDiv = document.createElement('div');
-                    
                     // Determine row type
                     let rowType = 'grey';
                     if (i % (this.enablePlusOne.checked ? 3 : 2) === 0) {
@@ -543,6 +551,13 @@
                     } else {
                         rowType = 'red';
                     }
+                    
+                    // Skip red rows if hideRedRows is enabled
+                    if (this.hideRedRows.checked && rowType === 'red') {
+                        continue;
+                    }
+                    
+                    const rowDiv = document.createElement('div');
                     
                     // Add row number for green rows
                     if (rowType === 'green') {
