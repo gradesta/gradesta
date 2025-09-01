@@ -84,6 +84,21 @@
             box-sizing: border-box;
         }
 
+        .row-values {
+            display: inline-block;
+            width: 60px;
+            height: 16px;
+            text-align: left;
+            line-height: 16px;
+            font-size: 10px;
+            color: #333;
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            margin-left: 2px;
+            padding: 0 2px;
+            box-sizing: border-box;
+        }
+
         .cell.grey {
             background-color: #e0e0e0;
             color: #666;
@@ -543,6 +558,21 @@
                         rowDiv.appendChild(emptySpan);
                     }
                     
+                    // Add k and g values for green rows
+                    if (rowType === 'green') {
+                        const { k, g } = this.calculateKAndGValues(i);
+                        const valuesSpan = document.createElement('span');
+                        valuesSpan.className = 'row-values';
+                        valuesSpan.textContent = `g:${g} k:${k}`;
+                        rowDiv.appendChild(valuesSpan);
+                    } else {
+                        // Add empty space for non-green rows to align with valued rows
+                        const emptyValuesSpan = document.createElement('span');
+                        emptyValuesSpan.className = 'row-values';
+                        emptyValuesSpan.style.visibility = 'hidden';
+                        rowDiv.appendChild(emptyValuesSpan);
+                    }
+                    
                     // Create cells for the visible area
                     for (let j = startCol; j < endCol; j++) {
                         const cell = document.createElement('span');
@@ -593,6 +623,41 @@
                 
                 // Apply the scroll (allow negative values for negative positions)
                 this.gridContainer.scrollLeft = targetScrollLeft;
+            }
+
+            // Calculate k and g values for a green row
+            calculateKAndGValues(greenRowIndex) {
+                const currentRow = this.rows[greenRowIndex];
+                if (!currentRow || currentRow.isZero()) {
+                    return { k: 0, g: 0 };
+                }
+                
+                // Find the previous green row
+                let previousGreenRow = null;
+                for (let i = greenRowIndex - 1; i >= 0; i--) {
+                    if (i % (this.enablePlusOne.checked ? 3 : 2) === 0) {
+                        previousGreenRow = this.rows[i];
+                        break;
+                    }
+                }
+                
+                if (!previousGreenRow || previousGreenRow.isZero()) {
+                    return { k: 0, g: 0 };
+                }
+                
+                // Calculate max and min values for current row
+                const currentMax = currentRow.getLeftmostPosition();
+                const currentMin = currentRow.getRightmostPosition();
+                
+                // Calculate max and min values for previous row
+                const previousMax = previousGreenRow.getLeftmostPosition();
+                const previousMin = previousGreenRow.getRightmostPosition();
+                
+                // Calculate k (difference of min values) and g (difference of max values)
+                const k = Math.abs(currentMin - previousMin);
+                const g = Math.abs(currentMax - previousMax);
+                
+                return { k, g };
             }
 
             updateStatus() {
