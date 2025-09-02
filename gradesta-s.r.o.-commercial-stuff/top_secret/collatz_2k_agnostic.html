@@ -123,6 +123,27 @@
             outline-offset: -2px;
         }
 
+        .cell::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            display: none;
+        }
+
+        .cell.carry-plus-one::after {
+            display: block;
+            background-color: #708090; /* slate grey */
+        }
+
+        .cell.carry-later::after {
+            display: block;
+            background-color: #808000; /* olive green */
+        }
+
         .explanation {
             margin-top: 30px;
             padding: 20px;
@@ -158,6 +179,9 @@
             </label>
             <label style="margin-left: 20px;">
                 <input type="checkbox" id="hideRedRows"> Hide red rows
+            </label>
+            <label style="margin-left: 20px;">
+                <input type="checkbox" id="showCarryDots" checked> Show carry dots
             </label>
             <button id="resetButton" style="margin-left: 20px; padding: 5px 10px; font-size: 14px;">Reset</button>
         </div>
@@ -289,6 +313,84 @@
                 return new SparseRow(resultPositions);
             }
             
+            // Add two sparse rows together and return carry information
+            static addWithCarries(row1, row2, plusOneRow = null) {
+                // Find min and max positions across all rows
+                const allPositions = [...row1.positions, ...row2.positions];
+                if (plusOneRow) {
+                    allPositions.push(...plusOneRow.positions);
+                }
+                if (allPositions.length === 0) return { result: new SparseRow(), carries: {} };
+                
+                const minPos = Math.min(...allPositions);
+                const maxPos = Math.max(...allPositions);
+                
+                // Create dense arrays with extra space for carries
+                const length = maxPos - minPos + 3; // +3 for extra carry space
+                const dense1 = new Array(length).fill(0);
+                const dense2 = new Array(length).fill(0);
+                const densePlusOne = new Array(length).fill(0);
+                
+                // Convert sparse to dense
+                for (const pos of row1.positions) {
+                    const index = pos - minPos + 1; // +1 for carry space
+                    dense1[index] = 1;
+                }
+                
+                for (const pos of row2.positions) {
+                    const index = pos - minPos + 1; // +1 for carry space
+                    dense2[index] = 1;
+                }
+                
+                if (plusOneRow) {
+                    for (const pos of plusOneRow.positions) {
+                        const index = pos - minPos + 1; // +1 for carry space
+                        densePlusOne[index] = 1;
+                    }
+                }
+                
+                // Add dense arrays with carry propagation
+                const result = new Array(length).fill(0);
+                const carries = {};
+                let carry = 0;
+                let plusOneCarryChain = false;
+                
+                // Add from right to left (least significant to most significant)
+                for (let i = length - 1; i >= 0; i--) {
+                    const sum = dense1[i] + dense2[i] + densePlusOne[i] + carry;
+                    result[i] = sum % 2;
+                    const newCarry = Math.floor(sum / 2);
+                    
+                    // Track carry information
+                    if (newCarry > 0) {
+                        const pos = minPos - 1 + i; // -1 because of carry space
+                        
+                        // Check if this carry originated from the +1 step
+                        if (densePlusOne[i] === 1 && !plusOneCarryChain) {
+                            plusOneCarryChain = true;
+                            carries[pos] = 'plus-one';
+                        } else if (plusOneCarryChain) {
+                            carries[pos] = 'plus-one';
+                        } else {
+                            carries[pos] = 'later';
+                        }
+                    }
+                    
+                    carry = newCarry;
+                }
+                
+                // Convert result back to sparse
+                const resultPositions = [];
+                for (let i = 0; i < length; i++) {
+                    if (result[i] === 1) {
+                        const pos = minPos - 1 + i; // -1 because of carry space
+                        resultPositions.push(pos);
+                    }
+                }
+                
+                return { result: new SparseRow(resultPositions), carries };
+            }
+            
             // Add multiple sparse rows together
             static addMultiple(rows) {
                 if (rows.length === 0) return new SparseRow();
@@ -346,11 +448,13 @@
                 this.status = document.getElementById('status');
                 this.enablePlusOne = document.getElementById('enablePlusOne');
                 this.hideRedRows = document.getElementById('hideRedRows');
+                this.showCarryDots = document.getElementById('showCarryDots');
                 this.resetButton = document.getElementById('resetButton');
                 
                 this.currentRow = 0;
                 this.currentCol = 0;
                 this.rows = [];
+                this.carries = []; // Store carry information for each row
                 this.visibleRows = 100; // Number of rows to render at once
                 this.visibleCols = 50; // Number of columns to render at once
                 this.scrollOffset = 0;
@@ -415,6 +519,10 @@
                     this.render();
                 });
 
+                this.showCarryDots.addEventListener('change', () => {
+                    this.render();
+                });
+
                 this.resetButton.addEventListener('click', () => {
                     this.resetEditableRow();
                 });
@@ -446,12 +554,13 @@
 
             // No longer needed with sparse representation
 
-            generateSequence() {
+                        generateSequence() {
                 let currentRowIndex = 0;
                 
                 // Clear all rows after the first one
                 this.rows = [this.rows[0] || new SparseRow([0])];
-
+                this.carries = [{}]; // Initialize carry info for first row
+ 
                 // Generate initial sequence (enough to fill the visible area plus some buffer)
                 const initialSteps = this.visibleRows + 50;
                 this.generateSequenceSteps(initialSteps);
@@ -476,18 +585,22 @@
                     }
                     
                     // Add the rows together: original + shifted + plusOne
-                    const rowsToAdd = [currentRow, shiftedRow];
-                    if (this.enablePlusOne.checked) {
-                        rowsToAdd.push(plusOneRow);
-                    }
-                    const nextRow = SparseRow.addMultiple(rowsToAdd);
-                    
+                    const { result: nextRow, carries: nextCarries } = SparseRow.addWithCarries(
+                        currentRow, 
+                        shiftedRow, 
+                        this.enablePlusOne.checked ? plusOneRow : null
+                    );
                     
                     this.rows.push(shiftedRow);
+                    this.carries.push({}); // No carries for shifted row
+                    
                     if (this.enablePlusOne.checked) {
                         this.rows.push(plusOneRow);
+                        this.carries.push({}); // No carries for plusOne row
                     }
+                    
                     this.rows.push(nextRow);
+                    this.carries.push(nextCarries); // Store carry information for the result
                     
                     currentRowIndex = this.rows.length - 1;
                 }
@@ -621,6 +734,16 @@
                             cell.className = 'cell green';
                         } else {
                             cell.className = 'cell red';
+                        }
+                        
+                        // Add carry dots for green rows (only if toggle is enabled)
+                        if (this.showCarryDots.checked && rowType === 'green' && this.carries[i]) {
+                            const carryType = this.carries[i][j];
+                            if (carryType === 'plus-one') {
+                                cell.classList.add('carry-plus-one');
+                            } else if (carryType === 'later') {
+                                cell.classList.add('carry-later');
+                            }
                         }
                         
                         // Don't show numbers, just colors
