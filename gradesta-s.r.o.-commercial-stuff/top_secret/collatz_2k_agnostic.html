@@ -988,7 +988,7 @@
                     const iterations = this.calculateIterationsForPosition(col);
                     cellContent = iterations.toString();
                     
-                    displayHTML += `<span style="display: inline-block; width: ${cellWidth}px; text-align: center; font-size: 7px; color: #666;">${cellContent}</span>`;
+                    displayHTML += `<span style="display: inline-block; width: ${cellWidth}px; text-align: center; font-size: 7px; color: #666; writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg);">${cellContent}</span>`;
                 }
 
                 this.iterationsList.innerHTML = displayHTML;
