@@ -36,6 +36,7 @@
 
         .grid-container {
             border: 2px solid #333;
+            border-left: none;
             background-color: #fff;
             overflow: auto;
             height: 80vh;
@@ -49,6 +50,30 @@
             font-size: 14px;
             line-height: 1;
             white-space: nowrap;
+        }
+
+        .row-labels {
+            display: inline-block;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1;
+            white-space: nowrap;
+            vertical-align: top;
+            margin-right: 10px;
+            background-color: #fff;
+            border: 2px solid #333;
+            border-right: none;
+            height: 80vh;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .row-label-item {
+            height: 12px;
+            margin: 0;
+            padding: 0;
+            line-height: 12px;
+            overflow: hidden;
         }
 
         .cell {
@@ -199,11 +224,17 @@
 
         <div class="iterations-display" id="iterationsDisplay" style="display: none;">
             <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Iterations to reach 1 if bit is flipped at position:</div>
-            <div id="iterationsList" style="font-family: 'Courier New', monospace; font-size: 10px; line-height: 1.2; white-space: nowrap; overflow-x: auto;"></div>
+            <div style="display: flex; align-items: flex-start;">
+                <div style="width: 130px; margin-right: 10px;"></div>
+                <div id="iterationsList" style="font-family: 'Courier New', monospace; font-size: 10px; line-height: 1.2; white-space: nowrap; overflow-x: auto;"></div>
+            </div>
         </div>
 
-        <div class="grid-container" id="gridContainer">
-            <div class="grid" id="grid"></div>
+        <div style="display: flex; align-items: flex-start;">
+            <div class="row-labels" id="rowLabels"></div>
+            <div class="grid-container" id="gridContainer">
+                <div class="grid" id="grid"></div>
+            </div>
         </div>
 
         <div class="explanation">
@@ -517,6 +548,7 @@
             constructor() {
                 this.grid = document.getElementById('grid');
                 this.gridContainer = document.getElementById('gridContainer');
+                this.rowLabels = document.getElementById('rowLabels');
                 this.status = document.getElementById('status');
                 this.iterationsDisplay = document.getElementById('iterationsDisplay');
                 this.iterationsList = document.getElementById('iterationsList');
@@ -542,6 +574,9 @@
                 this.rows[0] = new SparseRow([0]);
                 this.render();
                 this.updateStatus();
+                
+                // Set initial scroll position for row labels
+                this.rowLabels.scrollTop = 0;
                 
                 this.setupEventListeners();
             }
@@ -616,6 +651,13 @@
                 // Add scroll event listener to keep iterations display in sync
                 this.gridContainer.addEventListener('scroll', () => {
                     this.updateIterationsDisplay();
+                    // Sync row labels scroll with grid scroll
+                    this.rowLabels.scrollTop = this.gridContainer.scrollTop;
+                });
+
+                // Add scroll event listener to row labels to sync with grid
+                this.rowLabels.addEventListener('scroll', () => {
+                    this.gridContainer.scrollTop = this.rowLabels.scrollTop;
                 });
             }
 
@@ -726,6 +768,10 @@
                 }
                 
                 this.render();
+                
+                // Update scroll position of row labels to stay in sync
+                const rowHeight = 12; // Match the CSS height
+                this.rowLabels.scrollTop = this.scrollOffset * rowHeight;
             }
             
             scrollHorizontal(direction) {
@@ -743,9 +789,13 @@
                 this.rows[0] = new SparseRow();
                 this.currentCol = 0;
                 this.horizontalScrollOffset = -Math.floor(this.visibleCols / 2);
+                this.scrollOffset = 0;
                 this.generateSequence();
                 this.render();
                 this.updateStatus();
+                
+                // Reset scroll position for row labels
+                this.rowLabels.scrollTop = 0;
             }
 
             generateRandomBits() {
@@ -767,15 +817,20 @@
                 // Center the view around the generated bits
                 this.currentCol = Math.floor(numBits / 2);
                 this.horizontalScrollOffset = this.currentCol - Math.floor(this.visibleCols / 2);
+                this.scrollOffset = 0;
                 
                 this.generateSequence();
                 this.render();
                 this.updateStatus();
                 this.updateIterationsDisplay();
+                
+                // Reset scroll position for row labels
+                this.rowLabels.scrollTop = 0;
             }
 
             render() {
                 this.grid.innerHTML = '';
+                this.rowLabels.innerHTML = '';
                 
                 const startRow = this.scrollOffset;
                 const endRow = startRow + this.visibleRows;
@@ -805,20 +860,22 @@
                         continue;
                     }
                     
-                    const rowDiv = document.createElement('div');
+                    // Create row label
+                    const rowLabelDiv = document.createElement('div');
+                    rowLabelDiv.className = 'row-label-item';
                     
                     // Add row number for green rows
                     if (rowType === 'green') {
                         const rowNumberSpan = document.createElement('span');
                         rowNumberSpan.className = 'row-number';
                         rowNumberSpan.textContent = greenRowNumber.toString();
-                        rowDiv.appendChild(rowNumberSpan);
+                        rowLabelDiv.appendChild(rowNumberSpan);
                     } else {
                         // Add empty space for non-green rows to align with numbered rows
                         const emptySpan = document.createElement('span');
                         emptySpan.className = 'row-number';
                         emptySpan.style.visibility = 'hidden';
-                        rowDiv.appendChild(emptySpan);
+                        rowLabelDiv.appendChild(emptySpan);
                     }
                     
                     // Add k, g, and n values for green rows
@@ -828,14 +885,19 @@
                         const valuesSpan = document.createElement('span');
                         valuesSpan.className = 'row-values';
                         valuesSpan.textContent = `g:${g} k:${k} n:${n}`;
-                        rowDiv.appendChild(valuesSpan);
+                        rowLabelDiv.appendChild(valuesSpan);
                     } else {
                         // Add empty space for non-green rows to align with valued rows
                         const emptyValuesSpan = document.createElement('span');
                         emptyValuesSpan.className = 'row-values';
                         emptyValuesSpan.style.visibility = 'hidden';
-                        rowDiv.appendChild(emptyValuesSpan);
+                        rowLabelDiv.appendChild(emptyValuesSpan);
                     }
+                    
+                    this.rowLabels.appendChild(rowLabelDiv);
+                    
+                    // Create grid row
+                    const rowDiv = document.createElement('div');
                     
                     // Create cells for the visible area
                     for (let j = startCol; j < endCol; j++) {
@@ -978,10 +1040,6 @@
 
                 // Create a display that aligns with the grid columns
                 let displayHTML = '';
-                
-                // Add padding to align with row numbers and g/k/n values
-                displayHTML += '<span style="display: inline-block; width: 30px; margin-right: 2px;"></span>'; // Row number space
-                displayHTML += '<span style="display: inline-block; width: 100px; margin-left: 2px;"></span>'; // g/k/n space
                 
                 // Add iteration values for each visible column
                 for (let col = startCol; col < endCol; col++) {
