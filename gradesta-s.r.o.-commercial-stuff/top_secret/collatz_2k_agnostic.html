@@ -835,10 +835,27 @@
                 return { k, g };
             }
 
+            // Calculate iterations to reach value 1
+            calculateIterations() {
+                let iterations = 0;
+                for (let i = 0; i < this.rows.length; i++) {
+                    // Check if this is a green row
+                    if (i % (this.enablePlusOne.checked ? 3 : 2) === 0) {
+                        const row = this.rows[i];
+                        if (row && row.toDecimal() === 1) {
+                            return iterations;
+                        }
+                        iterations++;
+                    }
+                }
+                return iterations; // Return current count if we haven't reached 1 yet
+            }
+
             updateStatus() {
                 const currentRowData = this.rows[this.currentRow] || new SparseRow();
                 const value = currentRowData.toDecimal();
-                this.status.textContent = `Position: ${this.currentCol} | Value: ${value} | Use arrow keys to move, space to flip bit`;
+                const iterations = this.calculateIterations();
+                this.status.textContent = `Position: ${this.currentCol} | Value: ${value} | Iterations to 1: ${iterations} | Use arrow keys to move, space to flip bit`;
             }
         }
 
