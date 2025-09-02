@@ -88,11 +88,11 @@
 
         .row-values {
             display: inline-block;
-            width: 60px;
+            width: 100px;
             height: 16px;
             text-align: left;
             line-height: 16px;
-            font-size: 10px;
+            font-size: 9px;
             color: #333;
             background-color: #f0f0f0;
             border: 1px solid #ccc;
@@ -722,12 +722,13 @@
                         rowDiv.appendChild(emptySpan);
                     }
                     
-                    // Add k and g values for green rows
-                    if (rowType === 'green') {
+                    // Add k, g, and n values for green rows
+                    if (rowType === 'green' && this.rows[i]) {
                         const { k, g } = this.calculateKAndGValues(i);
+                        const n = this.rows[i].toDecimal();
                         const valuesSpan = document.createElement('span');
                         valuesSpan.className = 'row-values';
-                        valuesSpan.textContent = `g:${g} k:${k}`;
+                        valuesSpan.textContent = `g:${g} k:${k} n:${n}`;
                         rowDiv.appendChild(valuesSpan);
                     } else {
                         // Add empty space for non-green rows to align with valued rows
