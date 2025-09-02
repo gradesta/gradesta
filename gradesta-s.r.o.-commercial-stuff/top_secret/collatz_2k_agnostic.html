@@ -38,7 +38,7 @@
             border: 2px solid #333;
             background-color: #fff;
             overflow: auto;
-            max-height: 85vh;
+            height: 60vh;
             position: relative;
             width: 100%;
         }
@@ -356,8 +356,7 @@
                 this.scrollOffset = 0;
                 this.horizontalScrollOffset = -Math.floor(this.visibleCols / 2);
                 this.maxCol = 0; // Track the rightmost column we've been to
-                this.sequenceComplete = false; // Track if we've reached the end of the sequence
-                
+        
                 // Initialize with a single row containing one bit at position 0
                 this.rows[0] = new SparseRow([0]);
                 this.render();
@@ -452,8 +451,7 @@
                 
                 // Clear all rows after the first one
                 this.rows = [this.rows[0] || new SparseRow([0])];
-                this.sequenceComplete = false; // Reset sequence completion flag
-                
+
                 // Generate initial sequence (enough to fill the visible area plus some buffer)
                 const initialSteps = this.visibleRows + 50;
                 this.generateSequenceSteps(initialSteps);
@@ -484,11 +482,6 @@
                     }
                     const nextRow = SparseRow.addMultiple(rowsToAdd);
                     
-                    // Check if we've reached a cycle or zero
-                    if (nextRow.isZero() || this.isCycleSparse(nextRow, currentRowIndex)) {
-                        this.sequenceComplete = true;
-                        break;
-                    }
                     
                     this.rows.push(shiftedRow);
                     if (this.enablePlusOne.checked) {
@@ -517,16 +510,14 @@
                 this.scrollOffset += direction;
                 this.scrollOffset = Math.max(0, this.scrollOffset);
                 
-                // Check if we need to generate more sequence (only if not complete)
-                if (!this.sequenceComplete) {
-                    const currentEndRow = this.scrollOffset + this.visibleRows;
-                    const bufferSize = 20; // Generate more when we're within 20 rows of the end
-                    
-                    if (currentEndRow >= this.rows.length - bufferSize) {
-                        // Generate more sequence steps
-                        const moreSteps = this.visibleRows + bufferSize;
-                        this.generateSequenceSteps(moreSteps);
-                    }
+
+                const currentEndRow = this.scrollOffset + this.visibleRows;
+                const bufferSize = 20; // Generate more when we're within 20 rows of the end
+                
+                if (currentEndRow >= this.rows.length - bufferSize) {
+                    // Generate more sequence steps
+                    const moreSteps = this.visibleRows + bufferSize;
+                    this.generateSequenceSteps(moreSteps);
                 }
                 
                 this.render();
