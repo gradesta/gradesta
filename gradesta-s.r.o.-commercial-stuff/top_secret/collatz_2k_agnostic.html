@@ -38,7 +38,7 @@
             border: 2px solid #333;
             background-color: #fff;
             overflow: auto;
-            height: 60vh;
+            height: 80vh;
             position: relative;
             width: 100%;
         }
@@ -53,10 +53,10 @@
 
         .cell {
             display: inline-block;
-            width: 16px;
-            height: 16px;
+            width: 12px;
+            height: 12px;
             text-align: center;
-            line-height: 16px;
+            line-height: 12px;
             border: 1px solid #ccc;
             margin: 0;
             padding: 0;
@@ -68,17 +68,17 @@
             margin: 0;
             padding: 0;
             line-height: 1;
-            height: 16px;
+            height: 12px;
             overflow: hidden;
         }
 
         .row-number {
             display: inline-block;
             width: 30px;
-            height: 16px;
+            height: 12px;
             text-align: right;
-            line-height: 16px;
-            font-size: 12px;
+            line-height: 12px;
+            font-size: 10px;
             color: #666;
             background-color: #f8f8f8;
             border: 1px solid #ddd;
@@ -89,10 +89,10 @@
         .row-values {
             display: inline-block;
             width: 100px;
-            height: 16px;
+            height: 12px;
             text-align: left;
-            line-height: 16px;
-            font-size: 9px;
+            line-height: 12px;
+            font-size: 8px;
             color: #333;
             background-color: #f0f0f0;
             border: 1px solid #ccc;
@@ -217,10 +217,10 @@
             </p>
             <p>
                 <strong>Controls:</strong><br>
-                • Use ← → arrow keys to move the cursor<br>
+                • Use ← → arrow keys to scroll horizontally<br>
+                • Use ↑ ↓ arrow keys to scroll vertically<br>
+                • Hold Shift + ← → arrow keys to move the cursor<br>
                 • Press spacebar to flip the current bit<br>
-                • Use ↑ ↓ arrow keys to scroll vertically through the grid<br>
-                • Hold Shift + ← → arrow keys to scroll horizontally<br>
                 • Toggle the checkbox to enable/disable the +1 operation<br>
                 • Click Reset button to clear the editable row
             </p>
@@ -530,8 +530,8 @@
                 this.currentCol = 0;
                 this.rows = [];
                 this.carries = []; // Store carry information for each row
-                this.visibleRows = 100; // Number of rows to render at once
-                this.visibleCols = 50; // Number of columns to render at once
+                this.visibleRows = 200; // Number of rows to render at once
+                this.visibleCols = 150; // Number of columns to render at once
                 this.scrollOffset = 0;
                 this.horizontalScrollOffset = -Math.floor(this.visibleCols / 2);
                 this.maxCol = 0; // Track the rightmost column we've been to
@@ -547,19 +547,7 @@
             setupEventListeners() {
                 document.addEventListener('keydown', (e) => {
                     if (e.shiftKey) {
-                        // Horizontal scrolling
-                        switch(e.key) {
-                            case 'ArrowLeft':
-                                e.preventDefault();
-                                this.scrollHorizontal(-1);
-                                break;
-                            case 'ArrowRight':
-                                e.preventDefault();
-                                this.scrollHorizontal(1);
-                                break;
-                        }
-                    } else {
-                        // Normal cursor movement and vertical scrolling
+                        // Cursor movement with Shift+left/right arrows
                         switch(e.key) {
                             case 'ArrowLeft':
                                 e.preventDefault();
@@ -568,6 +556,18 @@
                             case 'ArrowRight':
                                 e.preventDefault();
                                 this.moveCursor(1);
+                                break;
+                        }
+                    } else {
+                        // Normal arrow key behavior
+                        switch(e.key) {
+                            case 'ArrowLeft':
+                                e.preventDefault();
+                                this.scrollHorizontal(-1);
+                                break;
+                            case 'ArrowRight':
+                                e.preventDefault();
+                                this.scrollHorizontal(1);
                                 break;
                             case 'ArrowUp':
                                 e.preventDefault();
@@ -615,14 +615,12 @@
             moveCursor(direction) {
                 const newCol = this.currentCol + direction;
                 this.currentCol = newCol;
-                this.maxCol = Math.max(this.maxCol, this.currentCol);
-                
-                // Center the view around the current column (allow negative positions)
-                this.horizontalScrollOffset = this.currentCol - Math.floor(this.visibleCols / 2);
-                
+                 
                 this.render();
                 this.updateStatus();
             }
+
+
 
             flipBit() {
                 if (!this.rows[this.currentRow]) {
@@ -647,7 +645,7 @@
                 this.carries = [{}]; // Initialize carry info for first row
  
                 // Generate initial sequence (enough to fill the visible area plus some buffer)
-                const initialSteps = this.visibleRows + 50;
+                const initialSteps = this.visibleRows + 100;
                 this.generateSequenceSteps(initialSteps);
             }
             
@@ -710,7 +708,7 @@
                 
 
                 const currentEndRow = this.scrollOffset + this.visibleRows;
-                const bufferSize = 20; // Generate more when we're within 20 rows of the end
+                const bufferSize = 50; // Generate more when we're within 50 rows of the end
                 
                 if (currentEndRow >= this.rows.length - bufferSize) {
                     // Generate more sequence steps
@@ -724,8 +722,7 @@
             scrollHorizontal(direction) {
                 this.horizontalScrollOffset += direction;
                 
-                // Update current column to stay centered (allow negative positions)
-                this.currentCol = this.horizontalScrollOffset + Math.floor(this.visibleCols / 2);
+                
                 this.maxCol = Math.max(this.maxCol, this.currentCol);
                 
                 this.render();
@@ -881,7 +878,7 @@
             
             centerGridHorizontally() {
                 // Calculate the position of the current column in pixels
-                const cellWidth = 16; // Match the CSS width
+                const cellWidth = 12; // Match the CSS width
                 const currentColPixelPosition = (this.currentCol - this.horizontalScrollOffset) * cellWidth;
                 
                 // Calculate the center of the container
@@ -979,7 +976,7 @@
                 
                 // Add iteration values for each visible column
                 for (let col = startCol; col < endCol; col++) {
-                    const cellWidth = 16; // Match the CSS cell width
+                    const cellWidth = 12; // Match the CSS cell width
                     let cellContent = '';
                     
                     // Check if this position has a bit set in the current row
@@ -991,7 +988,7 @@
                     const iterations = this.calculateIterationsForPosition(col);
                     cellContent = iterations.toString();
                     
-                    displayHTML += `<span style="display: inline-block; width: ${cellWidth}px; text-align: center; font-size: 8px; color: #666;">${cellContent}</span>`;
+                    displayHTML += `<span style="display: inline-block; width: ${cellWidth}px; text-align: center; font-size: 7px; color: #666;">${cellContent}</span>`;
                 }
 
                 this.iterationsList.innerHTML = displayHTML;
