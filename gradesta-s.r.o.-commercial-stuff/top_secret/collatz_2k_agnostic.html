@@ -181,6 +181,9 @@
                 <input type="checkbox" id="hideRedRows"> Hide red rows
             </label>
             <label style="margin-left: 20px;">
+                <input type="checkbox" id="shiftDirection" checked> Shift Left (unchecked = Shift Right)
+            </label>
+            <label style="margin-left: 20px;">
                 <input type="checkbox" id="showCarryDots" checked> Show carry dots
             </label>
             <button id="resetButton" style="margin-left: 20px; padding: 5px 10px; font-size: 14px;">Reset</button>
@@ -489,15 +492,13 @@
                         return iterations;
                     }
                     
-                    // Apply Collatz transformation: 3n+1
-                    const shiftedRow = currentRow.shiftLeft(1); // 2n
+                    const shiftedRow = currentRow.shiftLeft(1);
                     let plusOneRow = new SparseRow();
                     if (!shiftedRow.isZero()) {
                         const rightmostPos = currentRow.getRightmostPosition();
                         plusOneRow = SparseRow.createPlusOne(rightmostPos);
                     }
-                    
-                    // Add: original + shifted + plusOne
+
                     const { result: nextRow } = SparseRow.addWithCarries(
                         currentRow, 
                         shiftedRow, 
@@ -521,6 +522,7 @@
                 this.iterationsList = document.getElementById('iterationsList');
                 this.enablePlusOne = document.getElementById('enablePlusOne');
                 this.hideRedRows = document.getElementById('hideRedRows');
+                this.shiftDirection = document.getElementById('shiftDirection');
                 this.showCarryDots = document.getElementById('showCarryDots');
                 this.resetButton = document.getElementById('resetButton');
                 this.randomBitsInput = document.getElementById('randomBitsInput');
@@ -594,6 +596,11 @@
                     this.render();
                 });
 
+                this.shiftDirection.addEventListener('change', () => {
+                    this.generateSequence();
+                    this.render();
+                });
+
                 this.showCarryDots.addEventListener('change', () => {
                     this.render();
                 });
@@ -657,13 +664,15 @@
                 for (let i = 0; i < maxSteps; i++) {
                     const currentRow = this.rows[currentRowIndex].clone();
                     
-                    // Create shifted row (2n) - shift left by 1 position
-                    const shiftedRow = currentRow.shiftLeft(1);
+                    const shiftedRow = this.shiftDirection.checked ? currentRow.shiftLeft(1) : currentRow.shiftRight(1);
                     
                     // Create +1 row (if enabled) - single 1 at the rightmost position of shifted row
                     let plusOneRow = new SparseRow();
                     if (this.enablePlusOne.checked && !shiftedRow.isZero()) {
-                        const rightmostPos = currentRow.getRightmostPosition();
+                        var rightmostPos = currentRow.getRightmostPosition();
+                        if (!this.shiftDirection.checked) {
+                            rightmostPos++;
+                        }
                         plusOneRow = SparseRow.createPlusOne(rightmostPos);
                     }
                     
