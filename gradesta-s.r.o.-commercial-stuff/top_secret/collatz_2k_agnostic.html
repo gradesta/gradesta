@@ -420,11 +420,29 @@
                 return Math.min(...this.positions);
             }
             
-            // Convert to decimal value
-            toDecimal() {
-                let result = 0;
+            // Convert to dense array representation, returns {dense, minPos, maxPos}
+            toDense() {
+                if (this.positions.length === 0) {
+                    return { dense: [], minPos: 0, maxPos: -1 };
+                }
+                const minPos = Math.min(...this.positions);
+                const maxPos = Math.max(...this.positions);
+                const length = maxPos - minPos + 1;
+                const dense = new Array(length).fill(0);
                 for (const pos of this.positions) {
-                    result += Math.pow(2, pos);
+                    dense[pos - minPos] = 1;
+                }
+                return { dense, minPos, maxPos };
+            }
+
+            // Convert to decimal value using dense representation
+            toDecimal() {
+                const { dense, _ } = this.toDense();
+                let result = 0;
+                for (let i = 0; i < dense.length; i++) {
+                    if (dense[i] === 1) {
+                        result += Math.pow(2, i);
+                    }
                 }
                 return result;
             }
