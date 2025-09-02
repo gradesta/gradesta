@@ -184,6 +184,10 @@
                 <input type="checkbox" id="showCarryDots" checked> Show carry dots
             </label>
             <button id="resetButton" style="margin-left: 20px; padding: 5px 10px; font-size: 14px;">Reset</button>
+            <label style="margin-left: 20px;">
+                <input type="number" id="randomBitsInput" placeholder="Bits" min="1" max="100" value="10" style="width: 60px; padding: 2px; font-size: 14px;">
+                <button id="randomBitsButton" style="margin-left: 5px; padding: 5px 10px; font-size: 14px;">Random Bits</button>
+            </label>
         </div>
 
         <div class="status" id="status">
@@ -268,6 +272,17 @@
             // Create a row with a single 1 at the rightmost position
             static createPlusOne(rightmostPosition) {
                 return new SparseRow([rightmostPosition]);
+            }
+            
+            // Create a sparse row from a dense binary array
+            static fromDense(denseArray, startPosition = 0) {
+                const positions = [];
+                for (let i = 0; i < denseArray.length; i++) {
+                    if (denseArray[i] === 1) {
+                        positions.push(startPosition + i);
+                    }
+                }
+                return new SparseRow(positions);
             }
             
             // Add two sparse rows together
@@ -508,6 +523,8 @@
                 this.hideRedRows = document.getElementById('hideRedRows');
                 this.showCarryDots = document.getElementById('showCarryDots');
                 this.resetButton = document.getElementById('resetButton');
+                this.randomBitsInput = document.getElementById('randomBitsInput');
+                this.randomBitsButton = document.getElementById('randomBitsButton');
                 
                 this.currentRow = 0;
                 this.currentCol = 0;
@@ -583,6 +600,10 @@
 
                 this.resetButton.addEventListener('click', () => {
                     this.resetEditableRow();
+                });
+
+                this.randomBitsButton.addEventListener('click', () => {
+                    this.generateRandomBits();
                 });
 
                 // Add scroll event listener to keep iterations display in sync
@@ -719,6 +740,32 @@
                 this.generateSequence();
                 this.render();
                 this.updateStatus();
+            }
+
+            generateRandomBits() {
+                const numBits = parseInt(this.randomBitsInput.value);
+                if (isNaN(numBits) || numBits < 1 || numBits > 100) {
+                    alert('Please enter a number between 1 and 100');
+                    return;
+                }
+
+                // Create a dense binary array with random bits
+                const denseArray = new Array(numBits).fill(0);
+                for (let i = 0; i < numBits; i++) {
+                    denseArray[i] = Math.random() < 0.5 ? 0 : 1;
+                }
+
+                // Convert to sparse representation starting at position 0
+                this.rows[0] = SparseRow.fromDense(denseArray, 0);
+                
+                // Center the view around the generated bits
+                this.currentCol = Math.floor(numBits / 2);
+                this.horizontalScrollOffset = this.currentCol - Math.floor(this.visibleCols / 2);
+                
+                this.generateSequence();
+                this.render();
+                this.updateStatus();
+                this.updateIterationsDisplay();
             }
 
             render() {
