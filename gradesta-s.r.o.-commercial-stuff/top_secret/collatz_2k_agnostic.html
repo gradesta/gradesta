@@ -190,6 +190,11 @@
             Position: 0 | Value: 0 | Use arrow keys to move, space to flip bit
         </div>
 
+        <div class="iterations-display" id="iterationsDisplay" style="display: none;">
+            <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Iterations to reach 1 if bit is set at position:</div>
+            <div id="iterationsList" style="font-family: 'Courier New', monospace; font-size: 10px; line-height: 1.2; white-space: nowrap; overflow-x: auto;"></div>
+        </div>
+
         <div class="grid-container" id="gridContainer">
             <div class="grid" id="grid"></div>
         </div>
@@ -457,6 +462,39 @@
             clone() {
                 return new SparseRow(this.positions);
             }
+            
+            // Calculate Collatz iterations to reach 1 for this row's value
+            calculateIterations(enablePlusOne = true, maxIterations = 1000) {
+                let currentRow = this.clone();
+                let iterations = 0;
+                
+                for (let i = 0; i < maxIterations; i++) {
+                    const value = currentRow.toDecimal();
+                    if (value === 1) {
+                        return iterations;
+                    }
+                    
+                    // Apply Collatz transformation: 3n+1
+                    const shiftedRow = currentRow.shiftLeft(1); // 2n
+                    let plusOneRow = new SparseRow();
+                    if (enablePlusOne && !shiftedRow.isZero()) {
+                        const rightmostPos = currentRow.getRightmostPosition();
+                        plusOneRow = SparseRow.createPlusOne(rightmostPos);
+                    }
+                    
+                    // Add: original + shifted + plusOne
+                    const { result: nextRow } = SparseRow.addWithCarries(
+                        currentRow, 
+                        shiftedRow, 
+                        enablePlusOne ? plusOneRow : null
+                    );
+                    
+                    currentRow = nextRow;
+                    iterations++;
+                }
+                
+                return iterations; // Return count even if we hit the limit
+            }
         }
 
         class CollatzVisualization {
@@ -464,6 +502,8 @@
                 this.grid = document.getElementById('grid');
                 this.gridContainer = document.getElementById('gridContainer');
                 this.status = document.getElementById('status');
+                this.iterationsDisplay = document.getElementById('iterationsDisplay');
+                this.iterationsList = document.getElementById('iterationsList');
                 this.enablePlusOne = document.getElementById('enablePlusOne');
                 this.hideRedRows = document.getElementById('hideRedRows');
                 this.showCarryDots = document.getElementById('showCarryDots');
@@ -544,6 +584,11 @@
                 this.resetButton.addEventListener('click', () => {
                     this.resetEditableRow();
                 });
+
+                // Add scroll event listener to keep iterations display in sync
+                this.gridContainer.addEventListener('scroll', () => {
+                    this.updateIterationsDisplay();
+                });
             }
 
             moveCursor(direction) {
@@ -568,6 +613,7 @@
                 this.generateSequence();
                 this.render();
                 this.updateStatus();
+                this.updateIterationsDisplay();
             }
 
             // No longer needed with sparse representation
@@ -781,6 +827,9 @@
                 
                 // Center the grid horizontally around the current column
                 this.centerGridHorizontally();
+                
+                // Update iterations display to stay in sync with grid scroll
+                this.updateIterationsDisplay();
             }
             
             centerGridHorizontally() {
@@ -837,18 +886,68 @@
 
             // Calculate iterations to reach value 1
             calculateIterations() {
-                let iterations = 0;
-                for (let i = 0; i < this.rows.length; i++) {
-                    // Check if this is a green row
-                    if (i % (this.enablePlusOne.checked ? 3 : 2) === 0) {
-                        const row = this.rows[i];
-                        if (row && row.toDecimal() === 1) {
-                            return iterations;
-                        }
-                        iterations++;
-                    }
+                // Use the built-in method on the first row (editable row)
+                if (this.rows[0]) {
+                    return this.rows[0].calculateIterations(this.enablePlusOne.checked);
                 }
-                return iterations; // Return current count if we haven't reached 1 yet
+                return 0;
+            }
+
+            // Calculate iterations for a hypothetical row with a bit set at a specific position
+            calculateIterationsForPosition(position) {
+                // Copy the current sparse row and set the hypothetical bit
+                const hypotheticalRow = this.rows[0].clone();
+                hypotheticalRow.flipBit(position);
+                
+                // Use the built-in method to calculate iterations
+                return hypotheticalRow.calculateIterations(this.enablePlusOne.checked, 1000);
+            }
+
+            // Update the iterations display for the top row
+            updateIterationsDisplay() {
+                if (!this.rows[0]) {
+                    this.iterationsDisplay.style.display = 'none';
+                    return;
+                }
+
+                const topRow = this.rows[0];
+                const leftmostPos = topRow.getLeftmostPosition();
+                
+                if (leftmostPos === null) {
+                    this.iterationsDisplay.style.display = 'none';
+                    return;
+                }
+
+                // Get the visible column range (same as the grid)
+                const startCol = this.horizontalScrollOffset;
+                const endCol = startCol + this.visibleCols;
+
+                // Create a display that aligns with the grid columns
+                let displayHTML = '';
+                
+                // Add padding to align with row numbers and g/k/n values
+                displayHTML += '<span style="display: inline-block; width: 30px; margin-right: 2px;"></span>'; // Row number space
+                displayHTML += '<span style="display: inline-block; width: 100px; margin-left: 2px;"></span>'; // g/k/n space
+                
+                // Add iteration values for each visible column
+                for (let col = startCol; col < endCol; col++) {
+                    const cellWidth = 16; // Match the CSS cell width
+                    let cellContent = '';
+                    
+                    // Only show iterations for positions to the left of the leftmost set bit
+                    if (col < leftmostPos) {
+                        const iterations = this.calculateIterationsForPosition(col);
+                        cellContent = iterations.toString();
+                    }
+                    
+                    displayHTML += `<span style="display: inline-block; width: ${cellWidth}px; text-align: center; font-size: 8px; color: #666;">${cellContent}</span>`;
+                }
+
+                this.iterationsList.innerHTML = displayHTML;
+                this.iterationsDisplay.style.display = 'block';
+                
+                // Apply the same horizontal scroll as the grid
+                this.iterationsList.scrollLeft = this.gridContainer.scrollLeft;
             }
 
             updateStatus() {
