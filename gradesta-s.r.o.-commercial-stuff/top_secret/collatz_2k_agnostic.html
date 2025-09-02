@@ -191,7 +191,7 @@
         </div>
 
         <div class="iterations-display" id="iterationsDisplay" style="display: none;">
-            <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Iterations to reach 1 if bit is set at position:</div>
+            <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Iterations to reach 1 if bit is flipped at position:</div>
             <div id="iterationsList" style="font-family: 'Courier New', monospace; font-size: 10px; line-height: 1.2; white-space: nowrap; overflow-x: auto;"></div>
         </div>
 
@@ -893,9 +893,10 @@
                 return 0;
             }
 
-            // Calculate iterations for a hypothetical row with a bit set at a specific position
+            // Calculate iterations for a hypothetical row with a bit flipped at a specific position
             calculateIterationsForPosition(position) {
-                // Copy the current sparse row and set the hypothetical bit
+                // Copy the current sparse row and flip the hypothetical bit
+                // This handles both cases: turning a bit on (if it was off) or off (if it was on)
                 const hypotheticalRow = this.rows[0].clone();
                 hypotheticalRow.flipBit(position);
                 
@@ -934,11 +935,14 @@
                     const cellWidth = 16; // Match the CSS cell width
                     let cellContent = '';
                     
-                    // Only show iterations for positions to the left of the leftmost set bit
-                    if (col < leftmostPos) {
-                        const iterations = this.calculateIterationsForPosition(col);
-                        cellContent = iterations.toString();
-                    }
+                    // Check if this position has a bit set in the current row
+                    const hasBit = topRow.hasBitAt(col);
+                    
+                    // Show iterations for all positions:
+                    // - For unset bits: show iterations if this bit was turned on
+                    // - For set bits: show iterations if this bit was turned off
+                    const iterations = this.calculateIterationsForPosition(col);
+                    cellContent = iterations.toString();
                     
                     displayHTML += `<span style="display: inline-block; width: ${cellWidth}px; text-align: center; font-size: 8px; color: #666;">${cellContent}</span>`;
                 }
