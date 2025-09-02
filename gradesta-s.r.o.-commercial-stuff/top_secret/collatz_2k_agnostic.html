@@ -479,7 +479,7 @@
             }
             
             // Calculate Collatz iterations to reach 1 for this row's value
-            calculateIterations(enablePlusOne = true, maxIterations = 1000) {
+            calculateIterations(maxIterations = 1000) {
                 let currentRow = this.clone();
                 let iterations = 0;
                 
@@ -492,7 +492,7 @@
                     // Apply Collatz transformation: 3n+1
                     const shiftedRow = currentRow.shiftLeft(1); // 2n
                     let plusOneRow = new SparseRow();
-                    if (enablePlusOne && !shiftedRow.isZero()) {
+                    if (!shiftedRow.isZero()) {
                         const rightmostPos = currentRow.getRightmostPosition();
                         plusOneRow = SparseRow.createPlusOne(rightmostPos);
                     }
@@ -932,7 +932,7 @@
             calculateIterations() {
                 // Use the built-in method on the first row (editable row)
                 if (this.rows[0]) {
-                    return this.rows[0].calculateIterations(this.enablePlusOne.checked);
+                    return this.rows[0].calculateIterations();
                 }
                 return 0;
             }
@@ -945,7 +945,7 @@
                 hypotheticalRow.flipBit(position);
                 
                 // Use the built-in method to calculate iterations
-                return hypotheticalRow.calculateIterations(this.enablePlusOne.checked, 1000);
+                return hypotheticalRow.calculateIterations(1000);
             }
 
             // Update the iterations display for the top row
