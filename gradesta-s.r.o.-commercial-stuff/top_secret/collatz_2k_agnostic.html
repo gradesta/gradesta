@@ -153,6 +153,11 @@
             box-shadow: 0 0 5px rgba(255, 140, 0, 0.5); /* Orange glow */
         }
 
+        .cell.toggle-preview {
+            outline: 2px solid #87CEEB !important; /* Light blue outline */
+            outline-offset: -2px;
+        }
+
         .cell::after {
             content: '';
             position: absolute;
@@ -215,6 +220,9 @@
             </label>
             <label style="margin-left: 20px;">
                 <input type="checkbox" id="showCarryDots" checked> Show carry dots
+            </label>
+            <label style="margin-left: 20px;">
+                <input type="checkbox" id="showTogglePreview"> Show toggle preview
             </label>
             <button id="resetButton" style="margin-left: 20px; padding: 5px 10px; font-size: 14px;">Reset</button>
             <label style="margin-left: 20px;">
@@ -566,11 +574,17 @@
                 this.hideRedRows = document.getElementById('hideRedRows');
                 this.shiftDirection = document.getElementById('shiftDirection');
                 this.showCarryDots = document.getElementById('showCarryDots');
+                this.showTogglePreview = document.getElementById('showTogglePreview');
                 this.resetButton = document.getElementById('resetButton');
                 this.randomBitsInput = document.getElementById('randomBitsInput');
                 this.randomBitsButton = document.getElementById('randomBitsButton');
                 this.initialLength = document.getElementById('initialLength');
                 this.rowsBeforeLSDMove = document.getElementById('rowsBeforeLSDMove');
+                
+                // Cache for toggle preview calculations
+                this.togglePreviewCache = new Map();
+                this.lastTogglePreviewUpdate = 0;
+                this.togglePreviewUpdateDelay = 100; // ms delay between updates
                 
                 this.currentRow = 0;
                 this.currentCol = 0;
@@ -652,6 +666,10 @@
                     this.render();
                 });
 
+                this.showTogglePreview.addEventListener('change', () => {
+                    this.render();
+                });
+
                 this.resetButton.addEventListener('click', () => {
                     this.resetEditableRow();
                 });
@@ -704,6 +722,9 @@
                 // Clear all rows after the first one
                 this.rows = [this.rows[0] || new SparseRow([0])];
                 this.carries = [{}]; // Initialize carry info for first row
+                
+                // Clear toggle preview cache when sequence changes
+                this.togglePreviewCache.clear();
  
                 // Generate initial sequence (enough to fill the visible area plus some buffer)
                 const initialSteps = this.visibleRows + 100;
@@ -951,6 +972,15 @@
                         if (msdColumn !== null && j === msdColumn) {
                             cell.classList.add('msd-highlight');
                         }
+
+                        // Add toggle preview highlight if this cell would change if the selected cell were toggled
+                        if (this.showTogglePreview.checked) {
+                            const changedCells = this.getTogglePreviewChanges();
+                            const cellKey = `${i}-${j}`;
+                            if (changedCells.has(cellKey)) {
+                                cell.classList.add('toggle-preview');
+                            }
+                        }
                         
                         // Don't show numbers, just colors
                         cell.textContent = '';
@@ -1031,6 +1061,72 @@
                 }
                 
                 return -1; // LSD never moved left of initial MSD
+            }
+
+            // Calculate which cells would change if the selected cell were toggled
+            getTogglePreviewChanges() {
+                if (!this.showTogglePreview.checked) {
+                    return new Set();
+                }
+
+                const now = Date.now();
+                if (now - this.lastTogglePreviewUpdate < this.togglePreviewUpdateDelay) {
+                    // Return cached result if update is too recent
+                    const cacheKey = `${this.currentRow}-${this.currentCol}`;
+                    return this.togglePreviewCache.get(cacheKey) || new Set();
+                }
+
+                this.lastTogglePreviewUpdate = now;
+                const cacheKey = `${this.currentRow}-${this.currentCol}`;
+
+                // Store the original state
+                const originalRows = this.rows.map(row => row ? row.clone() : new SparseRow());
+                const originalCarries = this.carries.map(carry => ({...carry}));
+
+                // Make the invisible change to the first row (the editable row)
+                if (!this.rows[0]) {
+                    this.rows[0] = new SparseRow();
+                }
+                this.rows[0].flipBit(this.currentCol);
+
+                // Clear and regenerate the sequence
+                this.rows = [this.rows[0]];
+                this.carries = [{}];
+                this.generateSequenceSteps(originalRows.length + 50);
+
+                // Compare and find differences
+                const changedCells = new Set();
+                const maxRows = Math.min(this.rows.length, originalRows.length);
+                
+                for (let i = 0; i < maxRows; i++) {
+                    const originalRow = originalRows[i];
+                    const newRow = this.rows[i];
+                    
+                    if (originalRow && newRow) {
+                        const originalPositions = new Set(originalRow.positions);
+                        const newPositions = new Set(newRow.positions);
+                        
+                        // Find positions that are different
+                        for (const pos of originalPositions) {
+                            if (!newPositions.has(pos)) {
+                                changedCells.add(`${i}-${pos}`);
+                            }
+                        }
+                        for (const pos of newPositions) {
+                            if (!originalPositions.has(pos)) {
+                                changedCells.add(`${i}-${pos}`);
+                            }
+                        }
+                    }
+                }
+
+                // Restore the original state
+                this.rows = originalRows;
+                this.carries = originalCarries;
+
+                // Cache the result
+                this.togglePreviewCache.set(cacheKey, changedCells);
+                return changedCells;
             }
 
             // Calculate k and g values for a green row
