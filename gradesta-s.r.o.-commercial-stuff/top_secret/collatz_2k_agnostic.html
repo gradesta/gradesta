@@ -148,6 +148,11 @@
             outline-offset: -2px;
         }
 
+        .cell.msd-highlight {
+            border: 2px solid #FF8C00 !important; /* Orange border */
+            box-shadow: 0 0 5px rgba(255, 140, 0, 0.5); /* Orange glow */
+        }
+
         .cell::after {
             content: '';
             position: absolute;
@@ -926,6 +931,12 @@
                             }
                         }
                         
+                        // Add MSD highlight if this column contains the most significant digit of the initial sequence
+                        const msdColumn = this.getMostSignificantDigitColumn();
+                        if (msdColumn !== null && j === msdColumn) {
+                            cell.classList.add('msd-highlight');
+                        }
+                        
                         // Don't show numbers, just colors
                         cell.textContent = '';
                         
@@ -962,6 +973,14 @@
                 
                 // Apply the scroll (allow negative values for negative positions)
                 this.gridContainer.scrollLeft = targetScrollLeft;
+            }
+
+            // Get the most significant digit column from the initial sequence (first row)
+            getMostSignificantDigitColumn() {
+                if (!this.rows[0] || this.rows[0].isZero()) {
+                    return null;
+                }
+                return this.rows[0].getLeftmostPosition();
             }
 
             // Calculate k and g values for a green row
