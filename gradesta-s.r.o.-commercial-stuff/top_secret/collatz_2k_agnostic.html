@@ -226,6 +226,11 @@
         <div class="status" id="status">
             Position: 0 | Value: 0 | Use arrow keys to move, space to flip bit
         </div>
+        
+        <div class="sequence-info" id="sequenceInfo" style="margin-bottom: 10px; font-size: 14px; color: #333;">
+            Initial sequence length: <span id="initialLength">0</span> | 
+            Green rows before LSD moves left of initial MSD: <span id="rowsBeforeLSDMove">-</span>
+        </div>
 
         <div class="iterations-display" id="iterationsDisplay" style="display: none;">
             <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Iterations to reach 1 if bit is flipped at position:</div>
@@ -564,6 +569,8 @@
                 this.resetButton = document.getElementById('resetButton');
                 this.randomBitsInput = document.getElementById('randomBitsInput');
                 this.randomBitsButton = document.getElementById('randomBitsButton');
+                this.initialLength = document.getElementById('initialLength');
+                this.rowsBeforeLSDMove = document.getElementById('rowsBeforeLSDMove');
                 
                 this.currentRow = 0;
                 this.currentCol = 0;
@@ -701,6 +708,9 @@
                 // Generate initial sequence (enough to fill the visible area plus some buffer)
                 const initialSteps = this.visibleRows + 100;
                 this.generateSequenceSteps(initialSteps);
+                
+                // Update sequence info after generating
+                this.updateSequenceInfo();
             }
             
             generateSequenceSteps(maxSteps) {
@@ -742,6 +752,11 @@
                     this.carries.push(nextCarries); // Store carry information for the result
                     
                     currentRowIndex = this.rows.length - 1;
+                }
+                
+                // Update sequence info if we generated new rows
+                if (this.rows.length > startLength) {
+                    this.updateSequenceInfo();
                 }
                 
                 // Return true if we generated new rows, false if we hit a cycle/zero
@@ -983,6 +998,41 @@
                 return this.rows[0].getLeftmostPosition();
             }
 
+            // Get the length of the dense representation of the initial sequence
+            getInitialSequenceLength() {
+                if (!this.rows[0] || this.rows[0].isZero()) {
+                    return 0;
+                }
+                const { dense } = this.rows[0].toDense();
+                return dense.length;
+            }
+
+            // Find the number of green rows before the least significant digit moves left of the initial most significant digit
+            getRowsBeforeLSDMove() {
+                const initialMSD = this.getMostSignificantDigitColumn();
+                if (initialMSD === null) {
+                    return -1;
+                }
+
+                let greenRowCount = 0;
+                for (let i = 0; i < this.rows.length; i++) {
+                    // Check if this is a green row
+                    if (i % (this.enablePlusOne.checked ? 3 : 2) === 0) {
+                        const row = this.rows[i];
+                        if (row && !row.isZero()) {
+                            const lsd = row.getRightmostPosition();
+                            // If the least significant digit is now left of (smaller than) the initial most significant digit
+                            if (lsd < initialMSD) {
+                                return greenRowCount;
+                            }
+                        }
+                        greenRowCount++;
+                    }
+                }
+                
+                return -1; // LSD never moved left of initial MSD
+            }
+
             // Calculate k and g values for a green row
             calculateKAndGValues(greenRowIndex) {
                 const currentRow = this.rows[greenRowIndex];
@@ -1089,6 +1139,17 @@
                 const value = currentRowData.toDecimal();
                 const iterations = this.calculateIterations();
                 this.status.textContent = `Position: ${this.currentCol} | Value: ${value} | Iterations to 1: ${iterations} | Use arrow keys to move, space to flip bit`;
+                
+                // Update sequence info
+                this.updateSequenceInfo();
+            }
+
+            updateSequenceInfo() {
+                const initialLength = this.getInitialSequenceLength();
+                const rowsBeforeLSDMove = this.getRowsBeforeLSDMove();
+                
+                this.initialLength.textContent = initialLength.toString();
+                this.rowsBeforeLSDMove.textContent = rowsBeforeLSDMove === -1 ? 'Never' : rowsBeforeLSDMove.toString();
             }
         }
 
