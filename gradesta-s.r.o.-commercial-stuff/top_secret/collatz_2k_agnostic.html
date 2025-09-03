@@ -244,7 +244,9 @@
         
         <div class="sequence-info" id="sequenceInfo" style="margin-bottom: 10px; font-size: 14px; color: #333;">
             Initial sequence length: <span id="initialLength">0</span> | 
-            Green rows before LSD moves left of initial MSD: <span id="rowsBeforeLSDMove">-</span>
+            Green rows before LSD moves left of initial MSD: <span id="rowsBeforeLSDMove">-</span> | 
+            Value after LSD moves left of initial MSD: <span id="valueAfterLSDMove">-</span> | 
+            Digits after LSD moves left of initial MSD: <span id="digitsAfterLSDMove">-</span>
         </div>
 
         <div class="iterations-display" id="iterationsDisplay" style="display: none;">
@@ -587,6 +589,8 @@
                 this.randomBitsButton = document.getElementById('randomBitsButton');
                 this.initialLength = document.getElementById('initialLength');
                 this.rowsBeforeLSDMove = document.getElementById('rowsBeforeLSDMove');
+                this.valueAfterLSDMove = document.getElementById('valueAfterLSDMove');
+                this.digitsAfterLSDMove = document.getElementById('digitsAfterLSDMove');
                 
                 // Cache for toggle preview calculations
                 this.togglePreviewCache = new Map();
@@ -1035,9 +1039,12 @@
             // Get the most significant digit column from the initial sequence (first row)
             getMostSignificantDigitColumn() {
                 if (!this.rows[0] || this.rows[0].isZero()) {
+                    console.log('Initial row is empty or zero');
                     return null;
                 }
-                return this.rows[0].getLeftmostPosition();
+                const msd = this.rows[0].getLeftmostPosition();
+                console.log('Initial MSD position:', msd);
+                return msd;
             }
 
             // Get the length of the dense representation of the initial sequence
@@ -1065,6 +1072,7 @@
                             const lsd = row.getRightmostPosition();
                             // If the least significant digit is now left of (smaller than) the initial most significant digit
                             if (lsd < initialMSD) {
+                                console.log('Found LSD move at green row', greenRowCount, 'with LSD at', lsd, 'vs initial MSD at', initialMSD);
                                 return greenRowCount;
                             }
                         }
@@ -1072,6 +1080,59 @@
                     }
                 }
                 
+                console.log('No LSD move found in getRowsBeforeLSDMove. Initial MSD:', initialMSD, 'Rows checked:', this.rows.length);
+                return -1; // LSD never moved left of initial MSD
+            }
+
+            // Get the value after the least significant digit moves left of the initial most significant digit
+            getValueAfterLSDMove() {
+                const initialMSD = this.getMostSignificantDigitColumn();
+                if (initialMSD === null) {
+                    return -1;
+                }
+
+                for (let i = 0; i < this.rows.length; i++) {
+                    // Check if this is a green row
+                    if (i % (this.enablePlusOne.checked ? 3 : 2) === 0) {
+                        const row = this.rows[i];
+                        if (row && !row.isZero()) {
+                            const lsd = row.getRightmostPosition();
+                            // If the least significant digit is now left of (smaller than) the initial most significant digit
+                            if (lsd < initialMSD) {
+                                return row.toDecimal();
+                            }
+                        }
+                    }
+                }
+                
+                return -1; // LSD never moved left of initial MSD
+            }
+
+            // Get the number of digits after the least significant digit moves left of the initial most significant digit
+            getDigitsAfterLSDMove() {
+                const initialMSD = this.getMostSignificantDigitColumn();
+                if (initialMSD === null) {
+                    return -1;
+                }
+
+                for (let i = 0; i < this.rows.length; i++) {
+                    // Check if this is a green row
+                    if (i % (this.enablePlusOne.checked ? 3 : 2) === 0) {
+                        const row = this.rows[i];
+                        if (row && !row.isZero()) {
+                            const lsd = row.getRightmostPosition();
+                            // If the least significant digit is now left of (smaller than) the initial most significant digit
+                            if (lsd < initialMSD) {
+                                // Calculate the number of digits (length of dense representation)
+                                const { dense } = row.toDense();
+                                console.log('Found LSD move at row', i, 'with', dense.length, 'digits');
+                                return dense.length;
+                            }
+                        }
+                    }
+                }
+                
+                console.log('No LSD move found. Initial MSD:', initialMSD, 'Rows checked:', this.rows.length);
                 return -1; // LSD never moved left of initial MSD
             }
 
@@ -1255,9 +1316,13 @@
             updateSequenceInfo() {
                 const initialLength = this.getInitialSequenceLength();
                 const rowsBeforeLSDMove = this.getRowsBeforeLSDMove();
+                const valueAfterLSDMove = this.getValueAfterLSDMove();
+                const digitsAfterLSDMove = this.getDigitsAfterLSDMove();
                 
                 this.initialLength.textContent = initialLength.toString();
                 this.rowsBeforeLSDMove.textContent = rowsBeforeLSDMove === -1 ? 'Never' : rowsBeforeLSDMove.toString();
+                this.valueAfterLSDMove.textContent = valueAfterLSDMove === -1 ? 'Never' : valueAfterLSDMove.toString();
+                this.digitsAfterLSDMove.textContent = digitsAfterLSDMove === -1 ? 'Never' : digitsAfterLSDMove.toString();
             }
         }
 
