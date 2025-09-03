@@ -148,6 +148,13 @@
             outline-offset: -2px;
         }
 
+        .cell.selected-column {
+            border-right: 3px dotted #FF8C00 !important; /* Dotted line on right side of selected column */
+            border-top: 1px solid #ccc;
+            border-bottom: 1px solid #ccc;
+            border-left: 1px solid #ccc;
+        }
+
         .cell.msd-highlight {
             border: 2px solid #FF8C00 !important; /* Orange border */
             box-shadow: 0 0 5px rgba(255, 140, 0, 0.5); /* Orange glow */
@@ -988,6 +995,11 @@
                         // Add cursor if this is the current position
                         if (i === this.currentRow && j === this.currentCol) {
                             cell.classList.add('cursor');
+                        }
+
+                        // Add selected column highlight to all cells in the current column
+                        if (j === this.currentCol) {
+                            cell.classList.add('selected-column');
                         }
                         
                         rowDiv.appendChild(cell);
