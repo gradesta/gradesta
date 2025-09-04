@@ -231,6 +231,12 @@
             <label style="margin-left: 20px;">
                 <input type="checkbox" id="showTogglePreview"> Show toggle preview
             </label>
+            <label style="margin-left: 20px;">
+                <input type="checkbox" id="enableCarry" checked> Enable carry
+            </label>
+            <label style="margin-left: 20px;">
+                <input type="checkbox" id="showColumnLine" checked> Show column line
+            </label>
             <button id="resetButton" style="margin-left: 20px; padding: 5px 10px; font-size: 14px;">Reset</button>
             <label style="margin-left: 20px;">
                 <input type="number" id="randomBitsInput" placeholder="Bits" min="1" max="100" value="10" style="width: 60px; padding: 2px; font-size: 14px;">
@@ -388,6 +394,28 @@
                     if (result[i] === 1) {
                         const pos = minPos - 1 + i; // -1 because of carry space
                         resultPositions.push(pos);
+                    }
+                }
+                
+                return new SparseRow(resultPositions);
+            }
+
+            // Add two sparse rows together WITHOUT carry handling (XOR-like behavior)
+            static addNoCarry(row1, row2) {
+                // Simply combine the positions and remove duplicates (XOR behavior)
+                const combinedPositions = [...row1.positions, ...row2.positions];
+                const positionCounts = {};
+                
+                // Count occurrences of each position
+                for (const pos of combinedPositions) {
+                    positionCounts[pos] = (positionCounts[pos] || 0) + 1;
+                }
+                
+                // Keep only positions that appear an odd number of times
+                const resultPositions = [];
+                for (const [pos, count] of Object.entries(positionCounts)) {
+                    if (count % 2 === 1) {
+                        resultPositions.push(parseInt(pos));
                     }
                 }
                 
@@ -584,6 +612,8 @@
                 this.shiftDirection = document.getElementById('shiftDirection');
                 this.showCarryDots = document.getElementById('showCarryDots');
                 this.showTogglePreview = document.getElementById('showTogglePreview');
+                this.enableCarry = document.getElementById('enableCarry');
+                this.showColumnLine = document.getElementById('showColumnLine');
                 this.resetButton = document.getElementById('resetButton');
                 this.randomBitsInput = document.getElementById('randomBitsInput');
                 this.randomBitsButton = document.getElementById('randomBitsButton');
@@ -681,6 +711,17 @@
                     this.render();
                 });
 
+                this.enableCarry.addEventListener('change', () => {
+                    // Clear toggle preview cache when carry setting changes
+                    this.togglePreviewCache.clear();
+                    this.generateSequence();
+                    this.render();
+                });
+
+                this.showColumnLine.addEventListener('change', () => {
+                    this.render();
+                });
+
                 this.resetButton.addEventListener('click', () => {
                     this.resetEditableRow();
                 });
@@ -766,11 +807,20 @@
                     }
                     
                     // Add the rows together: original + shifted + plusOne
-                    const { result: nextRow, carries: nextCarries } = SparseRow.addWithCarries(
-                        currentRow, 
-                        shiftedRow, 
-                        this.enablePlusOne.checked ? plusOneRow : null
-                    );
+                    let nextRow, nextCarries;
+                    if (this.enableCarry.checked) {
+                        const result = SparseRow.addWithCarries(currentRow, shiftedRow, this.enablePlusOne.checked ? plusOneRow : null);
+                        nextRow = result.result;
+                        nextCarries = result.carries;
+                    } else {
+                        // Simple addition without carry tracking (XOR-like behavior)
+                        let tempRow = SparseRow.addNoCarry(currentRow, shiftedRow);
+                        if (this.enablePlusOne.checked) {
+                            tempRow = SparseRow.addNoCarry(tempRow, plusOneRow);
+                        }
+                        nextRow = tempRow;
+                        nextCarries = {};
+                    }
                     
                     this.rows.push(shiftedRow);
                     this.carries.push({}); // No carries for shifted row
@@ -968,8 +1018,8 @@
                             cell.className = 'cell red';
                         }
                         
-                        // Add carry dots for green rows (only if toggle is enabled)
-                        if (this.showCarryDots.checked && rowType === 'green' && this.carries[i]) {
+                        // Add carry dots for green rows (only if carry and toggle are enabled)
+                        if (this.showCarryDots.checked && this.enableCarry.checked && rowType === 'green' && this.carries[i]) {
                             const carryType = this.carries[i][j];
                             if (carryType === 'plus-one') {
                                 cell.classList.add('carry-plus-one');
@@ -1002,7 +1052,7 @@
                         }
 
                         // Add selected column highlight to all cells in the current column
-                        if (j === this.currentCol) {
+                        if (this.showColumnLine.checked && j === this.currentCol) {
                             cell.classList.add('selected-column');
                         }
                         
