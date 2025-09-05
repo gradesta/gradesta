@@ -781,6 +781,7 @@
                 // Carry column is now at position 0
                 const carryCol = 0;
                 
+                let visualRowIndex = 0; // Track the visual row position
                 for (let i = startRow; i < endRow; i++) {
                     // Determine row type - now every other row is green
                     const isGreenRow = i % 2 === 0;
@@ -866,7 +867,7 @@
                                 }
                                 
                                 // Highlight if this is the current selection
-                                if (i === this.currentCarryBit) {
+                                if (visualRowIndex === this.currentCarryBit) {
                                     cell.style.outline = '2px solid #FF8C00';
                                     cell.style.outlineOffset = '-2px';
                                 }
@@ -903,6 +904,9 @@
                     }
                     
                     this.carryGrid.appendChild(rowDiv);
+                    
+                    // Increment visual row index after processing each visible row
+                    visualRowIndex++;
                 }
                 
                 // Sync scroll positions
@@ -955,18 +959,18 @@
                     
                     return currentSequence;
                 } else {
-                    // Red row - previous green row shifted right by 1
+                    // Red row - current green row shifted right by 1
                     const stepInGreenRow = Math.floor(rowIndex / 2);
                     
-                    // Calculate the previous green row iteratively
-                    let previousGreenRow = new CarrySparseRow(); // Start with empty sequence
+                    // Calculate the current green row iteratively
+                    let currentGreenRow = new CarrySparseRow(); // Start with empty sequence
                     
                     for (let i = 0; i < stepInGreenRow; i++) {
                         // Red row: current sequence shifted right by 1
-                        const redRow = previousGreenRow.shiftRight(1);
+                        const redRow = currentGreenRow.shiftRight(1);
                         
                         // Green row = current sequence + red row + carry bit (if set)
-                        let result = CarrySparseRow.add(previousGreenRow, redRow);
+                        let result = CarrySparseRow.add(currentGreenRow, redRow);
                         
                         // Add carry bit if it's set for this green row
                         if (this.carryRegister.hasBitAt(i)) {
@@ -974,10 +978,10 @@
                             result = CarrySparseRow.add(result, carryBit);
                         }
                         
-                        previousGreenRow = result;
+                        currentGreenRow = result;
                     }
                     
-                    return previousGreenRow.shiftRight(1); // Shift right by 1
+                    return currentGreenRow.shiftRight(1); // Shift right by 1
                 }
             }
 
@@ -1078,6 +1082,7 @@
                 const carryCol = 0; // Carry column is now at position 0
                 const rows = this.carryGrid.children;
                 
+                let visualRowIndex = 0;
                 for (let i = 0; i < rows.length; i++) {
                     const row = rows[i];
                     const carryCell = row.children[carryCol - this.horizontalScrollOffset];
@@ -1087,23 +1092,28 @@
                         carryCell.style.outline = '';
                         carryCell.style.outlineOffset = '';
                         
-                        // Add highlight if this is the current selection and it's a green row
-                        if (i === this.currentCarryBit && i % 2 === 0) {
+                        // Add highlight if this is the current selection
+                        if (visualRowIndex === this.currentCarryBit) {
                             carryCell.style.outline = '2px solid #FF8C00';
                             carryCell.style.outlineOffset = '-2px';
                         }
                     }
+                    
+                    // Increment visual row index for each visible row
+                    visualRowIndex++;
                 }
             }
 
             flipCarryBit() {
-                // Convert currentCarryBit (row index) to green row index
+                // Convert currentCarryBit (visual row index) to green row index
                 let greenRowIndex;
                 if (this.carryHideRedRows.checked) {
-                    // When red rows are hidden, currentCarryBit directly corresponds to green row index
+                    // When red rows are hidden, currentCarryBit is the visual row index
+                    // Since we only show green rows, visual row index = green row index
                     greenRowIndex = this.currentCarryBit;
                 } else {
                     // When red rows are shown, green rows are every 2nd row
+                    // currentCarryBit represents the visual position, which corresponds to original row index
                     greenRowIndex = Math.floor(this.currentCarryBit / 2);
                 }
                 this.carryRegister.flipBit(greenRowIndex);
