@@ -213,6 +213,22 @@ Simplify ↓
 
 $$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(2x_1+1)(2x_2+1)(2x_0+1) \cdot 2^{k_0+k_1+k_2-1}$$
 
+Simplify more explicitly ↓
+
+$$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(2x_1\cdot 2^{k_0+k_1+k_2-1}+1\cdot 2^{k_0+k_1+k_2-1})(2x_2\cdot 2^{k_0+k_1+k_2-1}+1\cdot 2^{k_0+k_1+k_2-1})(2x_0\cdot 2^{k_0+k_1+k_2-1}+1\cdot 2^{k_0+k_1+k_2-1})$$
+
+If $2^{k_0+k_1+k_2-1}$ is 1 we can rewrite this as:
+
+$$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(2x_1+1)(2x_2+1)(2x_0+1) $$
+
+Which is clearly impossible.
+
+If $2^{k_0+k_1+k_2-1}$ is 2 we can rewrite this as:
+
+$$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(4x_1+2)(4x_2+2)(4x_0+2) $$
+
+Which is also clearly impossible. Greater values for $2^{k_0+k_1+k_2-1}$ only make the situation worse.
+
 Here we are in the same situation that if $k_0+k_1+k_2-1$ is 1 then the left side is smaller and if it is 2 then the left side is larger. Therefore there are no three loops in Collatz.
 
 This same reasoning applies to loops of `n` sequences.
