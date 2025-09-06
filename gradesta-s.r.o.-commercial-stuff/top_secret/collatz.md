@@ -203,7 +203,7 @@ Here we see that if $k_0+k_1-1$ is 0 then the right side will be lower. If it is
 
 $$6x_0 + 4 = (2x_1+1) \cdot 2^{k_0}$$
 $$6x_1 + 4 = (2x_2+1) \cdot 2^{k_1}$$
-$$6x_2 + 4 = (2x_0+1) \cdot 2^{k_1}$$
+$$6x_2 + 4 = (2x_0+1) \cdot 2^{k_2}$$
 
 Multiply the terms:
 
