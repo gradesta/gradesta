@@ -166,6 +166,16 @@ Now obviously at this point we are stuck. No matter how many times we iterate fr
 Solving for loops
 -----------------
 
+Lets return to our initial equation for loops. Remembering that $x_n$s are all distinct positive integers and $k_n$s are all integers greater than or equal to zero.
+
+$$6x_0 + 4 = (2x_1+1) \cdot 2^{k_0}$$
+$$6x_1 + 4 = (2x_2+1) \cdot 2^{k_1}$$
+$$6x_2 + 4 = (2x_3+1) \cdot 2^{k_2}$$
+$$\vdots$$
+$$6x_{n-1} + 4 = (2x_n+1) \cdot 2^{k_{n-1}}$$
+$$6x_n + 4 = (2x_0+1) \cdot 2^{k_n}$$
+
+
 $$6x_0 + 4 = (2x_0+1) \cdot 2^{k_0}$$
 
 Obviously there is only one loop (the trivial one we know of) with a single step as this resolves to 
