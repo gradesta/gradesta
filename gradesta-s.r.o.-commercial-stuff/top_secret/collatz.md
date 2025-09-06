@@ -195,7 +195,7 @@ $$(6x_0 + 4)(6x_1 + 4) = (2x_1+1)(2x_0+1) \cdot 2^{k_0+k_1}$$
 
 Simplify ↓
 
-$$(3x_0 + 2)(3x_1 + 2) = (2x_1+1)(2x_0+1) \cdot 2^{k_0+k_1-1}$$
+$$(3x_0 + 2)(3x_1 + 2) = (2x_1+1)(2x_0+1) \cdot 2^{k_0+k_1-2}$$
 
 Here we see that if $k_0+k_1-1$ is 0 then the right side will be lower. If it is 1 it will be higher. Thus this equation is unsolvable. Therefore there are no loops in Collatz with only two odds.
 
@@ -211,25 +211,25 @@ $$(6x_0 + 4)(6x_1 + 4)(6x_2 + 4)=(2x_1+1)(2x_2+1)(2x_0+1) \cdot 2^{k_0+k_1+k_2}$
 
 Simplify ↓
 
-$$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(2x_1+1)(2x_2+1)(2x_0+1) \cdot 2^{k_0+k_1+k_2-1}$$
+$$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(2x_1+1)(2x_2+1)(2x_0+1) \cdot 2^{k_0+k_1+k_2-3}$$
 
 Simplify more explicitly ↓
 
-$$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(2x_1\cdot 2^{k_0+k_1+k_2-1}+1\cdot 2^{k_0+k_1+k_2-1})(2x_2\cdot 2^{k_0+k_1+k_2-1}+1\cdot 2^{k_0+k_1+k_2-1})(2x_0\cdot 2^{k_0+k_1+k_2-1}+1\cdot 2^{k_0+k_1+k_2-1})$$
+$$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(2x_1\cdot 2^{k_0+k_1+k_2-3}+1\cdot 2^{k_0+k_1+k_2-3})(2x_2\cdot 2^{k_0+k_1+k_2-3}+1\cdot 2^{k_0+k_1+k_2-3})(2x_0\cdot 2^{k_0+k_1+k_2-3}+1\cdot 2^{k_0+k_1+k_2-3})$$
 
-If $2^{k_0+k_1+k_2-1}$ is 1 we can rewrite this as:
+If $2^{k_0+k_1+k_2-n}$ is 1 we can rewrite this as:
 
 $$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(2x_1+1)(2x_2+1)(2x_0+1) $$
 
 Which is clearly impossible.
 
-If $2^{k_0+k_1+k_2-1}$ is 2 we can rewrite this as:
+If $2^{k_0+k_1+k_2-n}$ is 2 we can rewrite this as:
 
 $$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(4x_1+2)(4x_2+2)(4x_0+2) $$
 
-Which is also clearly impossible. Greater values for $2^{k_0+k_1+k_2-1}$ only make the situation worse.
+Which is also clearly impossible. Greater values for $2^{k_0+k_1+k_2-n}$ only make the situation worse.
 
-Here we are in the same situation that if $k_0+k_1+k_2-1$ is 1 then the left side is smaller and if it is 2 then the left side is larger. Therefore there are no three loops in Collatz.
+Here we are in the same situation that if $k_0+k_1+k_2-n$ is 1 then the left side is smaller and if it is 2 then the left side is larger. Therefore there are no three loops in Collatz.
 
 This same reasoning applies to loops of `n` sequences.
 
