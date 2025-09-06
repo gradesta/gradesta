@@ -163,190 +163,156 @@ $x_7=0$, $k_7=2$
 
 Now obviously at this point we are stuck. No matter how many times we iterate from here we will never get $x_n=4$ which is where we started. Because there simply is no loop in the Collatz graph from 9 to 1. But we want to prove that this equation is unsolvable not just in finite cases that we test, but in all cases for all positive whole number values of x and n.
 
+Solving for loops
+-----------------
 
-Solving for $x_{n+1}$
-----------------------
+$$6x_0 + 4 = (2x_0+1) \cdot 2^{k_0}$$
 
-Starting from our equation:
+Obviously there is only one loop (the trivial one we know of) with a single step as this resolves to 
 
-$$6x_{n} + 4 = (2x_{n+1}+1) \cdot 2^{k_n}$$
+$$x_0 = \frac{(2x_0+1) \cdot 2^{k_0} - 4}{6}$$
 
-We devide by $2^{k_n}$
+Who's only solution is $x_0=0, k=2$.
 
-$$
-\frac{6x_{n} + 4}{2^{k_n}} = 2x_{n+1} + 1
-$$
+### Two loops
 
-Then we subtract by 1.
+$$6x_0 + 4 = (2x_1+1) \cdot 2^{k_0}$$
+$$6x_1 + 4 = (2x_0+1) \cdot 2^{k_1}$$
 
-$$
-\frac{6x_{n} + 4}{2^{k_n}} - 1 = 2x_{n+1}
-$$
+Multiply terms:
 
-And devide by 2
+$$(6x_0 + 4)(6x_1 + 4) = (2x_1+1)(2x_0+1) \cdot 2^{k_0+k_1}$$
 
-$$
-\frac{6x_{n} + 4}{2^{k_n+1}} - 0.5 = x_{n+1}
-$$
+Simplify ↓
 
-And reduce the fraction.
+$$(3x_0 + 2)(3x_1 + 2) = (2x_1+1)(2x_0+1) \cdot 2^{k_0+k_1-1}$$
 
-$$
-\frac{3x_{n} + 2}{2^{k_n}} - 0.5 = x_{n+1}
-$$
+Here we see that if $k_0+k_1-1$ is 0 then the right side will be lower. If it is 1 it will be higher. Thus this equation is unsolvable. Therefore there are no loops in Collatz with only two odds.
 
-Now we know $x_{n+1}$ must be a whole number, so we're going to want to end up with the fraction resolving to $x_{n+1}.5$
+### Three loops
 
-If the nominator is odd then $k_n$ must be 1. If it is even, we must keep on dividing by two untill we get to a whole number.
+$$6x_0 + 4 = (2x_1+1) \cdot 2^{k_0}$$
+$$6x_1 + 4 = (2x_2+1) \cdot 2^{k_1}$$
+$$6x_2 + 4 = (2x_0+1) \cdot 2^{k_1}$$
 
-Lets look at how this looks in binary.
+Multiply the terms:
 
-Imagine $x_n$ is 5
+$$(6x_0 + 4)(6x_1 + 4)(6x_2 + 4)=(2x_1+1)(2x_2+1)(2x_0+1) \cdot 2^{k_0+k_1+k_2}$$
+
+Simplify ↓
+
+$$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(2x_1+1)(2x_2+1)(2x_0+1) \cdot 2^{k_0+k_1+k_2-1}$$
+
+Here we are in the same situation that if $k_0+k_1+k_2-1$ is 1 then the left side is smaller and if it is 2 then the left side is larger. Therefore there are no three loops in Collatz.
+
+This same reasoning applies to loops of `n` sequences.
+
+
+Collatz in $2^k$ agnostic arithmatic
+------------------------------------
+
+$2^k$ agnostic arithmetic is a special kind of arithmatic where each number represents a set of all numbers that are represented by the equation $(2a+1)2^k$ where $a$ is an integer greater than or equal to zero. 
+
+$2^k$ agnostic arithmatic is best represnted using binary representation. A number might look like:
+
+`101`
+
+or
+
+`1111`.
+
+or just `1` which in $2^k$ agnostic arithmatic represents 1, 2, 4, 8 and any other number that fits the pattern $n2^k$.
+
+Trailing zeros however, are illegal/ignored.
+
+## Multiplication by 3 in $2^k$ agnostic arithmatic
+
+Since trailing zeros are ignored and multiplication by two represents a shift to the left by one digit, multiplication by two does not exist in $2^k$ agnostic arithmatic. It is, however possible to mulitply by three.
+
+Imagine a situation where you have:
+
+`101 * 11` That is 5 times 3.
+
+You can do this simply by doing:
 
 ```
-0101
+ 101
+ 101
++101
+----
 ```
 
-We multiply by 3 and add 2. This is best visualized as simply 3 binary addition operations.
+The first two numbers when added together end up being the equivalent of a left shift so you end up with:
 
 ```
- 00101
- 00101
- 00101
-+00010
+1010
++101
+----
+1111
+```
+
+Unlike multiplication by two, multiplication by 3 makes sense in this form of arithmatic.
+
+Multiplication by 3 is the same as adding either a right shifted or left shifted version of the number to the number. It really doesn't matter which direction you shift it as the result will be the same either way.
+
+Like it can either be:
+
+```
+ 101
++ 101
+```
+
+Or
+
+```
+  101
++101
+```
+
+So that's multiplication by 3. In order to represent the Collatz tranformation we also need to add 1. But this works exactly as it does in ordinary binary. It's just important to make sure you line up the least significant digits.
+
+You can transition between various walktrees in the condensed Collatz graph by doing 3n+1 in $2^k$ agnostic arithmatic.
+
+```
+ 101
+  101
++   1
 -----
-
+1
 ```
 
-```
- 00101
- 00101
-=01010
- 00101
-=01111
-+00010
------
-=10001
-```
+This represents the transition between 5 and 1. Note the lack of trailing zeros.
 
-Now in this case our result is odd. So $k$ must be 1.
+5 happens to be just one step from one but the sequence does tend to be longer consisting of multiple iterations of "add shift right" and +1.
 
-In this case, to get $x_{n+1}$ we simply snip off the last 1 to get:
+If we place these binary sequences on a grid and run just the the "add shift right" operation over and over again we get something interesting. A crystaline structure of 1's and zeros with larger crystals of triangular shape sometimes included. Various crystaline and "metalic" structures appear depending on the initial binary sequence that that we enter.
 
-$$
-1000\sout{1}\\
-x_{n+1}=1000
-$$
+If we then add the +1 operation, we see that this crystaline structure gets eaten or cut from the right to the left, except when we come across a larger dark triangular crystal at which point the structure is cut verically untill the dark triangle is consumed.
 
-Or 8.
+The only time we cut vertically is when we are cutting through dark crystals. Otherwise we are cutting sideways. The height of the cut crystals is always the same as their width.
 
-Now lets do this again with our 8.
+We also see the crystaline structure growing slowly in the rightward direction. Basically, the whole conjecture comes down to if this cutting is faster than that growth.
+
+We notice that adding new bits on the right to our initial sequence doesn't really effect things on the left unless there are carries. If there are carries crystals form. The possibility of a proof by induction that starts with a small sequence and grows it rightward occures to me, but there is a much easier proof of collatz.
+
+It turns out that if you draw a vertical line in the grid where the initial 1 ocures. Then all the leftward crystal growth comes from one of two effects:
+
+- carries
+- add shift rights
+
+Now there is at most one carry per iteration, and the add shift rights are equivalent to adding a given subsequence divided by two (rounded up). Thus the maximum binary value of each binary subsequence to the right of our imaginary virtual line is 
 
 ```
- 01000
- 01000
- 01000
-+00010
------
-=11010
-```
+  1+1/2 (cumulatively 1)
+  1+1/2 (cumulatively 2)
+  1+2/2 (cumulatively 4)
+  1+4/2 (cumulatively 7)
+  1+7/2 (cumulatively 11)
+ ...
+ ```
 
-In this case, $k = 2$. If $x_n$ is odd, $k = 1$. If $x_n$ is even, $k \geq 2$.
+ Which is equivalent to the subsequence to the left of our imaginary vertical line being equal to at most $3(1.5)^i-2$. We will refer to this value as $n_1$ and the value of our initial binary sequence as $n_0$.
 
-$$
-110\sout{10}\\
-x_{n+1}=110
-$$
+ Now as we are cutting to the left by at least one colum any time we are not in a dark crystal, and between any dark crystals. We can calculate the maximum number of iterations before we reach this subsequence. Which is the maximum size of a dark crystal times the number of columns (which is equal to the number of bits in our initial sequence). I'm going to refer to the number of bits in our initial sequence as $l$ and for now lets just assume that the maximum crystal size is $l$ (it could be larger, up to $l+i$ but for now lets go with this reasonable estimate). If the maximum crystal size is $l$ and we end up spending $l$ iterations cutting vertically through a crystal of size $l$ then we will spend $l*l$ iterations to cut through the maximum number of crystals. Given a worse case scenario that the crystals are 1 colum appart, which is impossibly pessimistic.
 
-```
- 00110
- 00110
- 00110
-=10010
-+00010
------
-=10100
-```
-
-This is an interesting case in that the $+2$ step pushed one of the ones farther to the left thus increasing the value of $k$ from $2$ to $3$, so now we strike out 3 binary digits from the left.
-
-$$
-10\sout{100}\\
-x_{n+1}=10
-$$
-
-Here we gained two digits on the right, and lost 3 digits on the left.
-
-We can understand the loop in the Collatz Cycle as follows.
-
-```
- 0000
- 0000
- 0000
-+0010
------
- 0010
-```
-
-$$
-x_n=0\\
-0\sout{10}\\
-x_{n+1}=0
-$$
-
-The possibility of endless growth or loops
-------------------------------------------
-
-If we can somehow figure out the growth on the right and prove that it is always less than culling on the right over time, then we will have proven the Collatz conjecture.
-
-So far we have a variable $k$ for culling on the right. I'd like to define a new variable $g$ for growth on the left. $g$ is equal to the number of extra digits we gain on the left before culling. I will also define a variable $l$ which is the length of the binary number in digits. So $0100$ has an $l$ of 3.
-
-```
- 00100
- 00100
- 00100
-+00010
------
-=01110
-```
-
-Has a $g$ of 1 and a $k$ of 2. $l+g-k=2$ in this case.
-
-I want this proof to be simple enough that ordinary people can understand it, so I am going use a table to compare possible values for $g$ and $k$ and see if I can prove that the cumulative value $\sum{g}<\sum{k}$.
-
-Obviously over a single step $g$ can be greater than $k$ but what about over 4 steps?
-
-What are the possible values of $g$?
-
-If the first two digits are:
-
-|0011|0010|
-|----|----|
-|1001|0110|
-| g=2| g=1|
-
-Even if we were to carry from below. these results don't seem to change:
-
-|0011|0010|with 1 carry|
-|----|----|-|
-|1010|0111||
-| g=2| g=1||
-
-|0011|0010|with 2 carries|
-|----|----|-|
-|1011|1000||
-| g=2| g=2||
-
-
-So $g$ is always either 1 or 2.
-
-Furthermore, we know that if $g$ is 2 than the next $g$ is 1 unless there are two carries.
-
-$k$ is always somewhere between 1 and $l+g$
-
-$$1\leq k \leq l+g$$
-
-After some analysis I had trouble finding a good way to prove this so I moved to a different technique.
-
-Collatz in Mod 2
-----------------
+ If we go with this estimate. Then the maximum value of $n_1$ is $3(1.5)^{l*l}-2$.
