@@ -247,64 +247,50 @@ $x_0=2, x_1=3, x_2=5$
 
 $1331 > 1540$
 
-Lets try to loosen our limitations on $x_i$ and really solve for what these $x_i$ could be including on-integer solutions but first lets convert our equation into a polynomial.
+Lets try to loosen our limitations on $x_i$ and really solve for what these $x_i$ could be including on-integer solutions.
 
-$$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2) = 2x_0\cdot 2^{\frac{m}{3}} + 2^{\frac{m}{3}})(2x_1\cdot 2^{\frac{m}{3}} + 2^{\frac{m}{3}})(2x_2\cdot 2^{\frac{m}{3}} + 2^{\frac{m}{3}}$$
-
-Expanding both sides:
-
-Left side:
-$$
-\begin{align*}
-(3x_0 + 2)(3x_1 + 2)(3x_2 + 2) &= (3x_0)(3x_1)(3x_2) + (3x_0)(3x_1)2 + (3x_0)2(3x_2) + (3x_0)2 \cdot 2 \\
-&\quad + 2(3x_1)(3x_2) + 2(3x_1)2 + 2(3x_2)2 + 2 \cdot 2 \cdot 2 \\
-&= 27x_0x_1x_2 + 18x_0x_1 + 18x_0x_2 + 12x_0 + 18x_1x_2 + 12x_1 + 12x_2 + 8
-\end{align*}
-$$
-
-Right side:
-Let $a = 2^{\frac{m}{3}}$ for brevity.
 
 $$
-\begin{align*}
-(2x_0 a + a)(2x_1 a + a)(2x_2 a + a) &= [2x_0 a + a][2x_1 a + a][2x_2 a + a] \\
-&= (2x_0 a + a)(2x_1 a + a)(2x_2 a + a) \\
-&= (2x_0 a)(2x_1 a)(2x_2 a) + (2x_0 a)(2x_1 a)a + (2x_0 a)a(2x_2 a) + (2x_0 a)a a \\
-&\quad + a(2x_1 a)(2x_2 a) + a(2x_1 a)a + a a(2x_2 a) + a a a \\
-&= 8x_0x_1x_2 a^3 + 4x_0x_1 a^3 + 4x_0x_2 a^3 + 2x_0 a^3 \\
-&\quad + 4x_1x_2 a^3 + 2x_1 a^3 + 2x_2 a^3 + a^3 \\
-&= a^3 \left(8x_0x_1x_2 + 4x_0x_1 + 4x_0x_2 + 2x_0 + 4x_1x_2 + 2x_1 + 2x_2 + 1\right)
-\end{align*}
+\frac{(3x_0 + 2)}{(2x_0\cdot 2^{\frac{2}{3}}+2^{\frac{2}{3}})}\frac{(3x_1 + 2)}{(2x_1\cdot 2^{\frac{2}{3}}+2^{\frac{2}{3}})}\frac{(3x_2 + 2)}{(2x_2\cdot 2^{\frac{2}{3}}+2^{\frac{2}{3}})}=1
 $$
 
-So the fully expanded polynomial equation is:
+Lets look at
 
 $$
-27x_0x_1x_2 + 18x_0x_1 + 18x_0x_2 + 12x_0 + 18x_1x_2 + 12x_1 + 12x_2 + 8 =  8x_0x_1x_2a^3 + 4x_0x_1a^3 + 4x_0x_2a^3 + 2x_0a^3 + 4x_1x_2a^3 + 2x_1a^3 + 2x_2a^3 + a^3
+f(x_i) = \frac{(3x_i + 2)}{(2x_i\cdot 2^{\frac{2}{3}}+2^{\frac{2}{3}})}
 $$
 
-where $a = 2^{\frac{m}{3}}$.
-
-And filling in $a$ for this particular example:
+$$
+lim_{x_i → ∞} f(x_i) = \frac{3}{2\cdot 2^{\frac{2}{3}}}
+$$ 
 
 $$
-27x_0x_1x_2 + 18x_0x_1 + 18x_0x_2 + 12x_0 + 18x_1x_2 + 12x_1 + 12x_2 + 8 =  32x_0x_1x_2 + 16x_0x_1 + 16x_0x_2 + 8x_0 + 16x_1x_2 + 8x_1 + 8x_2 + 4
+lim_{x_i → 0} f(x_i) = \frac{2}{2^{\frac{2}{3}}}
 $$
 
-We can then subtract by 4 on both sides and simplify a bit:
+Therefore $f(x_i)$ is always in the range $0.9449...1.259$
+
+One intersting thing is to figure out when $f(x_i)=1$:
 
 $$
-4 = (32x_0x_1x_2 + 16(x_0x_1 + x_0x_2 +  x_1x_2) + 8(x_0 + x_1 + x_2)) - (27x_0x_1x_2 + 18(x_0x_1 + x_0x_2 + x_1x_2) + 12(x_0 + x_1 + x_2))
+\frac{(3x_0 + 2)}{(2x_0\cdot 2^{\frac{2}{3}}+2^{\frac{2}{3}})}=1
 $$
 
-So certainly the RHS must be positive and $32x_0x_1x_2 > 27x_0x_1x_2$ but $16(x_0x_1 + x_0x_2 +  x_1x_2) + 8(x_0 + x_1 + x_2) < 18(x_0x_1 + x_0x_2 + x_1x_2) + 12(x_0 + x_1 + x_2)$
-
-So if we rewrite as:
-
 $$
-4 = 5x_0x_1x_2 - 2(x_0x_1 + x_0x_2 +  x_1x_2) - 4(x_0 + x_1 + x_2)
+3x_0 + 2=2x_0\cdot 2^{\frac{2}{3}}+2^{\frac{2}{3}}
 $$
 
+$$
+\frac{2 - 2^{\frac{2}{3}}}{2\cdot 2^{\frac{2}{3}} - 3} =x_0
+$$
+
+$$
+x_0 = 2.3603...
+$$
+
+In order for $f(x_0) \cdot f(x_1) \cdot f(x_2) $ to equal 1 at least one of the $x_i$ must be less than or equal to $2.3603...$
+
+This makes it thus easy to show that there are no 3 loops in Collatz.
 
 ### N loops
 
