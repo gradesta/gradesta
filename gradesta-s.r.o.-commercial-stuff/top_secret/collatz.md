@@ -191,13 +191,13 @@ $$(6x_0 + 4)(6x_1 + 4) = (2x_1+1)(2x_0+1) \cdot 2^{k_0+k_1}$$
 
 Simplify ↓
 
-$$(3x_0 + 2)(3x_1 + 2) = (2x_1+1)(2x_0+1) \cdot 2^{k_0+k_1-2}$$
+$$(3x_0 + 2)(3x_1 + 2) = (2x_0+1)(2x_1+1) \cdot 2^{k_0+k_1-2}$$
 
 Spread the terms:
 
 $$m = k_0+k_1-2$$
 
-$$(3x_0 + 2)(3x_1 + 2) = (2x_1\cdot 2^{\frac{m}{2}}+2^{\frac{m}{2}})(2x_0\cdot 2^{\frac{m}{2}}+2^{\frac{m}{2}})$$
+$$(3x_0 + 2)(3x_1 + 2) = (2x_0\cdot 2^{\frac{m}{2}}+2^{\frac{m}{2}})(2x_1\cdot 2^{\frac{m}{2}}+2^{\frac{m}{2}})$$
 
 Here we see that if $m$ is less than or equal to 1 then the right side will be lower. If it is 2 it will be higher. Thus this equation is unsolvable. Therefore there are no loops in Collatz with only two odds.
 
@@ -213,15 +213,98 @@ $$(6x_0 + 4)(6x_1 + 4)(6x_2 + 4)=(2x_1+1)(2x_2+1)(2x_0+1) \cdot 2^{k_0+k_1+k_2}$
 
 Simplify ↓
 
-$$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(2x_1+1)(2x_2+1)(2x_0+1) \cdot 2^{k_0+k_1+k_2-3}$$
+$$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(2x_0+1)(2x_1+1)(2x_2+1) \cdot 2^{k_0+k_1+k_2-3}$$
 
 Simplify more explicitly ↓
 
 $$m = k_0+k_1+k_2-3$$
 
-$$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(2x_1\cdot 2^{\frac{m}{3}}+2^{\frac{m}{3}})(2x_0\cdot 2^{\frac{m}{3}}+2^{\frac{m}{3}})(2x_2\cdot 2^{\frac{m}{3}}+2^{\frac{m}{3}})$$
+$$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(2x_0\cdot 2^{\frac{m}{3}}+2^{\frac{m}{3}})(2x_1\cdot 2^{\frac{m}{3}}+2^{\frac{m}{3}})(2x_2\cdot 2^{\frac{m}{3}}+2^{\frac{m}{3}})$$
 
-If $\frac{m}{3} <= \frac{1}{3}$ then the LHS is higher. If $\frac{m}{3} >= \frac{2}{3}$ then the RHS is higher.
+If $\frac{m}{3} <= \frac{1}{3}$ then the LHS is higher. If $\frac{m}{3} >= \frac{3}{3}$ then the RHS is higher. However deeper analysis is needed for the case of $\frac{m}{3} >= \frac{2}{3}$ as this resolves to $2^\frac{2}{3} = 1.587...$ or 
+
+$$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(3.174...x_0+1.587...)(3.174...x_1+1.587...)(3.174...x_2+1.587...)$$
+
+And without knowing the values for $x_i$ its not clear which side is greater or less (or if they could perhaps be equal). Lets just imagine for a second though that all $x_i=2$:
+
+$$(6 + 2)(6 + 2)(6 + 2)=(6.34...+1.587...)(6.34...x_1+1.587...)(6.34+1.587...)$$
+
+$512 > 500$
+
+And for $x_i=3$:
+
+$1331 < 1372$
+
+What if we make one of the $x_i=2$?
+
+$1331 > 980$
+
+$x_0=2, x_1=3, x_2=4$
+
+$1331 > 1260$
+
+$x_0=2, x_1=3, x_2=5$
+
+$1331 > 1540$
+
+Lets try to loosen our limitations on $x_i$ and really solve for what these $x_i$ could be including on-integer solutions but first lets convert our equation into a polynomial.
+
+$$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2) = 2x_0\cdot 2^{\frac{m}{3}} + 2^{\frac{m}{3}})(2x_1\cdot 2^{\frac{m}{3}} + 2^{\frac{m}{3}})(2x_2\cdot 2^{\frac{m}{3}} + 2^{\frac{m}{3}}$$
+
+Expanding both sides:
+
+Left side:
+$$
+\begin{align*}
+(3x_0 + 2)(3x_1 + 2)(3x_2 + 2) &= (3x_0)(3x_1)(3x_2) + (3x_0)(3x_1)2 + (3x_0)2(3x_2) + (3x_0)2 \cdot 2 \\
+&\quad + 2(3x_1)(3x_2) + 2(3x_1)2 + 2(3x_2)2 + 2 \cdot 2 \cdot 2 \\
+&= 27x_0x_1x_2 + 18x_0x_1 + 18x_0x_2 + 12x_0 + 18x_1x_2 + 12x_1 + 12x_2 + 8
+\end{align*}
+$$
+
+Right side:
+Let $a = 2^{\frac{m}{3}}$ for brevity.
+
+$$
+\begin{align*}
+(2x_0 a + a)(2x_1 a + a)(2x_2 a + a) &= [2x_0 a + a][2x_1 a + a][2x_2 a + a] \\
+&= (2x_0 a + a)(2x_1 a + a)(2x_2 a + a) \\
+&= (2x_0 a)(2x_1 a)(2x_2 a) + (2x_0 a)(2x_1 a)a + (2x_0 a)a(2x_2 a) + (2x_0 a)a a \\
+&\quad + a(2x_1 a)(2x_2 a) + a(2x_1 a)a + a a(2x_2 a) + a a a \\
+&= 8x_0x_1x_2 a^3 + 4x_0x_1 a^3 + 4x_0x_2 a^3 + 2x_0 a^3 \\
+&\quad + 4x_1x_2 a^3 + 2x_1 a^3 + 2x_2 a^3 + a^3 \\
+&= a^3 \left(8x_0x_1x_2 + 4x_0x_1 + 4x_0x_2 + 2x_0 + 4x_1x_2 + 2x_1 + 2x_2 + 1\right)
+\end{align*}
+$$
+
+So the fully expanded polynomial equation is:
+
+$$
+27x_0x_1x_2 + 18x_0x_1 + 18x_0x_2 + 12x_0 + 18x_1x_2 + 12x_1 + 12x_2 + 8 =  8x_0x_1x_2a^3 + 4x_0x_1a^3 + 4x_0x_2a^3 + 2x_0a^3 + 4x_1x_2a^3 + 2x_1a^3 + 2x_2a^3 + a^3
+$$
+
+where $a = 2^{\frac{m}{3}}$.
+
+And filling in $a$ for this particular example:
+
+$$
+27x_0x_1x_2 + 18x_0x_1 + 18x_0x_2 + 12x_0 + 18x_1x_2 + 12x_1 + 12x_2 + 8 =  32x_0x_1x_2 + 16x_0x_1 + 16x_0x_2 + 8x_0 + 16x_1x_2 + 8x_1 + 8x_2 + 4
+$$
+
+We can then subtract by 4 on both sides and simplify a bit:
+
+$$
+4 = (32x_0x_1x_2 + 16(x_0x_1 + x_0x_2 +  x_1x_2) + 8(x_0 + x_1 + x_2)) - (27x_0x_1x_2 + 18(x_0x_1 + x_0x_2 + x_1x_2) + 12(x_0 + x_1 + x_2))
+$$
+
+So certainly the RHS must be positive and $32x_0x_1x_2 > 27x_0x_1x_2$ but $16(x_0x_1 + x_0x_2 +  x_1x_2) + 8(x_0 + x_1 + x_2) < 18(x_0x_1 + x_0x_2 + x_1x_2) + 12(x_0 + x_1 + x_2)$
+
+So if we rewrite as:
+
+$$
+4 = 5x_0x_1x_2 - 2(x_0x_1 + x_0x_2 +  x_1x_2) - 4(x_0 + x_1 + x_2)
+$$
+
 
 ### N loops
 
@@ -231,11 +314,23 @@ $$m = k_0+k_1+k_2...k_n-n$$
 
 $$(3x_0 + 2)(3x_1 + 2)...(3x_n + 2)=(2x_1\cdot 2^{\frac{m}{n}}+2^{\frac{m}{n}})(2x_0\cdot 2^{\frac{m}{n}}+2^{\frac{m}{n}})...(2x_n\cdot 2^{\frac{m}{n}}+2^{\frac{m}{n}})$$
 
-What this really boils down to is finding a co-efficent $y$ where
+The only possible values for $\frac{m}{n}$ are those where the coeficient of the binomials on the RHS are greater than the coeficients on the LHS while the contsants on the RHS are less than those on the LHS.
 
-$$(3x_0 + 2)(3x_1 + 2)...(3x_n + 2)=(2x_1\cdot y+y)(2x_0\cdot y+y)...(2x_n\cdot y+y)$$
+The maximum value for $\frac{m}{n}$ is thus 
 
-Which means that either $x_i=0$ in order to eliminate the first part of each pair or that $2\cdot y = 3$ and $y = 2$. Something which clearly cannot happen.
+$$\displaystyle \lim_{\frac{m}{n} \to 1} 2^{\frac{m}{n}} = 2$$
+
+The minimum is when
+
+$$\displaystyle \lim_{\frac{m}{n} \to \log_2 3 - 1} 2^{\frac{m}{n} + 1} = 3$$
+
+or equivalently, when $\frac{m}{n} \to \log_2 1.5$ so that $2^{\frac{m}{n}} \to 1.5$.
+
+So $\log_2 1.5<\frac{m}{n}<1$
+
+$$0.584...<\frac{m}{n}<1$$
+
+The key to understanding the unsolvability of this equation is that the constants in the RHS binomials is at best only slightly less than the constants on the LHS. 
 
 If this analysis is correct, then there are no loops other than the trivial loop, in the Collatz graph. We still haven't proven, however, that the sequence does not diverge.
 
