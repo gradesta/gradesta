@@ -347,7 +347,7 @@ $$
 x_n = \frac{2 - 2^{\frac{m}{n}}}{2 \cdot 2^{\frac{m}{n}} - 3}
 $$
 
-This gives us a vertical asymptote as the denominator reaches zero around $\log_2(\frac{3}{2}) \approx 0.584$ so we actually get an infinite minumum value for $x_n$ in this case.
+This gives us a vertical asymptote as the denominator reaches zero around $\log_2(\frac{3}{2}) \approx 0.584$ so we actually get an infinite minumum value for $x_n$ in this case. However, while there are an infinte number of positive possibilities, none of them are rational. Thus there are no N loops in Collatz.
 
 
 Collatz in $2^k$ agnostic arithmatic
