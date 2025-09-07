@@ -316,9 +316,39 @@ So $\log_2 1.5<\frac{m}{n}<1$
 
 $$0.584...<\frac{m}{n}<1$$
 
-The key to understanding the unsolvability of this equation is that the constants in the RHS binomials is at best only slightly less than the constants on the LHS. 
+Again we can rewrite this as:
 
-If this analysis is correct, then there are no loops other than the trivial loop, in the Collatz graph. We still haven't proven, however, that the sequence does not diverge.
+
+$$
+\frac{2x_0\cdot 2^{\frac{m}{n}}+2^{\frac{m}{n}}}{3x_0 + 2}\frac{3x_1 + 2}{2x_1\cdot 2^{\frac{m}{n}}+2^{\frac{m}{n}}}...\frac{2x_n\cdot 2^{\frac{m}{n}}+2^{\frac{m}{n}}}{3x_n + 2}=1
+$$
+
+In order for this to hold at least one of those terms needs to be less than or equal to 1.
+
+$$
+\frac{2x_n\cdot 2^{\frac{m}{n}}+2^{\frac{m}{n}}}{3x_n + 2} = 1
+$$
+
+Solving for $x_n$:
+
+$$
+2x_n\cdot 2^{\frac{m}{n}} + 2^{\frac{m}{n}} = 3x_n + 2
+$$
+
+$$
+2x_n\cdot 2^{\frac{m}{n}} - 3x_n = 2 - 2^{\frac{m}{n}}
+$$
+
+$$
+x_n (2 \cdot 2^{\frac{m}{n}} - 3) = 2 - 2^{\frac{m}{n}}
+$$
+
+$$
+x_n = \frac{2 - 2^{\frac{m}{n}}}{2 \cdot 2^{\frac{m}{n}} - 3}
+$$
+
+This gives us a vertical asymptote as the denominator reaches zero around $\log_2(\frac{3}{2}) \approx 0.584$ so we actually get an infinite minumum value for $x_n$ in this case.
+
 
 Collatz in $2^k$ agnostic arithmatic
 ------------------------------------
