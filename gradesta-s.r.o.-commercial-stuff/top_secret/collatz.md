@@ -55,9 +55,9 @@ We can also represent this iteration as an iteration of:
 
 $$2a + 1 \text{ starting at } 0$$
 
-When we do this, we can then represent all of the even numbers "to the left" of our odd number (as well as our odd number) with the expression $(2a+1) \cdot 2^k$. That said, the starting edge in our walk tree is U and that is actually an edge from the odd number to one other even number. So we have one even number, then an edge labeled U, and then an odd number, and then a bunch of edges labeled → that all point from even numbers in each walk tree.
+When we do this, we can then represent the set of all even numbers "to the left" of our odd number (as well as our odd number) with the expression $(2a+1) \cdot 2^k$ as well as the even number pointed to by that odd number.
 
-Just as when iterating from 0 we can iterate through the odd numbers using the expression $2a+1$, when iterating through the left-hand side even numbers we can use the expression $6a+4$. For example, $6 \cdot 0 + 4 \xrightarrow{U} 2 \cdot 0 + 1$ represents the connection between 4 and 1.
+Just as when iterating from 0 we can iterate through the odd numbers using the expression $2a+1$, when iterating through the left-hand side even numbers (those that are pointed to from an odd number) using the expression $6a+4$. For example, $6 \cdot 0 + 4 \xrightarrow{U} 2 \cdot 0 + 1$ represents the connection between 4 and 1.
 
 Earlier I told you that we wish to build a graph of the "double stack" walk trees. So far I have shown that these "double stack" walk trees can be iterated over for every odd number, thus defining the set of such walk trees. But I have so far not shown you the edges between such walk trees. These edges can be represented by the relationship:
 
@@ -95,7 +95,7 @@ $$(2a + 1) \cdot 2^k = 6b + 4$$
 
 ## Graph Topology
 
-We have now defined a condensed Collatz graph consisting of subwalks of the Collatz graph. The interesting thing about grouping the walks like this is that the topology of a graph of walks happens to exactly match the topology of a graph. If you can walk to a walk, then you can walk that walk to wherever that walk goes.
+We have now defined a condensed Collatz graph consisting of subwalks of the Collatz graph. The interesting thing about grouping the walks like this is that the topology of a graph of walks happens to exactly match the topology of a graph. If you can walk to a walk, then you can walk that walk to wherever that walk goes. This means that if we create a graph of walks, and can prove that graph of walks has no loops. (And that the walks themselves have no loops), then we have proven that the graph we were walking also has no loops.
 
 ## Walks of the Condensed Graph
 
@@ -107,19 +107,6 @@ $$6c + 4 = (2d+1) \cdot 2^m$$
 $$6d + 4 = (2a+1) \cdot 2^n$$
 
 where $a \neq b \neq c \neq d$
-
-and we eventually get an equation like the following:
-
-We have two series of variables $x_0, x_1, \ldots, x_n$ where all the $x$'s are distinct non-zero positive integers. And another series $k_0, k_1, \ldots, k_n$ where the $k$'s are positive non zero integers but don't need to be distinct. $k_i$ is non zero becaues it represents the number of even steps between odd numbers and there must be at least one such step in the graph.
-
-The equation we need to prove solvability for is:
-
-$$6x_0 + 4 = (2x_1+1) \cdot 2^{k_0}$$
-$$6x_1 + 4 = (2x_2+1) \cdot 2^{k_1}$$
-$$6x_2 + 4 = (2x_3+1) \cdot 2^{k_2}$$
-$$\vdots$$
-$$6x_{n-1} + 4 = (2x_n+1) \cdot 2^{k_{n-1}}$$
-$$6x_n + 4 = (2x_0+1) \cdot 2^{k_n}$$
 
 This may seem abstract and unconvincing so lets make it more concrete by trying to punch some values in here. 
 
@@ -139,34 +126,37 @@ $x_1=3$ and $k_1=2$ here clearly. Thus we've gotten to the walk tree with a 7 in
 
 $$6\cdot 3 + 4 = (2\cdot x_2+1)\cdot 2^{k_2}$$
 
-$x_2=5$, $k_2=1$.
+$x_2=5$, $k_2=1$, $odd n=11$.
 
 $$6\cdot 5 + 4 = (2\cdot x_3+1)\cdot 2^{k_3}$$
 
-$x_3=8$, $k_3=1$
+$x_3=8$, $k_3=1$, $odd n=17$
 
 $$6\cdot 8 + 4 = (2\cdot x_4+1)\cdot 2^{k_4}$$
 
-$x_4=6$, $k_4=3$
+$x_4=6$, $k_4=3$, $odd n=13$
 
 $$6\cdot 6 + 4 = (2\cdot x_5+1)\cdot 2^{k_5}$$
 
-$x_5=2$, $k_5=3$
+$x_5=2$, $k_5=3$, $odd n=5$
 
 $$6\cdot 2 + 4 = (2\cdot x_6+1)\cdot 2^{k_6}$$
 
-$x_6=0$, $k_6=4$
+$x_6=0$, $k_6=4$, $odd n=1$
 
 $$6\cdot 0 + 4 = (2\cdot x_7+1)\cdot 2^{k_7}$$
 
-$x_7=0$, $k_7=2$
+$x_7=0$, $k_7=2$, $odd n=1$
 
-Now obviously at this point we are stuck. No matter how many times we iterate from here we will never get $x_n=4$ which is where we started. Because there simply is no loop in the Collatz graph from 9 to 1. But we want to prove that this equation is unsolvable not just in finite cases that we test, but in all cases for all positive whole number values of x and n.
+Now obviously at this point we are stuck. No matter how many times we iterate from here we will never get $x_n=4$ which is where we started. Because there simply is no loop in the Collatz graph from 9 to 1. But we want to prove that the above looping equation is unsolvable not just in finite cases that we test, but in all cases for all positive whole number values of x and n.
 
-Solving for loops
------------------
+## Walks that loop
 
-Lets return to our initial equation for loops. Remembering that $x_n$ s are all distinct positive integers and $k_n$ s are all integers greater than or equal to zero.
+If we wanted to create a system of equations which described a loop in the Collatz graph we would do the following:
+
+We have two series of variables $x_0, x_1, \ldots, x_n$ where all the $x$'s are distinct non-zero positive integers. And another series $k_0, k_1, \ldots, k_n$ where the $k$'s are positive non zero integers but don't need to be distinct. $k_i$ is non zero becaues it represents the number of even steps between odd numbers and there must be at least one such step in the graph.
+
+The equation we need to prove solvability for is:
 
 $$6x_0 + 4 = (2x_1+1) \cdot 2^{k_0}$$
 $$6x_1 + 4 = (2x_2+1) \cdot 2^{k_1}$$
@@ -175,16 +165,20 @@ $$\vdots$$
 $$6x_{n-1} + 4 = (2x_n+1) \cdot 2^{k_{n-1}}$$
 $$6x_n + 4 = (2x_0+1) \cdot 2^{k_n}$$
 
-
-$$6x_0 + 4 = (2x_0+1) \cdot 2^{k_0}$$
+Solving for loops
+-----------------
 
 ### Loops with one odd
 
-Obviously there is only one loop (the trivial one we know of) with a single step as this resolves to 
+Obviously there is only one loop (the trivial one we know of) with a single step as this resolves to
+
+$$6x_0 + 4 = (2x_0+1) \cdot 2^{k_0}$$
+
+Which when re-written as
 
 $$x_0 = \frac{(2x_0+1) \cdot 2^{k_0} - 4}{6}$$
 
-Who's only solution is $x_0=0, k=2$.
+Can be easilly analized and who's only solution is $x_0=0, k=2$.
 
 ### Two loops
 
@@ -199,7 +193,13 @@ Simplify ↓
 
 $$(3x_0 + 2)(3x_1 + 2) = (2x_1+1)(2x_0+1) \cdot 2^{k_0+k_1-2}$$
 
-Here we see that if $k_0+k_1-1$ is 0 then the right side will be lower. If it is 1 it will be higher. Thus this equation is unsolvable. Therefore there are no loops in Collatz with only two odds.
+Spread the terms:
+
+$$m = k_0+k_1-2$$
+
+$$(3x_0 + 2)(3x_1 + 2) = (2x_1\cdot 2^{\frac{m}{2}}+2^{\frac{m}{2}})(2x_0\cdot 2^{\frac{m}{2}}+2^{\frac{m}{2}})$$
+
+Here we see that if $m$ is less than or equal to 1 then the right side will be lower. If it is 2 it will be higher. Thus this equation is unsolvable. Therefore there are no loops in Collatz with only two odds.
 
 ### Three loops
 
@@ -217,24 +217,27 @@ $$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(2x_1+1)(2x_2+1)(2x_0+1) \cdot 2^{k_0+k_1+k_2-3
 
 Simplify more explicitly ↓
 
-$$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(2x_1\cdot 2^{k_0+k_1+k_2-3}+1\cdot 2^{k_0+k_1+k_2-3})(2x_2\cdot 2^{k_0+k_1+k_2-3}+1\cdot 2^{k_0+k_1+k_2-3})(2x_0\cdot 2^{k_0+k_1+k_2-3}+1\cdot 2^{k_0+k_1+k_2-3})$$
+$$m = k_0+k_1+k_2-3$$
 
-If $2^{k_0+k_1+k_2-n}$ is 1 we can rewrite this as:
+$$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(2x_1\cdot 2^{\frac{m}{3}}+2^{\frac{m}{3}})(2x_0\cdot 2^{\frac{m}{3}}+2^{\frac{m}{3}})(2x_2\cdot 2^{\frac{m}{3}}+2^{\frac{m}{3}})$$
 
-$$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(2x_1+1)(2x_2+1)(2x_0+1) $$
+If $\frac{m}{3} <= \frac{1}{3}$ then the LHS is higher. If $\frac{m}{3} >= \frac{2}{3}$ then the RHS is higher.
 
-Which is clearly impossible.
+### N loops
 
-If $2^{k_0+k_1+k_2-n}$ is 2 we can rewrite this as:
+Take the expression
 
-$$(3x_0 + 2)(3x_1 + 2)(3x_2 + 2)=(4x_1+2)(4x_2+2)(4x_0+2) $$
+$$m = k_0+k_1+k_2...k_n-n$$
 
-Which is also clearly impossible. Greater values for $2^{k_0+k_1+k_2-n}$ only make the situation worse.
+$$(3x_0 + 2)(3x_1 + 2)...(3x_n + 2)=(2x_1\cdot 2^{\frac{m}{n}}+2^{\frac{m}{n}})(2x_0\cdot 2^{\frac{m}{n}}+2^{\frac{m}{n}})...(2x_n\cdot 2^{\frac{m}{n}}+2^{\frac{m}{n}})$$
 
-Here we are in the same situation that if $k_0+k_1+k_2-n$ is 1 then the left side is smaller and if it is 2 then the left side is larger. Therefore there are no three loops in Collatz.
+What this really boils down to is finding a co-efficent $y$ where
 
-This same reasoning applies to loops of `n` sequences.
+$$(3x_0 + 2)(3x_1 + 2)...(3x_n + 2)=(2x_1\cdot y+y)(2x_0\cdot y+y)...(2x_n\cdot y+y)$$
 
+Which means that either $x_i=0$ in order to eliminate the first part of each pair or that $2\cdot y = 3$ and $y = 2$. Something which clearly cannot happen.
+
+If this analysis is correct, then there are no loops other than the trivial loop, in the Collatz graph. We still haven't proven, however, that the sequence does not diverge.
 
 Collatz in $2^k$ agnostic arithmatic
 ------------------------------------
