@@ -439,6 +439,8 @@ $$
 
 As $x_n$ approaches $1$ the lower bound for $a$ approaches $-0.5$ and as $x_n$ approache $∞$ the lower bound for $a$ approaches $-0$. However that still leaves a lot of room for various values of $a$ and $x_n$.
 
+The next step would be to try to figure out what types of values $a$ and $\frac{m}{n}$ could have which would lead to an integer value for $x_n$ given that $2^\frac{m}{n}$ is always irrational.
+
 Collatz in $2^k$ agnostic arithmatic
 ------------------------------------
 
