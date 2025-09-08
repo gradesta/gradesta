@@ -347,8 +347,97 @@ $$
 x_n = \frac{2 - 2^{\frac{m}{n}}}{2 \cdot 2^{\frac{m}{n}} - 3}
 $$
 
-This gives us a vertical asymptote as the denominator reaches zero around $\log_2(\frac{3}{2}) \approx 0.584$ so we actually get an infinite minumum value for $x_n$ in this case. However, while there are an infinte number of positive possibilities, none of them are rational. Thus there are no N loops in Collatz.
+This gives us a vertical asymptote as the denominator reaches zero around $\log_2(\frac{3}{2}) \approx 0.584$ so we actually get an infinite minumum value for $x_n$ in this case.
 
+In each $x_i$ should be distinct and an integer howerver. So we really want to be solving for:
+
+$$
+\frac{2x_n\cdot 2^{\frac{m}{n}}+2^{\frac{m}{n}}}{3x_n + 2} = 1 + a
+$$
+
+Where there is at least one case where a is a small positive number and one where it is a small negative number.
+
+$$
+x_n = \frac{2 - 2^{\frac{m}{n}} - 2a}{2 \cdot 2^{\frac{m}{n}} - 3 - 3a}
+$$
+
+Lets solve for a when $x_n = 1$.
+
+$$
+1 = \frac{2 - 2^{\frac{m}{n}} - 2a}{2 \cdot 2^{\frac{m}{n}} - 3 - 3a}
+$$
+
+Multiply both sides by the denominator:
+$$
+2 \cdot 2^{\frac{m}{n}} - 3 - 3a = 2 - 2^{\frac{m}{n}} - 2a
+$$
+
+Bring all terms to one side:
+$$
+2 \cdot 2^{\frac{m}{n}} - 3 - 3a - 2 + 2^{\frac{m}{n}} + 2a = 0
+$$
+
+Combine like terms:
+$$
+(2 \cdot 2^{\frac{m}{n}} + 2^{\frac{m}{n}}) - 3 - 2 - 3a + 2a = 0
+$$
+$$
+3 \cdot 2^{\frac{m}{n}} - 5 - a = 0
+$$
+
+Solve for $a$:
+$$
+a = 3 \cdot 2^{\frac{m}{n}} - 5
+$$
+
+$$
+-0.5<a<1
+$$
+
+Accross the range of $\frac{m}{n}$.
+
+And when $x_n$ is much larger:
+
+Let's solve for $a$ when $x_n = 10000$:
+
+$$
+10000 = \frac{2 - 2^{\frac{m}{n}} - 2a}{2 \cdot 2^{\frac{m}{n}} - 3 - 3a}
+$$
+
+Multiply both sides by the denominator:
+$$
+10000 \left(2 \cdot 2^{\frac{m}{n}} - 3 - 3a\right) = 2 - 2^{\frac{m}{n}} - 2a
+$$
+
+Expand:
+$$
+20000 \cdot 2^{\frac{m}{n}} - 30000 - 30000a = 2 - 2^{\frac{m}{n}} - 2a
+$$
+
+Bring all terms to one side:
+$$
+20000 \cdot 2^{\frac{m}{n}} + 2^{\frac{m}{n}} - 30000 - 2 + (-30000a + 2a) = 0
+$$
+
+Combine like terms:
+$$
+(20000 + 1) \cdot 2^{\frac{m}{n}} - 30002 + (-29998a) = 0
+$$
+
+$$
+20001 \cdot 2^{\frac{m}{n}} - 30002 - 29998a = 0
+$$
+
+Solve for $a$:
+$$
+29998a = 20001 \cdot 2^{\frac{m}{n}} - 30002
+$$
+
+$$
+a = \frac{20001 \cdot 2^{\frac{m}{n}} - 30002}{29998}
+$$
+
+As $x_n$ approaches $1$ the lower bound for $a$ approaches $-0.5$ and as $x_n$ approache $∞$ the lower bound for $a$ approaches $-0$. However that still leaves a lot of room for various values of $a$ and $x_n$.
 
 Collatz in $2^k$ agnostic arithmatic
 ------------------------------------
