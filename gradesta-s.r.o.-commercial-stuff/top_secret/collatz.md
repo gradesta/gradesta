@@ -437,9 +437,84 @@ $$
 a = \frac{20001 \cdot 2^{\frac{m}{n}} - 30002}{29998}
 $$
 
-As $x_n$ approaches $1$ the lower bound for $a$ approaches $-0.5$ and as $x_n$ approache $∞$ the lower bound for $a$ approaches $-0$. However that still leaves a lot of room for various values of $a$ and $x_n$.
+As $x_n$ approaches $1$ the lower bound for $a$ approaches $-0.5$ and as $x_n$ approache $∞$ the lower bound for $a$ approaches $-0$. We know that $x_max >= x_min+n$ since $x_n$ are all distinct integers.
 
-The next step would be to try to figure out what types of values $a$ and $\frac{m}{n}$ could have which would lead to an integer value for $x_n$ given that $2^\frac{m}{n}$ is always irrational.
+Lets try another approach:
+
+$$
+\frac{3x_0 + 2}{2x_0+1}\frac{3x_1 + 2}{2x_1+1}...\frac{3x_n + 2}{2x_n+1}=2^m
+$$
+
+$2^m$ is a whole number, therefore we can analyze based on divisibility.
+
+If we have a fraction like:
+
+$$
+2^m = \frac{2^m \cdot N_0 \cdot N_1 \cdot ... N_n}{d_0 \cdot d_1 \cdot ... d_n}
+$$
+
+Then if we can construct a set $N_n = d_n$ we can find a solution.
+
+Applying such a rule to:
+
+$$
+\frac{3x_0 + 2}{2x_0+1}\frac{3x_1 + 2}{2x_1+1}...\frac{3x_n + 2}{2x_n+1}=2^m
+$$
+
+We can analyze the relation:
+
+$$
+(3x + 2)2^l = 2y + 1
+$$
+
+Solve for x:
+
+$$
+x = \frac{2y + 1 - 2^{l+1}}{3 \cdot 2^l}
+$$
+
+For $l≥1$ no integer solution exists. Therefore set $N_n != d_n$.
+
+But there is also another type of possibility. For example, a combination of:
+
+$$
+(3x_1 + 2)...(3x_n + 2)\cdot 2^l = 2y+1
+$$
+
+And
+
+$$
+(3x + 2)2^l = (2y_1+1)...(2y_n+1)
+$$
+
+But since $2y+1$ is always odd then integer solutions only exist when $l=0$ which is impossible if the entire system is to be a product of such fractions.
+
+Finally, we have one last possibility. Hidden common factors like:
+
+$$
+3x_0 + 2 = a \cdot b
+$$
+
+$$
+3x_1 + 2 = c \cdot d
+$$
+
+$$
+2x_2 + 1 = a \cdot c
+$$
+
+$$
+2x_3 + 1 = b \cdot d
+$$
+
+So in this case we'd have to prove the more complicated, that:
+
+$$
+(3x_0 + 2)(3x_1 + 2)2^l = (2x_2 + 1)(2x_2 + 1)
+$$
+
+But here again an odd times an odd is an odd. So long as $l>0$ there are no solutions.
+
 
 Collatz in $2^k$ agnostic arithmatic
 ------------------------------------
