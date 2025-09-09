@@ -294,152 +294,22 @@ This makes it thus easy to show that there are no 3 loops in Collatz.
 
 ### N loops
 
-Take the expression
+Lets return to the original problem statement:
+
+$$6x_0 + 4 = (2x_1+1) \cdot 2^{k_0}$$
+$$6x_1 + 4 = (2x_2+1) \cdot 2^{k_1}$$
+$$6x_2 + 4 = (2x_3+1) \cdot 2^{k_2}$$
+$$\vdots$$
+$$6x_{n-1} + 4 = (2x_n+1) \cdot 2^{k_{n-1}}$$
+$$6x_n + 4 = (2x_0+1) \cdot 2^{k_n}$$
+
+$x_n$ are all positive distinct integers greater than zero. $k_n$ are all positive integers greater than 0.
+
+Let
 
 $$m = k_0+k_1+k_2...k_n-n$$
 
-$$(3x_0 + 2)(3x_1 + 2)...(3x_n + 2)=(2x_1\cdot 2^{\frac{m}{n}}+2^{\frac{m}{n}})(2x_0\cdot 2^{\frac{m}{n}}+2^{\frac{m}{n}})...(2x_n\cdot 2^{\frac{m}{n}}+2^{\frac{m}{n}})$$
-
-The only possible values for $\frac{m}{n}$ are those where the coeficient of the binomials on the RHS are greater than the coeficients on the LHS while the contsants on the RHS are less than those on the LHS.
-
-The maximum value for $\frac{m}{n}$ is thus 
-
-$$\displaystyle \lim_{\frac{m}{n} \to 1} 2^{\frac{m}{n}} = 2$$
-
-The minimum is when
-
-$$\displaystyle \lim_{\frac{m}{n} \to \log_2 3 - 1} 2^{\frac{m}{n} + 1} = 3$$
-
-or equivalently, when $\frac{m}{n} \to \log_2 1.5$ so that $2^{\frac{m}{n}} \to 1.5$.
-
-So $\log_2 1.5<\frac{m}{n}<1$
-
-$$0.584...<\frac{m}{n}<1$$
-
-Again we can rewrite this as:
-
-
-$$
-\frac{2x_0\cdot 2^{\frac{m}{n}}+2^{\frac{m}{n}}}{3x_0 + 2}\frac{3x_1 + 2}{2x_1\cdot 2^{\frac{m}{n}}+2^{\frac{m}{n}}}...\frac{2x_n\cdot 2^{\frac{m}{n}}+2^{\frac{m}{n}}}{3x_n + 2}=1
-$$
-
-In order for this to hold at least one of those terms needs to be less than or equal to 1.
-
-$$
-\frac{2x_n\cdot 2^{\frac{m}{n}}+2^{\frac{m}{n}}}{3x_n + 2} = 1
-$$
-
-Solving for $x_n$:
-
-$$
-2x_n\cdot 2^{\frac{m}{n}} + 2^{\frac{m}{n}} = 3x_n + 2
-$$
-
-$$
-2x_n\cdot 2^{\frac{m}{n}} - 3x_n = 2 - 2^{\frac{m}{n}}
-$$
-
-$$
-x_n (2 \cdot 2^{\frac{m}{n}} - 3) = 2 - 2^{\frac{m}{n}}
-$$
-
-$$
-x_n = \frac{2 - 2^{\frac{m}{n}}}{2 \cdot 2^{\frac{m}{n}} - 3}
-$$
-
-This gives us a vertical asymptote as the denominator reaches zero around $\log_2(\frac{3}{2}) \approx 0.584$ so we actually get an infinite minumum value for $x_n$ in this case.
-
-In each $x_i$ should be distinct and an integer howerver. So we really want to be solving for:
-
-$$
-\frac{2x_n\cdot 2^{\frac{m}{n}}+2^{\frac{m}{n}}}{3x_n + 2} = 1 + a
-$$
-
-Where there is at least one case where a is a small positive number and one where it is a small negative number.
-
-$$
-x_n = \frac{2 - 2^{\frac{m}{n}} - 2a}{2 \cdot 2^{\frac{m}{n}} - 3 - 3a}
-$$
-
-Lets solve for a when $x_n = 1$.
-
-$$
-1 = \frac{2 - 2^{\frac{m}{n}} - 2a}{2 \cdot 2^{\frac{m}{n}} - 3 - 3a}
-$$
-
-Multiply both sides by the denominator:
-$$
-2 \cdot 2^{\frac{m}{n}} - 3 - 3a = 2 - 2^{\frac{m}{n}} - 2a
-$$
-
-Bring all terms to one side:
-$$
-2 \cdot 2^{\frac{m}{n}} - 3 - 3a - 2 + 2^{\frac{m}{n}} + 2a = 0
-$$
-
-Combine like terms:
-$$
-(2 \cdot 2^{\frac{m}{n}} + 2^{\frac{m}{n}}) - 3 - 2 - 3a + 2a = 0
-$$
-$$
-3 \cdot 2^{\frac{m}{n}} - 5 - a = 0
-$$
-
-Solve for $a$:
-$$
-a = 3 \cdot 2^{\frac{m}{n}} - 5
-$$
-
-$$
--0.5<a<1
-$$
-
-Accross the range of $\frac{m}{n}$.
-
-And when $x_n$ is much larger:
-
-Let's solve for $a$ when $x_n = 10000$:
-
-$$
-10000 = \frac{2 - 2^{\frac{m}{n}} - 2a}{2 \cdot 2^{\frac{m}{n}} - 3 - 3a}
-$$
-
-Multiply both sides by the denominator:
-$$
-10000 \left(2 \cdot 2^{\frac{m}{n}} - 3 - 3a\right) = 2 - 2^{\frac{m}{n}} - 2a
-$$
-
-Expand:
-$$
-20000 \cdot 2^{\frac{m}{n}} - 30000 - 30000a = 2 - 2^{\frac{m}{n}} - 2a
-$$
-
-Bring all terms to one side:
-$$
-20000 \cdot 2^{\frac{m}{n}} + 2^{\frac{m}{n}} - 30000 - 2 + (-30000a + 2a) = 0
-$$
-
-Combine like terms:
-$$
-(20000 + 1) \cdot 2^{\frac{m}{n}} - 30002 + (-29998a) = 0
-$$
-
-$$
-20001 \cdot 2^{\frac{m}{n}} - 30002 - 29998a = 0
-$$
-
-Solve for $a$:
-$$
-29998a = 20001 \cdot 2^{\frac{m}{n}} - 30002
-$$
-
-$$
-a = \frac{20001 \cdot 2^{\frac{m}{n}} - 30002}{29998}
-$$
-
-As $x_n$ approaches $1$ the lower bound for $a$ approaches $-0.5$ and as $x_n$ approache $∞$ the lower bound for $a$ approaches $-0$. We know that $x_max >= x_min+n$ since $x_n$ are all distinct integers.
-
-Lets try another approach:
+To determine if there are solutions we will try multiplying these terms together and then dividing again.
 
 $$
 \frac{3x_0 + 2}{2x_0+1}\frac{3x_1 + 2}{2x_1+1}...\frac{3x_n + 2}{2x_n+1}=2^m
@@ -464,56 +334,17 @@ $$
 We can analyze the relation:
 
 $$
-(3x + 2)2^l = 2y + 1
+(3x + 2)/2^l = 2y + 1
 $$
 
-Solve for x:
+Solve for y:
 
 $$
-x = \frac{2y + 1 - 2^{l+1}}{3 \cdot 2^l}
+(3x + 2)/2^l = 2y + 1 \implies y = \frac{(3x + 2)}{2^{l+1}} - \frac{1}{2}
 $$
 
-For $l≥1$ no integer solution exists. Therefore set $N_n != d_n$.
+This implies all x_n must be even for there to be a set $N_n = d_n$.
 
-But there is also another type of possibility. For example, a combination of:
-
-$$
-(3x_1 + 2)...(3x_n + 2)\cdot 2^l = 2y+1
-$$
-
-And
-
-$$
-(3x + 2)2^l = (2y_1+1)...(2y_n+1)
-$$
-
-But since $2y+1$ is always odd then integer solutions only exist when $l=0$ which is impossible if the entire system is to be a product of such fractions.
-
-Finally, we have one last possibility. Hidden common factors like:
-
-$$
-3x_0 + 2 = a \cdot b
-$$
-
-$$
-3x_1 + 2 = c \cdot d
-$$
-
-$$
-2x_2 + 1 = a \cdot c
-$$
-
-$$
-2x_3 + 1 = b \cdot d
-$$
-
-So in this case we'd have to prove the more complicated, that:
-
-$$
-(3x_0 + 2)(3x_1 + 2)2^l = (2x_2 + 1)(2x_2 + 1)
-$$
-
-But here again an odd times an odd is an odd. So long as $l>0$ there are no solutions.
 
 
 Collatz in $2^k$ agnostic arithmatic
