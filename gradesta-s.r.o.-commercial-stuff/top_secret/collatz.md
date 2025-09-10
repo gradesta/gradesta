@@ -180,6 +180,57 @@ $$x_0 = \frac{(2x_0+1) \cdot 2^{k_0} - 4}{6}$$
 
 Can be easilly analized and who's only solution is $x_0=0, k=2$.
 
+### Bounding $k_i$
+
+If we multiply all $N$ equations together, the terms on both sides can be grouped:
+$$\prod_{i=0}^{N-1} 2(3x_i + 2) = \prod_{i=0}^{N-1} (2x_{i+1}+1) \cdot 2^{k_i}$$
+
+Since the indices are cyclic, the product $\prod (2x_{i+1}+1)$ is the same as $\prod (2x_i+1)$.
+$$2^N \prod_{i=0}^{N-1} (3x_i + 2) = \left(\prod_{i=0}^{N-1} (2x_i+1)\right) \cdot 2^{\sum k_i}$$
+
+**3. The Core Ratio**
+
+Now, we rearrange this into the product of ratios you were analyzing:
+$$\prod_{i=0}^{N-1} \frac{3x_i + 2}{2x_i + 1} = \frac{2^{\sum k_i}}{2^N} = 2^{\sum k_i - N}$$
+
+This equation states that the product of $N$ rational numbers must equal a power of 2.
+
+**4. Bounding the Ratio**
+
+Let's analyze the function $f(x) = \frac{3x+2}{2x+1}$.
+-   As $x \to \infty$, the limit of $f(x)$ is $\frac{3}{2} = 1.5$.
+-   The function is strictly decreasing for positive $x$.
+-   Since the loop cannot contain the number 1 (which would lead to the trivial $1 \to 4 \to 2 \to 1$ loop), the smallest possible odd number is 3, which corresponds to $x=1$.
+-   The maximum value of the function for any $x \ge 1$ is $f(1) = \frac{3(1)+2}{2(1)+1} = \frac{5}{3} \approx 1.667$.
+
+Therefore, for any $x_i$ in a non-trivial loop:
+$$1.5 < \frac{3x_i + 2}{2x_i + 1} \le \frac{5}{3}$$
+
+**5. Bounding the Average Value of *k***
+
+Taking the product of all $N$ terms in the loop, we get:
+$$(1.5)^N < \prod_{i=0}^{N-1} \frac{3x_i + 2}{2x_i + 1} \le \left(\frac{5}{3}\right)^N$$
+
+Substituting our result from step 3:
+$$(1.5)^N < 2^{\sum k_i - N} \le \left(\frac{5}{3}\right)^N$$
+
+Now, take the base-2 logarithm of the entire inequality:
+$$N \cdot \log_2(1.5) < \sum k_i - N \le N \cdot \log_2(5/3)$$
+
+Let's find the average value of $k$, which is $\frac{\sum k_i}{N}$:
+$$\log_2(1.5) < \frac{\sum k_i}{N} - 1 \le \log_2(5/3)$$
+$$1 + \log_2(1.5) < \frac{\sum k_i}{N} \le 1 + \log_2(5/3)$$
+
+Calculating the numerical values:
+-   $\log_2(1.5) \approx 0.585$
+-   $\log_2(5/3) \approx 0.737$
+
+This gives us the final, rigorous bounds:
+$$1.585 < \text{Average}(k) \le 1.737$$
+
+For any non-trivial cycle to exist, the average number of divisions by 2 following each ```3n+1``` step must be strictly between $\log_2(3) \approx 1.585$ and $1+\log_2(5/3) \approx 1.737$.
+
+
 ### N loops
 
 Lets return to our original problem statement:
@@ -291,29 +342,8 @@ $$\frac{rise}{run} = \frac{2^4 \cdot 3^4}{2^{k_0+k_1+k_2+k_3}}$$
 
 And I happen to know that the average value of $k_i$ cannot be greater than 2.
 
-So we are left with the former case.
+So $rise$ must be greater than $run$. But if that average holds. It is impossible for $C$ to be negative. So the only loops beyond the trivial one must happen in the negative domain.
 
-Now if $C$ is not a whole number $x$ will not be a whole number. If $C$ is a whole number then it is divisible only by $2$ and $3$. Thus if we can prove that $run - rise$ is divisible by some other number than $2$ and $3$ than we can prove that $x$ is not a whole number.
-
-Lets look at this in mod 3.
-
-We know that rise is $2^n \cdot 3^n$ and run is $2^l$.
-
-$$
-2^l ≡ (−1)^l (mod 3)
-$$
-
-$$
-3^y ≡ 0 (mod 3)
-$$
-
-If we write our equation $run - rise$ in mod 3 we get:
-
-$$
-0-(-1)^l (mod 3)
-$$
-
-And we can be sure that the denominator is never divisible by 3 and $x$ is never a whole number.
 
 Collatz in $2^k$ agnostic arithmatic
 ------------------------------------
