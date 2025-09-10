@@ -361,6 +361,71 @@ Lets split that constant term up even further:
 
 $$\frac{a}{b} = \frac{2^5 \cdot 3^3}{2^{k_0+k_1+k_2+k_3}}-\frac{3^3 \cdot 2^{k_0+2}}{2^{k_0+k_1+k_2+k_3}} + \frac{2^4 \cdot 3^2}{2^{k_1+k_2+-k_3}}-\frac{3^2 \cdot 2^{k_1+1}}{2^{k_1+k_2+-k_3}} + \frac{2^3 \cdot 3} {2^{k_2+k_3}}-\frac{2^{k_2}\cdot 3}{2^{k_2+k_3}} + \frac{2^2}{2^{k_3}}-\frac{2^{k_3-1}}{2^{k_3}}$$
 
+I'd like to claim here, that if $\frac{a}{b}$ is a whole number it must be divisible by 3 and 2 and nothing else.
+
+We'll now define
+
+$$C = \frac{a}{b}$$
+
+And lets rewrite or equation as:
+
+$$
+x = C + \frac{rise}{run}\cdot x
+$$
+
+And lets solve for $x$.
+
+$$
+x - \frac{rise}{run}\cdot x = C
+$$
+
+$$
+x(1 - \frac{rise}{run}) = C 
+$$
+
+$$
+x\frac{run - rise}{run} = C 
+$$
+
+$$
+x(run - rise) = C \cdot run 
+$$
+
+$$
+x = \frac {C \cdot run}{run - rise} 
+$$
+
+Now $x$ needs to be positive. So $C$ must be negative and $run$ must be less than $rise$ or $C$ must be postive and $run$ must be greater than $rise$.
+
+We can instantly rule out the second case as the definition of $rise$ and $run$ is:
+
+$$\frac{rise}{run} = \frac{2^4 \cdot 3^4}{2^{k_0+k_1+k_2+k_3}}$$
+
+And I happen to know that the average value of $k_i$ cannot be greater than 2.
+
+So we are left with the former case.
+
+Now if $C$ is not a whole number $x$ will not be a whole number. If $C$ is a whole number then it is divisible only by $2$ and $3$. Thus if we can prove that $run - rise$ is divisible by some other number than $2$ and $3$ than we can prove that $x$ is not a whole number.
+
+Lets look at this in mod 3.
+
+We know that rise is $2^n \cdot 3^n$ and run is $2^l$.
+
+$$
+2^l ≡ (−1)^l (mod 3)
+$$
+
+$$
+3^y ≡ 0 (mod 3)
+$$
+
+If we write our equation $run - rise$ in mod 3 we get:
+
+$$
+0-(-1)^l (mod 3)
+$$
+
+And we can be sure that the denominator is never divisible by 3 and $x$ is never a whole number.
 
 Collatz in $2^k$ agnostic arithmatic
 ------------------------------------
