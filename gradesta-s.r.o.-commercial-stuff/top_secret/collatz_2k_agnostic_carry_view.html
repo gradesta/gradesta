@@ -215,6 +215,11 @@
     <div class="container">
         <h1>Collatz Binary Visualization</h1>
         
+        <!-- Tab switcher -->
+        <div class="view-tabs" style="margin-bottom: 10px;">
+            <button id="mainViewTab" class="view-tab active" style="padding: 8px 16px; margin-right: 5px; border: 1px solid #ccc; background: #f0f0f0; cursor: pointer;">Main View</button>
+            <button id="carryViewTab" class="view-tab" style="padding: 8px 16px; border: 1px solid #ccc; background: #fff; cursor: pointer;">Carry View</button>
+        </div>
 
         <!-- Main view controls -->
         <div class="controls" id="mainViewControls">
@@ -236,13 +241,21 @@
             <label style="margin-left: 20px;">
                 <input type="checkbox" id="showColumnLine" checked> Show column line
             </label>
-            <label style="margin-left: 20px;">
-                <input type="checkbox" id="hideRedRows"> Hide red rows
-            </label>
             <button id="resetButton" style="margin-left: 20px; padding: 5px 10px; font-size: 14px;">Reset</button>
             <label style="margin-left: 20px;">
-                <input type="number" id="randomBitsInput" placeholder="Bits" min="1" value="10" style="width: 60px; padding: 2px; font-size: 14px;">
+                <input type="number" id="randomBitsInput" placeholder="Bits" min="1" max="100" value="10" style="width: 60px; padding: 2px; font-size: 14px;">
                 <button id="randomBitsButton" style="margin-left: 5px; padding: 5px 10px; font-size: 14px;">Random Bits</button>
+            </label>
+        </div>
+
+        <!-- Carry view controls -->
+        <div class="controls" id="carryViewControls" style="display: none;">
+            <label>
+                <input type="checkbox" id="carryHideRedRows"> Hide red rows
+            </label>
+            <label style="margin-left: 20px;">
+                <input type="number" id="carryRandomBitsInput" placeholder="Number of carry bits" min="1" max="50" value="5" style="width: 150px; padding: 2px; font-size: 14px;">
+                <button id="carryRandomBitsButton" style="margin-left: 5px; padding: 5px 10px; font-size: 14px;">Generate Random Carry Bits</button>
             </label>
         </div>
 
@@ -270,6 +283,15 @@
             <div class="row-labels" id="rowLabels"></div>
             <div class="grid-container" id="gridContainer">
                 <div class="grid" id="grid"></div>
+            </div>
+        </div>
+
+        <div id="carryView" style="display: none;">
+            <div class="carry-view-container" style="display: flex; align-items: flex-start;">
+                <div class="carry-row-labels" id="carryRowLabels" style="display: inline-block; font-family: 'Courier New', monospace; font-size: 14px; line-height: 1; white-space: nowrap; vertical-align: top; margin-right: 10px; background-color: #fff; border: 2px solid #333; border-right: none; height: 80vh; overflow-y: auto; overflow-x: hidden;"></div>
+                <div class="carry-grid-container" id="carryGridContainer" style="border: 2px solid #333; border-left: none; background-color: #fff; overflow: auto; height: 80vh; position: relative; width: 100%;">
+                    <div class="carry-grid" id="carryGrid" style="display: inline-block; font-family: 'Courier New', monospace; font-size: 14px; line-height: 1; white-space: nowrap;"></div>
+                </div>
             </div>
         </div>
 
@@ -650,11 +672,528 @@
             }
         }
 
+        class CarrySparseRow extends SparseRow {
+            constructor(positions = []) {
+                // Filter out positions >= 0 (carry column and to the right)
+                const filteredPositions = positions.filter(pos => pos < 0);
+                super(filteredPositions);
+            }
+            
+            // Override methods that might add positions >= 0
+            static add(row1, row2) {
+                const result = super.add(row1, row2);
+                return new CarrySparseRow(result.positions);
+            }
+            
+            static addNoCarry(row1, row2) {
+                const result = super.addNoCarry(row1, row2);
+                return new CarrySparseRow(result.positions);
+            }
+            
+            static createPlusOne(position) {
+                const result = super.createPlusOne(position);
+                return new CarrySparseRow(result.positions);
+            }
+            
+            shiftLeft(amount) {
+                const result = super.shiftLeft(amount);
+                return new CarrySparseRow(result.positions);
+            }
+            
+            shiftRight(amount) {
+                const result = super.shiftRight(amount);
+                return new CarrySparseRow(result.positions);
+            }
+            
+            clone() {
+                return new CarrySparseRow(this.positions);
+            }
+        }
 
+        class CarrySimulationView {
+            constructor(mainVisualization) {
+                this.mainVisualization = mainVisualization;
+                this.carryViewTab = document.getElementById('carryViewTab');
+                this.carryView = document.getElementById('carryView');
+                this.carryGrid = document.getElementById('carryGrid');
+                this.carryGridContainer = document.getElementById('carryGridContainer');
+                this.carryRowLabels = document.getElementById('carryRowLabels');
+                this.carryHideRedRows = document.getElementById('carryHideRedRows');
+                this.carryRandomBitsInput = document.getElementById('carryRandomBitsInput');
+                this.carryRandomBitsButton = document.getElementById('carryRandomBitsButton');
+                
+                // Carry view state
+                this.carryRegister = new SparseColumn(); // Dynamic carry register
+                this.currentCarryBit = 0; // Currently selected carry bit
+                this.currentCarryCol = 0; // Currently selected column in carry register
+                this.visibleRows = 200;
+                this.visibleCols = 150;
+                this.scrollOffset = 0;
+                this.horizontalScrollOffset = -Math.floor(this.visibleCols / 2);
+                
+                this.setupEventListeners();
+                this.loadStateFromURL();
+            }
 
+            setupEventListeners() {
+                this.carryViewTab.addEventListener('click', () => {
+                    this.show();
+                });
 
+                this.carryHideRedRows.addEventListener('change', () => {
+                    this.render();
+                });
 
+                this.carryRandomBitsButton.addEventListener('click', () => {
+                    this.generateRandomCarryBits();
+                });
+            }
 
+            show() {
+                this.carryViewTab.classList.add('active');
+                this.carryViewTab.style.background = '#f0f0f0';
+                this.mainVisualization.mainViewTab.classList.remove('active');
+                this.mainVisualization.mainViewTab.style.background = '#fff';
+                this.mainVisualization.mainView.style.display = 'none';
+                this.carryView.style.display = 'block';
+                
+                // Show carry view controls and hide main view controls
+                this.mainVisualization.mainViewControls.style.display = 'none';
+                this.mainVisualization.carryViewControls.style.display = 'block';
+                
+                this.render();
+                this.saveStateToURL();
+            }
+
+            hide() {
+                this.carryView.style.display = 'none';
+            }
+
+            render() {
+                this.carryGrid.innerHTML = '';
+                this.carryRowLabels.innerHTML = '';
+                
+                const startRow = this.scrollOffset;
+                const endRow = startRow + this.visibleRows;
+                const startCol = this.horizontalScrollOffset;
+                const endCol = startCol + this.visibleCols;
+                
+                // Carry column is now at position 0
+                const carryCol = 0;
+                
+                let visualRowIndex = 0; // Track the visual row position
+                for (let i = startRow; i < endRow; i++) {
+                    // Determine row type - now every other row is green
+                    const isGreenRow = i % 2 === 0;
+                    const greenRowNumber = Math.floor(i / 2);
+                    
+                    // Skip red rows if hideRedRows is enabled
+                    if (this.carryHideRedRows.checked && !isGreenRow) {
+                        continue;
+                    }
+                    
+                    // Create row label
+                    const rowLabelDiv = document.createElement('div');
+                    rowLabelDiv.className = 'carry-row-label-item';
+                    rowLabelDiv.style.height = '12px';
+                    rowLabelDiv.style.margin = '0';
+                    rowLabelDiv.style.padding = '0';
+                    rowLabelDiv.style.lineHeight = '12px';
+                    rowLabelDiv.style.overflow = 'hidden';
+                    
+                    const rowNumberSpan = document.createElement('span');
+                    rowNumberSpan.style.display = 'inline-block';
+                    rowNumberSpan.style.width = '30px';
+                    rowNumberSpan.style.height = '12px';
+                    rowNumberSpan.style.textAlign = 'right';
+                    rowNumberSpan.style.lineHeight = '12px';
+                    rowNumberSpan.style.fontSize = '10px';
+                    rowNumberSpan.style.color = '#666';
+                    rowNumberSpan.style.backgroundColor = '#f8f8f8';
+                    rowNumberSpan.style.border = '1px solid #ddd';
+                    rowNumberSpan.style.marginRight = '2px';
+                    rowNumberSpan.style.boxSizing = 'border-box';
+                    
+                    // Show green row number for green rows, empty for red rows
+                    if (isGreenRow) {
+                        rowNumberSpan.textContent = greenRowNumber.toString();
+                    } else {
+                        rowNumberSpan.textContent = '';
+                    }
+                    
+                    rowLabelDiv.appendChild(rowNumberSpan);
+                    
+                    this.carryRowLabels.appendChild(rowLabelDiv);
+                    
+                    // Create grid row
+                    const rowDiv = document.createElement('div');
+                    
+                    // Create cells for the visible area
+                    for (let j = startCol; j < endCol; j++) {
+                        const cell = document.createElement('span');
+                        cell.style.display = 'inline-block';
+                        cell.style.width = '12px';
+                        cell.style.height = '12px';
+                        cell.style.textAlign = 'center';
+                        cell.style.lineHeight = '12px';
+                        cell.style.border = '1px solid #ccc';
+                        cell.style.margin = '0';
+                        cell.style.padding = '0';
+                        cell.style.position = 'relative';
+                        cell.style.boxSizing = 'border-box';
+                        
+                        // Determine cell content and styling
+                        if (j === carryCol) {
+                            // This is the carry column - show editable carry bit as dot
+                            // Only show carry bits on green rows (every 2nd row)
+                            if (i % 2 === 0) {
+                                const greenRowIndex = Math.floor(i / 2);
+                                const carryBit = this.carryRegister.hasBitAt(greenRowIndex) ? 1 : 0;
+                                cell.textContent = ''; // No text, just dot
+                                cell.style.backgroundColor = '#FFE4B5';
+                                
+                                // Add dot if carry bit is 1
+                                if (carryBit === 1) {
+                                    cell.style.position = 'relative';
+                                    const dot = document.createElement('div');
+                                    dot.style.position = 'absolute';
+                                    dot.style.top = '2px';
+                                    dot.style.right = '2px';
+                                    dot.style.width = '4px';
+                                    dot.style.height = '4px';
+                                    dot.style.borderRadius = '50%';
+                                    dot.style.backgroundColor = '#708090'; // slate grey
+                                    cell.appendChild(dot);
+                                }
+                                
+                                // Highlight if this is the current selection
+                                if (visualRowIndex === this.currentCarryBit) {
+                                    cell.style.outline = '2px solid #FF8C00';
+                                    cell.style.outlineOffset = '-2px';
+                                }
+                            } else {
+                                // Red rows - show empty cell
+                                cell.textContent = '';
+                                cell.style.backgroundColor = '#f0f0f0';
+                            }
+                        } else if (j < carryCol) {
+                            // This is to the left of carry column - show shifted sequence
+                            const sequence = this.getSequenceAtRow(i);
+                            const hasBit = sequence.hasBitAt(j);
+                            
+                            if (isGreenRow) {
+                                // Green row styling
+                                cell.style.backgroundColor = hasBit ? '#90EE90' : '#e0e0e0';
+                                cell.style.color = hasBit ? '#006400' : '#666';
+                                if (hasBit) cell.style.fontWeight = 'bold';
+                            } else {
+                                // Red row styling
+                                cell.style.backgroundColor = hasBit ? '#FFB6C1' : '#e0e0e0';
+                                cell.style.color = hasBit ? '#8B0000' : '#666';
+                                if (hasBit) cell.style.fontWeight = 'bold';
+                            }
+                            
+                        } else {
+                            // This is to the right of carry column - show nothing
+                            cell.textContent = '';
+                            cell.style.backgroundColor = '#f0f0f0';
+                            cell.style.color = '#ccc';
+                        }
+                        
+                        rowDiv.appendChild(cell);
+                    }
+                    
+                    this.carryGrid.appendChild(rowDiv);
+                    
+                    // Increment visual row index after processing each visible row
+                    visualRowIndex++;
+                }
+                
+                // Sync scroll positions
+                this.carryRowLabels.scrollTop = this.carryGridContainer.scrollTop;
+            }
+
+            getSequenceAtRow(rowIndex) {
+                const carryCol = 0; // Carry column is now at position 0
+                
+                // Determine row type (green or red) - now every other row
+                const isGreenRow = rowIndex % 2 === 0;
+                const greenRowIndex = Math.floor(rowIndex / 2);
+                
+                if (isGreenRow) {
+                    // Green row - main sequence
+                    if (greenRowIndex === 0) {
+                        return new CarrySparseRow(); // First green row starts empty
+                    }
+                    
+                    // Calculate green row iteratively
+                    let currentSequence = new CarrySparseRow(); // Start with empty sequence
+                    
+                    for (let i = 0; i < greenRowIndex; i++) {
+                        // Red row: current sequence shifted right by 1
+                        const redRow = currentSequence.shiftRight(1);
+                        
+                        // Green row = current sequence + red row + carry bit (if set)
+                        let result = CarrySparseRow.add(currentSequence, redRow);
+                        
+                        // Add carry bit if it's set for this green row
+                        if (this.carryRegister.hasBitAt(i)) {
+                            const carryBit = new CarrySparseRow([-1]); // "1" at position -1
+                            result = CarrySparseRow.add(result, carryBit);
+                        }
+                        
+                        currentSequence = result;
+                    }
+                    
+                    // For the final green row, add the red row and carry bit
+                    const redRow = currentSequence.shiftRight(1);
+                    let result = CarrySparseRow.add(currentSequence, redRow);
+                    
+                    // Add carry bit if it's set for THIS green row
+                    if (this.carryRegister.hasBitAt(greenRowIndex)) {
+                        const carryBit = new CarrySparseRow([-1]); // "1" at position -1
+                        result = CarrySparseRow.add(result, carryBit);
+                    }
+                    
+                    currentSequence = result;
+                    
+                    return currentSequence;
+                } else {
+                    // Red row - current green row shifted right by 1
+                    const stepInGreenRow = Math.floor(rowIndex / 2);
+                    
+                    // Calculate the current green row iteratively
+                    let currentGreenRow = new CarrySparseRow(); // Start with empty sequence
+                    
+                    for (let i = 0; i < stepInGreenRow; i++) {
+                        // Red row: current sequence shifted right by 1
+                        const redRow = currentGreenRow.shiftRight(1);
+                        
+                        // Green row = current sequence + red row + carry bit (if set)
+                        let result = CarrySparseRow.add(currentGreenRow, redRow);
+                        
+                        // Add carry bit if it's set for this green row
+                        if (this.carryRegister.hasBitAt(i)) {
+                            const carryBit = new CarrySparseRow([-1]); // "1" at position -1
+                            result = CarrySparseRow.add(result, carryBit);
+                        }
+                        
+                        currentGreenRow = result;
+                    }
+                    
+                    return currentGreenRow.shiftRight(1); // Shift right by 1
+                }
+            }
+
+            handleKeydown(e) {
+                if (e.shiftKey) {
+                    // Cursor movement with Shift+up/down arrows
+                    switch(e.key) {
+                        case 'ArrowUp':
+                            e.preventDefault();
+                            // Move to previous green row
+                            if (this.carryHideRedRows.checked) {
+                                // When red rows are hidden, move by 1 (only green rows visible)
+                                this.currentCarryBit = Math.max(0, this.currentCarryBit - 1);
+                            } else {
+                                // When red rows are shown, move by 2 (green to green)
+                                this.currentCarryBit = Math.max(0, this.currentCarryBit - 2);
+                            }
+                            this.updateCarryColumnHighlight();
+                            this.saveStateToURL();
+                            break;
+                        case 'ArrowDown':
+                            e.preventDefault();
+                            // Move to next green row
+                            if (this.carryHideRedRows.checked) {
+                                // When red rows are hidden, move by 1 (only green rows visible)
+                                this.currentCarryBit = Math.max(0, this.currentCarryBit + 1);
+                            } else {
+                                // When red rows are shown, move by 2 (green to green)
+                                this.currentCarryBit = Math.max(0, this.currentCarryBit + 2);
+                            }
+                            this.updateCarryColumnHighlight();
+                            this.saveStateToURL();
+                            break;
+                    }
+                } else {
+                    // Normal arrow key behavior for scrolling
+                    switch(e.key) {
+                        case 'ArrowUp':
+                            e.preventDefault();
+                            this.scrollGrid(-1);
+                            break;
+                        case 'ArrowDown':
+                            e.preventDefault();
+                            this.scrollGrid(1);
+                            break;
+                        case 'ArrowLeft':
+                            e.preventDefault();
+                            this.scrollHorizontal(-1);
+                            break;
+                        case 'ArrowRight':
+                            e.preventDefault();
+                            this.scrollHorizontal(1);
+                            break;
+                        case ' ':
+                            e.preventDefault();
+                            this.flipCarryBit();
+                            break;
+                        case 'Tab':
+                            e.preventDefault();
+                            if (e.shiftKey) {
+                                this.mainVisualization.switchToMainView();
+                            } else {
+                                // Add new carry bit at the next green row position
+                                if (this.carryHideRedRows.checked) {
+                                    // When red rows are hidden, move by 1 (only green rows visible)
+                                    const nextPosition = this.currentCarryBit + 1;
+                                    this.currentCarryBit = nextPosition;
+                                } else {
+                                    // When red rows are shown, move by 2 (green to green)
+                                    const nextPosition = this.currentCarryBit + 2;
+                                    this.currentCarryBit = nextPosition;
+                                }
+                                this.updateCarryColumnHighlight();
+                                this.saveStateToURL();
+                            }
+                            break;
+                    }
+                }
+            }
+
+            scrollGrid(direction) {
+                this.scrollOffset += direction;
+                this.scrollOffset = Math.max(0, this.scrollOffset);
+                this.render();
+                
+                // Update scroll position of row labels to stay in sync
+                const rowHeight = 12; // Match the CSS height
+                this.carryRowLabels.scrollTop = this.scrollOffset * rowHeight;
+            }
+            
+            scrollHorizontal(direction) {
+                this.horizontalScrollOffset += direction;
+                this.render();
+            }
+
+            updateCarryColumnHighlight() {
+                // Only update the carry column highlighting without full rerender
+                const carryCol = 0; // Carry column is now at position 0
+                const rows = this.carryGrid.children;
+                
+                let visualRowIndex = 0;
+                for (let i = 0; i < rows.length; i++) {
+                    const row = rows[i];
+                    const carryCell = row.children[carryCol - this.horizontalScrollOffset];
+                    
+                    if (carryCell) {
+                        // Remove previous highlight
+                        carryCell.style.outline = '';
+                        carryCell.style.outlineOffset = '';
+                        
+                        // Add highlight if this is the current selection
+                        if (visualRowIndex === this.currentCarryBit) {
+                            carryCell.style.outline = '2px solid #FF8C00';
+                            carryCell.style.outlineOffset = '-2px';
+                        }
+                    }
+                    
+                    // Increment visual row index for each visible row
+                    visualRowIndex++;
+                }
+            }
+
+            flipCarryBit() {
+                // Convert currentCarryBit (visual row index) to green row index
+                let greenRowIndex;
+                if (this.carryHideRedRows.checked) {
+                    // When red rows are hidden, currentCarryBit is the visual row index
+                    // Since we only show green rows, visual row index = green row index
+                    greenRowIndex = this.currentCarryBit;
+                } else {
+                    // When red rows are shown, green rows are every 2nd row
+                    // currentCarryBit represents the visual position, which corresponds to original row index
+                    greenRowIndex = Math.floor(this.currentCarryBit / 2);
+                }
+                this.carryRegister.flipBit(greenRowIndex);
+                this.saveStateToURL();
+                this.render();
+            }
+
+            saveStateToURL() {
+                const url = new URL(window.location);
+                
+                // Save carry register positions
+                if (this.carryRegister.positions.length > 0) {
+                    url.searchParams.set('carryBits', this.carryRegister.positions.join(','));
+                } else {
+                    url.searchParams.delete('carryBits');
+                }
+                
+                // Save current carry bit selection
+                url.searchParams.set('currentCarryBit', this.currentCarryBit.toString());
+                
+                // Save current view
+                url.searchParams.set('view', 'carry');
+                
+                // Update URL without reloading page
+                window.history.replaceState({}, '', url);
+            }
+
+            generateRandomCarryBits() {
+                const numBits = parseInt(this.carryRandomBitsInput.value);
+                if (isNaN(numBits) || numBits < 1 || numBits > 50) {
+                    alert('Please enter a number between 1 and 50');
+                    return;
+                }
+
+                // Clear current carry register
+                this.carryRegister = new SparseColumn();
+                
+                // Generate random carry bits
+                for (let i = 0; i < numBits; i++) {
+                    if (Math.random() < 0.5) {
+                        this.carryRegister.flipBit(i);
+                    }
+                }
+                
+                // Reset current selection to first green row
+                this.currentCarryBit = 0;
+                
+                this.saveStateToURL();
+                this.render();
+            }
+
+            loadStateFromURL() {
+                const url = new URL(window.location);
+                
+                // Load carry register positions
+                const carryBitsParam = url.searchParams.get('carryBits');
+                if (carryBitsParam) {
+                    const positions = carryBitsParam.split(',').map(p => parseInt(p)).filter(p => !isNaN(p));
+                    this.carryRegister = new SparseColumn(positions);
+                }
+                
+                // Load current carry bit selection
+                const currentCarryBitParam = url.searchParams.get('currentCarryBit');
+                if (currentCarryBitParam) {
+                    const bit = parseInt(currentCarryBitParam);
+                    if (!isNaN(bit)) {
+                        this.currentCarryBit = bit;
+                    }
+                }
+                
+                // Check if we should start in carry view
+                const viewParam = url.searchParams.get('view');
+                if (viewParam === 'carry') {
+                    // Switch to carry view after a short delay to ensure everything is initialized
+                    setTimeout(() => {
+                        this.show();
+                    }, 100);
+                }
+            }
+        }
 
         class CollatzVisualization {
             constructor() {
@@ -672,7 +1211,7 @@
                 this.showTogglePreview = document.getElementById('showTogglePreview');
                 this.enableCarry = document.getElementById('enableCarry');
                 this.showColumnLine = document.getElementById('showColumnLine');
-                this.hideRedRows = document.getElementById('hideRedRows');
+                this.mainViewTab = document.getElementById('mainViewTab');
                 this.mainView = document.getElementById('mainView');
                 this.resetButton = document.getElementById('resetButton');
                 this.randomBitsInput = document.getElementById('randomBitsInput');
@@ -707,12 +1246,21 @@
                 
                 this.setupEventListeners();
                 
+                // Initialize carry simulation view after all setup is complete
+                this.carrySimulationView = new CarrySimulationView(this);
+                
                 // Load state from URL after everything is initialized
                 this.loadStateFromURL();
             }
 
             setupEventListeners() {
                 document.addEventListener('keydown', (e) => {
+                    // Check if we're in carry view
+                    if (this.carrySimulationView.carryView.style.display !== 'none') {
+                        this.carrySimulationView.handleKeydown(e);
+                        return;
+                    }
+
                     if (e.shiftKey) {
                         // Cursor movement with Shift+left/right arrows
                         switch(e.key) {
@@ -782,8 +1330,9 @@
                     this.render();
                 });
 
-                this.hideRedRows.addEventListener('change', () => {
-                    this.render();
+                // Tab switching
+                this.mainViewTab.addEventListener('click', () => {
+                    this.switchToMainView();
                 });
 
                 this.resetButton.addEventListener('click', () => {
@@ -1012,7 +1561,6 @@
                     }
                 }
                 
-                let visualRowIndex = 0; // Track the visual row position
                 for (let i = startRow; i < endRow; i++) {
                     // Determine row type
                     let rowType = 'grey';
@@ -1021,11 +1569,6 @@
                         greenRowNumber++;
                     } else {
                         rowType = 'red';
-                    }
-                    
-                    // Skip red rows if hideRedRows is enabled
-                    if (this.hideRedRows.checked && rowType === 'red') {
-                        continue;
                     }
                     
                     
@@ -1127,9 +1670,6 @@
                     }
                     
                     this.grid.appendChild(rowDiv);
-                    
-                    // Increment visual row index after processing each visible row
-                    visualRowIndex++;
                 }
                 
                 // Center the grid horizontally around the current column
@@ -1445,6 +1985,20 @@
                 this.digitsAfterLSDMove.textContent = digitsAfterLSDMove === -1 ? 'Never' : digitsAfterLSDMove.toString();
             }
 
+            switchToMainView() {
+                this.mainViewTab.classList.add('active');
+                this.mainViewTab.style.background = '#f0f0f0';
+                this.carrySimulationView.carryViewTab.classList.remove('active');
+                this.carrySimulationView.carryViewTab.style.background = '#fff';
+                this.mainView.style.display = 'flex';
+                this.carrySimulationView.hide();
+                
+                // Show main view controls and hide carry view controls
+                this.mainViewControls.style.display = 'block';
+                this.carryViewControls.style.display = 'none';
+                
+                this.saveStateToURL();
+            }
 
             saveStateToURL() {
                 const url = new URL(window.location);
@@ -1466,8 +2020,9 @@
                 url.searchParams.set('showTogglePreview', this.showTogglePreview.checked.toString());
                 url.searchParams.set('enableCarry', this.enableCarry.checked.toString());
                 url.searchParams.set('showColumnLine', this.showColumnLine.checked.toString());
-                url.searchParams.set('hideRedRows', this.hideRedRows.checked.toString());
                 
+                // Set view to main
+                url.searchParams.set('view', 'main');
                 
                 // Update URL without reloading page
                 window.history.replaceState({}, '', url);
@@ -1525,11 +2080,6 @@
                 const showColumnLineParam = url.searchParams.get('showColumnLine');
                 if (showColumnLineParam) {
                     this.showColumnLine.checked = showColumnLineParam === 'true';
-                }
-                
-                const hideRedRowsParam = url.searchParams.get('hideRedRows');
-                if (hideRedRowsParam) {
-                    this.hideRedRows.checked = hideRedRowsParam === 'true';
                 }
                 
                 // Re-render after loading state

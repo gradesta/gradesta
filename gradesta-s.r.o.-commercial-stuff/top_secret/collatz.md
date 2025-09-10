@@ -294,7 +294,7 @@ This makes it thus easy to show that there are no 3 loops in Collatz.
 
 ### N loops
 
-Lets return to the original problem statement:
+Lets return to our original problem statement:
 
 $$6x_0 + 4 = (2x_1+1) \cdot 2^{k_0}$$
 $$6x_1 + 4 = (2x_2+1) \cdot 2^{k_1}$$
@@ -305,46 +305,61 @@ $$6x_n + 4 = (2x_0+1) \cdot 2^{k_n}$$
 
 $x_n$ are all positive distinct integers greater than zero. $k_n$ are all positive integers greater than 0.
 
-Let
+Lets ignore the restrictions on $x_n$ and indeed just limit $k_n$ to be positive integers.
 
-$$m = k_0+k_1+k_2...k_n-n$$
+We can rewrite this system of equations by solving for $x_i$ iteratively. So we solve for $x_1$.
 
-To determine if there are solutions we will try multiplying these terms together and then dividing again.
+$$x_1 = \frac{6x_0 + 4}{2^{k_0+1}} - \frac{1}{2}$$
 
-$$
-\frac{3x_0 + 2}{2x_0+1}\frac{3x_1 + 2}{2x_1+1}...\frac{3x_n + 2}{2x_n+1}=2^m
-$$
+And We can now eliminate $x_1$ in the next equation as $x_1$ is now defined in terms of $x_0$.
 
-$2^m$ is a whole number, therefore we can analyze based on divisibility.
+$$6(\frac{6x_0 + 4}{2^{k_0+1}} - \frac{1}{2}) + 4 = (2x_2+1) \cdot 2^{k_1}$$
 
-If we have a fraction like:
+And now we solve for $x_2$
 
 $$
-2^m = \frac{2^m \cdot N_0 \cdot N_1 \cdot ... N_n}{d_0 \cdot d_1 \cdot ... d_n}
+x_2 = \frac{6(\frac{6x_0 + 4}{2^{k_0+1}} - \frac{1}{2}) + 4}{2^{k_1+1}} - \frac{1}{2}
 $$
 
-Then if we can construct a set $N_n = d_n$ we can find a solution.
+This will create a kind of telescoping recursive fraction.
 
-Applying such a rule to:
-
-$$
-\frac{3x_0 + 2}{2x_0+1}\frac{3x_1 + 2}{2x_1+1}...\frac{3x_n + 2}{2x_n+1}=2^m
-$$
-
-We can analyze the relation:
+One important thing to note is that if we take any set of constant values for $k$ we can plot this as a function:
 
 $$
-(3x + 2)/2^l = 2y + 1
+f(x_0) = \frac{6(\frac{6x_0 + 4}{2^{k_0+1}} - \frac{1}{2}) + 4}{2^{k_1+1}} - \frac{1}{2}
 $$
 
-Solve for y:
+And no matter how many times we add extra steps this will always be a straight line.
+
+A straight line can always be defined in the form:
 
 $$
-(3x + 2)/2^l = 2y + 1 \implies y = \frac{(3x + 2)}{2^{l+1}} - \frac{1}{2}
+f(x) = \frac{a}{b} + \frac{rise}{run} \cdot x
 $$
 
-This implies all x_n must be even for there to be a set $N_n = d_n$.
+In order to find a loop in this structure we would want the input of this function to equal the output. So we find ourselves solving for x in:
 
+$$
+x = \frac{a}{b} + \frac{rise}{run} \cdot x
+$$
+
+If $x$ is a whole number and the $k$ s are also whole numbers we will have found ourselves a cycle in the structure.
+
+Lets try to solve for a 4 odd loop and we will see that this easilly translates to an N odd cycle.
+
+$$
+x = \frac{6\left(\frac{6\left(\frac{6\left(\frac{6x + 4}{2^{k_0+1}} - \frac{1}{2}\right) + 4}{2^{k_1+1}} - \frac{1}{2}\right) + 4}{2^{k_2+1}} - \frac{1}{2}\right) + 4}{2^{k_3+1}} - \frac{1}{2}
+$$
+
+Lets convert this to a standard linear equation solving for $a$, $b$, $rise$ and $run$.
+
+$$\frac{rise}{run} = \frac{2^4 \cdot 3^4}{2^{k_0+k_1+k_2+k_3}}$$
+
+$$\frac{a}{b} = \frac{2^3 \cdot 3^3(4-2^{k_0-1})}{2^{k_0+k_1+k_2+k_3}} + \frac{2^2 \cdot 3^2(4-2^{k_1-1})}{2^{k_1+k_2+-k_3}} + \frac{2 \cdot 3(4-2^{k_2-1})}{2^{k_2+k_3}} + \frac{4-2^{k_3-1}}{2^{k_3}}$$
+
+Lets split that constant term up even further:
+
+$$\frac{a}{b} = \frac{2^5 \cdot 3^3}{2^{k_0+k_1+k_2+k_3}}-\frac{3^3 \cdot 2^{k_0+2}}{2^{k_0+k_1+k_2+k_3}} + \frac{2^4 \cdot 3^2}{2^{k_1+k_2+-k_3}}-\frac{3^2 \cdot 2^{k_1+1}}{2^{k_1+k_2+-k_3}} + \frac{2^3 \cdot 3} {2^{k_2+k_3}}-\frac{2^{k_2}\cdot 3}{2^{k_2+k_3}} + \frac{2^2}{2^{k_3}}-\frac{2^{k_3-1}}{2^{k_3}}$$
 
 
 Collatz in $2^k$ agnostic arithmatic
