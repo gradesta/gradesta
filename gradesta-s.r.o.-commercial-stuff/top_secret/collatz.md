@@ -290,17 +290,23 @@ $$
 x = \frac{6\left(\frac{6\left(\frac{6\left(\frac{6x + 4}{2^{k_0+1}} - \frac{1}{2}\right) + 4}{2^{k_1+1}} - \frac{1}{2}\right) + 4}{2^{k_2+1}} - \frac{1}{2}\right) + 4}{2^{k_3+1}} - \frac{1}{2}
 $$
 
+Simplifying a bit:
+
+$$
+x = \frac{3\left(\frac{3\left(\frac{3\left(\frac{3x + 2}{2^{k_0}} - \frac{1}{2}\right) + 2}{2^{k_1}} - \frac{1}{2}\right) + 2}{2^{k_2}} - \frac{1}{2}\right) + 2}{2^{k_3}} - \frac{1}{2}
+$$
+
+
 Lets convert this to a standard linear equation solving for $a$, $b$, $rise$ and $run$.
 
-$$\frac{rise}{run} = \frac{2^4 \cdot 3^4}{2^{k_0+k_1+k_2+k_3}}$$
+$$
+\frac{rise}{run} = \frac{3^4}{2^{k_0+k_1+k_2+k_3}}
+$$
 
-$$\frac{a}{b} = \frac{2^3 \cdot 3^3(4-2^{k_0-1})}{2^{k_0+k_1+k_2+k_3}} + \frac{2^2 \cdot 3^2(4-2^{k_1-1})}{2^{k_1+k_2+-k_3}} + \frac{2 \cdot 3(4-2^{k_2-1})}{2^{k_2+k_3}} + \frac{4-2^{k_3-1}}{2^{k_3}}$$
 
-Lets split that constant term up even further:
-
-$$\frac{a}{b} = \frac{2^5 \cdot 3^3}{2^{k_0+k_1+k_2+k_3}}-\frac{3^3 \cdot 2^{k_0+2}}{2^{k_0+k_1+k_2+k_3}} + \frac{2^4 \cdot 3^2}{2^{k_1+k_2+-k_3}}-\frac{3^2 \cdot 2^{k_1+1}}{2^{k_1+k_2+-k_3}} + \frac{2^3 \cdot 3} {2^{k_2+k_3}}-\frac{2^{k_2}\cdot 3}{2^{k_2+k_3}} + \frac{2^2}{2^{k_3}}-\frac{2^{k_3-1}}{2^{k_3}}$$
-
-I'd like to claim here, that if $\frac{a}{b}$ is a whole number it must be divisible by 3 and 2 and nothing else.
+$$
+\frac{a}{b} = \left(\frac{2 \cdot 3^3}{2^{\sum k_i}} - \frac{3^3 \cdot 2^{k_0-1}}{2^{\sum k_i}}\right) + \left(\frac{2 \cdot 3^2}{2^{k_1+k_2+k_3}} - \frac{3^2 \cdot 2^{k_1-1}}{2^{k_1+k_2+k_3}}\right) + \left(\frac{2 \cdot 3}{2^{k_2+k_3}} - \frac{3 \cdot 2^{k_2-1}}{2^{k_2+k_3}}\right) + \left(\frac{2}{2^{k_3}} - \frac{1}{2}\right)
+$$
 
 We'll now define
 
