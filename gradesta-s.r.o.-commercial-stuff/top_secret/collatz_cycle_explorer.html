@@ -721,6 +721,22 @@
             display: none; /* Hide clipboard icons in cumulative factorization */
         }
 
+        /* Nested equation modal styles */
+        .equation-display {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            min-height: 200px;
+            overflow-x: auto;
+        }
+
+        .equation-display .math-formula {
+            font-size: 16px;
+            line-height: 1.6;
+            text-align: center;
+        }
+
         @media (max-width: 768px) {
             .container {
                 margin: 10px;
@@ -867,6 +883,28 @@
                     <h4>Calculation Time</h4>
                     <div class="value" id="calcTime">-</div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Nested Equation Modal -->
+    <div id="nestedEquationModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Nested Equation</h2>
+                <button class="modal-close" onclick="closeNestedEquationModal()">&times;</button>
+            </div>
+            
+            <div class="modal-controls">
+                <div class="modal-control-group">
+                    <label for="nestedKValues">k-values</label>
+                    <input type="text" id="nestedKValues" readonly style="width: 200px;">
+                </div>
+                <button class="btn btn-primary" onclick="copyNestedEquation()">Copy Equation</button>
+            </div>
+            
+            <div class="equation-display">
+                <div id="nestedEquationContent" class="math-formula"></div>
             </div>
         </div>
     </div>
@@ -2204,10 +2242,17 @@
             
             let html = `<h4>Walk Evaluation for k-values [${kValues.join(', ')}]</h4>`;
             
-            // Show nested equation
-            html += `<div class="walk-step equation">`;
-            html += `<strong>Nested Equation:</strong><br><span class="math-formula">$$${nestedEquation}$$<button class="clipboard-icon" data-formula="$$${nestedEquation}$$" onclick="analyzer.copyMathJaxToClipboard(this)"><i class="fas fa-copy"></i></button></span>`;
-            html += `</div>`;
+            // Show nested equation button for large n, or inline for small n
+            if (kValues.length > 5) {
+                html += `<div class="walk-step equation">`;
+                html += `<strong>Nested Equation:</strong><br>`;
+                html += `<button class="btn btn-info" data-equation="${nestedEquation.replace(/"/g, '&quot;')}" data-kvalues="${kValues.join(',')}" onclick="showNestedEquationModal(this)">View Nested Equation</button>`;
+                html += `</div>`;
+            } else {
+                html += `<div class="walk-step equation">`;
+                html += `<strong>Nested Equation:</strong><br><span class="math-formula">$$${nestedEquation}$$<button class="clipboard-icon" data-formula="$$${nestedEquation}$$" onclick="analyzer.copyMathJaxToClipboard(this)"><i class="fas fa-copy"></i></button></span>`;
+                html += `</div>`;
+            }
             
             // Show walk steps first (fast)
             html += `<h5>Step-by-step Walk:</h5>`;
@@ -2500,9 +2545,63 @@
 
         // Close modal when clicking outside
         window.onclick = function(event) {
-            const modal = document.getElementById('maxXGraphModal');
-            if (event.target === modal) {
+            const maxXModal = document.getElementById('maxXGraphModal');
+            const nestedModal = document.getElementById('nestedEquationModal');
+            if (event.target === maxXModal) {
                 closeMaxXGraphModal();
+            }
+            if (event.target === nestedModal) {
+                closeNestedEquationModal();
+            }
+        }
+
+        // Nested equation modal functions
+        function showNestedEquationModal(button) {
+            const equation = button.getAttribute('data-equation');
+            const kValues = button.getAttribute('data-kvalues');
+            
+            document.getElementById('nestedKValues').value = kValues;
+            document.getElementById('nestedEquationContent').innerHTML = `$$${equation}$$`;
+            document.getElementById('nestedEquationModal').classList.add('show');
+            
+            // Re-render MathJax
+            if (window.MathJax) {
+                MathJax.typesetPromise([document.getElementById('nestedEquationModal')]);
+            }
+        }
+
+        function closeNestedEquationModal() {
+            document.getElementById('nestedEquationModal').classList.remove('show');
+        }
+
+        function copyNestedEquation() {
+            const equation = document.getElementById('nestedEquationContent').textContent;
+            const latex = equation.replace(/\$/g, '');
+            
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(latex).then(() => {
+                    showToast('Nested equation copied to clipboard!');
+                }).catch(err => {
+                    console.error('Failed to copy: ', err);
+                    showToast('Failed to copy equation', 'error');
+                });
+            } else {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = latex;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-999999px';
+                textArea.style.top = '-999999px';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    showToast('Nested equation copied to clipboard!');
+                } catch (err) {
+                    showToast('Failed to copy equation', 'error');
+                }
+                document.body.removeChild(textArea);
             }
         }
 
