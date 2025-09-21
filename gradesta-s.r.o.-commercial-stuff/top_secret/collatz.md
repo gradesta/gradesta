@@ -379,13 +379,13 @@ Following this pattern for each layer and substituting back through all transfor
 
 After working through the algebraic manipulations while preserving the required form, the solution is:
 
-$$x = \frac{2^{k_0+k_1+k_2+k_3+2} + 2^{k_1+k_2+k_3+1} + 2^{k_2+k_3+1} + 2^{k_3+1} - 2^4}{3^4 \cdot 2^{k_0+k_1+k_2+k_3} - 2^{k_0+k_1+k_2+k_3+2}}$$
+$$x = \frac{2^{k_0+k_1+k_2+k_3+2} + 2^{k_1+k_2+k_3+1} + 2^{k_2+k_3+1} + 2^{k_3+1} - 2^4}{3^4 - 2^{k_0+k_1+k_2+k_3}}$$
 
 This can be factored as:
 
-$$x = \frac{2^{k_3+1}(2^{k_0+k_1+k_2+1} + 2^{k_1+k_2} + 2^{k_2} + 1) - 2^4}{2^{k_0+k_1+k_2+k_3}(3^4 - 2^2)}$$
+$$x = \frac{2^{k_3+1}(2^{k_0+k_1+k_2+1} + 2^{k_1+k_2} + 2^{k_2} + 1) - 2^4}{3^4 - 2^{k_0+k_1+k_2+k_3}}$$
 
-$$x = \frac{2^{k_3+1}(2^{k_0+k_1+k_2+1} + 2^{k_1+k_2} + 2^{k_2} + 1) - 2^4}{2^{k_0+k_1+k_2+k_3} \cdot (3^4 - 2^2)}$$
+$$x = \frac{2^{k_3+1}(2^{k_0+k_1+k_2+1} + 2^{k_1+k_2} + 2^{k_2} + 1) - 2^4}{3^4 - 2^{k_0+k_1+k_2+k_3}}$$
 
 <details><summary>Thinking</summary>
 
@@ -446,11 +446,11 @@ For depth 3: $x = T_{k_2}(T_{k_1}(T_{k_0}(x)))$
 
 Working through the algebra systematically:
 
-$$x = \frac{2^{k_0+k_1+k_2+1} + 2^{k_1+k_2+1} + 2^{k_2+1} - 2^3}{3^3 \cdot 2^{k_0+k_1+k_2} - 2^{k_0+k_1+k_2+1}}$$
+$$x = \frac{2^{k_0+k_1+k_2+1} + 2^{k_1+k_2+1} + 2^{k_2+1} - 2^3}{3^3 - 2^{k_0+k_1+k_2}}$$
 
 This can be factored as:
 
-$$x = \frac{2^{k_2+1}(2^{k_0+k_1} + 2^{k_1} + 1) - 2^3}{2^{k_0+k_1+k_2}(3^3 - 2^1)}$$
+$$x = \frac{2^{k_2+1}(2^{k_0+k_1} + 2^{k_1} + 1) - 2^3}{3^3 - 2^{k_0+k_1+k_2}}$$
 
 ## Depth 2
 
@@ -458,11 +458,11 @@ For depth 2: $x = T_{k_1}(T_{k_0}(x))$
 
 Following the same process:
 
-$$x = \frac{2^{k_0+k_1+1} + 2^{k_1+1} - 2^2}{3^2 \cdot 2^{k_0+k_1} - 2^{k_0+k_1+1}}$$
+$$x = \frac{2^{k_0+k_1+1} + 2^{k_1+1} - 2^2}{3^2 - 2^{k_0+k_1}}$$
 
 This can be factored as:
 
-$$x = \frac{2^{k_1+1}(2^{k_0} + 1) - 2^2}{2^{k_0+k_1}(3^2 - 2^1)}$$
+$$x = \frac{2^{k_1+1}(2^{k_0} + 1) - 2^2}{3^2 - 2^{k_0+k_1}}$$
 
 ## Depth 1
 
@@ -481,16 +481,16 @@ $$x = \frac{2^1 - 2^{k_0-1}}{2^{k_0} - 3^1}$$
 
 - **Depth 1**: $x = \frac{2^1 - 2^{k_0-1}}{2^{k_0} - 3^1}$
 
-- **Depth 2**: $x = \frac{2^{k_1+1}(2^{k_0} + 1) - 2^2}{2^{k_0+k_1}(3^2 - 2^1)}$
+- **Depth 2**: $x = \frac{2^{k_1+1}(2^{k_0} + 1) - 2^2}{3^2 - 2^{k_0+k_1}}$
 
-- **Depth 3**: $x = \frac{2^{k_2+1}(2^{k_0+k_1} + 2^{k_1} + 1) - 2^3}{2^{k_0+k_1+k_2}(3^3 - 2^1)}$
+- **Depth 3**: $x = \frac{2^{k_2+1}(2^{k_0+k_1} + 2^{k_1} + 1) - 2^3}{3^3 - 2^{k_0+k_1+k_2}}$
 
-- **Depth 4**: $x = \frac{2^{k_3+1}(2^{k_0+k_1+k_2+1} + 2^{k_1+k_2} + 2^{k_2} + 1) - 2^4}{2^{k_0+k_1+k_2+k_3}(3^4 - 2^2)}$
+- **Depth 4**: $x = \frac{2^{k_3+1}(2^{k_0+k_1+k_2+1} + 2^{k_1+k_2} + 2^{k_2} + 1) - 2^4}{3^4 - 2^{k_0+k_1+k_2+k_3}}$
 
 The general equation for depth n where n>1 is:
 
 $$
-x = \frac{2^{k_{n-1}+1} \left( 2^{k_0 + k_1 + \cdots + k_{n-2} + 1} + 2^{k_1 + k_2 + \cdots + k_{n-2}} + \cdots + 2^{k_{n-2}} + 1 \right) - 2^n}{2^{k_0 + k_1 + \cdots + k_{n-1}} \left( 3^n - 2^{n-2} \right)}
+x = \frac{2^{k_{n-1}+1} \left( 2^{k_0 + k_1 + \cdots + k_{n-2} + 1} + 2^{k_1 + k_2 + \cdots + k_{n-2}} + \cdots + 2^{k_{n-2}} + 1 \right) - 2^n}{3^n - 2^{k_0 + k_1 + \cdots + k_{n-1}}}
 $$
 
 where $k_0, k_1, \ldots, k_{n-1}$ are the exponents of the $n$ consecutive "odd steps" in the Collatz sequence, and $n \geq 2$.
@@ -500,6 +500,5 @@ The numerator consists of:
 - Then subtract $2^n$.
 
 The denominator is:
-- $2^{k_0 + k_1 + \cdots + k_{n-1}}$ times $(3^n - 2^{n-2})$.
+- $(3^n - 2^{k_0 + k_1 + \cdots + k_{n-1}})$.
 
-Since it is impossible for the numerator to be greater than the denominator for depths greater than 1 there are no non-trivial cycles in the Collatz graph.

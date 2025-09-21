@@ -94,10 +94,8 @@ def calculate_cycle_x(k_values):
         
         numerator = power_k_last_plus_1 * numerator_term - 2**n
         
-        # Calculate denominator: 2^(k_0+k_1+...+k_{n-1}) * (3^n - 2^(n-2))
-        power_sum_k = 2**sum_k
-        denominator_factor = 3**n - 2**(n-2)
-        denominator = power_sum_k * denominator_factor
+        # Calculate denominator: 3^n - 2^(sum of k values)
+        denominator = 3**n - 2**sum_k
     
     # Calculate x as a fraction
     x_value = Fraction(numerator, denominator)
@@ -212,7 +210,8 @@ def generate_table(max_n=6):
                 denominator_str = str(denominator)
                 sum_k_str = str(sum_k)
 
-                # Mark integers with *
+                # Mark integers with
+                 *
                 marker = " *" if is_integer else ""
                 
                 # Check if numerator >= denominator for highlighting (using prime factorization)
