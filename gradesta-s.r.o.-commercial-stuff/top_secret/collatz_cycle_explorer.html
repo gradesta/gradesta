@@ -162,6 +162,16 @@
             box-shadow: 0 5px 15px rgba(79, 172, 254, 0.4);
         }
 
+        .btn-warning {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .btn-warning:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(240, 147, 251, 0.4);
+        }
+
         .results {
             background: white;
             border-radius: 10px;
@@ -477,7 +487,7 @@
                 <div class="controls">
                     <div class="control-group">
                         <label for="cycleLength">Cycle Length (n)</label>
-                        <input type="number" id="cycleLength" min="1" max="10" value="3">
+                        <input type="number" id="cycleLength" min="1" value="3">
                     </div>
                     
                     <div class="control-group">
@@ -494,6 +504,7 @@
                 <div class="button-group">
                     <button class="btn btn-primary" onclick="generateAllPermutations()">Generate All Permutations</button>
                     <button class="btn btn-secondary" onclick="generateRandomSample()">Random Sample (50)</button>
+                    <button class="btn btn-warning" onclick="calculateMaxX()">Find Max X</button>
                     <button class="btn btn-success" onclick="clearResults()">Clear Results</button>
                 </div>
             </div>
@@ -1195,6 +1206,76 @@
                 }
             }
 
+            // Find optimal k values that maximize x for given n
+            findOptimalKValues(n) {
+                // For optimization, we want to maximize x
+                // Based on the analysis, the optimal strategy is to concentrate k values early
+                // since earlier terms have larger coefficients (3^(n-2-i))
+                
+                let bestX = -Infinity;
+                let bestKValues = null;
+                let bestResult = null;
+                
+                // Calculate minimum sum needed for positive denominator
+                const minSum = Math.ceil(Math.log2(Math.pow(3, n))) + 1;
+                
+                // Try different strategies:
+                // 1. Concentrate all value in k0 (k0-dominant)
+                // 2. Distribute evenly
+                // 3. Gradual decrease
+                
+                // Strategy 1: k0-dominant (most likely optimal)
+                for (let k0 = minSum; k0 <= minSum + 20; k0++) {
+                    const kValues = [k0];
+                    for (let i = 1; i < n; i++) {
+                        kValues.push(1); // Set remaining to minimum
+                    }
+                    
+                    const result = this.calculateX(kValues);
+                    if (result && result.x > bestX) {
+                        bestX = result.x;
+                        bestKValues = [...kValues];
+                        bestResult = result;
+                    }
+                }
+                
+                // Strategy 2: Try some balanced distributions
+                for (let totalSum = minSum; totalSum <= minSum + 10; totalSum++) {
+                    // Try different distributions
+                    for (let k0 = Math.max(1, totalSum - n + 1); k0 <= totalSum - n + 1; k0++) {
+                        const kValues = [k0];
+                        let remaining = totalSum - k0;
+                        
+                        // Distribute remaining among other k values
+                        for (let i = 1; i < n; i++) {
+                            if (i === n - 1) {
+                                kValues.push(remaining); // Last one gets all remaining
+                            } else {
+                                const maxForThis = remaining - (n - i - 1); // Leave at least 1 for each remaining
+                                const val = Math.min(maxForThis, Math.max(1, Math.floor(remaining / (n - i))));
+                                kValues.push(val);
+                                remaining -= val;
+                            }
+                        }
+                        
+                        const result = this.calculateX(kValues);
+                        if (result && result.x > bestX) {
+                            bestX = result.x;
+                            bestKValues = [...kValues];
+                            bestResult = result;
+                        }
+                    }
+                }
+                
+                return bestResult ? {
+                    kValues: bestKValues,
+                    x: bestResult.x,
+                    numerator: bestResult.numerator,
+                    denominator: bestResult.denominator,
+                    sumK: bestResult.sumK
+                } : null;
+            }
+
             // Show toast notification
             showToast(message, type = 'success') {
                 // Remove existing toast
@@ -1568,6 +1649,66 @@
             if (isInteger && isPositive) {
                 html += '<div class="success"><strong>⚠️ POTENTIAL CYCLE FOUND!</strong> This represents a positive integer solution that could indicate a cycle in the Collatz conjecture.</div>';
             }
+            
+            resultsDiv.innerHTML = html;
+            
+            // Re-render MathJax
+            if (window.MathJax) {
+                MathJax.typesetPromise([resultsDiv]);
+            }
+        }
+
+        function calculateMaxX() {
+            const n = parseInt(document.getElementById('cycleLength').value);
+            
+            if (n < 1) {
+                alert('Please enter a positive cycle length.');
+                return;
+            }
+            
+            // Find the optimal k values that maximize x
+            const result = analyzer.findOptimalKValues(n);
+            
+            if (!result) {
+                alert('No valid solution found for the given constraints.');
+                return;
+            }
+            
+            // Display the result
+            displayMaxXResult(n, result);
+        }
+        
+        function displayMaxXResult(n, result) {
+            const resultsDiv = document.getElementById('results');
+            
+            const { kValues, x, numerator, denominator, sumK } = result;
+            
+            // Verify the result
+            const verified = analyzer.verifyX(x, kValues);
+            const verificationClass = verified ? '' : 'verification-failed';
+            
+            // Show the general equation for this depth
+            const generalEquation = analyzer.getGeneralEquation(n);
+            
+            let html = `<div class="equation-header">`;
+            html += `<h3>Maximum X Result for n=${n}</h3>`;
+            html += `<div>General equation: <span class="math-formula">$${generalEquation}$<button class="clipboard-icon" data-formula="$${generalEquation}$" onclick="analyzer.copyMathJaxToClipboard(this)"><i class="fas fa-copy"></i></button></span></div>`;
+            html += `</div>`;
+            
+            html += `<div class="result-item ${verificationClass} clickable-result" onclick="showWalkDetails(0, [${kValues.join(',')}], ${x})">`;
+            html += `<strong>Optimal k-values:</strong> [${kValues.join(', ')}] `;
+            html += `<strong>Sum k:</strong> ${sumK} `;
+            html += `<strong>Average k:</strong> ${(sumK / n).toFixed(3)}<br>`;
+            html += `<strong>Maximum x =</strong> ${x.toFixed(10)}<br>`;
+            html += `<strong>Numerator:</strong> ${numerator} = <span class="math-formula">$${analyzer.factorize(numerator)}$<button class="clipboard-icon" data-formula="$${analyzer.factorize(numerator)}$" onclick="analyzer.copyMathJaxToClipboard(this)"><i class="fas fa-copy"></i></button></span><br>`;
+            html += `<strong>Denominator:</strong> ${denominator} = <span class="math-formula">$${analyzer.factorize(denominator)}$<button class="clipboard-icon" data-formula="$${analyzer.factorize(denominator)}$" onclick="analyzer.copyMathJaxToClipboard(this)"><i class="fas fa-copy"></i></button></span><br>`;
+            html += `<strong>Expanded Equation:</strong><br><span class="math-formula">$$${analyzer.generateExpandedEquation(kValues)}$$<button class="clipboard-icon" data-formula="$$${analyzer.generateExpandedEquation(kValues)}$$" onclick="analyzer.copyMathJaxToClipboard(this)"><i class="fas fa-copy"></i></button></span><br>`;
+            html += `<strong>Verification:</strong> ${verified ? '✓ PASSED' : '✗ FAILED'}`;
+            html += `<br><em style="color: #666;">Click to see walk evaluation and nested equation</em>`;
+            html += '</div>';
+            
+            // Add walk details container
+            html += `<div id="walk-details-0" class="walk-details"></div>`;
             
             resultsDiv.innerHTML = html;
             
