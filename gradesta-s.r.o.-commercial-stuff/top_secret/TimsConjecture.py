@@ -75,11 +75,11 @@ def calculate_N(n, l_values):
         l_values: list of n non-negative integers [l_0, l_1, ..., l_{n-1}]
     """
     # First term: 2 * 3^n
-    N = 2 * (3 ** n)
+    N = 2 * (3 ** (n - 1))
 
     # Sum term: sum(i=1 to n) 3^(n-i) * 2^(l_i)
     for i in range(1, n):
-        t = (3 ** (n - i)) * (2 ** l_values[i])
+        t = (3 ** (n - i - 1)) * (2 ** l_values[i])
         N += t
     
     # Subtract: 2^(l_0)
@@ -174,7 +174,7 @@ def random_sample_test(max_n=300, max_l_value=600, samples_per_n=100):
     print("="*50)
     print("Conjecture: N is NOT divisible by D")
     print("where N = 2*3^n + sum(3^(n-i)*2^(l_i)) - 2^(l_0)")
-    print("and D = 2^(l_0+1) - 3^n")
+    print("and D = 2^(l_n+1) - 3^n (where l_n is the largest l_i)")
     print("with l_i < l_(i+1) for all i")
     print("and N/D is positive")
     print("and n > 1")
@@ -205,18 +205,27 @@ def random_sample_test(max_n=300, max_l_value=600, samples_per_n=100):
                 break
                 
             # Generate random increasing sequence
-            l_values = []
-            current_val = random.randint(min_l_0, max_l_0)
-            l_values.append(current_val)
+            # First, choose the largest value l_n in the appropriate range
+            l_n = random.randint(min_l_n, max_l_n)
             
-            for i in range(1, n):
+            # Generate n-1 smaller values, then add l_n
+            l_values = []
+            current_val = 0
+            
+            for i in range(n - 1):
                 # Next value must be larger than previous
-                max_increment = min(10, max_l_value - current_val)
+                max_increment = min(10, l_n - current_val - (n - 1 - i))
                 if max_increment <= 0:
                     break  # Can't continue, skip this sequence
                 next_val = current_val + random.randint(1, max_increment)
                 l_values.append(next_val)
                 current_val = next_val
+            
+            # Add the largest value
+            l_values.append(l_n)
+            
+            # Sort to ensure strictly increasing order
+            l_values.sort()
             
             # Check if sequence is valid (strictly increasing and has correct length)
             if len(l_values) != n or not is_valid_l_sequence(l_values):
