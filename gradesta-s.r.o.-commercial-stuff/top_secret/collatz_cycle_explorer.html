@@ -793,11 +793,11 @@
                     const k0 = kValues[0], k1 = kValues[1], k2 = kValues[2];
                     return `x = \\frac{2^1 \\cdot 3^2 + 3^1 \\cdot 2^{${k0}-1} + 2^{${k0}+${k1}-1} - 2^{${k0}+${k1}+${k2}-1}}{2^{${k0}+${k1}+${k2}} - 3^3} = \\frac{18 + 3 \\cdot 2^{${k0-1}} + 2^{${k0+k1-1}} - 2^{${k0+k1+k2-1}}}{2^{${k0+k1+k2}} - 27}`;
                 } else {
-                    // For larger n, write out ALL terms vertically
+                    // For larger n, write out ALL terms vertically to match the actual algorithm
                     let numerator = '\\begin{align}\n';
-                    numerator += `&2^1 \\cdot 3^{${n-1}} \\\\\n`;
+                    numerator += `&2 \\cdot 3^{${n-1}} \\\\\n`;
                     
-                    // Show ALL terms explicitly
+                    // Show ALL terms explicitly (matching the algorithm)
                     for (let i = 0; i < n-1; i++) {
                         let powerSum = kValues[0];
                         for (let j = 1; j <= i; j++) {
@@ -806,14 +806,7 @@
                         numerator += `&+ 3^{${n-2-i}} \\cdot 2^{${powerSum}-1} \\\\\n`;
                     }
                     
-                    // Add the final term
-                    let finalPowerSum = kValues[0];
-                    for (let j = 1; j < n-1; j++) {
-                        finalPowerSum += '+' + kValues[j];
-                    }
-                    numerator += `&+ 2^{${finalPowerSum}-1} \\\\\n`;
-                    
-                    // Add the negative term
+                    // Add the negative term (no extra positive term)
                     let negPowerSum = kValues[0];
                     for (let j = 1; j < n; j++) {
                         negPowerSum += '+' + kValues[j];
@@ -915,13 +908,13 @@
                 } else if (n === 3) {
                     return 'x = \\frac{2^1 \\cdot 3^2 + 3^1 \\cdot 2^{k_0-1} + 2^{k_0+k_1-1} - 2^{k_0+k_1+k_2-1}}{2^{k_0+k_1+k_2} - 3^3}';
                 } else if (n === 4) {
-                    return 'x = \\frac{2^1 \\cdot 3^3 + 3^2 \\cdot 2^{k_0-1} + 3^1 \\cdot 2^{k_0+k_1-1} + 2^{k_0+k_1+k_2-1} - 2^{k_0+k_1+k_2+k_3-1}}{2^{k_0+k_1+k_2+k_3} - 3^4}';
+                    return 'x = \\frac{2 \\cdot 3^3 + 3^2 \\cdot 2^{k_0-1} + 3^1 \\cdot 2^{k_0+k_1-1} + 3^0 \\cdot 2^{k_0+k_1+k_2-1} - 2^{k_0+k_1+k_2+k_3-1}}{2^{k_0+k_1+k_2+k_3} - 3^4}';
                 } else {
-                    // For general n: write out ALL terms vertically, no ellipses
+                    // For general n: write out ALL terms vertically, no ellipses (matching the algorithm)
                     let numerator = '\\begin{align}\n';
-                    numerator += '&2^1 \\cdot 3^{' + (n-1) + '} \\\\\n';
+                    numerator += '&2 \\cdot 3^{' + (n-1) + '} \\\\\n';
                     
-                    // Show ALL terms explicitly
+                    // Show ALL terms explicitly (matching the algorithm)
                     for (let i = 0; i < n-1; i++) {
                         let powerSum = 'k_0';
                         for (let j = 1; j <= i; j++) {
@@ -930,14 +923,7 @@
                         numerator += '&+ 3^{' + (n-2-i) + '} \\cdot 2^{' + powerSum + '-1} \\\\\n';
                     }
                     
-                    // Add the final term
-                    let finalPowerSum = 'k_0';
-                    for (let j = 1; j < n-1; j++) {
-                        finalPowerSum += '+k_' + j;
-                    }
-                    numerator += '&+ 2^{' + finalPowerSum + '-1} \\\\\n';
-                    
-                    // Add the negative term
+                    // Add the negative term (no extra positive term)
                     let negPowerSum = 'k_0';
                     for (let j = 1; j < n; j++) {
                         negPowerSum += '+k_' + j;
