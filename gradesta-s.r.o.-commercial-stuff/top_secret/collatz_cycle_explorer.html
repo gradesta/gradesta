@@ -602,6 +602,125 @@
             color: #667eea;
         }
 
+        /* Term breakdown styles */
+        .term-breakdown {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            border-left: 4px solid #667eea;
+        }
+
+        .term-breakdown h4 {
+            margin: 0 0 15px 0;
+            color: #2c3e50;
+            font-size: 16px;
+        }
+
+        .term-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            margin: 5px 0;
+            background: white;
+            border-radius: 5px;
+            border-left: 3px solid #e1e8ed;
+            transition: all 0.3s ease;
+        }
+
+        .term-item:hover {
+            border-left-color: #667eea;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .term-item.positive {
+            border-left-color: #27ae60;
+        }
+
+        .term-item.negative {
+            border-left-color: #e74c3c;
+        }
+
+        .term-name {
+            font-size: 14px;
+            color: #2c3e50;
+            flex: 1;
+        }
+
+        .term-name .math-formula {
+            position: relative;
+            display: inline-block;
+            margin: 0;
+        }
+
+        .term-name .clipboard-icon {
+            display: none; /* Hide clipboard icons in term breakdown */
+        }
+
+        .term-description {
+            font-size: 12px;
+            color: #666;
+            margin-left: 10px;
+            flex: 1;
+        }
+
+        .term-value {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            font-weight: bold;
+            min-width: 100px;
+            text-align: right;
+        }
+
+        .term-value.positive {
+            color: #27ae60;
+        }
+
+        .term-value.negative {
+            color: #e74c3c;
+        }
+
+        .term-summary {
+            background: #2c3e50;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+
+        .term-cumulative {
+            background: #f0f8ff;
+            border-left: 3px solid #3498db;
+            padding: 8px 12px;
+            margin: 2px 0 8px 0;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
+        .cumulative-sum {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 4px;
+        }
+
+        .cumulative-factorization {
+            color: #666;
+        }
+
+        .cumulative-factorization .math-formula {
+            position: relative;
+            display: inline-block;
+            margin: 0;
+        }
+
+        .cumulative-factorization .clipboard-icon {
+            display: none; /* Hide clipboard icons in cumulative factorization */
+        }
+
         @media (max-width: 768px) {
             .container {
                 margin: 10px;
@@ -1319,7 +1438,12 @@
 
             // Generate random sample using the new efficient algorithm
             generateRandomSample(n, minK, maxK, minAvg, maxAvg, count = 50) {
-                // First, generate all valid permutations
+                // For large n, use direct sampling instead of generating all permutations
+                if (n >= 8) {
+                    return this.generateRandomSampleDirect(n, minK, maxK, minAvg, maxAvg, count);
+                }
+                
+                // For smaller n, use the original method
                 const allPermutations = this.generatePermutations(n, minK, maxK, minAvg, maxAvg);
                 
                 if (allPermutations.length === 0) {
@@ -1348,6 +1472,71 @@
                 }
                 
                 return sample;
+            }
+
+            generateRandomSampleDirect(n, minK, maxK, minAvg, maxAvg, count = 50) {
+                const sample = [];
+                const used = new Set();
+                const maxAttempts = count * 100; // Limit attempts to prevent infinite loops
+                let attempts = 0;
+                
+                while (sample.length < count && attempts < maxAttempts) {
+                    attempts++;
+                    
+                    // Generate a random k set that meets the constraints
+                    const kValues = this.generateRandomKSet(n, minK, maxK, minAvg, maxAvg);
+                    if (!kValues) continue;
+                    
+                    const key = kValues.join(',');
+                    if (!used.has(key)) {
+                        used.add(key);
+                        sample.push(kValues);
+                    }
+                }
+                
+                if (sample.length === 0) {
+                    console.log(`Warning: No valid samples found for constraints [${minAvg}, ${maxAvg}] after ${maxAttempts} attempts.`);
+                }
+                
+                return sample;
+            }
+
+            generateRandomKSet(n, minK, maxK, minAvg, maxAvg) {
+                // Calculate target sum range
+                const loSum = Math.ceil(minAvg * n);
+                const hiSum = Math.floor(maxAvg * n);
+                
+                if (loSum > hiSum) return null;
+                
+                // Choose a random target sum
+                const targetSum = loSum + Math.floor(Math.random() * (hiSum - loSum + 1));
+                
+                // Generate k values that sum to targetSum
+                const kValues = [];
+                let remaining = targetSum;
+                
+                for (let i = 0; i < n; i++) {
+                    if (i === n - 1) {
+                        // Last element gets all remaining
+                        kValues.push(remaining);
+                    } else {
+                        // Random value between minK and min(maxK, remaining - (n-i-1)*minK)
+                        const maxPossible = Math.min(maxK, remaining - (n - i - 1) * minK);
+                        if (maxPossible < minK) return null;
+                        
+                        const k = minK + Math.floor(Math.random() * (maxPossible - minK + 1));
+                        kValues.push(k);
+                        remaining -= k;
+                    }
+                }
+                
+                // Shuffle the array to get random permutations
+                for (let i = kValues.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [kValues[i], kValues[j]] = [kValues[j], kValues[i]];
+                }
+                
+                return kValues;
             }
 
             // Copy MathJax formula to clipboard
@@ -1585,6 +1774,126 @@
                     denominator: bestResult.denominator,
                     sumK: bestResult.sumK
                 } : null;
+            }
+
+            // Calculate individual term values for the equation
+            calculateTermValues(kValues) {
+                const n = kValues.length;
+                const terms = [];
+                
+                if (n === 1) {
+                    const k0 = kValues[0];
+                    const term1 = 2;
+                    const term2 = -Math.pow(2, k0 - 1);
+                    const denominator = Math.pow(2, k0) - 3;
+                    
+                    terms.push({
+                        name: '2^{1}',
+                        value: term1,
+                        description: 'First positive term'
+                    });
+                    terms.push({
+                        name: `-2^{${k0-1}}`,
+                        value: term2,
+                        description: 'Second negative term'
+                    });
+                } else if (n === 2) {
+                    const k0 = kValues[0], k1 = kValues[1];
+                    const term1 = 6; // 2^1 * 3^1
+                    const term2 = Math.pow(2, k0 - 1);
+                    const term3 = -Math.pow(2, k0 + k1 - 1);
+                    const denominator = Math.pow(2, k0 + k1) - 9;
+                    
+                    terms.push({
+                        name: '2^{1} \\cdot 3^{1}',
+                        value: term1,
+                        description: 'Base term'
+                    });
+                    terms.push({
+                        name: `2^{${k0-1}}`,
+                        value: term2,
+                        description: 'First k-dependent term'
+                    });
+                    terms.push({
+                        name: `-2^{${k0+k1-1}}`,
+                        value: term3,
+                        description: 'Negative term'
+                    });
+                } else if (n === 3) {
+                    const k0 = kValues[0], k1 = kValues[1], k2 = kValues[2];
+                    const term1 = 18; // 2^1 * 3^2
+                    const term2 = 3 * Math.pow(2, k0 - 1);
+                    const term3 = Math.pow(2, k0 + k1 - 1);
+                    const term4 = -Math.pow(2, k0 + k1 + k2 - 1);
+                    
+                    terms.push({
+                        name: '2^{1} \\cdot 3^{2}',
+                        value: term1,
+                        description: 'Base term'
+                    });
+                    terms.push({
+                        name: `3^{1} \\cdot 2^{${k0-1}}`,
+                        value: term2,
+                        description: 'First k-dependent term'
+                    });
+                    terms.push({
+                        name: `2^{${k0+k1-1}}`,
+                        value: term3,
+                        description: 'Second k-dependent term'
+                    });
+                    terms.push({
+                        name: `-2^{${k0+k1+k2-1}}`,
+                        value: term4,
+                        description: 'Negative term'
+                    });
+                } else {
+                    // For n >= 4, use the general formula
+                    // Base term: 2 * 3^(n-1)
+                    const baseTerm = 2 * Math.pow(3, n - 1);
+                    terms.push({
+                        name: `2 \\cdot 3^{${n-1}}`,
+                        value: baseTerm,
+                        description: 'Base term'
+                    });
+                    
+                    // Add terms: 3^(n-2-i) * 2^(sum of first i+1 k values - 1) for i=0 to n-2
+                    for (let i = 0; i < n - 1; i++) {
+                        let powerSum = 0;
+                        for (let j = 0; j <= i; j++) {
+                            powerSum += kValues[j];
+                        }
+                        const coefficient = Math.pow(3, n - 2 - i);
+                        const termValue = coefficient * Math.pow(2, powerSum - 1);
+                        
+                        let powerSumStr = kValues[0];
+                        for (let j = 1; j <= i; j++) {
+                            powerSumStr += '+' + kValues[j];
+                        }
+                        
+                        terms.push({
+                            name: `3^{${n-2-i}} \\cdot 2^{${powerSumStr}-1}`,
+                            value: termValue,
+                            description: `Term ${i+2} (k₀ to k${i})`
+                        });
+                    }
+                    
+                    // Subtract the negative term: 2^(sum of all k values - 1)
+                    const sumK = kValues.reduce((a, b) => a + b, 0);
+                    const negTerm = -Math.pow(2, sumK - 1);
+                    
+                    let sumKStr = kValues[0];
+                    for (let j = 1; j < n; j++) {
+                        sumKStr += '+' + kValues[j];
+                    }
+                    
+                    terms.push({
+                        name: `-2^{${sumKStr}-1}`,
+                        value: negTerm,
+                        description: 'Final negative term'
+                    });
+                }
+                
+                return terms;
             }
 
             // Show toast notification
@@ -1900,7 +2209,7 @@
             html += `<strong>Nested Equation:</strong><br><span class="math-formula">$$${nestedEquation}$$<button class="clipboard-icon" data-formula="$$${nestedEquation}$$" onclick="analyzer.copyMathJaxToClipboard(this)"><i class="fas fa-copy"></i></button></span>`;
             html += `</div>`;
             
-            // Show walk steps
+            // Show walk steps first (fast)
             html += `<h5>Step-by-step Walk:</h5>`;
             for (const step of walkSteps) {
                 let stepClass = 'walk-step';
@@ -1916,13 +2225,70 @@
                 html += `<div class="${stepClass}">${content}</div>`;
             }
             
+            // Add term breakdown placeholder (lazy loaded)
+            html += '<div class="term-breakdown">';
+            html += '<h4>Term Breakdown (Numerator)</h4>';
+            html += '<div class="loading">Calculating term breakdown...</div>';
+            html += '</div>';
+            
             detailsDiv.innerHTML = html;
             detailsDiv.classList.add('show');
             
-            // Re-render MathJax for the new content
+            // Re-render MathJax for the initial content
             if (window.MathJax) {
                 MathJax.typesetPromise([detailsDiv]);
             }
+            
+            // Calculate terms asynchronously to avoid blocking UI
+            setTimeout(() => {
+                const terms = analyzer.calculateTermValues(kValues);
+                let termHtml = '';
+            
+                let numeratorSum = 0;
+                terms.forEach((term, termIndex) => {
+                    const isPositive = term.value >= 0;
+                    const sign = isPositive ? '+' : '';
+                    numeratorSum += term.value;
+                    
+                    termHtml += `<div class="term-item ${isPositive ? 'positive' : 'negative'}">`;
+                    termHtml += `<div class="term-name"><span class="math-formula">$${sign}${term.name}$</span></div>`;
+                    termHtml += `<div class="term-description">${term.description}</div>`;
+                    termHtml += `<div class="term-value ${isPositive ? 'positive' : 'negative'}">${term.value.toFixed(6)}</div>`;
+                    termHtml += '</div>';
+                    
+                    // Add cumulative sum and factorization (with performance check)
+                    termHtml += `<div class="term-cumulative">`;
+                    termHtml += `<div class="cumulative-sum">Cumulative: ${numeratorSum.toFixed(6)}</div>`;
+                    
+                    // Only show factorization for reasonable numbers to avoid performance issues
+                    const roundedSum = Math.round(numeratorSum);
+                    if (Math.abs(roundedSum) < 1000000 && Math.abs(roundedSum) > 1) {
+                        termHtml += `<div class="cumulative-factorization">`;
+                        termHtml += `<span class="math-formula">$${analyzer.factorize(roundedSum)}$</span>`;
+                        termHtml += `</div>`;
+                    }
+                    termHtml += `</div>`;
+                });
+                
+                // Get denominator once to avoid repeated calculation
+                const result = analyzer.calculateX(kValues);
+                termHtml += '<div class="term-summary">';
+                termHtml += `Numerator Sum: ${numeratorSum.toFixed(6)}<br>`;
+                termHtml += `Denominator: ${result.denominator}<br>`;
+                termHtml += `Final x = ${numeratorSum.toFixed(6)} / ${result.denominator} = ${x.toFixed(10)}`;
+                termHtml += '</div>';
+                
+                // Update the HTML with the calculated terms
+                detailsDiv.innerHTML = detailsDiv.innerHTML.replace(
+                    '<div class="loading">Calculating term breakdown...</div>',
+                    termHtml
+                );
+                
+                // Re-render MathJax for the new content
+                if (window.MathJax) {
+                    MathJax.typesetPromise([detailsDiv]);
+                }
+            }, 10);
         }
 
         function displaySingleResult(kValues, result, verified) {
@@ -1952,6 +2318,36 @@
             html += `<strong>Expanded Equation:</strong><br><span class="math-formula">$$${analyzer.generateExpandedEquation(kValues)}$$<button class="clipboard-icon" data-formula="$$${analyzer.generateExpandedEquation(kValues)}$$" onclick="analyzer.copyMathJaxToClipboard(this)"><i class="fas fa-copy"></i></button></span><br>`;
             html += `<strong>Verification:</strong> ${verified ? '✓ PASSED' : '✗ FAILED'}`;
             html += `<br><em style="color: #666;">Click to see walk evaluation and nested equation</em>`;
+            html += '</div>';
+            
+            // Add term breakdown
+            const terms = analyzer.calculateTermValues(kValues);
+            html += '<div class="term-breakdown">';
+            html += '<h4>Term Breakdown (Numerator)</h4>';
+            
+            let numeratorSum = 0;
+            terms.forEach((term, index) => {
+                const isPositive = term.value >= 0;
+                const sign = isPositive ? '+' : '';
+                numeratorSum += term.value;
+                
+                html += `<div class="term-item ${isPositive ? 'positive' : 'negative'}">`;
+                html += `<div class="term-name"><span class="math-formula">$${sign}${term.name}$</span></div>`;
+                html += `<div class="term-description">${term.description}</div>`;
+                html += `<div class="term-value ${isPositive ? 'positive' : 'negative'}">${term.value.toFixed(6)}</div>`;
+                html += '</div>';
+                
+                // Add cumulative sum only (no factorization for performance)
+                html += `<div class="term-cumulative">`;
+                html += `<div class="cumulative-sum">Cumulative: ${numeratorSum.toFixed(6)}</div>`;
+                html += `</div>`;
+            });
+            
+            html += '<div class="term-summary">';
+            html += `Numerator Sum: ${numeratorSum.toFixed(6)}<br>`;
+            html += `Denominator: ${result.denominator}<br>`;
+            html += `Final x = ${numeratorSum.toFixed(6)} / ${result.denominator} = ${result.x.toFixed(10)}`;
+            html += '</div>';
             html += '</div>';
             
             // Add walk details container
@@ -2035,7 +2431,7 @@
             html += `<strong>Denominator:</strong> ${denominator} = <span class="math-formula">$${analyzer.factorize(denominator)}$<button class="clipboard-icon" data-formula="$${analyzer.factorize(denominator)}$" onclick="analyzer.copyMathJaxToClipboard(this)"><i class="fas fa-copy"></i></button></span><br>`;
             html += `<strong>Expanded Equation:</strong><br><span class="math-formula">$$${analyzer.generateExpandedEquation(kValues)}$$<button class="clipboard-icon" data-formula="$$${analyzer.generateExpandedEquation(kValues)}$$" onclick="analyzer.copyMathJaxToClipboard(this)"><i class="fas fa-copy"></i></button></span><br>`;
             html += `<strong>Verification:</strong> ${verified ? '✓ PASSED' : '✗ FAILED'}`;
-            html += `<br><em style="color: #666;">Click to see walk evaluation and nested equation</em>`;
+            html += `<br><em style="color: #666;">Click to see walk evaluation, nested equation, and term breakdown</em>`;
             html += '</div>';
             
             // Add walk details container
@@ -2075,7 +2471,7 @@
             html += `<strong>Denominator:</strong> ${denominator} = <span class="math-formula">$${analyzer.factorize(denominator)}$<button class="clipboard-icon" data-formula="$${analyzer.factorize(denominator)}$" onclick="analyzer.copyMathJaxToClipboard(this)"><i class="fas fa-copy"></i></button></span><br>`;
             html += `<strong>Expanded Equation:</strong><br><span class="math-formula">$$${analyzer.generateExpandedEquation(kValues)}$$<button class="clipboard-icon" data-formula="$$${analyzer.generateExpandedEquation(kValues)}$$" onclick="analyzer.copyMathJaxToClipboard(this)"><i class="fas fa-copy"></i></button></span><br>`;
             html += `<strong>Verification:</strong> ${verified ? '✓ PASSED' : '✗ FAILED'}`;
-            html += `<br><em style="color: #666;">Click to see walk evaluation and nested equation</em>`;
+            html += `<br><em style="color: #666;">Click to see walk evaluation, nested equation, and term breakdown</em>`;
             html += '</div>';
             
             // Add walk details container
