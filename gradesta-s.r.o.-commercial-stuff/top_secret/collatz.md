@@ -355,4 +355,4 @@ $$
 
 $l_i$ are positive integers >= 0.
 
-The above sum is not divisible by $D = 2^{l_0+1}-3^n$ if $\frac{N}{D} > 0$ and $n>1$.
+The above sum is not divisible by $D = 2^{l_n+1}-3^n$ if $\frac{N}{D} > 0$ and $n>1$.

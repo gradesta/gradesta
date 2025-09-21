@@ -88,11 +88,12 @@ def calculate_N(n, l_values):
     return N
 
 
-def calculate_D(n, l_0):
+def calculate_D(n, l_values):
     """
-    Calculate D = 2^(l_0+1) - 3^n
+    Calculate D = 2^(l_n+1) - 3^n where l_n is the largest l_i term
     """
-    return (2 ** (l_0 + 1)) - (3 ** n)
+    l_n = l_values[-1]  # Since l_i < l_(i+1), the last term is the largest
+    return (2 ** (l_n + 1)) - (3 ** n)
 
 
 def is_valid_l_sequence(l_values):
@@ -133,16 +134,20 @@ def test_conjecture(n, l_values, verbose=True):
     Returns (is_divisible, N, D, N_factors, D_factors, is_positive_ratio)
     """
     N = calculate_N(n, l_values)
-    D = calculate_D(n, l_values[0])
-    
-    N_factors = prime_factors(N)
-    D_factors = prime_factors(D)
+    D = calculate_D(n, l_values)
     
     # Check if N/D is positive (conjecture only applies when positive)
     is_positive_ratio = (N * D > 0) if D != 0 else False
     
-    # Check divisibility
+    # Check divisibility first (fast operation)
     is_divisible = (N % D == 0) if D != 0 else False
+    
+    # Only compute prime factorizations if we found divisibility
+    N_factors = None
+    D_factors = None
+    if is_divisible:
+        N_factors = prime_factors(N)
+        D_factors = prime_factors(D)
     
     if verbose:
         print(f"\n{'='*60}")
@@ -150,8 +155,9 @@ def test_conjecture(n, l_values, verbose=True):
         print(f"{'='*60}")
         print(f"N = {N}")
         print(f"D = {D}")
-        print(f"N factors: {format_prime_factors(N_factors)}")
-        print(f"D factors: {format_prime_factors(D_factors)}")
+        if is_divisible:
+            print(f"N factors: {format_prime_factors(N_factors)}")
+            print(f"D factors: {format_prime_factors(D_factors)}")
         print(f"Is N/D positive? {is_positive_ratio}")
         print(f"Is N divisible by D? {is_divisible}")
         if is_divisible:
@@ -184,14 +190,14 @@ def random_sample_test(max_n=300, max_l_value=600, samples_per_n=100):
     random.seed(42)
     
     for n in range(2, max_n + 1):
-        if n % 50 == 0 or n <= 10:  # Show progress every 50 n values
+        if n % 100 == 0 or n <= 10:  # Show progress every 100 n values for large sample
             print(f"\nTesting n = {n}")
         
-        # For large n, we need larger l_0 values to get positive D
-        # D = 2^(l_0+1) - 3^n, so we need 2^(l_0+1) > 3^n
-        # This means l_0+1 > n*log_2(3) ≈ n*1.585
-        min_l_0 = int(n * 1.585)
-        max_l_0 = min(min_l_0 + 20, max_l_value)  # Sample in a reasonable range
+        # For large n, we need larger l_n values to get positive D
+        # D = 2^(l_n+1) - 3^n, so we need 2^(l_n+1) > 3^n
+        # This means l_n+1 > n*log_2(3) ≈ n*1.585
+        min_l_n = int(n * 1.585)
+        max_l_n = min(min_l_n + 20, max_l_value)  # Sample in a reasonable range
         
         samples_tested = 0
         for _ in range(samples_per_n * 3):  # Try more samples to account for invalid ones
@@ -205,12 +211,15 @@ def random_sample_test(max_n=300, max_l_value=600, samples_per_n=100):
             
             for i in range(1, n):
                 # Next value must be larger than previous
-                next_val = current_val + random.randint(1, min(10, max_l_value - current_val))
+                max_increment = min(10, max_l_value - current_val)
+                if max_increment <= 0:
+                    break  # Can't continue, skip this sequence
+                next_val = current_val + random.randint(1, max_increment)
                 l_values.append(next_val)
                 current_val = next_val
             
-            # Check if sequence is valid (strictly increasing)
-            if not is_valid_l_sequence(l_values):
+            # Check if sequence is valid (strictly increasing and has correct length)
+            if len(l_values) != n or not is_valid_l_sequence(l_values):
                 continue
                 
             total_tests += 1
@@ -226,14 +235,15 @@ def random_sample_test(max_n=300, max_l_value=600, samples_per_n=100):
                     print(f"\n🚨 COUNTEREXAMPLE FOUND! 🚨")
                     print(f"n={n}, l_values={l_values}")
                     print(f"N={N}, D={D}")
-                    print(f"N factors: {format_prime_factors(N_factors)}")
-                    print(f"D factors: {format_prime_factors(D_factors)}")
+                    if N_factors is not None and D_factors is not None:
+                        print(f"N factors: {format_prime_factors(N_factors)}")
+                        print(f"D factors: {format_prime_factors(D_factors)}")
                     print(f"N/D = {N // D}")
-                elif n <= 10:  # Only show details for small n
+                elif n <= 5:  # Only show details for very small n with large samples
                     print(f"✓ n={n}, l={l_values} → N={N}, D={D} (not divisible)")
         
-        # Show progress every 50 n values
-        if n % 50 == 0:
+        # Show progress every 100 n values for large sample
+        if n % 100 == 0:
             print(f"  Progress: n={n}, total_tests={total_tests}, positive_tests={positive_tests}, counterexamples={len(counterexamples)}")
     
     print(f"\n{'='*60}")
@@ -275,8 +285,8 @@ def detailed_test_specific_cases():
 
 
 if __name__ == "__main__":
-    # Run random sampling test
-    counterexamples = random_sample_test(max_n=300, max_l_value=600, samples_per_n=50)
+    # Run random sampling test with much larger sample size
+    counterexamples = random_sample_test(max_n=300, max_l_value=600, samples_per_n=1000)
     
     # Run detailed tests
     detailed_test_specific_cases()
