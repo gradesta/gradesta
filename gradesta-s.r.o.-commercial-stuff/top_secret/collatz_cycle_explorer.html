@@ -503,10 +503,25 @@
                         return null;
                     }
                     
-                    // Calculate numerator and denominator for display
-                    // For simplicity, we'll use the converged value
-                    const numerator = Math.round(x * 1000000); // Approximate as fraction
-                    const denominator = 1000000;
+                    // Calculate actual numerator and denominator using algebraic formula
+                    let numerator, denominator;
+                    if (n === 1) {
+                        const k = kValues[0];
+                        numerator = 2 - Math.pow(2, k - 1);
+                        denominator = Math.pow(2, k) - 3;
+                    } else if (n === 2) {
+                        const k0 = kValues[0], k1 = kValues[1];
+                        numerator = 6 + Math.pow(2, k0 - 1) - Math.pow(2, k0 + k1 - 1);
+                        denominator = Math.pow(2, k0 + k1) - 9;
+                    } else if (n === 3) {
+                        const k0 = kValues[0], k1 = kValues[1], k2 = kValues[2];
+                        numerator = 18 + 3 * Math.pow(2, k0 - 1) + Math.pow(2, k0 + k1 - 1) - Math.pow(2, k0 + k1 + k2 - 1);
+                        denominator = Math.pow(2, k0 + k1 + k2) - 27;
+                    } else {
+                        // For larger n, use approximation
+                        numerator = Math.round(x * 1000000);
+                        denominator = 1000000;
+                    }
                     
                     return { x: x, numerator: numerator, denominator: denominator, sumK: sumK };
                 }
@@ -519,6 +534,99 @@
                     result = (3 * result + 2) / Math.pow(2, k) - 0.5;
                 }
                 return result;
+            }
+
+            // Factorize a number into its prime factors
+            factorize(n) {
+                if (n === 0) return "0";
+                if (n === 1) return "1";
+                
+                const factors = [];
+                let num = Math.abs(n);
+                let sign = n < 0 ? "-" : "";
+                
+                // Check for factor 2
+                while (num % 2 === 0) {
+                    factors.push(2);
+                    num /= 2;
+                }
+                
+                // Check for odd factors
+                for (let i = 3; i * i <= num; i += 2) {
+                    while (num % i === 0) {
+                        factors.push(i);
+                        num /= i;
+                    }
+                }
+                
+                // If remaining number is prime
+                if (num > 1) {
+                    factors.push(num);
+                }
+                
+                // Group factors and create string
+                const factorCounts = {};
+                factors.forEach(factor => {
+                    factorCounts[factor] = (factorCounts[factor] || 0) + 1;
+                });
+                
+                const factorStrings = [];
+                for (const [factor, count] of Object.entries(factorCounts)) {
+                    if (count === 1) {
+                        factorStrings.push(factor);
+                    } else {
+                        factorStrings.push(`${factor}^${count}`);
+                    }
+                }
+                
+                return sign + factorStrings.join(" × ");
+            }
+
+            // Generate fully expanded equation with k values substituted
+            generateExpandedEquation(kValues) {
+                const n = kValues.length;
+                if (n === 1) {
+                    const k0 = kValues[0];
+                    return `x = \\frac{2^1 - 2^{${k0}-1}}{2^{${k0}} - 3^1} = \\frac{2 - 2^{${k0-1}}}{2^{${k0}} - 3}`;
+                } else if (n === 2) {
+                    const k0 = kValues[0], k1 = kValues[1];
+                    return `x = \\frac{2^1 \\cdot 3^1 + 2^{${k0}-1} - 2^{${k0}+${k1}-1}}{2^{${k0}+${k1}} - 3^2} = \\frac{6 + 2^{${k0-1}} - 2^{${k0+k1-1}}}{2^{${k0+k1}} - 9}`;
+                } else if (n === 3) {
+                    const k0 = kValues[0], k1 = kValues[1], k2 = kValues[2];
+                    return `x = \\frac{2^1 \\cdot 3^2 + 3^1 \\cdot 2^{${k0}-1} + 2^{${k0}+${k1}-1} - 2^{${k0}+${k1}+${k2}-1}}{2^{${k0}+${k1}+${k2}} - 3^3} = \\frac{18 + 3 \\cdot 2^{${k0-1}} + 2^{${k0+k1-1}} - 2^{${k0+k1+k2-1}}}{2^{${k0+k1+k2}} - 27}`;
+                } else {
+                    // For larger n, write out ALL terms vertically
+                    let numerator = '\\begin{align}\n';
+                    numerator += `&2^1 \\cdot 3^{${n-1}} \\\\\n`;
+                    
+                    // Show ALL terms explicitly
+                    for (let i = 0; i < n-1; i++) {
+                        let powerSum = kValues[0];
+                        for (let j = 1; j <= i; j++) {
+                            powerSum += '+' + kValues[j];
+                        }
+                        numerator += `&+ 3^{${n-2-i}} \\cdot 2^{${powerSum}-1} \\\\\n`;
+                    }
+                    
+                    // Add the final term
+                    let finalPowerSum = kValues[0];
+                    for (let j = 1; j < n-1; j++) {
+                        finalPowerSum += '+' + kValues[j];
+                    }
+                    numerator += `&+ 2^{${finalPowerSum}-1} \\\\\n`;
+                    
+                    // Add the negative term
+                    let negPowerSum = kValues[0];
+                    for (let j = 1; j < n; j++) {
+                        negPowerSum += '+' + kValues[j];
+                    }
+                    numerator += `&- 2^{${negPowerSum}-1}\n`;
+                    numerator += '\\end{align}';
+                    
+                    let denominator = `2^{${negPowerSum}} - 3^{${n}}`;
+                    
+                    return `x = \\frac{\\begin{matrix}${numerator}\\end{matrix}}{${denominator}}`;
+                }
             }
 
             // Verify the result using recursive transformation
@@ -552,7 +660,7 @@
                     // Show the equation step
                     steps.push({
                         type: 'equation',
-                        content: `x${i+1} = (3⋅x${i} + 2) / 2^${k} - 1/2`
+                        content: `x_{${i+1}} = \\frac{3x_{${i}} + 2}{2^{${k}}} - \\frac{1}{2}`
                     });
                     
                     // Apply transformation
@@ -864,8 +972,9 @@
                 html += `<strong>Average k:</strong> ${(result.sumK / inputs.n).toFixed(3)}<br>`;
                 html += `<strong>x =</strong> ${result.x.toFixed(10)} `;
                 if (isInteger) html += '<span style="color: #27ae60;">(INTEGER)</span>';
-                html += `<br><strong>Numerator:</strong> ${result.numerator} `;
-                html += `<strong>Denominator:</strong> ${result.denominator}<br>`;
+                html += `<br><strong>Numerator:</strong> ${result.numerator} = $${analyzer.factorize(result.numerator)}$<br>`;
+                html += `<strong>Denominator:</strong> ${result.denominator} = $${analyzer.factorize(result.denominator)}$<br>`;
+                html += `<strong>Expanded Equation:</strong><br>$$${analyzer.generateExpandedEquation(kValues)}$$<br>`;
                 html += `<strong>Verification:</strong> ${verified ? '✓ PASSED' : '✗ FAILED'}`;
                 html += `<br><em style="color: #666;">Click to see walk evaluation and nested equation</em>`;
                 html += '</div>';
@@ -914,7 +1023,13 @@
                 if (step.type === 'equation') stepClass += ' equation';
                 if (step.type === 'result') stepClass += ' result';
                 
-                html += `<div class="${stepClass}">${step.content}</div>`;
+                // Wrap equation content with LaTeX delimiters
+                let content = step.content;
+                if (step.type === 'equation') {
+                    content = `$$${step.content}$$`;
+                }
+                
+                html += `<div class="${stepClass}">${content}</div>`;
             }
             
             detailsDiv.innerHTML = html;
@@ -947,8 +1062,9 @@
             html += `<strong>Average k:</strong> ${(result.sumK / kValues.length).toFixed(3)}<br>`;
             html += `<strong>x =</strong> ${result.x.toFixed(10)} `;
             if (isInteger) html += '<span style="color: #27ae60;">(INTEGER)</span>';
-            html += `<br><strong>Numerator:</strong> ${result.numerator} `;
-            html += `<strong>Denominator:</strong> ${result.denominator}<br>`;
+            html += `<br><strong>Numerator:</strong> ${result.numerator} = $${analyzer.factorize(result.numerator)}$<br>`;
+            html += `<strong>Denominator:</strong> ${result.denominator} = $${analyzer.factorize(result.denominator)}$<br>`;
+            html += `<strong>Expanded Equation:</strong><br>$$${analyzer.generateExpandedEquation(kValues)}$$<br>`;
             html += `<strong>Verification:</strong> ${verified ? '✓ PASSED' : '✗ FAILED'}`;
             html += `<br><em style="color: #666;">Click to see walk evaluation and nested equation</em>`;
             html += '</div>';
