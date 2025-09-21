@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Collatz Cycle Calculator Test</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                processEscapes: true,
+                processEnvironments: true
+            }
+        };
+    </script>
+</head>
+<body>
+    <h1>Collatz Cycle Calculator Test</h1>
+    <div id="test-results"></div>
+
+    <script>
+        // Copy the analyzer class from the main file
+        class CollatzCycleAnalyzer {
+            calculateX(kValues) {
+                const n = kValues.length;
+                if (n < 1) return null;
+
+                const sumK = kValues.reduce((a, b) => a + b, 0);
+
+                if (n === 1) {
+                    const numerator = Math.pow(2, 1) - Math.pow(2, kValues[0] - 1);
+                    const denominator = Math.pow(2, kValues[0]) - Math.pow(3, 1);
+                    return { x: numerator / denominator, numerator, denominator, sumK };
+                } else {
+                    const powerKLastPlus1 = Math.pow(2, kValues[n-1] + 1);
+                    
+                    let numeratorTerm = 0;
+                    for (let i = 0; i < n; i++) {
+                        if (i === 0) {
+                            const sumKUpToNMinus2 = kValues.slice(0, -1).reduce((a, b) => a + b, 0);
+                            numeratorTerm += Math.pow(2, sumKUpToNMinus2 + 1);
+                        } else if (i === n-1) {
+                            numeratorTerm += 1;
+                        } else {
+                            const sumKFromIToNMinus2 = kValues.slice(i, -1).reduce((a, b) => a + b, 0);
+                            numeratorTerm += Math.pow(2, sumKFromIToNMinus2);
+                        }
+                    }
+                    
+                    const numerator = powerKLastPlus1 * numeratorTerm - Math.pow(2, n);
+                    const powerSumK = Math.pow(2, sumK);
+                    const denominatorFactor = Math.pow(3, n) - Math.pow(2, n-2);
+                    const denominator = powerSumK * denominatorFactor;
+                    
+                    return { x: numerator / denominator, numerator, denominator, sumK };
+                }
+            }
+
+            verifyX(x, kValues) {
+                const n = kValues.length;
+                let currentX = x;
+                
+                for (let i = 0; i < n; i++) {
+                    currentX = (3 * currentX + 2) / Math.pow(2, kValues[i]) - 0.5;
+                }
+                
+                return Math.abs(currentX - x) < 1e-10;
+            }
+        }
+
+        // Test cases
+        const analyzer = new CollatzCycleAnalyzer();
+        const testCases = [
+            [2],      // n=1 case
+            [2, 3],   // n=2 case
+            [2, 3, 1], // n=3 case
+            [1, 1, 1], // n=3 case with all 1s
+            [2, 2, 2], // n=3 case with all 2s
+        ];
+
+        let html = '<h2>Test Results</h2>';
+        
+        for (const kValues of testCases) {
+            const result = analyzer.calculateX(kValues);
+            const verified = analyzer.verifyX(result.x, kValues);
+            
+            html += `<div style="border: 1px solid #ccc; padding: 10px; margin: 10px 0;">`;
+            html += `<strong>k-values:</strong> [${kValues.join(', ')}]<br>`;
+            html += `<strong>x =</strong> ${result.x.toFixed(10)}<br>`;
+            html += `<strong>Numerator:</strong> ${result.numerator}<br>`;
+            html += `<strong>Denominator:</strong> ${result.denominator}<br>`;
+            html += `<strong>Sum k:</strong> ${result.sumK}<br>`;
+            html += `<strong>Verification:</strong> ${verified ? '✓ PASSED' : '✗ FAILED'}<br>`;
+            
+            if (Math.abs(result.x - Math.round(result.x)) < 1e-10) {
+                html += `<strong style="color: green;">INTEGER SOLUTION!</strong>`;
+            }
+            html += '</div>';
+        }
+
+        document.getElementById('test-results').innerHTML = html;
+    </script>
+</body>
+</html>
