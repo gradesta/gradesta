@@ -342,13 +342,45 @@ $$
 
 Now $x$ needs to be positive. So $C$ must be negative and $run$ must be less than $rise$ or $C$ must be postive and $run$ must be greater than $rise$.
 
-We can instantly rule out the second case as the definition of $rise$ and $run$ is:
+Lets simplify $C \cdot run$:
 
-$$\frac{rise}{run} = \frac{2^4 \cdot 3^4}{2^{k_0+k_1+k_2+k_3}}$$
+$$
+(\left(\frac{2 \cdot 3^3}{2^{\sum k_i}} - \frac{3^3 \cdot 2^{k_0-1}}{2^{\sum k_i}}\right) + \left(\frac{2 \cdot 3^2}{2^{k_1+k_2+k_3}} - \frac{3^2 \cdot 2^{k_1-1}}{2^{k_1+k_2+k_3}}\right) + \left(\frac{2 \cdot 3}{2^{k_2+k_3}} - \frac{3 \cdot 2^{k_2-1}}{2^{k_2+k_3}}\right) + \left(\frac{2}{2^{k_3}} - \frac{1}{2}\right)) \cdot 2^{k_0+k_1+k_2+k_3}
+$$
 
-And I happen to know that the average value of $k_i$ cannot be greater than 2.
+Then multiplying accross we get:
 
-So $rise$ must be greater than $run$. But if that average holds. It is impossible for $C$ to be negative. So the only loops beyond the trivial one must happen in the negative domain.
+$$
+x = \frac{2 \cdot 3^3 - 3^3 \cdot 2^{k_0-1} + 2 \cdot 3^2 \cdot 2^{k_0} - 3^2 \cdot 2^{k_0+k_1-1} + 3 \cdot 2^{k_0+k_1+1} - 3 \cdot 2^{k_0+k_1+k_2-1} + 2^{k_0+k_1+k_2} - 2^{k_0+k_1+k_2+k_3-1}}{2^{k_0+k_1+k_2+k_3}-3^n}
+$$
+
+Now lets define subvariables:
+
+$$
+\begin{aligned}
+a &= 2 \cdot 3^3 - 2^{k_0-1} \cdot 3^3 \\
+b &= 2^{1+k_0} \cdot 3^2 -  2^{k_0+k_1-1} \cdot 3^2 \\
+c &= 2^{k_0+k_1+1} \cdot 3^1 - \cdot 2^{k_0+k_1+k_2-1} \cdot 3 \\
+d &= 2^{k_0+k_1+k_2} \cdot 3^0 - 2^{k_0+k_1+k_2+k_3-1}
+\end{aligned}
+$$
+
+And rewrite:
+
+$$
+x = \frac{a + b + c + d}{2^{k_0+k_1+k_2+k_3}-3^n}
+$$
+
+Now we can make some deductions:
+
+$$
+\begin{aligned}
+&\text{a} \leq 0 \quad \text{when} \quad k_0 \geq 2, \quad \text{and} \quad \text{a} > 0 \quad \text{when} \quad k_0 = 1 \\[1em]
+&\text{b} \leq 0 \quad \text{when} \quad k_1 \geq 2, \quad \text{and} \quad \text{b} > 0 \quad \text{when} \quad k_1 = 1 \\[1em]
+&\text{c} \leq 0 \quad \text{when} \quad k_2 \geq 2, \quad \text{and} \quad \text{c} > 0 \quad \text{when} \quad k_2 = 1 \\[1em]
+&\text{d} \leq 0 \quad \text{when} \quad k_3 \geq 2, \quad \text{and} \quad \text{d} > 0 \quad \text{when} \quad k_3 = 1 \\
+\end{aligned}
+$$
 
 
 Collatz in $2^k$ agnostic arithmatic
