@@ -2,6 +2,86 @@
 <html>
 <head>
     <title>Test K Generation Algorithm</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .math-formula {
+            position: relative;
+            display: inline-block;
+            margin: 5px;
+        }
+
+        .clipboard-icon {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            font-size: 12px;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .clipboard-icon:hover {
+            background: #0056b3;
+            transform: scale(1.1);
+        }
+
+        .math-formula:hover .clipboard-icon {
+            opacity: 1;
+        }
+
+        .clipboard-icon.copied {
+            background: #28a745;
+        }
+
+        .clipboard-icon.copied i {
+            display: none;
+        }
+
+        .clipboard-icon.copied::after {
+            content: "\f00c";
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+        }
+
+        /* Toast notification styles */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #28a745;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .toast i {
+            font-size: 16px;
+        }
+    </style>
 </head>
 <body>
     <h1>Test K Generation Algorithm</h1>
@@ -167,6 +247,100 @@
                     sum,
                     avg
                 };
+            }
+
+            // Copy MathJax formula to clipboard
+            copyMathJaxToClipboard(button) {
+                // Get the formula from the data attribute
+                const formula = button.getAttribute('data-formula');
+                if (!formula) {
+                    console.error('No formula found in data attribute');
+                    this.showToast('No formula to copy', 'error');
+                    return;
+                }
+                
+                // Extract the LaTeX from the MathJax formula
+                const latex = formula.replace(/\$/g, '');
+                
+                // Show toast notification
+                this.showToast('Formula copied to clipboard!');
+                
+                // Copy to clipboard
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(latex).then(() => {
+                        // Visual feedback
+                        button.classList.add('copied');
+                        
+                        setTimeout(() => {
+                            button.classList.remove('copied');
+                        }, 2000);
+                    }).catch(err => {
+                        console.error('Failed to copy: ', err);
+                        this.fallbackCopy(latex, button);
+                    });
+                } else {
+                    // Fallback for older browsers or non-secure contexts
+                    this.fallbackCopy(latex, button);
+                }
+            }
+
+            // Fallback copy method for older browsers
+            fallbackCopy(text, button) {
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-999999px';
+                textArea.style.top = '-999999px';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                
+                try {
+                    document.execCommand('copy');
+                    button.classList.add('copied');
+                    
+                    setTimeout(() => {
+                        button.classList.remove('copied');
+                    }, 2000);
+                } catch (err) {
+                    console.error('Fallback copy failed: ', err);
+                    this.showToast('Failed to copy formula', 'error');
+                } finally {
+                    document.body.removeChild(textArea);
+                }
+            }
+
+            // Show toast notification
+            showToast(message, type = 'success') {
+                // Remove existing toast
+                const existingToast = document.querySelector('.toast');
+                if (existingToast) {
+                    existingToast.remove();
+                }
+
+                // Create new toast
+                const toast = document.createElement('div');
+                toast.className = 'toast';
+                
+                const icon = type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle';
+                toast.innerHTML = `<i class="fas ${icon}"></i> ${message}`;
+                
+                document.body.appendChild(toast);
+                
+                // Show toast
+                setTimeout(() => {
+                    toast.classList.add('show');
+                }, 100);
+                
+                // Hide toast after 3 seconds
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                    setTimeout(() => {
+                        if (toast.parentNode) {
+                            toast.parentNode.removeChild(toast);
+                        }
+                    }, 300);
+                }, 3000);
             }
         }
 
