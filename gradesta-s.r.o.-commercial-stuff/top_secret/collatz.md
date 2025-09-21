@@ -357,12 +357,12 @@ $$
 Now lets define subvariables:
 
 $$
-\begin{aligned}
-a &= 2 \cdot 3^3 - 2^{k_0-1} \cdot 3^3 \\
-b &= 2^{1+k_0} \cdot 3^2 -  2^{k_0+k_1-1} \cdot 3^2 \\
-c &= 2^{k_0+k_1+1} \cdot 3^1 - \cdot 2^{k_0+k_1+k_2-1} \cdot 3 \\
-d &= 2^{k_0+k_1+k_2} \cdot 3^0 - 2^{k_0+k_1+k_2+k_3-1}
-\end{aligned}
+\begin{array}{rlcccccc}
+a &= & 2              & \cdot 3^3 & - & 2^{k_0-1}             & \cdot 3^3 \\
+b &= & 2^{1+k_0}      & \cdot 3^2 & - & 2^{k_0+k_1-1}         & \cdot 3^2 \\
+c &= & 2^{k_0+k_1+1}  & \cdot 3^1 & - & 2^{k_0+k_1+k_2-1}     & \cdot 3^1 \\
+d &= & 2^{k_0+k_1+k_2}& \cdot 3^0 & - & 2^{k_0+k_1+k_2+k_3-1} & \cdot 3^0 \\
+\end{array}
 $$
 
 And rewrite:
