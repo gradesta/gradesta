@@ -182,6 +182,16 @@
             box-shadow: 0 5px 15px rgba(23, 162, 184, 0.4);
         }
 
+        .btn-danger {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(220, 53, 69, 0.4);
+        }
+
         .results {
             background: white;
             border-radius: 10px;
@@ -666,6 +676,7 @@
                     <button class="btn btn-primary" onclick="generateAllPermutations()">Generate All Permutations</button>
                     <button class="btn btn-secondary" onclick="generateRandomSample()">Random Sample (50)</button>
                     <button class="btn btn-warning" onclick="calculateMaxX()">Find Max X</button>
+                    <button class="btn btn-danger" onclick="calculateMaxXK0Equals1()">Max X (k₀=1)</button>
                     <button class="btn btn-info" onclick="openMaxXGraphModal()">Max X Graph</button>
                     <button class="btn btn-success" onclick="clearResults()">Clear Results</button>
                 </div>
@@ -1420,6 +1431,92 @@
                 }
             }
 
+            // Find optimal k values that maximize x for given n with k0 = 1
+            findOptimalKValuesK0Equals1(n) {
+                // For optimization with k0 = 1, we want to maximize x
+                // by distributing the remaining k values optimally
+                
+                let bestX = -Infinity;
+                let bestKValues = null;
+                let bestResult = null;
+                
+                // Calculate minimum sum needed for positive denominator
+                const minSum = Math.ceil(Math.log2(Math.pow(3, n))) + 1;
+                
+                // With k0 = 1, we need at least (minSum - 1) more units
+                const remainingSum = minSum - 1;
+                
+                if (remainingSum < 0) {
+                    return null; // Impossible constraint
+                }
+                
+                // Try different distributions of the remaining sum among k1, k2, ..., k(n-1)
+                // Strategy: concentrate remaining value in k1 (second term)
+                for (let k1 = Math.max(1, remainingSum - (n - 2)); k1 <= remainingSum - (n - 2); k1++) {
+                    const kValues = [1, k1]; // k0 = 1, k1 = k1
+                    let remaining = remainingSum - k1;
+                    
+                    // Distribute remaining among k2, k3, ..., k(n-1)
+                    for (let i = 2; i < n; i++) {
+                        if (i === n - 1) {
+                            kValues.push(remaining); // Last one gets all remaining
+                        } else {
+                            const maxForThis = remaining - (n - i - 1); // Leave at least 1 for each remaining
+                            const val = Math.min(maxForThis, Math.max(1, Math.floor(remaining / (n - i))));
+                            kValues.push(val);
+                            remaining -= val;
+                        }
+                    }
+                    
+                    const result = this.calculateX(kValues);
+                    if (result && result.x > bestX) {
+                        bestX = result.x;
+                        bestKValues = [...kValues];
+                        bestResult = result;
+                    }
+                }
+                
+                // Also try some balanced distributions
+                for (let totalSum = minSum; totalSum <= minSum + 10; totalSum++) {
+                    const remainingSum = totalSum - 1; // k0 = 1
+                    
+                    if (remainingSum < n - 1) continue; // Need at least 1 for each remaining k
+                    
+                    // Try different distributions
+                    for (let k1 = Math.max(1, remainingSum - (n - 2)); k1 <= remainingSum - (n - 2); k1++) {
+                        const kValues = [1, k1];
+                        let remaining = remainingSum - k1;
+                        
+                        // Distribute remaining among other k values
+                        for (let i = 2; i < n; i++) {
+                            if (i === n - 1) {
+                                kValues.push(remaining);
+                            } else {
+                                const maxForThis = remaining - (n - i - 1);
+                                const val = Math.min(maxForThis, Math.max(1, Math.floor(remaining / (n - i))));
+                                kValues.push(val);
+                                remaining -= val;
+                            }
+                        }
+                        
+                        const result = this.calculateX(kValues);
+                        if (result && result.x > bestX) {
+                            bestX = result.x;
+                            bestKValues = [...kValues];
+                            bestResult = result;
+                        }
+                    }
+                }
+                
+                return bestResult ? {
+                    kValues: bestKValues,
+                    x: bestResult.x,
+                    numerator: bestResult.numerator,
+                    denominator: bestResult.denominator,
+                    sumK: bestResult.sumK
+                } : null;
+            }
+
             // Find optimal k values that maximize x for given n
             findOptimalKValues(n) {
                 // For optimization, we want to maximize x
@@ -1891,6 +1988,26 @@
             // Display the result
             displayMaxXResult(n, result);
         }
+
+        function calculateMaxXK0Equals1() {
+            const n = parseInt(document.getElementById('cycleLength').value);
+            
+            if (n < 1) {
+                alert('Please enter a positive cycle length.');
+                return;
+            }
+            
+            // Find the optimal k values that maximize x with k0 = 1
+            const result = analyzer.findOptimalKValuesK0Equals1(n);
+            
+            if (!result) {
+                alert('No valid solution found for the given constraints.');
+                return;
+            }
+            
+            // Display the result
+            displayMaxXResultK0Equals1(n, result);
+        }
         
         function displayMaxXResult(n, result) {
             const resultsDiv = document.getElementById('results');
@@ -1906,6 +2023,46 @@
             
             let html = `<div class="equation-header">`;
             html += `<h3>Maximum X Result for n=${n}</h3>`;
+            html += `<div>General equation: <span class="math-formula">$${generalEquation}$<button class="clipboard-icon" data-formula="$${generalEquation}$" onclick="analyzer.copyMathJaxToClipboard(this)"><i class="fas fa-copy"></i></button></span></div>`;
+            html += `</div>`;
+            
+            html += `<div class="result-item ${verificationClass} clickable-result" onclick="showWalkDetails(0, [${kValues.join(',')}], ${x})">`;
+            html += `<strong>Optimal k-values:</strong> [${kValues.join(', ')}] `;
+            html += `<strong>Sum k:</strong> ${sumK} `;
+            html += `<strong>Average k:</strong> ${(sumK / n).toFixed(3)}<br>`;
+            html += `<strong>Maximum x =</strong> ${x.toFixed(10)}<br>`;
+            html += `<strong>Numerator:</strong> ${numerator} = <span class="math-formula">$${analyzer.factorize(numerator)}$<button class="clipboard-icon" data-formula="$${analyzer.factorize(numerator)}$" onclick="analyzer.copyMathJaxToClipboard(this)"><i class="fas fa-copy"></i></button></span><br>`;
+            html += `<strong>Denominator:</strong> ${denominator} = <span class="math-formula">$${analyzer.factorize(denominator)}$<button class="clipboard-icon" data-formula="$${analyzer.factorize(denominator)}$" onclick="analyzer.copyMathJaxToClipboard(this)"><i class="fas fa-copy"></i></button></span><br>`;
+            html += `<strong>Expanded Equation:</strong><br><span class="math-formula">$$${analyzer.generateExpandedEquation(kValues)}$$<button class="clipboard-icon" data-formula="$$${analyzer.generateExpandedEquation(kValues)}$$" onclick="analyzer.copyMathJaxToClipboard(this)"><i class="fas fa-copy"></i></button></span><br>`;
+            html += `<strong>Verification:</strong> ${verified ? '✓ PASSED' : '✗ FAILED'}`;
+            html += `<br><em style="color: #666;">Click to see walk evaluation and nested equation</em>`;
+            html += '</div>';
+            
+            // Add walk details container
+            html += `<div id="walk-details-0" class="walk-details"></div>`;
+            
+            resultsDiv.innerHTML = html;
+            
+            // Re-render MathJax
+            if (window.MathJax) {
+                MathJax.typesetPromise([resultsDiv]);
+            }
+        }
+
+        function displayMaxXResultK0Equals1(n, result) {
+            const resultsDiv = document.getElementById('results');
+            
+            const { kValues, x, numerator, denominator, sumK } = result;
+            
+            // Verify the result
+            const verified = analyzer.verifyX(x, kValues);
+            const verificationClass = verified ? '' : 'verification-failed';
+            
+            // Show the general equation for this depth
+            const generalEquation = analyzer.getGeneralEquation(n);
+            
+            let html = `<div class="equation-header">`;
+            html += `<h3>Maximum X Result for n=${n} (k₀=1)</h3>`;
             html += `<div>General equation: <span class="math-formula">$${generalEquation}$<button class="clipboard-icon" data-formula="$${generalEquation}$" onclick="analyzer.copyMathJaxToClipboard(this)"><i class="fas fa-copy"></i></button></span></div>`;
             html += `</div>`;
             
