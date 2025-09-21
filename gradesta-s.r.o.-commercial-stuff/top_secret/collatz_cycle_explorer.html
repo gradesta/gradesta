@@ -1546,7 +1546,7 @@
             
             let html = `<div class="equation-header">`;
             html += `<h3>Manual Calculation Result</h3>`;
-            html += `<div>General equation: $${generalEquation}$</div>`;
+            html += `<div>General equation: <span class="math-formula">$${generalEquation}$<button class="clipboard-icon" data-formula="$${generalEquation}$" onclick="analyzer.copyMathJaxToClipboard(this)"><i class="fas fa-copy"></i></button></span></div>`;
             html += `</div>`;
             
             html += `<div class="result-item ${resultClass} ${verificationClass} clickable-result" onclick="showWalkDetails(0, [${kValues.join(',')}], ${result.x})">`;
