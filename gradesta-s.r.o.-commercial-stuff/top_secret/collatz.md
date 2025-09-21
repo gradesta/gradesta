@@ -351,7 +351,7 @@ $$
 Then multiplying accross we get:
 
 $$
-x = \frac{2 \cdot 3^3 - 3^3 \cdot 2^{k_0-1} + 2 \cdot 3^2 \cdot 2^{k_0} - 3^2 \cdot 2^{k_0+k_1-1} + 3 \cdot 2^{k_0+k_1+1} - 3 \cdot 2^{k_0+k_1+k_2-1} + 2^{k_0+k_1+k_2} - 2^{k_0+k_1+k_2+k_3-1}}{2^{k_0+k_1+k_2+k_3}-3^n}
+x = \frac{2 \cdot 3^3 - 3^3 \cdot 2^{k_0-1} + 2 \cdot 3^2 \cdot 2^{k_0} - 3^2 \cdot 2^{k_0+k_1-1} + 3 \cdot 2^{k_0+k_1+1} - 3 \cdot 2^{k_0+k_1+k_2-1} + 2^{k_0+k_1+k_2+1} - 2^{k_0+k_1+k_2+k_3-1}}{2^{k_0+k_1+k_2+k_3}-3^n}
 $$
 
 Now lets define subvariables:
@@ -359,9 +359,9 @@ Now lets define subvariables:
 $$
 \begin{array}{rlcccccc}
 a &= & 2              & \cdot 3^3 & - & 2^{k_0-1}             & \cdot 3^3 \\
-b &= & 2^{1+k_0}      & \cdot 3^2 & - & 2^{k_0+k_1-1}         & \cdot 3^2 \\
+b &= & 2^{k_0+1}      & \cdot 3^2 & - & 2^{k_0+k_1-1}         & \cdot 3^2 \\
 c &= & 2^{k_0+k_1+1}  & \cdot 3^1 & - & 2^{k_0+k_1+k_2-1}     & \cdot 3^1 \\
-d &= & 2^{k_0+k_1+k_2}& \cdot 3^0 & - & 2^{k_0+k_1+k_2+k_3-1} & \cdot 3^0 \\
+d &= & 2^{k_0+k_1+k_2+1}& \cdot 3^0 & - & 2^{k_0+k_1+k_2+k_3-1} & \cdot 3^0 \\
 \end{array}
 $$
 
@@ -380,6 +380,43 @@ $$
 &\text{c} \leq 0 \quad \text{when} \quad k_2 \geq 2, \quad \text{and} \quad \text{c} > 0 \quad \text{when} \quad k_2 = 1 \\[1em]
 &\text{d} \leq 0 \quad \text{when} \quad k_3 \geq 2, \quad \text{and} \quad \text{d} > 0 \quad \text{when} \quad k_3 = 1 \\
 \end{aligned}
+$$
+
+Lets look at what the properties of a more general case would be:
+
+$$
+\begin{array}{rlcccccc}
+a &= & 2^{u_0 + 2 - k_0}             & \cdot 3^3 & - & 2^{u_0}             & \cdot 3^3 \\
+b &= & 2^{u_1 + 2 - k_1}      & \cdot 3^2 & - & 2^{u_1}         & \cdot 3^2 \\
+c &= & 2^{u_2 + 2 - k_2}  & \cdot 3^1 & - & 2^{u_2}     & \cdot 3^1 \\
+d &= & 2^{u_3 + 2 - k_3}& \cdot 3^0 & - & 2^{u_3} & \cdot 3^0 \\
+\end{array}
+$$
+
+Where
+
+$$
+\begin{align*}
+u_0 &= k_0 - 1 \\
+u_1 &= k_0 + k_1 - 1 \\
+u_2 &= k_0 + k_1 + k_2 - 1 \\
+u_3 &= k_0 + k_1 + k_2 + k_3 - 1
+\end{align*}
+$$
+
+$$
+u_i \geq 0
+$$
+
+And another re-write:
+
+$$
+\begin{array}{rl}
+a &= 3^3 \left(2^{u_0 + 2 - k_0} - 2^{u_0}\right) \\
+b &= 3^2 \left(2^{u_1 + 2 - k_1} - 2^{u_1}\right) \\
+c &= 3^1 \left(2^{u_2 + 2 - k_2} - 2^{u_2}\right) \\
+d &= 3^0 \left(2^{u_3 + 2 - k_3} - 2^{u_3}\right) \\
+\end{array}
 $$
 
 
