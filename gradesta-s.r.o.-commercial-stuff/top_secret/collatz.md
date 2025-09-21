@@ -319,28 +319,40 @@ $$x = \frac{2^1 \cdot 3^2 + 3^1 \cdot 2^{k_0-1} + 2^{k_0+k_1-1} - 2^{k_0+k_1+k_2
 **Depth 4:**
 $$x = \frac{2^1 \cdot 3^3 + 3^2 \cdot 2^{k_0-1} + 3^1 \cdot 2^{k_0+k_1-1} + 2^{k_0+k_1+k_2-1} - 2^{k_0+k_1+k_2+k_3-1}}{2^{k_0+k_1+k_2+k_3} - 3^4}$$
 
-### Divisibility Analysis
+### Turning this into a new conjecture
 
-The key insight for integer solutions lies in the denominator structure:
+$$
+\begin{matrix}\begin{align}
+&2 \cdot 3^{7} \\
+&+ 3^{6} \cdot 2^{l_7} \\
+&+ 3^{5} \cdot 2^{l_6} \\
+&+ 3^{4} \cdot 2^{l_5} \\
+&+ 3^{3} \cdot 2^{l_4} \\
+&+ 3^{2} \cdot 2^{l_3} \\
+&+ 3^{1} \cdot 2^{l_2} \\
+&+ 3^{0} \cdot 2^{l_1} \\
+&- 2^{l_0}
+\end{align}\end{matrix}
+$$
 
-**Denominator:** $2^{k_0+\cdots+k_{n-1}} - 3^n$
+$$
+N=\sum_{i=1}^{n} 3^{n-i} \cdot 2^{l_i} + 2 \cdot 3^{n} - 2^{l_0}
+$$
 
-For integer solutions to exist, this denominator must divide the numerator exactly. This leads to several important observations:
+or, equivalently,
 
-1. **Power of 2 vs Power of 3 Balance:** The denominator represents the difference between a power of 2 and a power of 3. For integer solutions, we need:
-   $$2^{k_0+\cdots+k_{n-1}} > 3^n$$
-   
-2. **Divisibility Condition:** The numerator must be divisible by the denominator. Since the numerator contains terms with powers of 2 and 3, the divisibility depends on the specific values of the $k_i$.
+$$
+N = 2 \cdot 3^{n} + \sum_{i=1}^{n} 3^{n-i} \cdot 2^{l_i} - 2^{l_0}
+$$
 
-3. **Growth Rate Analysis:** 
-   - The denominator grows exponentially with the sum of $k_i$ values
-   - The numerator has a more complex structure involving both powers of 2 and 3
-   - For large $n$, the condition $2^{\sum k_i} > 3^n$ becomes increasingly restrictive
+where $n$ is any positive integer and $l_0, l_1, \ldots, l_n$ are non-negative integers with $l_i < l_{i+1}$ for all $i$.
 
-4. **Integer Solution Criteria:** An integer solution exists if and only if:
-   - The denominator is non-zero (i.e., $2^{\sum k_i} \neq 3^n$)
-   - The numerator is exactly divisible by the denominator
-   - The resulting quotient is an integer
+Restrictions
 
-This analysis suggests that integer cycles in the Collatz conjecture are rare because they require very specific relationships between the powers of 2 and 3 in the denominator and numerator.
+$$
+l_i < l_{i+1}
+$$
 
+$l_i$ are positive integers >= 0.
+
+The above sum is not divisible by $D = 2^{l_0+1}-3^n$ if $\frac{N}{D} > 0$ and $n>1$.
