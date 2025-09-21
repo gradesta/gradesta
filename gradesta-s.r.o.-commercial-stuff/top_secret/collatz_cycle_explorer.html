@@ -396,16 +396,6 @@
                     </div>
                     
                     <div class="control-group">
-                        <label for="minK">Minimum k value</label>
-                        <input type="number" id="minK" min="1" value="1">
-                    </div>
-                    
-                    <div class="control-group">
-                        <label for="maxK">Maximum k value</label>
-                        <input type="number" id="maxK" min="1" value="20">
-                    </div>
-                    
-                    <div class="control-group">
                         <label for="minAvg">Minimum average k</label>
                         <input type="number" id="minAvg" min="1" step="0.1" value="1.5">
                     </div>
@@ -753,28 +743,110 @@
                 }
             }
 
-            // Generate all permutations of k values
+            // Generate all valid k-value sets using the new fast algorithm
             generatePermutations(n, minK, maxK, minAvg, maxAvg) {
                 const permutations = [];
-                const minSum = Math.max(n, Math.ceil(n * minAvg));
-                const maxSum = Math.floor(n * maxAvg);
-                // Allow individual k values up to maxK, but ensure we can reach the required sums
-                const maxIndividualK = Math.max(maxK, Math.floor(maxSum - n + 1));
-
-                for (let totalSum = minSum; totalSum <= maxSum; totalSum++) {
-                    const avg = totalSum / n;
-                    if (avg < minAvg || avg > maxAvg) continue;
-
-                    const partitions = this.generatePartitions(totalSum, n, minK, maxIndividualK);
-                    for (const partition of partitions) {
-                        const uniquePerms = this.getUniquePermutations(partition);
-                        for (const perm of uniquePerms) {
-                            permutations.push(perm);
+                
+                // Convert the average interval into an integer-sum interval
+                const loSum = Math.ceil(minAvg * n);
+                const hiSum = Math.floor(maxAvg * n);
+                
+                // No integer sum satisfies the bounds → nothing to generate
+                if (loSum > hiSum) {
+                    return permutations;
+                }
+                
+                // For each admissible total S we enumerate all length-n
+                // combinations-with-replacement of numbers ≥ 1 whose sum is S
+                for (let targetSum = loSum; targetSum <= hiSum; targetSum++) {
+                    // Largest value we ever need to consider is
+                    // target_sum - (length - 1)*1  (every other slot is at least 1)
+                    const maxCandidate = targetSum - n + 1;
+                    
+                    // Generate all combinations with replacement
+                    const combinations = this.combinationsWithReplacement(1, maxCandidate, n);
+                    
+                    for (const combo of combinations) {
+                        // Fast path: combinations_with_replacement does not filter by sum,
+                        // so we keep only those that hit the current target_sum
+                        if (combo.reduce((a, b) => a + b, 0) === targetSum) {
+                            // Generate all unique permutations of this multiset
+                            const uniquePerms = this.getUniquePermutations([...combo]);
+                            for (const perm of uniquePerms) {
+                                permutations.push(perm);
+                            }
                         }
                     }
                 }
-
+                
                 return permutations;
+            }
+
+            // JavaScript implementation of combinations_with_replacement
+            combinationsWithReplacement(minVal, maxVal, length) {
+                const combinations = [];
+                
+                const generate = (start, current) => {
+                    if (current.length === length) {
+                        combinations.push([...current]);
+                        return;
+                    }
+                    
+                    for (let i = start; i <= maxVal; i++) {
+                        current.push(i);
+                        generate(i, current); // Allow repetition, so start from i
+                        current.pop();
+                    }
+                };
+                
+                generate(minVal, []);
+                return combinations;
+            }
+
+            // Validate that a k-value set respects all constraints
+            validateKSet(kValues, minK, maxK, minAvg, maxAvg) {
+                const n = kValues.length;
+                const sum = kValues.reduce((a, b) => a + b, 0);
+                const avg = sum / n;
+                
+                // Check individual k bounds
+                const individualBoundsOk = kValues.every(k => k >= minK && k <= maxK);
+                
+                // Check average bounds
+                const averageBoundsOk = avg >= minAvg && avg <= maxAvg;
+                
+                return {
+                    valid: individualBoundsOk && averageBoundsOk,
+                    individualBoundsOk,
+                    averageBoundsOk,
+                    minK: Math.min(...kValues),
+                    maxK: Math.max(...kValues),
+                    sum,
+                    avg
+                };
+            }
+
+            // Check if the given constraints are feasible
+            checkConstraintsFeasibility(n, minK, maxK, minAvg, maxAvg) {
+                // Calculate the possible range of averages
+                const minPossibleSum = n * minK;
+                const maxPossibleSum = n * maxK;
+                const minPossibleAvg = minPossibleSum / n;
+                const maxPossibleAvg = maxPossibleSum / n;
+                
+                // Check if the required average range overlaps with the possible range
+                const avgRangeOverlaps = !(maxAvg < minPossibleAvg || minAvg > maxPossibleAvg);
+                
+                return {
+                    feasible: avgRangeOverlaps,
+                    minPossibleAvg,
+                    maxPossibleAvg,
+                    minPossibleSum,
+                    maxPossibleSum,
+                    message: avgRangeOverlaps ? 
+                        `Constraints are feasible. Possible average range: [${minPossibleAvg.toFixed(3)}, ${maxPossibleAvg.toFixed(3)}]` :
+                        `Constraints are NOT feasible. Required average range [${minAvg}, ${maxAvg}] does not overlap with possible range [${minPossibleAvg.toFixed(3)}, ${maxPossibleAvg.toFixed(3)}]`
+                };
             }
 
             generatePartitions(remainingSum, remainingSlots, minVal, maxVal) {
@@ -815,18 +887,34 @@
                 return Array.from(unique).map(str => JSON.parse(str));
             }
 
-            // Generate random sample
+            // Generate random sample using the new efficient algorithm
             generateRandomSample(n, minK, maxK, minAvg, maxAvg, count = 50) {
-                const sample = [];
+                // First, generate all valid permutations
+                const allPermutations = this.generatePermutations(n, minK, maxK, minAvg, maxAvg);
                 
-                // Just generate random k values without any average constraints
-                // The average constraint was causing more problems than it solved
-                for (let i = 0; i < count; i++) {
-                    const kValues = [];
-                    for (let j = 0; j < n; j++) {
-                        kValues.push(Math.floor(Math.random() * (maxK - minK + 1)) + minK);
+                if (allPermutations.length === 0) {
+                    console.log(`Warning: No valid permutations found for constraints [${minAvg}, ${maxAvg}].`);
+                    return [];
+                }
+                
+                // If we have fewer permutations than requested, return all of them
+                if (allPermutations.length <= count) {
+                    return allPermutations;
+                }
+                
+                // Randomly sample from the valid permutations
+                const sample = [];
+                const used = new Set();
+                
+                while (sample.length < count && sample.length < allPermutations.length) {
+                    const randomIndex = Math.floor(Math.random() * allPermutations.length);
+                    const permutation = allPermutations[randomIndex];
+                    const key = permutation.join(',');
+                    
+                    if (!used.has(key)) {
+                        used.add(key);
+                        sample.push(permutation);
                     }
-                    sample.push(kValues);
                 }
                 
                 return sample;
@@ -836,14 +924,28 @@
         // Global analyzer instance
         const analyzer = new CollatzCycleAnalyzer();
 
+        // Calculate inferred maxK based on constraints (minK is always 1)
+        function calculateInferredMaxK(n, maxAvg) {
+            // To ensure average ≤ maxAvg, we need: sum ≤ n * maxAvg
+            // If we have (n-1) slots with minK=1, the remaining slot can be at most:
+            // n * maxAvg - (n-1) * 1 = n * maxAvg - (n-1)
+            return Math.floor(n * maxAvg - (n - 1));
+        }
+
         // UI Functions
         function getInputValues() {
+            const n = parseInt(document.getElementById('cycleLength').value);
+            const minAvg = parseFloat(document.getElementById('minAvg').value);
+            const maxAvg = parseFloat(document.getElementById('maxAvg').value);
+            const minK = 1; // Always 1
+            const maxK = calculateInferredMaxK(n, maxAvg);
+            
             return {
-                n: parseInt(document.getElementById('cycleLength').value),
-                minK: parseInt(document.getElementById('minK').value),
-                maxK: parseInt(document.getElementById('maxK').value),
-                minAvg: parseFloat(document.getElementById('minAvg').value),
-                maxAvg: parseFloat(document.getElementById('maxAvg').value)
+                n: n,
+                minK: minK,
+                maxK: maxK,
+                minAvg: minAvg,
+                maxAvg: maxAvg
             };
         }
 
@@ -855,9 +957,24 @@
             
             setTimeout(() => {
                 try {
+                    // Check if constraints are feasible
+                    const feasibility = analyzer.checkConstraintsFeasibility(inputs.n, inputs.minK, inputs.maxK, inputs.minAvg, inputs.maxAvg);
+                    
+                    if (!feasibility.feasible) {
+                        resultsDiv.innerHTML = `<div class="warning">
+                            <strong>Constraint Feasibility Issue:</strong><br>
+                            ${feasibility.message}<br><br>
+                            <strong>Suggestions:</strong><br>
+                            • Adjust the average range to overlap with [${feasibility.minPossibleAvg.toFixed(3)}, ${feasibility.maxPossibleAvg.toFixed(3)}]<br>
+                            • Or increase the k range to allow more flexibility
+                        </div>`;
+                        return;
+                    }
+                    
                     // For large depths, warn about computational complexity
                     if (inputs.n > 20) {
                         resultsDiv.innerHTML = '<div class="warning">Large depth detected. This may take a while or fail due to computational limits. Consider using "Random Sample" instead.</div>';
+                        return;
                     }
                     
                     const permutations = analyzer.generatePermutations(inputs.n, inputs.minK, inputs.maxK, inputs.minAvg, inputs.maxAvg);
@@ -884,10 +1001,24 @@
             
             setTimeout(() => {
                 try {
+                    // Check if constraints are feasible
+                    const feasibility = analyzer.checkConstraintsFeasibility(inputs.n, inputs.minK, inputs.maxK, inputs.minAvg, inputs.maxAvg);
+                    
+                    if (!feasibility.feasible) {
+                        resultsDiv.innerHTML = `<div class="warning">
+                            <strong>Constraint Feasibility Issue:</strong><br>
+                            ${feasibility.message}<br><br>
+                            <strong>Suggestions:</strong><br>
+                            • Adjust the average range to overlap with [${feasibility.minPossibleAvg.toFixed(3)}, ${feasibility.maxPossibleAvg.toFixed(3)}]<br>
+                            • Or increase the k range to allow more flexibility
+                        </div>`;
+                        return;
+                    }
+                    
                     const sample = analyzer.generateRandomSample(inputs.n, inputs.minK, inputs.maxK, inputs.minAvg, inputs.maxAvg, 50);
                     
                     if (sample.length === 0) {
-                        resultsDiv.innerHTML = `<div class="error">Error: No samples generated. This should not happen.</div>`;
+                        resultsDiv.innerHTML = `<div class="error">Error: No samples generated despite feasible constraints. This may indicate a bug in the algorithm.</div>`;
                     } else {
                         displayResults(sample, inputs);
                     }
@@ -941,7 +1072,8 @@
             html += `</div>`;
             
             html += '<div class="math-display">';
-            html += `Constraints: k ∈ [${inputs.minK}, ${inputs.maxK}], avg ∈ [${inputs.minAvg}, ${inputs.maxAvg}]`;
+            html += `Constraints: k ∈ [${inputs.minK}, ${inputs.maxK}] (maxK inferred), avg ∈ [${inputs.minAvg}, ${inputs.maxAvg}]<br>`;
+            html += `Algorithm: Fast multiset generation using combinations_with_replacement`;
             html += '</div>';
             
             let integerCount = 0;
@@ -966,10 +1098,15 @@
                 
                 const resultClass = isInteger ? (isPositive ? 'integer' : 'negative') : '';
                 
+                // Validate the k set
+                const validation = analyzer.validateKSet(kValues, inputs.minK, inputs.maxK, inputs.minAvg, inputs.maxAvg);
+                
                 html += `<div class="result-item ${resultClass} clickable-result" onclick="showWalkDetails(${i}, [${kValues.join(',')}], ${result.x})">`;
                 html += `<strong>k-values:</strong> [${kValues.join(', ')}] `;
                 html += `<strong>Sum k:</strong> ${result.sumK} `;
                 html += `<strong>Average k:</strong> ${(result.sumK / inputs.n).toFixed(3)}<br>`;
+                html += `<strong>Bounds check:</strong> min k=${validation.minK}, max k=${validation.maxK} `;
+                html += `<span style="color: ${validation.valid ? '#27ae60' : '#e74c3c'};">${validation.valid ? '✓ VALID' : '✗ INVALID'}</span><br>`;
                 html += `<strong>x =</strong> ${result.x.toFixed(10)} `;
                 if (isInteger) html += '<span style="color: #27ae60;">(INTEGER)</span>';
                 html += `<br><strong>Numerator:</strong> ${result.numerator} = $${analyzer.factorize(result.numerator)}$<br>`;
@@ -1088,14 +1225,50 @@
             document.getElementById('results').innerHTML = '<p style="text-align: center; color: #666; font-style: italic;">Click "Generate All Permutations" or "Random Sample" to see results</p>';
         }
 
+        // Test function to verify the algorithm works correctly
+        function testAlgorithm() {
+            console.log("Testing k-value generation algorithm...");
+            
+            // Test case: n=3, minK=1, avg∈[1.5,2.0]
+            const n = 3, minAvg = 1.5, maxAvg = 2.0;
+            const minK = 1; // Always 1
+            const maxK = calculateInferredMaxK(n, maxAvg);
+            
+            console.log(`Test parameters: n=${n}, minK=${minK} (fixed), maxK=${maxK} (inferred), minAvg=${minAvg}, maxAvg=${maxAvg}`);
+            
+            const feasibility = analyzer.checkConstraintsFeasibility(n, minK, maxK, minAvg, maxAvg);
+            console.log("Feasibility:", feasibility.message);
+            
+            if (feasibility.feasible) {
+                const permutations = analyzer.generatePermutations(n, minK, maxK, minAvg, maxAvg);
+                console.log(`Found ${permutations.length} valid sets:`);
+                
+                for (let i = 0; i < Math.min(10, permutations.length); i++) {
+                    const kSet = permutations[i];
+                    const validation = analyzer.validateKSet(kSet, minK, maxK, minAvg, maxAvg);
+                    console.log(`  ${i+1}: [${kSet.join(',')}] (sum=${validation.sum}, avg=${validation.avg.toFixed(3)})`);
+                }
+                
+                // Test random generation
+                const randomSets = analyzer.generateRandomSample(n, minK, maxK, minAvg, maxAvg, 5);
+                console.log(`\nRandom sample (${randomSets.length} sets):`);
+                for (let i = 0; i < randomSets.length; i++) {
+                    const kSet = randomSets[i];
+                    const validation = analyzer.validateKSet(kSet, minK, maxK, minAvg, maxAvg);
+                    console.log(`  ${i+1}: [${kSet.join(',')}] (sum=${validation.sum}, avg=${validation.avg.toFixed(3)})`);
+                }
+            }
+        }
+
         // Initialize with some example data
         document.addEventListener('DOMContentLoaded', function() {
             // Set some reasonable defaults
             document.getElementById('cycleLength').value = 3;
-            document.getElementById('minK').value = 1;
-            document.getElementById('maxK').value = 20;
             document.getElementById('minAvg').value = 1.5;
             document.getElementById('maxAvg').value = 2.0;
+            
+            // Run test
+            testAlgorithm();
         });
     </script>
 </body>
