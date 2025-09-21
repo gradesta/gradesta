@@ -172,6 +172,16 @@
             box-shadow: 0 5px 15px rgba(240, 147, 251, 0.4);
         }
 
+        .btn-info {
+            background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+            color: white;
+        }
+
+        .btn-info:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(23, 162, 184, 0.4);
+        }
+
         .results {
             background: white;
             border-radius: 10px;
@@ -431,6 +441,157 @@
             margin-bottom: 15px;
         }
 
+        /* Modal dialog styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            max-width: 90vw;
+            max-height: 90vh;
+            width: 800px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e1e8ed;
+        }
+
+        .modal-header h2 {
+            color: #2c3e50;
+            margin: 0;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+            padding: 5px;
+            border-radius: 50%;
+            width: 35px;
+            height: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .modal-close:hover {
+            background: #f8f9fa;
+            color: #e74c3c;
+        }
+
+        .modal-controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .modal-control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .modal-control-group label {
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 14px;
+        }
+
+        .modal-control-group input {
+            padding: 8px 12px;
+            border: 2px solid #e1e8ed;
+            border-radius: 5px;
+            font-size: 14px;
+            width: 120px;
+        }
+
+        .modal-control-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .graph-container {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            min-height: 400px;
+            position: relative;
+        }
+
+        .graph-canvas {
+            width: 100%;
+            height: 400px;
+            border: 1px solid #e1e8ed;
+            border-radius: 5px;
+            background: white;
+        }
+
+        .graph-loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #667eea;
+            font-style: italic;
+        }
+
+        .graph-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .stat-card h4 {
+            margin: 0 0 8px 0;
+            color: #2c3e50;
+            font-size: 14px;
+        }
+
+        .stat-card .value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
         @media (max-width: 768px) {
             .container {
                 margin: 10px;
@@ -505,6 +666,7 @@
                     <button class="btn btn-primary" onclick="generateAllPermutations()">Generate All Permutations</button>
                     <button class="btn btn-secondary" onclick="generateRandomSample()">Random Sample (50)</button>
                     <button class="btn btn-warning" onclick="calculateMaxX()">Find Max X</button>
+                    <button class="btn btn-info" onclick="openMaxXGraphModal()">Max X Graph</button>
                     <button class="btn btn-success" onclick="clearResults()">Clear Results</button>
                 </div>
             </div>
@@ -522,6 +684,58 @@
                 <h2>Results</h2>
                 <div id="results" class="results">
                     <p style="text-align: center; color: #666; font-style: italic;">Click "Generate All Permutations" or "Random Sample" to see results</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Max X Graph Modal -->
+    <div id="maxXGraphModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Maximum X Values vs Cycle Length</h2>
+                <button class="modal-close" onclick="closeMaxXGraphModal()">&times;</button>
+            </div>
+            
+            <div class="modal-controls">
+                <div class="modal-control-group">
+                    <label for="minCycleLength">Min Cycle Length</label>
+                    <input type="number" id="minCycleLength" min="1" value="1">
+                </div>
+                <div class="modal-control-group">
+                    <label for="maxCycleLength">Max Cycle Length</label>
+                    <input type="number" id="maxCycleLength" min="1" value="20">
+                </div>
+                <div class="modal-control-group">
+                    <label for="stepSize">Step Size</label>
+                    <input type="number" id="stepSize" min="1" value="1">
+                </div>
+                <button class="btn btn-primary" onclick="generateMaxXGraph()">Generate Graph</button>
+            </div>
+            
+            <div class="graph-container">
+                <div class="graph-loading" id="graphLoading" style="display: none;">
+                    Calculating max x values... This may take a moment for large ranges.
+                </div>
+                <canvas id="maxXGraphCanvas" class="graph-canvas"></canvas>
+            </div>
+            
+            <div class="graph-stats" id="graphStats" style="display: none;">
+                <div class="stat-card">
+                    <h4>Maximum X Value</h4>
+                    <div class="value" id="maxXValue">-</div>
+                </div>
+                <div class="stat-card">
+                    <h4>At Cycle Length</h4>
+                    <div class="value" id="maxXCycleLength">-</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Total Points</h4>
+                    <div class="value" id="totalPoints">-</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Calculation Time</h4>
+                    <div class="value" id="calcTime">-</div>
                 </div>
             </div>
         </div>
@@ -1720,6 +1934,207 @@
 
         function clearResults() {
             document.getElementById('results').innerHTML = '<p style="text-align: center; color: #666; font-style: italic;">Click "Generate All Permutations" or "Random Sample" to see results</p>';
+        }
+
+        // Modal functions for Max X Graph
+        function openMaxXGraphModal() {
+            document.getElementById('maxXGraphModal').classList.add('show');
+        }
+
+        function closeMaxXGraphModal() {
+            document.getElementById('maxXGraphModal').classList.remove('show');
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('maxXGraphModal');
+            if (event.target === modal) {
+                closeMaxXGraphModal();
+            }
+        }
+
+        function generateMaxXGraph() {
+            const minCycle = parseInt(document.getElementById('minCycleLength').value);
+            const maxCycle = parseInt(document.getElementById('maxCycleLength').value);
+            const stepSize = parseInt(document.getElementById('stepSize').value);
+            
+            if (minCycle < 1 || maxCycle < minCycle || stepSize < 1) {
+                alert('Please enter valid range parameters.');
+                return;
+            }
+            
+            // Show loading
+            document.getElementById('graphLoading').style.display = 'block';
+            document.getElementById('graphStats').style.display = 'none';
+            
+            // Generate data asynchronously to avoid blocking UI
+            setTimeout(() => {
+                const startTime = Date.now();
+                const data = [];
+                let maxX = -Infinity;
+                let maxXCycle = 0;
+                
+                for (let n = minCycle; n <= maxCycle; n += stepSize) {
+                    const result = analyzer.findOptimalKValues(n);
+                    if (result) {
+                        data.push({ cycleLength: n, maxX: result.x, kValues: result.kValues });
+                        if (result.x > maxX) {
+                            maxX = result.x;
+                            maxXCycle = n;
+                        }
+                    }
+                }
+                
+                const endTime = Date.now();
+                const calcTime = ((endTime - startTime) / 1000).toFixed(2);
+                
+                // Hide loading
+                document.getElementById('graphLoading').style.display = 'none';
+                
+                if (data.length === 0) {
+                    alert('No valid data found for the specified range.');
+                    return;
+                }
+                
+                // Draw graph
+                drawMaxXGraph(data);
+                
+                // Update stats
+                document.getElementById('maxXValue').textContent = maxX.toFixed(6);
+                document.getElementById('maxXCycleLength').textContent = maxXCycle;
+                document.getElementById('totalPoints').textContent = data.length;
+                document.getElementById('calcTime').textContent = calcTime + 's';
+                document.getElementById('graphStats').style.display = 'grid';
+                
+            }, 100);
+        }
+
+        function drawMaxXGraph(data) {
+            const canvas = document.getElementById('maxXGraphCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Set canvas size
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (data.length === 0) return;
+            
+            // Calculate bounds
+            const minX = Math.min(...data.map(d => d.cycleLength));
+            const maxX = Math.max(...data.map(d => d.cycleLength));
+            const minY = Math.min(...data.map(d => d.maxX));
+            const maxY = Math.max(...data.map(d => d.maxX));
+            
+            // Add padding
+            const padding = 60;
+            const chartWidth = canvas.width - 2 * padding;
+            const chartHeight = canvas.height - 2 * padding;
+            
+            // Scale functions
+            const scaleX = (x) => padding + ((x - minX) / (maxX - minX)) * chartWidth;
+            const scaleY = (y) => padding + chartHeight - ((y - minY) / (maxY - minY)) * chartHeight;
+            
+            // Draw axes
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(padding, padding);
+            ctx.lineTo(padding, canvas.height - padding);
+            ctx.lineTo(canvas.width - padding, canvas.height - padding);
+            ctx.stroke();
+            
+            // Draw grid lines
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 1;
+            
+            // Vertical grid lines
+            for (let i = 0; i <= 10; i++) {
+                const x = padding + (i / 10) * chartWidth;
+                ctx.beginPath();
+                ctx.moveTo(x, padding);
+                ctx.lineTo(x, canvas.height - padding);
+                ctx.stroke();
+            }
+            
+            // Horizontal grid lines
+            for (let i = 0; i <= 10; i++) {
+                const y = padding + (i / 10) * chartHeight;
+                ctx.beginPath();
+                ctx.moveTo(padding, y);
+                ctx.lineTo(canvas.width - padding, y);
+                ctx.stroke();
+            }
+            
+            // Draw data points and line
+            ctx.strokeStyle = '#667eea';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            
+            data.forEach((point, index) => {
+                const x = scaleX(point.cycleLength);
+                const y = scaleY(point.maxX);
+                
+                if (index === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            ctx.stroke();
+            
+            // Draw data points
+            ctx.fillStyle = '#667eea';
+            data.forEach(point => {
+                const x = scaleX(point.cycleLength);
+                const y = scaleY(point.maxX);
+                
+                ctx.beginPath();
+                ctx.arc(x, y, 4, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+            
+            // Draw labels
+            ctx.fillStyle = '#333';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
+            
+            // X-axis label
+            ctx.fillText('Cycle Length (n)', canvas.width / 2, canvas.height - 10);
+            
+            // Y-axis label
+            ctx.save();
+            ctx.translate(20, canvas.height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('Maximum X Value', 0, 0);
+            ctx.restore();
+            
+            // Axis tick labels
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            
+            // X-axis ticks
+            for (let i = 0; i <= 10; i++) {
+                const value = minX + (i / 10) * (maxX - minX);
+                const x = padding + (i / 10) * chartWidth;
+                ctx.fillText(Math.round(value).toString(), x, canvas.height - 15);
+            }
+            
+            // Y-axis ticks
+            ctx.textAlign = 'right';
+            for (let i = 0; i <= 10; i++) {
+                const value = minY + (i / 10) * (maxY - minY);
+                const y = padding + chartHeight - (i / 10) * chartHeight;
+                ctx.fillText(value.toFixed(3), padding - 10, y + 4);
+            }
+            
+            // Title
+            ctx.fillStyle = '#2c3e50';
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Maximum X Values vs Cycle Length', canvas.width / 2, 25);
         }
 
         // Test function to verify the algorithm works correctly
