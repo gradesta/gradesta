@@ -1183,6 +1183,202 @@
             }
         }
 
+        function setupScatterPlotEvents() {
+            const canvas = document.getElementById('scatterCanvas');
+            
+            // Mouse events
+            canvas.addEventListener('click', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                const padding = 60;
+                const plotWidth = canvas.width - 2 * padding;
+                const plotHeight = canvas.height - 2 * padding;
+                
+                if (x < padding || x > canvas.width - padding || y < padding || y > canvas.height - padding) {
+                    return;
+                }
+                
+                const xRange = scatterPlotView.maxX - scatterPlotView.minX;
+                const yRange = scatterPlotView.maxY - scatterPlotView.minY;
+                const xScale = plotWidth / Math.max(xRange, 1);
+                const yScale = plotHeight / Math.max(yRange, 1);
+                
+                const dataX = scatterPlotView.minX + (x - padding) / xScale;
+                const dataY = scatterPlotView.maxY - (y - padding) / yScale;
+                
+                // Find closest point
+                let closestPoint = null;
+                let closestDistance = Infinity;
+                
+                for (const point of scatterPlotData) {
+                    if (point.x >= scatterPlotView.minX && point.x <= scatterPlotView.maxX &&
+                        point.y >= scatterPlotView.minY && point.y <= scatterPlotView.maxY) {
+                        const distance = Math.sqrt(Math.pow((point.x - dataX) * xScale, 2) + Math.pow((point.y - dataY) * yScale, 2));
+                        if (distance < closestDistance && distance < 10) {
+                            closestDistance = distance;
+                            closestPoint = point;
+                        }
+                    }
+                }
+                
+                if (closestPoint) {
+                    showDotDetails(closestPoint);
+                    
+                    // Add pulse animation
+                    const screenX = padding + (closestPoint.x - scatterPlotView.minX) * xScale;
+                    const screenY = canvas.height - padding - (closestPoint.y - scatterPlotView.minY) * yScale;
+                    canvas.classList.add('pulse');
+                    setTimeout(() => canvas.classList.remove('pulse'), 300);
+                } else {
+                    hideDetails();
+                }
+            });
+            
+            // Mouse wheel for zooming (Y-axis only)
+            canvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const zoomFactor = e.deltaY > 0 ? 1.1 : 0.9;
+                zoomIn(zoomFactor);
+            });
+            
+            // Mouse drag for panning (Y-axis only)
+            let isDragging = false;
+            let lastMouseY = 0;
+            
+            canvas.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                lastMouseY = e.clientY;
+                canvas.style.cursor = 'grabbing';
+            });
+            
+            canvas.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    const deltaY = e.clientY - lastMouseY;
+                    lastMouseY = e.clientY;
+                    
+                    const padding = 60;
+                    const plotHeight = canvas.height - 2 * padding;
+                    const yRange = scatterPlotView.maxY - scatterPlotView.minY;
+                    const yDelta = (deltaY / plotHeight) * yRange;
+                    
+                    scatterPlotView.minY += yDelta;
+                    scatterPlotView.maxY += yDelta;
+                    
+                    renderScatterPlot();
+                }
+            });
+            
+            canvas.addEventListener('mouseup', () => {
+                isDragging = false;
+                canvas.style.cursor = 'crosshair';
+            });
+            
+            canvas.addEventListener('mouseleave', () => {
+                isDragging = false;
+                canvas.style.cursor = 'crosshair';
+            });
+            
+            // Keyboard events
+            document.addEventListener('keydown', handleKeyboardZoom);
+        }
+
+        function showDotDetails(point) {
+            const detailsCard = document.getElementById('detailsCard');
+            const detailsContent = document.getElementById('detailsContent');
+            
+            const coefficient = point.data.coefficient ? `, c = ${point.data.coefficient}` : '';
+            const typeText = point.isIntersection ? 'Intersection' : point.type;
+            
+            detailsContent.innerHTML = `
+                <strong>Basic Information</strong><br>
+                Type: ${typeText}<br>
+                Value: ${point.data.value}<br>
+                Sum of k: ${point.data.kValues.reduce((a, b) => a + b, 0)}<br>
+                k-values: [${point.data.kValues.join(', ')}]${coefficient}<br><br>
+                
+                <strong>Number Representations</strong><br>
+                ${generator.formatNumberInBases(point.data.value)}<br><br>
+                
+                <strong>Formula</strong><br>
+                ${point.data.formula}
+            `;
+            
+            detailsCard.classList.add('active');
+            
+            // Re-render MathJax for the formula
+            if (window.MathJax) {
+                MathJax.typesetPromise([detailsCard]);
+            }
+        }
+
+        function hideDetails() {
+            const detailsCard = document.getElementById('detailsCard');
+            detailsCard.classList.remove('active');
+        }
+
+        function resetZoom() {
+            scatterPlotView.minX = 0;
+            scatterPlotView.maxX = fixedColumns - 1;
+            const yPadding = (scatterPlotBounds.maxY - scatterPlotBounds.minY) * 0.1;
+            scatterPlotView.minY = scatterPlotBounds.minY - yPadding;
+            scatterPlotView.maxY = scatterPlotBounds.maxY + yPadding;
+            renderScatterPlot();
+        }
+
+        function zoomIn(factor = 0.8) {
+            const yCenter = (scatterPlotView.minY + scatterPlotView.maxY) / 2;
+            const yRange = scatterPlotView.maxY - scatterPlotView.minY;
+            const newYRange = yRange * factor;
+            
+            scatterPlotView.minY = yCenter - newYRange / 2;
+            scatterPlotView.maxY = yCenter + newYRange / 2;
+            
+            renderScatterPlot();
+        }
+
+        function zoomOut(factor = 1.2) {
+            zoomIn(factor);
+        }
+
+        function panLeft() {
+            if (scatterPlotView.minX > 0) {
+                scatterPlotView.minX -= 1;
+                scatterPlotView.maxX -= 1;
+                renderScatterPlot();
+            }
+        }
+
+        function panRight() {
+            if (scatterPlotView.maxX < scatterPlotBounds.maxX) {
+                scatterPlotView.minX += 1;
+                scatterPlotView.maxX += 1;
+                renderScatterPlot();
+            }
+        }
+
+        function handleKeyboardZoom(event) {
+            if (currentViewMode !== 'scatter') return;
+            
+            if (event.key === '+' || event.key === '=') {
+                event.preventDefault();
+                zoomIn();
+            } else if (event.key === '-' || event.key === '_') {
+                event.preventDefault();
+                zoomOut();
+            } else if (event.key === '0') {
+                event.preventDefault();
+                resetZoom();
+            } else if (event.key === 'ArrowLeft') {
+                event.preventDefault();
+                panLeft();
+            } else if (event.key === 'ArrowRight') {
+                event.preventDefault();
+                panRight();
+            }
+        }
+
         function renderScatterPlot() {
             const canvas = document.getElementById('scatterCanvas');
             const ctx = canvas.getContext('2d');
