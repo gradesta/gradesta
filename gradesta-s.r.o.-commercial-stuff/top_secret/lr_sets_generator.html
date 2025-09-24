@@ -374,6 +374,57 @@
             border-left-color: #e74c3c;
         }
 
+        .interleaved-view {
+            display: none;
+        }
+
+        .interleaved-view.show {
+            display: block;
+        }
+
+        .interleaved-item {
+            background: white;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            border-left: 4px solid #667eea;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .interleaved-item.l-value {
+            border-left-color: #27ae60;
+            background: #f0f9f0;
+        }
+
+        .interleaved-item.r-value {
+            border-left-color: #3498db;
+            background: #f0f8ff;
+        }
+
+        .interleaved-item.intersection-value {
+            border-left-color: #e74c3c;
+            background: #fff5f5;
+            border: 2px solid #e74c3c;
+        }
+
+        .interleaved-item .value-label {
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .interleaved-item .value-info {
+            font-size: 12px;
+            color: #666;
+            margin: 3px 0;
+        }
+
+        .interleaved-item .k-values {
+            font-size: 12px;
+            color: #333;
+        }
+
         @media (max-width: 768px) {
             .container {
                 margin: 10px;
@@ -461,6 +512,7 @@
 
                 <div class="button-group">
                     <button class="btn btn-primary" onclick="generateSets()">Generate L and R Sets & Analyze</button>
+                    <button class="btn btn-secondary" onclick="toggleView()">Toggle Interleaved View</button>
                     <button class="btn btn-info" onclick="clearResults()">Clear Results</button>
                 </div>
             </div>
@@ -721,6 +773,8 @@
 
         // Global generator instance
         const generator = new LRSetsGenerator();
+        let currentViewMode = 'separate'; // 'separate' or 'interleaved'
+        let lastGeneratedData = null;
 
         // UI Functions
         function generateSets() {
@@ -745,11 +799,163 @@
                 try {
                     const result = generator.generateSets(n, maxDisplay, maxCoefficient);
                     const intersection = generator.findIntersection();
+                    lastGeneratedData = { result, intersection, n, maxDisplay };
                     displaySets(result, intersection, n, maxDisplay);
                 } catch (error) {
                     resultsDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
                 }
             }, 100);
+        }
+
+        function toggleView() {
+            if (!lastGeneratedData) {
+                alert('Please generate sets first');
+                return;
+            }
+            
+            currentViewMode = currentViewMode === 'separate' ? 'interleaved' : 'separate';
+            
+            if (currentViewMode === 'interleaved') {
+                displayInterleavedView(lastGeneratedData.result, lastGeneratedData.intersection, lastGeneratedData.n, lastGeneratedData.maxDisplay);
+            } else {
+                displaySets(lastGeneratedData.result, lastGeneratedData.intersection, lastGeneratedData.n, lastGeneratedData.maxDisplay);
+            }
+        }
+
+        function displayInterleavedView(result, intersection, n, maxDisplay) {
+            const resultsDiv = document.getElementById('results');
+            
+            // Calculate statistics
+            const lUniqueValues = generator.getUniqueValues(result.lSet);
+            const rUniqueValues = generator.getUniqueValues(result.rSet);
+            
+            let html = `<div class="stats-grid">
+                <div class="stat-card">
+                    <h4>Total K-combinations</h4>
+                    <div class="value">${result.totalCombinations}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Unique L Values</h4>
+                    <div class="value">${lUniqueValues.size}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Unique R Values</h4>
+                    <div class="value">${rUniqueValues.size}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Max L Value</h4>
+                    <div class="value">${result.maxLValue}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Actual Max c</h4>
+                    <div class="value">${result.actualMaxC}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Intersection Size</h4>
+                    <div class="value">${intersection.size}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Stopping Condition</h4>
+                    <div class="value">${result.allRValuesGreaterThanMaxL ? 'All R > L_max' : 'Hit max c limit'}</div>
+                </div>
+            </div>`;
+            
+            html += `<div class="formula-display">
+                <h4>Interleaved View - Generated for n = ${n}</h4>
+                <p>All L and R values sorted by magnitude, color-coded by origin</p>
+                <p>${result.allRValuesGreaterThanMaxL ? 
+                    `✅ All R values for c=${result.actualMaxC} are greater than max L (${result.maxLValue})` : 
+                    `⚠️ Some R values for c=${result.actualMaxC} are still ≤ max L (${result.maxLValue})`}</p>
+            </div>`;
+            
+            // Show intersection analysis immediately
+            if (intersection.size === 0) {
+                html += '<div class="success">✅ No intersection found - L and R sets are disjoint!</div>';
+            } else {
+                html += '<div class="error">⚠️ Intersection found! This indicates common values between L and R sets.</div>';
+            }
+            
+            // Create combined array of all values
+            const allValues = [];
+            
+            // Add L values
+            for (const [value, keys] of lUniqueValues) {
+                const isIntersection = intersection.has(value);
+                allValues.push({
+                    value: value,
+                    type: 'L',
+                    keys: keys,
+                    isIntersection: isIntersection
+                });
+            }
+            
+            // Add R values
+            for (const [value, keys] of rUniqueValues) {
+                const isIntersection = intersection.has(value);
+                allValues.push({
+                    value: value,
+                    type: 'R',
+                    keys: keys,
+                    isIntersection: isIntersection
+                });
+            }
+            
+            // Sort by value
+            allValues.sort((a, b) => a.value - b.value);
+            
+            // Display interleaved values
+            html += '<div class="interleaved-view show">';
+            html += '<h3>Interleaved Values (Sorted by Magnitude)</h3>';
+            
+            let displayCount = 0;
+            for (const item of allValues) {
+                if (displayCount >= maxDisplay) {
+                    html += `<div class="interleaved-item">... ${allValues.length - displayCount} more values</div>`;
+                    break;
+                }
+                
+                let itemClass = item.type === 'L' ? 'l-value' : 'r-value';
+                if (item.isIntersection) {
+                    itemClass = 'intersection-value';
+                }
+                
+                html += `<div class="interleaved-item ${itemClass}">`;
+                html += `<div class="value-label">${item.type} = ${item.value}</div>`;
+                html += generator.formatNumberInBases(item.value);
+                
+                // Show k-values info
+                if (item.type === 'L') {
+                    html += `<div class="k-values">k-values: ${item.keys.slice(0, 3).map(k => `[${k}]`).join(', ')}`;
+                    if (item.keys.length > 3) {
+                        html += ` ... (${item.keys.length} total)`;
+                    }
+                    html += '</div>';
+                } else {
+                    // For R values, show coefficient info
+                    const sampleKeys = item.keys.slice(0, 3);
+                    html += `<div class="k-values">`;
+                    for (const key of sampleKeys) {
+                        const rData = result.rSet.get(key);
+                        html += `[${rData.kValues.join(',')}], c=${rData.coefficient}; `;
+                    }
+                    if (item.keys.length > 3) {
+                        html += `... (${item.keys.length} total)`;
+                    }
+                    html += '</div>';
+                }
+                
+                html += '</div>';
+                displayCount++;
+            }
+            
+            html += '</div>'; // Close interleaved-view
+            
+            resultsDiv.innerHTML = html;
+            
+            // Re-render MathJax
+            if (window.MathJax) {
+                MathJax.typesetPromise([resultsDiv]);
+            }
         }
 
         function displaySets(result, intersection, n, maxDisplay) {
@@ -890,6 +1096,9 @@
             html += '</div>';
             
             html += '</div>'; // Close set-display
+            
+            // Hide interleaved view in separate mode
+            html += '<div class="interleaved-view"></div>';
             
             // Sample detailed calculations
             html += '<div class="formula-display">';
