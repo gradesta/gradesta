@@ -358,6 +358,22 @@
             transform: translateX(0);
         }
 
+        .base-representation {
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #666;
+            background: #f8f9fa;
+            padding: 3px 6px;
+            border-radius: 3px;
+            margin: 2px 0;
+            border-left: 2px solid #e1e8ed;
+        }
+
+        .base-representation.intersection {
+            background: #fff5f5;
+            border-left-color: #e74c3c;
+        }
+
         @media (max-width: 768px) {
             .container {
                 margin: 10px;
@@ -674,6 +690,33 @@
                 }
                 return values;
             }
+
+            // Convert number to different bases
+            convertToBase(num, base) {
+                if (num === 0) return '0';
+                if (num < 0) return '-' + this.convertToBase(-num, base);
+                
+                let result = '';
+                while (num > 0) {
+                    const remainder = num % base;
+                    result = remainder.toString() + result;
+                    num = Math.floor(num / base);
+                }
+                return result;
+            }
+
+            // Format number in multiple bases
+            formatNumberInBases(num) {
+                const bases = [2, 3, 4, 5, 6];
+                const representations = [];
+                
+                for (const base of bases) {
+                    const representation = this.convertToBase(num, base);
+                    representations.push(`${base}: ${representation}`);
+                }
+                
+                return `<div class="base-representation">${representations.join(' | ')}</div>`;
+            }
         }
 
         // Global generator instance
@@ -768,6 +811,7 @@
                 for (const [value, data] of intersection) {
                     html += `<div class="result-item intersection">`;
                     html += `<strong>Common Value: ${value}</strong><br>`;
+                    html += generator.formatNumberInBases(value);
                     html += `<strong>L k-values:</strong> ${data.lKeys.map(k => `[${k}]`).join(', ')}<br>`;
                     html += `<strong>R k-values:</strong> ${data.rKeys.map(k => `[${k}]`).join(', ')}<br>`;
                     
@@ -804,6 +848,7 @@
                 
                 html += `<div class="set-item unique-l">`;
                 html += `<strong>L = ${value}</strong><br>`;
+                html += generator.formatNumberInBases(value);
                 html += `k-values: ${keys.slice(0, 3).map(k => `[${k}]`).join(', ')}`;
                 if (keys.length > 3) {
                     html += ` ... (${keys.length} total)`;
@@ -828,6 +873,7 @@
                 
                 html += `<div class="set-item unique-r">`;
                 html += `<strong>R = ${value}</strong><br>`;
+                html += generator.formatNumberInBases(value);
                 
                 // Show first few keys with coefficient info
                 const sampleKeys = keys.slice(0, 3);
@@ -856,7 +902,9 @@
                 html += `<div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px;">`;
                 html += `<strong>k-values: [${key}]</strong><br>`;
                 html += `<span class="math-formula">$$L = ${lData.formula}$$<button class="clipboard-icon" onclick="copyToClipboard(this)" data-formula="${lData.formula}"><i class="fas fa-copy"></i></button></span><br>`;
-                html += `<strong>L = ${lData.value}</strong><br><br>`;
+                html += `<strong>L = ${lData.value}</strong><br>`;
+                html += generator.formatNumberInBases(lData.value);
+                html += `<br>`;
                 
                 // Show R calculations for different coefficients
                 html += `<strong>R calculations for different coefficients:</strong><br>`;
@@ -867,6 +915,7 @@
                     const rValue = c * Math.pow(2, sumK) - Math.pow(3, n);
                     const rFormula = generator.generateRFormula(kValues, n, c);
                     html += `<span class="math-formula">$$R(c=${c}) = ${rFormula} = ${rValue}$$<button class="clipboard-icon" onclick="copyToClipboard(this)" data-formula="${rFormula}"><i class="fas fa-copy"></i></button></span><br>`;
+                    html += generator.formatNumberInBases(rValue);
                 }
                 html += '</div>';
             }
