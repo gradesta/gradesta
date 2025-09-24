@@ -425,6 +425,45 @@
             color: #333;
         }
 
+        .lazy-loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-style: italic;
+        }
+
+        .load-more-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 10px 0;
+            transition: background 0.3s ease;
+        }
+
+        .load-more-btn:hover {
+            background: #5a6fd8;
+        }
+
+        .load-more-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .lazy-item {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .lazy-item.loaded {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
         @media (max-width: 768px) {
             .container {
                 margin: 10px;
@@ -482,7 +521,7 @@
                 
                 <div class="formula-display">
                     <h4>R Set (Denominator terms):</h4>
-                    <p><span class="math-formula">$$R(k_0,k_1,k_2,...,n,c) = c \cdot 2^{k_0+k_1+k_2+\cdots+k_{n-1}} - 3^{n}$$<button class="clipboard-icon" onclick="copyToClipboard(this)" data-formula="R(k_0,k_1,k_2,...,n,c) = c \cdot 2^{k_0+k_1+k_2+\cdots+k_{n-1}} - 3^{n}"><i class="fas fa-copy"></i></button></span></p>
+                    <p><span class="math-formula">$$R(k_0,k_1,k_2,...,n,c) = c \cdot (2^{k_0+k_1+k_2+\cdots+k_{n-1}} - 3^{n})$$<button class="clipboard-icon" onclick="copyToClipboard(this)" data-formula="R(k_0,k_1,k_2,...,n,c) = c \cdot (2^{k_0+k_1+k_2+\cdots+k_{n-1}} - 3^{n})"><i class="fas fa-copy"></i></button></span></p>
                 </div>
                 
                 <p><strong>Constraints:</strong> All k_i are positive integers where 1 ≤ k_i < n, and c is any integer > 1</p>
@@ -582,7 +621,7 @@
             // Calculate R value for given k-values, n, and coefficient c
             calculateR(kValues, n, c) {
                 const sumK = kValues.reduce((a, b) => a + b, 0);
-                return c * Math.pow(2, sumK) - Math.pow(3, n);
+                return c * (Math.pow(2, sumK) - Math.pow(3, n));
             }
 
             // Generate expanded LaTeX formula for L
@@ -616,7 +655,7 @@
                 for (let j = 1; j < n; j++) {
                     sumKStr += '+' + kValues[j];
                 }
-                return `${c} \\cdot 2^{${sumKStr}} - 3^{${n}}`;
+                return `${c} \\cdot (2^{${sumKStr}} - 3^{${n}})`;
             }
 
             // Generate both L and R sets
@@ -655,9 +694,7 @@
                     let minRValue = Infinity;
                     
                     for (const kValues of combinations) {
-                        const sumK = kValues.reduce((a, b) => a + b, 0);
-                        const base2Power = Math.pow(2, sumK);
-                        const rValue = c * base2Power - Math.pow(3, n);
+                        const rValue = this.calculateR(kValues, n, c);
                         
                         minRValue = Math.min(minRValue, rValue);
                         
@@ -775,6 +812,14 @@
         const generator = new LRSetsGenerator();
         let currentViewMode = 'separate'; // 'separate' or 'interleaved'
         let lastGeneratedData = null;
+        
+        // Lazy loading variables
+        let lazyLoadConfig = {
+            itemsPerBatch: 20,
+            currentIndex: 0,
+            allItems: [],
+            isLoading: false
+        };
 
         // UI Functions
         function generateSets() {
@@ -820,6 +865,66 @@
             } else {
                 displaySets(lastGeneratedData.result, lastGeneratedData.intersection, lastGeneratedData.n, lastGeneratedData.maxDisplay);
             }
+        }
+
+        function loadMoreItems() {
+            if (lazyLoadConfig.isLoading) return;
+            
+            lazyLoadConfig.isLoading = true;
+            const loadMoreBtn = document.getElementById('loadMoreBtn');
+            if (loadMoreBtn) {
+                loadMoreBtn.disabled = true;
+                loadMoreBtn.textContent = 'Loading...';
+            }
+            
+            setTimeout(() => {
+                const container = document.getElementById('lazyContainer');
+                if (!container) return;
+                
+                const startIndex = lazyLoadConfig.currentIndex;
+                const endIndex = Math.min(startIndex + lazyLoadConfig.itemsPerBatch, lazyLoadConfig.allItems.length);
+                
+                for (let i = startIndex; i < endIndex; i++) {
+                    const item = lazyLoadConfig.allItems[i];
+                    const itemElement = createLazyItemElement(item);
+                    container.appendChild(itemElement);
+                    
+                    // Animate in
+                    setTimeout(() => {
+                        itemElement.classList.add('loaded');
+                    }, (i - startIndex) * 50);
+                }
+                
+                lazyLoadConfig.currentIndex = endIndex;
+                
+                // Update button state
+                if (loadMoreBtn) {
+                    if (endIndex >= lazyLoadConfig.allItems.length) {
+                        loadMoreBtn.style.display = 'none';
+                    } else {
+                        loadMoreBtn.disabled = false;
+                        loadMoreBtn.textContent = `Load More (${lazyLoadConfig.allItems.length - endIndex} remaining)`;
+                    }
+                }
+                
+                lazyLoadConfig.isLoading = false;
+            }, 100);
+        }
+
+        function createLazyItemElement(item) {
+            const div = document.createElement('div');
+            div.className = `interleaved-item lazy-item ${item.type === 'L' ? 'l-value' : 'r-value'}`;
+            if (item.isIntersection) {
+                div.className += ' intersection-value';
+            }
+            
+            div.innerHTML = `
+                <div class="value-label">${item.type} = ${item.value}</div>
+                ${generator.formatNumberInBases(item.value)}
+                <div class="k-values">${item.kValuesInfo}</div>
+            `;
+            
+            return div;
         }
 
         function displayInterleavedView(result, intersection, n, maxDisplay) {
@@ -903,54 +1008,49 @@
             // Sort by value
             allValues.sort((a, b) => a.value - b.value);
             
-            // Display interleaved values
-            html += '<div class="interleaved-view show">';
-            html += '<h3>Interleaved Values (Sorted by Magnitude)</h3>';
-            
-            let displayCount = 0;
-            for (const item of allValues) {
-                if (displayCount >= maxDisplay) {
-                    html += `<div class="interleaved-item">... ${allValues.length - displayCount} more values</div>`;
-                    break;
-                }
-                
-                let itemClass = item.type === 'L' ? 'l-value' : 'r-value';
-                if (item.isIntersection) {
-                    itemClass = 'intersection-value';
-                }
-                
-                html += `<div class="interleaved-item ${itemClass}">`;
-                html += `<div class="value-label">${item.type} = ${item.value}</div>`;
-                html += generator.formatNumberInBases(item.value);
-                
-                // Show k-values info
+            // Prepare items for lazy loading
+            lazyLoadConfig.allItems = allValues.map(item => {
+                let kValuesInfo = '';
                 if (item.type === 'L') {
-                    html += `<div class="k-values">k-values: ${item.keys.slice(0, 3).map(k => `[${k}]`).join(', ')}`;
+                    kValuesInfo = `k-values: ${item.keys.slice(0, 3).map(k => `[${k}]`).join(', ')}`;
                     if (item.keys.length > 3) {
-                        html += ` ... (${item.keys.length} total)`;
+                        kValuesInfo += ` ... (${item.keys.length} total)`;
                     }
-                    html += '</div>';
                 } else {
                     // For R values, show coefficient info
                     const sampleKeys = item.keys.slice(0, 3);
-                    html += `<div class="k-values">`;
                     for (const key of sampleKeys) {
                         const rData = result.rSet.get(key);
-                        html += `[${rData.kValues.join(',')}], c=${rData.coefficient}; `;
+                        kValuesInfo += `[${rData.kValues.join(',')}], c=${rData.coefficient}; `;
                     }
                     if (item.keys.length > 3) {
-                        html += `... (${item.keys.length} total)`;
+                        kValuesInfo += `... (${item.keys.length} total)`;
                     }
-                    html += '</div>';
                 }
                 
-                html += '</div>';
-                displayCount++;
-            }
+                return {
+                    ...item,
+                    kValuesInfo: kValuesInfo
+                };
+            });
             
+            // Reset lazy loading state
+            lazyLoadConfig.currentIndex = 0;
+            lazyLoadConfig.isLoading = false;
+            
+            // Display interleaved values with lazy loading
+            html += '<div class="interleaved-view show">';
+            html += '<h3>Interleaved Values (Sorted by Magnitude)</h3>';
+            html += `<div id="lazyContainer"></div>`;
+            html += `<button id="loadMoreBtn" class="load-more-btn" onclick="loadMoreItems()">Load More (${allValues.length} total)</button>`;
             html += '</div>'; // Close interleaved-view
             
             resultsDiv.innerHTML = html;
+            
+            // Load initial batch of items
+            setTimeout(() => {
+                loadMoreItems();
+            }, 100);
             
             // Re-render MathJax
             if (window.MathJax) {
@@ -1047,11 +1147,6 @@
             const lValuesSorted = Array.from(lUniqueValues.entries()).sort((a, b) => a[0] - b[0]);
             
             for (const [value, keys] of lValuesSorted) {
-                if (displayCount >= maxDisplay) {
-                    html += `<div class="set-item">... ${lUniqueValues.size - displayCount} more values</div>`;
-                    break;
-                }
-                
                 html += `<div class="set-item unique-l">`;
                 html += `<strong>L = ${value}</strong><br>`;
                 html += generator.formatNumberInBases(value);
@@ -1060,7 +1155,6 @@
                     html += ` ... (${keys.length} total)`;
                 }
                 html += '</div>';
-                displayCount++;
             }
             html += '</div>';
             
@@ -1072,11 +1166,6 @@
             const rValuesSorted = Array.from(rUniqueValues.entries()).sort((a, b) => a[0] - b[0]);
             
             for (const [value, keys] of rValuesSorted) {
-                if (displayCount >= maxDisplay) {
-                    html += `<div class="set-item">... ${rUniqueValues.size - displayCount} more values</div>`;
-                    break;
-                }
-                
                 html += `<div class="set-item unique-r">`;
                 html += `<strong>R = ${value}</strong><br>`;
                 html += generator.formatNumberInBases(value);
@@ -1091,7 +1180,6 @@
                     html += `... (${keys.length} total)`;
                 }
                 html += '</div>';
-                displayCount++;
             }
             html += '</div>';
             
@@ -1121,7 +1209,7 @@
                 const sumK = kValues.reduce((a, b) => a + b, 0);
                 
                 for (let c = 2; c <= Math.min(5, result.actualMaxC); c++) {
-                    const rValue = c * Math.pow(2, sumK) - Math.pow(3, n);
+                    const rValue = generator.calculateR(kValues, n, c);
                     const rFormula = generator.generateRFormula(kValues, n, c);
                     html += `<span class="math-formula">$$R(c=${c}) = ${rFormula} = ${rValue}$$<button class="clipboard-icon" onclick="copyToClipboard(this)" data-formula="${rFormula}"><i class="fas fa-copy"></i></button></span><br>`;
                     html += generator.formatNumberInBases(rValue);
