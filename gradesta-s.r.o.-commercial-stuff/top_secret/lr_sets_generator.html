@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>L and R Sets Generator</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                processEscapes: true,
+                processEnvironments: true
+            }
+        };
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 40px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 5px solid #667eea;
+        }
+
+        .section h2 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .control-group {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .control-group input, .control-group select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e1e8ed;
+            border-radius: 5px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        .control-group input:focus, .control-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(240, 147, 251, 0.4);
+        }
+
+        .btn-info {
+            background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+            color: white;
+        }
+
+        .btn-info:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(23, 162, 184, 0.4);
+        }
+
+        .results {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            margin-top: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .result-item {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .result-item.l-set {
+            border-left-color: #27ae60;
+            background: #d5f4e6;
+        }
+
+        .result-item.r-set {
+            border-left-color: #3498db;
+            background: #e8f4fd;
+        }
+
+        .result-item.intersection {
+            border-left-color: #e74c3c;
+            background: #fadbd8;
+            border: 2px solid #e74c3c;
+        }
+
+        .math-display {
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            overflow-x: auto;
+        }
+
+        .math-formula {
+            position: relative;
+            display: inline-block;
+            margin: 5px;
+        }
+
+        .clipboard-icon {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            font-size: 12px;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .clipboard-icon:hover {
+            background: #0056b3;
+            transform: scale(1.1);
+        }
+
+        .math-formula:hover .clipboard-icon {
+            opacity: 1;
+        }
+
+        .clipboard-icon.copied {
+            background: #28a745;
+        }
+
+        .clipboard-icon.copied i {
+            display: none;
+        }
+
+        .clipboard-icon.copied::after {
+            content: "\f00c";
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+        }
+
+        .set-display {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .set-column {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .set-column h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .set-item {
+            background: white;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            border-left: 3px solid #667eea;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+
+        .set-item.unique-l {
+            border-left-color: #27ae60;
+        }
+
+        .set-item.unique-r {
+            border-left-color: #3498db;
+        }
+
+        .set-item.common {
+            border-left-color: #e74c3c;
+            background: #fff5f5;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+            font-style: italic;
+        }
+
+        .error {
+            background: #fadbd8;
+            color: #e74c3c;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border-left: 4px solid #e74c3c;
+        }
+        
+        .warning {
+            background: #fff3e0;
+            color: #e65100;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border-left: 4px solid #ff9800;
+        }
+
+        .success {
+            background: #d5f4e6;
+            color: #27ae60;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border-left: 4px solid #27ae60;
+        }
+
+        .formula-display {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            border: 2px solid #e1e8ed;
+        }
+
+        .formula-display h4 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .stat-card h4 {
+            margin: 0 0 8px 0;
+            color: #2c3e50;
+            font-size: 14px;
+        }
+
+        .stat-card .value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #28a745;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 10px;
+            }
+            
+            .header {
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            .controls {
+                grid-template-columns: 1fr;
+            }
+            
+            .button-group {
+                flex-direction: column;
+            }
+
+            .set-display {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>L and R Sets Generator</h1>
+            <p>Generate and analyze L(k₀,k₁,...) and R(k₀,k₁,...,n) sets based on Collatz cycle equations</p>
+        </div>
+
+        <div class="content">
+            <div class="section">
+                <h2>Mathematical Definitions</h2>
+                <div class="formula-display">
+                    <h4>L Set (Numerator terms):</h4>
+                    <p><span class="math-formula">$$L(k_0,k_1,k_2,...) = \begin{matrix}\begin{align}
+                    &2 \cdot 3^{n-1} \\
+                    &+ 3^{n-2} \cdot 2^{k_0-1} \\
+                    &+ 3^{n-3} \cdot 2^{k_0+k_1-1} \\
+                    &+ 3^{n-4} \cdot 2^{k_0+k_1+k_2-1} \\
+                    &+ \cdots \\
+                    &+ 3^{0} \cdot 2^{k_0+k_1+\cdots+k_{n-2}-1} \\
+                    &- 2^{k_0+k_1+\cdots+k_{n-1}-1}
+                    \end{align}\end{matrix}$$<button class="clipboard-icon" onclick="copyToClipboard(this)" data-formula="L(k_0,k_1,k_2,...) = \begin{matrix}\begin{align} &2 \cdot 3^{n-1} \\ &+ 3^{n-2} \cdot 2^{k_0-1} \\ &+ 3^{n-3} \cdot 2^{k_0+k_1-1} \\ &+ 3^{n-4} \cdot 2^{k_0+k_1+k_2-1} \\ &+ \cdots \\ &+ 3^{0} \cdot 2^{k_0+k_1+\cdots+k_{n-2}-1} \\ &- 2^{k_0+k_1+\cdots+k_{n-1}-1} \end{align}\end{matrix}"><i class="fas fa-copy"></i></button></span></p>
+                </div>
+                
+                <div class="formula-display">
+                    <h4>R Set (Denominator terms):</h4>
+                    <p><span class="math-formula">$$R(k_0,k_1,k_2,...,n,c) = c \cdot 2^{k_0+k_1+k_2+\cdots+k_{n-1}} - 3^{n}$$<button class="clipboard-icon" onclick="copyToClipboard(this)" data-formula="R(k_0,k_1,k_2,...,n,c) = c \cdot 2^{k_0+k_1+k_2+\cdots+k_{n-1}} - 3^{n}"><i class="fas fa-copy"></i></button></span></p>
+                </div>
+                
+                <p><strong>Constraints:</strong> All k_i are positive integers where 1 ≤ k_i < n, and c is any integer > 1</p>
+            </div>
+
+            <div class="section">
+                <h2>Generator Controls</h2>
+                <div class="controls">
+                    <div class="control-group">
+                        <label for="nValue">n (Cycle Length)</label>
+                        <input type="number" id="nValue" min="2" max="8" value="4">
+                        <small>Note: Values > 6 may take significant time to compute</small>
+                    </div>
+                    
+                    <div class="control-group">
+                        <label for="maxDisplay">Max Display Results</label>
+                        <input type="number" id="maxDisplay" min="10" max="1000" value="100">
+                        <small>Limit results shown to prevent browser overload</small>
+                    </div>
+                    
+                    <div class="control-group">
+                        <label for="maxCoefficient">Max Coefficient (c)</label>
+                        <input type="number" id="maxCoefficient" min="2" max="1000" value="10">
+                        <small>Maximum value for coefficient c in R set</small>
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button class="btn btn-primary" onclick="generateSets()">Generate L and R Sets</button>
+                    <button class="btn btn-secondary" onclick="analyzeIntersection()">Analyze Intersection</button>
+                    <button class="btn btn-info" onclick="clearResults()">Clear Results</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>Results</h2>
+                <div id="results" class="results">
+                    <p style="text-align: center; color: #666; font-style: italic;">Click "Generate L and R Sets" to see results</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class LRSetsGenerator {
+            constructor() {
+                this.lSet = new Map(); // k-values -> L value
+                this.rSet = new Map(); // k-values -> R value
+                this.nValue = 4;
+            }
+
+            // Generate all valid k-value combinations for given n
+            generateKCombinations(n) {
+                const combinations = [];
+                
+                // Generate all combinations where each k_i is in range [1, n-1]
+                const generate = (current, depth) => {
+                    if (depth === n) {
+                        combinations.push([...current]);
+                        return;
+                    }
+                    
+                    for (let k = 1; k < n; k++) {
+                        current.push(k);
+                        generate(current, depth + 1);
+                        current.pop();
+                    }
+                };
+                
+                generate([], 0);
+                return combinations;
+            }
+
+            // Calculate L value for given k-values and n
+            calculateL(kValues, n) {
+                // Base term: 2 * 3^(n-1)
+                let result = 2 * Math.pow(3, n - 1);
+                
+                // Add terms: 3^(n-2-i) * 2^(sum of first i+1 k values - 1) for i=0 to n-2
+                for (let i = 0; i < n - 1; i++) {
+                    let powerSum = 0;
+                    for (let j = 0; j <= i; j++) {
+                        powerSum += kValues[j];
+                    }
+                    const coefficient = Math.pow(3, n - 2 - i);
+                    const term = coefficient * Math.pow(2, powerSum - 1);
+                    result += term;
+                }
+                
+                // Subtract the negative term: 2^(sum of all k values - 1)
+                const sumK = kValues.reduce((a, b) => a + b, 0);
+                result -= Math.pow(2, sumK - 1);
+                
+                return result;
+            }
+
+            // Calculate R value for given k-values, n, and coefficient c
+            calculateR(kValues, n, c) {
+                const sumK = kValues.reduce((a, b) => a + b, 0);
+                return c * Math.pow(2, sumK) - Math.pow(3, n);
+            }
+
+            // Generate expanded LaTeX formula for L
+            generateLFormula(kValues, n) {
+                let formula = '\\begin{align}\n';
+                formula += `&2 \\cdot 3^{${n-1}} \\\\\n`;
+                
+                // Add all positive terms
+                for (let i = 0; i < n - 1; i++) {
+                    let powerSumStr = kValues[0].toString();
+                    for (let j = 1; j <= i; j++) {
+                        powerSumStr += '+' + kValues[j];
+                    }
+                    formula += `&+ 3^{${n-2-i}} \\cdot 2^{${powerSumStr}-1} \\\\\n`;
+                }
+                
+                // Add the negative term
+                let sumKStr = kValues[0].toString();
+                for (let j = 1; j < n; j++) {
+                    sumKStr += '+' + kValues[j];
+                }
+                formula += `&- 2^{${sumKStr}-1}\n`;
+                formula += '\\end{align}';
+                
+                return formula;
+            }
+
+            // Generate expanded LaTeX formula for R
+            generateRFormula(kValues, n, c) {
+                let sumKStr = kValues[0].toString();
+                for (let j = 1; j < n; j++) {
+                    sumKStr += '+' + kValues[j];
+                }
+                return `${c} \\cdot 2^{${sumKStr}} - 3^{${n}}`;
+            }
+
+            // Generate both L and R sets
+            generateSets(n, maxDisplay, maxCoefficient) {
+                this.nValue = n;
+                this.lSet.clear();
+                this.rSet.clear();
+                
+                const combinations = this.generateKCombinations(n);
+                
+                if (combinations.length > maxDisplay * 2) {
+                    throw new Error(`Too many combinations (${combinations.length}). Increase max display or reduce n.`);
+                }
+                
+                // First pass: calculate L values to determine reasonable max coefficient
+                let maxLValue = 0;
+                for (const kValues of combinations) {
+                    const lValue = this.calculateL(kValues, n);
+                    maxLValue = Math.max(maxLValue, Math.abs(lValue));
+                    
+                    const key = kValues.join(',');
+                    this.lSet.set(key, {
+                        kValues: [...kValues],
+                        value: lValue,
+                        formula: this.generateLFormula(kValues, n)
+                    });
+                }
+                
+                // Determine reasonable max coefficient based on max L value
+                // We want c * 2^sumK to be comparable to max L value
+                const reasonableMaxC = Math.min(maxCoefficient, Math.max(2, Math.ceil(maxLValue / 1000)));
+                
+                // Second pass: calculate R values with different coefficients
+                for (const kValues of combinations) {
+                    const sumK = kValues.reduce((a, b) => a + b, 0);
+                    const base2Power = Math.pow(2, sumK);
+                    
+                    for (let c = 2; c <= reasonableMaxC; c++) {
+                        const rValue = c * base2Power - Math.pow(3, n);
+                        const key = `${kValues.join(',')},c=${c}`;
+                        this.rSet.set(key, {
+                            kValues: [...kValues],
+                            coefficient: c,
+                            value: rValue,
+                            formula: this.generateRFormula(kValues, n, c)
+                        });
+                    }
+                }
+                
+                return {
+                    lSet: this.lSet,
+                    rSet: this.rSet,
+                    totalCombinations: combinations.length,
+                    maxLValue: maxLValue,
+                    actualMaxC: reasonableMaxC
+                };
+            }
+
+            // Find intersection of L and R sets
+            findIntersection() {
+                const intersection = new Map();
+                const lValues = new Map(); // value -> keys that produce it
+                const rValues = new Map(); // value -> keys that produce it
+                
+                // Build value mappings for L set
+                for (const [key, data] of this.lSet) {
+                    const value = data.value;
+                    if (!lValues.has(value)) {
+                        lValues.set(value, []);
+                    }
+                    lValues.get(value).push(key);
+                }
+                
+                // Build value mappings for R set
+                for (const [key, data] of this.rSet) {
+                    const value = data.value;
+                    if (!rValues.has(value)) {
+                        rValues.set(value, []);
+                    }
+                    rValues.get(value).push(key);
+                }
+                
+                // Find common values
+                for (const [value, lKeys] of lValues) {
+                    if (rValues.has(value)) {
+                        const rKeys = rValues.get(value);
+                        intersection.set(value, {
+                            value: value,
+                            lKeys: lKeys,
+                            rKeys: rKeys,
+                            lData: lKeys.map(key => this.lSet.get(key)),
+                            rData: rKeys.map(key => this.rSet.get(key))
+                        });
+                    }
+                }
+                
+                return intersection;
+            }
+
+            // Get unique values from a set
+            getUniqueValues(setMap) {
+                const values = new Map();
+                for (const [key, data] of setMap) {
+                    const value = data.value;
+                    if (!values.has(value)) {
+                        values.set(value, []);
+                    }
+                    values.get(value).push(key);
+                }
+                return values;
+            }
+        }
+
+        // Global generator instance
+        const generator = new LRSetsGenerator();
+
+        // UI Functions
+        function generateSets() {
+            const n = parseInt(document.getElementById('nValue').value);
+            const maxDisplay = parseInt(document.getElementById('maxDisplay').value);
+            const maxCoefficient = parseInt(document.getElementById('maxCoefficient').value);
+            const resultsDiv = document.getElementById('results');
+            
+            if (n < 2) {
+                resultsDiv.innerHTML = '<div class="error">n must be at least 2</div>';
+                return;
+            }
+            
+            if (n > 8) {
+                resultsDiv.innerHTML = '<div class="warning">n > 8 may cause performance issues. Consider reducing n or increasing max display limit.</div>';
+                return;
+            }
+            
+            resultsDiv.innerHTML = '<div class="loading">Generating L and R sets...</div>';
+            
+            setTimeout(() => {
+                try {
+                    const result = generator.generateSets(n, maxDisplay, maxCoefficient);
+                    displaySets(result, n, maxDisplay);
+                } catch (error) {
+                    resultsDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+                }
+            }, 100);
+        }
+
+        function displaySets(result, n, maxDisplay) {
+            const resultsDiv = document.getElementById('results');
+            
+            // Calculate statistics
+            const lUniqueValues = generator.getUniqueValues(result.lSet);
+            const rUniqueValues = generator.getUniqueValues(result.rSet);
+            const totalPossibleCombinations = Math.pow(n - 1, n);
+            
+            let html = `<div class="stats-grid">
+                <div class="stat-card">
+                    <h4>Total K-combinations</h4>
+                    <div class="value">${result.totalCombinations}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Possible Combinations</h4>
+                    <div class="value">${totalPossibleCombinations}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Unique L Values</h4>
+                    <div class="value">${lUniqueValues.size}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Unique R Values</h4>
+                    <div class="value">${rUniqueValues.size}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Max L Value</h4>
+                    <div class="value">${result.maxLValue}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Actual Max c</h4>
+                    <div class="value">${result.actualMaxC}</div>
+                </div>
+            </div>`;
+            
+            html += `<div class="formula-display">
+                <h4>Generated for n = ${n}</h4>
+                <p>Each k_i ∈ {1, 2, ..., ${n-1}}, producing ${result.totalCombinations} total combinations</p>
+                <p>R set includes coefficients c ∈ {2, 3, ..., ${result.actualMaxC}} (limited by max L value)</p>
+            </div>`;
+            
+            // Display sets side by side
+            html += '<div class="set-display">';
+            
+            // L Set
+            html += '<div class="set-column">';
+            html += '<h3>L Set (Numerator Values)</h3>';
+            
+            let displayCount = 0;
+            const lValuesSorted = Array.from(lUniqueValues.entries()).sort((a, b) => a[0] - b[0]);
+            
+            for (const [value, keys] of lValuesSorted) {
+                if (displayCount >= maxDisplay) {
+                    html += `<div class="set-item">... ${lUniqueValues.size - displayCount} more values</div>`;
+                    break;
+                }
+                
+                html += `<div class="set-item unique-l">`;
+                html += `<strong>L = ${value}</strong><br>`;
+                html += `k-values: ${keys.slice(0, 3).map(k => `[${k}]`).join(', ')}`;
+                if (keys.length > 3) {
+                    html += ` ... (${keys.length} total)`;
+                }
+                html += '</div>';
+                displayCount++;
+            }
+            html += '</div>';
+            
+            // R Set
+            html += '<div class="set-column">';
+            html += '<h3>R Set (Denominator Values)</h3>';
+            
+            displayCount = 0;
+            const rValuesSorted = Array.from(rUniqueValues.entries()).sort((a, b) => a[0] - b[0]);
+            
+            for (const [value, keys] of rValuesSorted) {
+                if (displayCount >= maxDisplay) {
+                    html += `<div class="set-item">... ${rUniqueValues.size - displayCount} more values</div>`;
+                    break;
+                }
+                
+                html += `<div class="set-item unique-r">`;
+                html += `<strong>R = ${value}</strong><br>`;
+                
+                // Show first few keys with coefficient info
+                const sampleKeys = keys.slice(0, 3);
+                for (const key of sampleKeys) {
+                    const rData = result.rSet.get(key);
+                    html += `[${rData.kValues.join(',')}], c=${rData.coefficient}; `;
+                }
+                if (keys.length > 3) {
+                    html += `... (${keys.length} total)`;
+                }
+                html += '</div>';
+                displayCount++;
+            }
+            html += '</div>';
+            
+            html += '</div>'; // Close set-display
+            
+            // Sample detailed calculations
+            html += '<div class="formula-display">';
+            html += '<h4>Sample Detailed Calculations</h4>';
+            const sampleKeys = Array.from(result.lSet.keys()).slice(0, 3);
+            
+            for (const key of sampleKeys) {
+                const lData = result.lSet.get(key);
+                
+                html += `<div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px;">`;
+                html += `<strong>k-values: [${key}]</strong><br>`;
+                html += `<span class="math-formula">$$L = ${lData.formula}$$<button class="clipboard-icon" onclick="copyToClipboard(this)" data-formula="${lData.formula}"><i class="fas fa-copy"></i></button></span><br>`;
+                html += `<strong>L = ${lData.value}</strong><br><br>`;
+                
+                // Show R calculations for different coefficients
+                html += `<strong>R calculations for different coefficients:</strong><br>`;
+                const kValues = lData.kValues;
+                const sumK = kValues.reduce((a, b) => a + b, 0);
+                
+                for (let c = 2; c <= Math.min(5, result.actualMaxC); c++) {
+                    const rValue = c * Math.pow(2, sumK) - Math.pow(3, n);
+                    const rFormula = generator.generateRFormula(kValues, n, c);
+                    html += `<span class="math-formula">$$R(c=${c}) = ${rFormula} = ${rValue}$$<button class="clipboard-icon" onclick="copyToClipboard(this)" data-formula="${rFormula}"><i class="fas fa-copy"></i></button></span><br>`;
+                }
+                html += '</div>';
+            }
+            html += '</div>';
+            
+            resultsDiv.innerHTML = html;
+            
+            // Re-render MathJax
+            if (window.MathJax) {
+                MathJax.typesetPromise([resultsDiv]);
+            }
+        }
+
+        function analyzeIntersection() {
+            const resultsDiv = document.getElementById('results');
+            
+            if (generator.lSet.size === 0 || generator.rSet.size === 0) {
+                resultsDiv.innerHTML = '<div class="warning">Please generate L and R sets first</div>';
+                return;
+            }
+            
+            resultsDiv.innerHTML = '<div class="loading">Analyzing intersection...</div>';
+            
+            setTimeout(() => {
+                try {
+                    const intersection = generator.findIntersection();
+                    displayIntersection(intersection);
+                } catch (error) {
+                    resultsDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+                }
+            }, 100);
+        }
+
+        function displayIntersection(intersection) {
+            const resultsDiv = document.getElementById('results');
+            
+            let html = `<div class="stats-grid">
+                <div class="stat-card">
+                    <h4>L Set Size</h4>
+                    <div class="value">${generator.lSet.size}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>R Set Size</h4>
+                    <div class="value">${generator.rSet.size}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Intersection Size</h4>
+                    <div class="value">${intersection.size}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>n Value</h4>
+                    <div class="value">${generator.nValue}</div>
+                </div>
+            </div>`;
+            
+            if (intersection.size === 0) {
+                html += '<div class="success">No intersection found - L and R sets are disjoint!</div>';
+            } else {
+                html += '<div class="error">⚠️ Intersection found! This indicates common values between L and R sets.</div>';
+                
+                html += '<h3>Intersection Details</h3>';
+                
+                for (const [value, data] of intersection) {
+                    html += `<div class="result-item intersection">`;
+                    html += `<strong>Common Value: ${value}</strong><br>`;
+                    html += `<strong>L k-values:</strong> ${data.lKeys.map(k => `[${k}]`).join(', ')}<br>`;
+                    html += `<strong>R k-values:</strong> ${data.rKeys.map(k => `[${k}]`).join(', ')}<br>`;
+                    
+                    // Show detailed formulas for first occurrence
+                    if (data.lData.length > 0 && data.rData.length > 0) {
+                        const lSample = data.lData[0];
+                        const rSample = data.rData[0];
+                        
+                        html += `<div style="margin-top: 10px;">`;
+                        html += `<span class="math-formula">$$L = ${lSample.formula}$$<button class="clipboard-icon" onclick="copyToClipboard(this)" data-formula="${lSample.formula}"><i class="fas fa-copy"></i></button></span><br>`;
+                        html += `<span class="math-formula">$$R = ${rSample.formula}$$<button class="clipboard-icon" onclick="copyToClipboard(this)" data-formula="${rSample.formula}"><i class="fas fa-copy"></i></button></span>`;
+                        html += `</div>`;
+                    }
+                    
+                    html += '</div>';
+                }
+            }
+            
+            resultsDiv.innerHTML = html;
+            
+            // Re-render MathJax
+            if (window.MathJax) {
+                MathJax.typesetPromise([resultsDiv]);
+            }
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '<p style="text-align: center; color: #666; font-style: italic;">Click "Generate L and R Sets" to see results</p>';
+        }
+
+        // Copy to clipboard function
+        function copyToClipboard(button) {
+            const formula = button.getAttribute('data-formula');
+            if (!formula) {
+                showToast('No formula to copy', 'error');
+                return;
+            }
+            
+            // Copy to clipboard
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(formula).then(() => {
+                    showToast('Formula copied to clipboard!');
+                    button.classList.add('copied');
+                    setTimeout(() => {
+                        button.classList.remove('copied');
+                    }, 2000);
+                }).catch(err => {
+                    console.error('Failed to copy: ', err);
+                    showToast('Failed to copy formula', 'error');
+                });
+            } else {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = formula;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-999999px';
+                textArea.style.top = '-999999px';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    showToast('Formula copied to clipboard!');
+                    button.classList.add('copied');
+                    setTimeout(() => {
+                        button.classList.remove('copied');
+                    }, 2000);
+                } catch (err) {
+                    showToast('Failed to copy formula', 'error');
+                }
+                document.body.removeChild(textArea);
+            }
+        }
+
+        // Show toast notification
+        function showToast(message, type = 'success') {
+            // Remove existing toast
+            const existingToast = document.querySelector('.toast');
+            if (existingToast) {
+                existingToast.remove();
+            }
+
+            // Create new toast
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            
+            const icon = type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle';
+            toast.innerHTML = `<i class="fas ${icon}"></i> ${message}`;
+            
+            document.body.appendChild(toast);
+            
+            // Show toast
+            setTimeout(() => {
+                toast.classList.add('show');
+            }, 100);
+            
+            // Hide toast after 3 seconds
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                }, 300);
+            }, 3000);
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set default values
+            document.getElementById('nValue').value = 4;
+            document.getElementById('maxDisplay').value = 100;
+            document.getElementById('maxCoefficient').value = 10;
+        });
+    </script>
+</body>
+</html>
