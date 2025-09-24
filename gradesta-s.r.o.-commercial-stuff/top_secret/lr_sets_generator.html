@@ -142,16 +142,6 @@
             box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
         }
 
-        .btn-secondary {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            color: white;
-        }
-
-        .btn-secondary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(240, 147, 251, 0.4);
-        }
-
         .btn-info {
             background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
             color: white;
@@ -178,30 +168,10 @@
             border-left: 4px solid #667eea;
         }
 
-        .result-item.l-set {
-            border-left-color: #27ae60;
-            background: #d5f4e6;
-        }
-
-        .result-item.r-set {
-            border-left-color: #3498db;
-            background: #e8f4fd;
-        }
-
         .result-item.intersection {
             border-left-color: #e74c3c;
             background: #fadbd8;
             border: 2px solid #e74c3c;
-        }
-
-        .math-display {
-            background: #2c3e50;
-            color: white;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 15px 0;
-            font-family: 'Courier New', monospace;
-            overflow-x: auto;
         }
 
         .math-formula {
@@ -289,11 +259,6 @@
 
         .set-item.unique-r {
             border-left-color: #3498db;
-        }
-
-        .set-item.common {
-            border-left-color: #e74c3c;
-            background: #fff5f5;
         }
 
         .loading {
@@ -429,7 +394,7 @@
     <div class="container">
         <div class="header">
             <h1>L and R Sets Generator</h1>
-            <p>Generate and analyze L(k₀,k₁,...) and R(k₀,k₁,...,n) sets based on Collatz cycle equations</p>
+            <p>Generate and analyze L(k₀,k₁,...) and R(k₀,k₁,...,n,c) sets with automatic intersection analysis</p>
         </div>
 
         <div class="content">
@@ -479,8 +444,7 @@
                 </div>
 
                 <div class="button-group">
-                    <button class="btn btn-primary" onclick="generateSets()">Generate L and R Sets</button>
-                    <button class="btn btn-secondary" onclick="analyzeIntersection()">Analyze Intersection</button>
+                    <button class="btn btn-primary" onclick="generateSets()">Generate L and R Sets & Analyze</button>
                     <button class="btn btn-info" onclick="clearResults()">Clear Results</button>
                 </div>
             </div>
@@ -488,7 +452,7 @@
             <div class="section">
                 <h2>Results</h2>
                 <div id="results" class="results">
-                    <p style="text-align: center; color: #666; font-style: italic;">Click "Generate L and R Sets" to see results</p>
+                    <p style="text-align: center; color: #666; font-style: italic;">Click "Generate L and R Sets & Analyze" to see results</p>
                 </div>
             </div>
         </div>
@@ -613,17 +577,22 @@
                     });
                 }
                 
-                // Determine reasonable max coefficient based on max L value
-                // We want c * 2^sumK to be comparable to max L value
-                const reasonableMaxC = Math.min(maxCoefficient, Math.max(2, Math.ceil(maxLValue / 1000)));
-                
                 // Second pass: calculate R values with different coefficients
-                for (const kValues of combinations) {
-                    const sumK = kValues.reduce((a, b) => a + b, 0);
-                    const base2Power = Math.pow(2, sumK);
+                // Continue until ALL R values are greater than max L value
+                let c = 2;
+                let allRValuesGreaterThanMaxL = false;
+                let actualMaxC = 2;
+                
+                while (c <= maxCoefficient && !allRValuesGreaterThanMaxL) {
+                    let minRValue = Infinity;
                     
-                    for (let c = 2; c <= reasonableMaxC; c++) {
+                    for (const kValues of combinations) {
+                        const sumK = kValues.reduce((a, b) => a + b, 0);
+                        const base2Power = Math.pow(2, sumK);
                         const rValue = c * base2Power - Math.pow(3, n);
+                        
+                        minRValue = Math.min(minRValue, rValue);
+                        
                         const key = `${kValues.join(',')},c=${c}`;
                         this.rSet.set(key, {
                             kValues: [...kValues],
@@ -632,6 +601,14 @@
                             formula: this.generateRFormula(kValues, n, c)
                         });
                     }
+                    
+                    // Check if all R values for this coefficient are greater than max L
+                    if (minRValue > maxLValue) {
+                        allRValuesGreaterThanMaxL = true;
+                    }
+                    
+                    actualMaxC = c;
+                    c++;
                 }
                 
                 return {
@@ -639,7 +616,8 @@
                     rSet: this.rSet,
                     totalCombinations: combinations.length,
                     maxLValue: maxLValue,
-                    actualMaxC: reasonableMaxC
+                    actualMaxC: actualMaxC,
+                    allRValuesGreaterThanMaxL: allRValuesGreaterThanMaxL
                 };
             }
 
@@ -718,19 +696,20 @@
                 return;
             }
             
-            resultsDiv.innerHTML = '<div class="loading">Generating L and R sets...</div>';
+            resultsDiv.innerHTML = '<div class="loading">Generating L and R sets and analyzing intersection...</div>';
             
             setTimeout(() => {
                 try {
                     const result = generator.generateSets(n, maxDisplay, maxCoefficient);
-                    displaySets(result, n, maxDisplay);
+                    const intersection = generator.findIntersection();
+                    displaySets(result, intersection, n, maxDisplay);
                 } catch (error) {
                     resultsDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
                 }
             }, 100);
         }
 
-        function displaySets(result, n, maxDisplay) {
+        function displaySets(result, intersection, n, maxDisplay) {
             const resultsDiv = document.getElementById('results');
             
             // Calculate statistics
@@ -742,10 +721,6 @@
                 <div class="stat-card">
                     <h4>Total K-combinations</h4>
                     <div class="value">${result.totalCombinations}</div>
-                </div>
-                <div class="stat-card">
-                    <h4>Possible Combinations</h4>
-                    <div class="value">${totalPossibleCombinations}</div>
                 </div>
                 <div class="stat-card">
                     <h4>Unique L Values</h4>
@@ -763,13 +738,53 @@
                     <h4>Actual Max c</h4>
                     <div class="value">${result.actualMaxC}</div>
                 </div>
+                <div class="stat-card">
+                    <h4>Intersection Size</h4>
+                    <div class="value">${intersection.size}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Stopping Condition</h4>
+                    <div class="value">${result.allRValuesGreaterThanMaxL ? 'All R > L_max' : 'Hit max c limit'}</div>
+                </div>
             </div>`;
             
             html += `<div class="formula-display">
                 <h4>Generated for n = ${n}</h4>
                 <p>Each k_i ∈ {1, 2, ..., ${n-1}}, producing ${result.totalCombinations} total combinations</p>
-                <p>R set includes coefficients c ∈ {2, 3, ..., ${result.actualMaxC}} (limited by max L value)</p>
+                <p>R set includes coefficients c ∈ {2, 3, ..., ${result.actualMaxC}}</p>
+                <p>${result.allRValuesGreaterThanMaxL ? 
+                    `✅ All R values for c=${result.actualMaxC} are greater than max L (${result.maxLValue})` : 
+                    `⚠️ Some R values for c=${result.actualMaxC} are still ≤ max L (${result.maxLValue})`}</p>
             </div>`;
+            
+            // Show intersection analysis immediately
+            if (intersection.size === 0) {
+                html += '<div class="success">✅ No intersection found - L and R sets are disjoint!</div>';
+            } else {
+                html += '<div class="error">⚠️ Intersection found! This indicates common values between L and R sets.</div>';
+                
+                html += '<h3>Intersection Details</h3>';
+                
+                for (const [value, data] of intersection) {
+                    html += `<div class="result-item intersection">`;
+                    html += `<strong>Common Value: ${value}</strong><br>`;
+                    html += `<strong>L k-values:</strong> ${data.lKeys.map(k => `[${k}]`).join(', ')}<br>`;
+                    html += `<strong>R k-values:</strong> ${data.rKeys.map(k => `[${k}]`).join(', ')}<br>`;
+                    
+                    // Show detailed formulas for first occurrence
+                    if (data.lData.length > 0 && data.rData.length > 0) {
+                        const lSample = data.lData[0];
+                        const rSample = data.rData[0];
+                        
+                        html += `<div style="margin-top: 10px;">`;
+                        html += `<span class="math-formula">$$L = ${lSample.formula}$$<button class="clipboard-icon" onclick="copyToClipboard(this)" data-formula="${lSample.formula}"><i class="fas fa-copy"></i></button></span><br>`;
+                        html += `<span class="math-formula">$$R = ${rSample.formula}$$<button class="clipboard-icon" onclick="copyToClipboard(this)" data-formula="${rSample.formula}"><i class="fas fa-copy"></i></button></span>`;
+                        html += `</div>`;
+                    }
+                    
+                    html += '</div>';
+                }
+            }
             
             // Display sets side by side
             html += '<div class="set-display">';
@@ -865,86 +880,8 @@
             }
         }
 
-        function analyzeIntersection() {
-            const resultsDiv = document.getElementById('results');
-            
-            if (generator.lSet.size === 0 || generator.rSet.size === 0) {
-                resultsDiv.innerHTML = '<div class="warning">Please generate L and R sets first</div>';
-                return;
-            }
-            
-            resultsDiv.innerHTML = '<div class="loading">Analyzing intersection...</div>';
-            
-            setTimeout(() => {
-                try {
-                    const intersection = generator.findIntersection();
-                    displayIntersection(intersection);
-                } catch (error) {
-                    resultsDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
-                }
-            }, 100);
-        }
-
-        function displayIntersection(intersection) {
-            const resultsDiv = document.getElementById('results');
-            
-            let html = `<div class="stats-grid">
-                <div class="stat-card">
-                    <h4>L Set Size</h4>
-                    <div class="value">${generator.lSet.size}</div>
-                </div>
-                <div class="stat-card">
-                    <h4>R Set Size</h4>
-                    <div class="value">${generator.rSet.size}</div>
-                </div>
-                <div class="stat-card">
-                    <h4>Intersection Size</h4>
-                    <div class="value">${intersection.size}</div>
-                </div>
-                <div class="stat-card">
-                    <h4>n Value</h4>
-                    <div class="value">${generator.nValue}</div>
-                </div>
-            </div>`;
-            
-            if (intersection.size === 0) {
-                html += '<div class="success">No intersection found - L and R sets are disjoint!</div>';
-            } else {
-                html += '<div class="error">⚠️ Intersection found! This indicates common values between L and R sets.</div>';
-                
-                html += '<h3>Intersection Details</h3>';
-                
-                for (const [value, data] of intersection) {
-                    html += `<div class="result-item intersection">`;
-                    html += `<strong>Common Value: ${value}</strong><br>`;
-                    html += `<strong>L k-values:</strong> ${data.lKeys.map(k => `[${k}]`).join(', ')}<br>`;
-                    html += `<strong>R k-values:</strong> ${data.rKeys.map(k => `[${k}]`).join(', ')}<br>`;
-                    
-                    // Show detailed formulas for first occurrence
-                    if (data.lData.length > 0 && data.rData.length > 0) {
-                        const lSample = data.lData[0];
-                        const rSample = data.rData[0];
-                        
-                        html += `<div style="margin-top: 10px;">`;
-                        html += `<span class="math-formula">$$L = ${lSample.formula}$$<button class="clipboard-icon" onclick="copyToClipboard(this)" data-formula="${lSample.formula}"><i class="fas fa-copy"></i></button></span><br>`;
-                        html += `<span class="math-formula">$$R = ${rSample.formula}$$<button class="clipboard-icon" onclick="copyToClipboard(this)" data-formula="${rSample.formula}"><i class="fas fa-copy"></i></button></span>`;
-                        html += `</div>`;
-                    }
-                    
-                    html += '</div>';
-                }
-            }
-            
-            resultsDiv.innerHTML = html;
-            
-            // Re-render MathJax
-            if (window.MathJax) {
-                MathJax.typesetPromise([resultsDiv]);
-            }
-        }
-
         function clearResults() {
-            document.getElementById('results').innerHTML = '<p style="text-align: center; color: #666; font-style: italic;">Click "Generate L and R Sets" to see results</p>';
+            document.getElementById('results').innerHTML = '<p style="text-align: center; color: #666; font-style: italic;">Click "Generate L and R Sets & Analyze" to see results</p>';
         }
 
         // Copy to clipboard function
