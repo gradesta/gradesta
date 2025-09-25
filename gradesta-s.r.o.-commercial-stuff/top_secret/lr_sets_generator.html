@@ -100,6 +100,22 @@
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
+        .form-group select {
+            padding: 0.8rem;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+            background: white;
+            min-width: 200px;
+        }
+
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
         .button-group {
             display: flex;
             gap: 1rem;
@@ -340,6 +356,26 @@
             margin-bottom: 1rem;
         }
 
+        .ltrim-controls .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .ltrim-controls select {
+            padding: 0.8rem;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+            background: white;
+            min-width: 200px;
+        }
+
+        .ltrim-controls select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
         .ltrim-side-by-side {
             display: block;
         }
@@ -573,6 +609,13 @@
                         <label for="ltrimBits">LTrim Bits:</label>
                         <input type="number" id="ltrimBits" value="4" min="1" max="16">
                     </div>
+                    
+                    <div class="form-group">
+                        <label for="mainSumKFilter">Filter by Sum of k:</label>
+                        <select id="mainSumKFilter" onchange="filterMainSetsBySumK()">
+                            <option value="">All Sum of k values</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div class="button-group">
@@ -608,6 +651,8 @@
         let generator = null;
         let currentViewMode = 'separate'; // 'separate', 'interleaved', 'scatter', or 'ltrim'
         let lastGeneratedData = null;
+        let currentLtrimData = null;
+        let currentMainData = null;
 
         // Scatter plot variables
         let scatterPlotData = [];
@@ -969,6 +1014,11 @@
                     const result = generator.generate(n, maxDisplay, maxCoefficient);
                     const intersection = generator.findIntersection();
                     lastGeneratedData = { result, intersection, n, maxDisplay };
+                    currentMainData = { result, intersection, n, maxDisplay };
+                    
+                    // Populate main filter dropdown
+                    populateMainSumKFilter(result);
+                    
                     displaySets(result, intersection, n, maxDisplay);
                     
                     // Clear any existing views
@@ -1028,6 +1078,12 @@
                 <div class="ltrim-view">
                     <h3><i class="fas fa-cut"></i> LTrim View (Base 2)</h3>
                     <div class="ltrim-controls">
+                        <div class="form-group" style="margin-bottom: 1rem;">
+                            <label for="ltrimSumKFilter">Filter by Sum of k:</label>
+                            <select id="ltrimSumKFilter" onchange="filterLtrimBySumK()">
+                                <option value="">All Sum of k values</option>
+                            </select>
+                        </div>
                         <button class="btn btn-secondary" onclick="toggleLtrimMode()">Toggle Side-by-Side / Interwoven</button>
                     </div>
                     <div id="ltrimSideBySide" class="ltrim-side-by-side">
@@ -1097,13 +1153,22 @@
                 </div>
             `);
             
+            // Group R set by values to avoid duplicates
+            const groupedRSet = groupRSetByValues(result.rSet);
+            
             // Initialize lazy loading for R set
-            initializeLazyLoading('rSetItems', result.rSet, maxDisplay, (key, data) => `
+            initializeLazyLoading('rSetItems', groupedRSet, maxDisplay, (key, data) => `
                 <div class="set-item">
-                    <strong>k = [${data.kValues.join(', ')}], c = ${data.coefficient}</strong><br>
-                    Value: ${data.value}<br>
+                    <strong>Value: ${data.value} (${data.entries.length} occurrence${data.entries.length > 1 ? 's' : ''})</strong><br>
                     ${generator.formatNumberInBases(data.value)}
-                    <div class="formula">$$${data.formula}$$</div>
+                    <div style="margin-top: 0.5rem;">
+                        ${data.entries.map(entry => `
+                            <div style="margin: 0.2rem 0; padding: 0.3rem; background: rgba(255,255,255,0.5); border-radius: 4px;">
+                                Sum of k = ${entry.sumK}, c = ${entry.coefficient}${entry.count > 1 ? ` (${entry.count} k-combinations)` : ''}
+                                <div class="formula" style="margin-top: 0.3rem;">$$${entry.formula}$$</div>
+                            </div>
+                        `).join('')}
+                    </div>
                 </div>
             `);
             
@@ -1206,17 +1271,34 @@
                 scatterContainer.classList.remove('active');
                 currentViewMode = 'interleaved';
             } else {
-                // Switch to separate
+                // Switch to separate - apply current filter
                 interleavedDiv.classList.remove('active');
                 setContainer.style.display = 'grid';
                 ltrimDiv.classList.remove('active');
                 scatterContainer.classList.remove('active');
+                
+                // Apply current filter to separate view
+                if (currentMainData) {
+                    const selectedSumK = document.getElementById('mainSumKFilter').value;
+                    const filteredData = filterMainDataBySumK(currentMainData, selectedSumK);
+                    displaySets(filteredData.result, filteredData.intersection, filteredData.n, filteredData.maxDisplay);
+                } else {
+                    displaySets(lastGeneratedData.result, lastGeneratedData.intersection, lastGeneratedData.n, lastGeneratedData.maxDisplay);
+                }
                 currentViewMode = 'separate';
             }
         }
 
         function displayInterleavedView() {
-            const { result, intersection } = lastGeneratedData;
+            let dataToUse = lastGeneratedData;
+            
+            // Check if we have a filter applied
+            const selectedSumK = document.getElementById('mainSumKFilter').value;
+            if (selectedSumK && currentMainData) {
+                dataToUse = filterMainDataBySumK(currentMainData, selectedSumK);
+            }
+            
+            const { result, intersection } = dataToUse;
             const interleavedItems = [];
             
             // Add L values
@@ -1338,11 +1420,26 @@
                 // Switch to side-by-side
                 sideBySideDiv.style.display = 'block';
                 interwovenDiv.style.display = 'none';
+                
+                // Apply current filter to side-by-side view
+                if (currentLtrimData) {
+                    const selectedSumK = document.getElementById('ltrimSumKFilter').value;
+                    const filteredData = filterLtrimDataBySumK(currentLtrimData, selectedSumK);
+                    displayLtrimSideBySideView(filteredData);
+                }
             } else {
                 // Switch to interwoven
                 sideBySideDiv.style.display = 'none';
                 interwovenDiv.style.display = 'block';
-                displayLtrimInterwovenView();
+                
+                // Apply current filter to interwoven view
+                if (currentLtrimData) {
+                    const selectedSumK = document.getElementById('ltrimSumKFilter').value;
+                    const filteredData = filterLtrimDataBySumK(currentLtrimData, selectedSumK);
+                    displayLtrimInterwovenView(filteredData);
+                } else {
+                    displayLtrimInterwovenView();
+                }
             }
         }
 
@@ -1352,21 +1449,104 @@
             
             // Generate ltrim data
             const ltrimData = generateLtrimData(result, intersection, bits);
+            currentLtrimData = ltrimData;
+            
+            // Populate filter dropdown
+            populateSumKFilter(ltrimData.sumKValues);
             
             // Display side-by-side view
             displayLtrimSideBySideView(ltrimData);
+        }
+
+        function populateSumKFilter(sumKValues) {
+            const filterSelect = document.getElementById('ltrimSumKFilter');
+            filterSelect.innerHTML = '<option value="">All Sum of k values</option>';
+            
+            for (const sumK of sumKValues) {
+                const option = document.createElement('option');
+                option.value = sumK;
+                option.textContent = `Sum of k = ${sumK}`;
+                filterSelect.appendChild(option);
+            }
+        }
+
+        function populateMainSumKFilter(result) {
+            const sumKValues = new Set();
+            
+            // Collect all sum of k values from L set
+            for (const [key, data] of result.lSet) {
+                const sumK = data.kValues.reduce((a, b) => a + b, 0);
+                sumKValues.add(sumK);
+            }
+            
+            // Collect all sum of k values from R set
+            for (const [key, data] of result.rSet) {
+                const sumK = data.kValues.reduce((a, b) => a + b, 0);
+                sumKValues.add(sumK);
+            }
+            
+            const filterSelect = document.getElementById('mainSumKFilter');
+            filterSelect.innerHTML = '<option value="">All Sum of k values</option>';
+            
+            const sortedSumKValues = Array.from(sumKValues).sort((a, b) => a - b);
+            for (const sumK of sortedSumKValues) {
+                const option = document.createElement('option');
+                option.value = sumK;
+                option.textContent = `Sum of k = ${sumK}`;
+                filterSelect.appendChild(option);
+            }
+        }
+
+        function groupRSetByValues(rSet) {
+            const grouped = new Map();
+            
+            for (const [key, data] of rSet) {
+                const value = data.value;
+                const sumK = data.kValues.reduce((a, b) => a + b, 0);
+                const combinationKey = `${sumK},${data.coefficient}`;
+                
+                if (!grouped.has(value)) {
+                    grouped.set(value, {
+                        value: value,
+                        entries: []
+                    });
+                }
+                
+                // Check if this combination already exists
+                let existingEntry = grouped.get(value).entries.find(entry => 
+                    entry.sumK === sumK && entry.coefficient === data.coefficient
+                );
+                
+                if (existingEntry) {
+                    // Just increment the count
+                    existingEntry.count = (existingEntry.count || 1) + 1;
+                } else {
+                    // Add new entry
+                    grouped.get(value).entries.push({
+                        sumK: sumK,
+                        coefficient: data.coefficient,
+                        formula: data.formula,
+                        key: key,
+                        count: 1
+                    });
+                }
+            }
+            
+            return grouped;
         }
 
         function generateLtrimData(result, intersection, bits) {
             const ltrimLSet = new Map();
             const ltrimRSet = new Map();
             const ltrimIntersection = new Map();
+            const sumKValues = new Set();
             
             // Process L set
             for (const [key, data] of result.lSet) {
                 const ltrimValue = ltrim(data.value, 2, bits);
                 const binaryStr = intToBase(ltrimValue, 2).padStart(bits, '0');
                 const sumK = data.kValues.reduce((a, b) => a + b, 0);
+                sumKValues.add(sumK);
                 
                 if (!ltrimLSet.has(ltrimValue)) {
                     ltrimLSet.set(ltrimValue, []);
@@ -1386,6 +1566,7 @@
                 const ltrimValue = ltrim(data.value, 2, bits);
                 const binaryStr = intToBase(ltrimValue, 2).padStart(bits, '0');
                 const sumK = data.kValues.reduce((a, b) => a + b, 0);
+                sumKValues.add(sumK);
                 
                 if (!ltrimRSet.has(ltrimValue)) {
                     ltrimRSet.set(ltrimValue, []);
@@ -1414,7 +1595,7 @@
                 }
             }
             
-            return { ltrimLSet, ltrimRSet, ltrimIntersection };
+            return { ltrimLSet, ltrimRSet, ltrimIntersection, sumKValues: Array.from(sumKValues).sort((a, b) => a - b) };
         }
 
         function displayLtrimSideBySideView(ltrimData) {
@@ -1518,12 +1699,19 @@
             document.getElementById('ltrimIntersectionItems').innerHTML = intersectionHtml;
         }
 
-        function displayLtrimInterwovenView() {
-            const { result, intersection } = lastGeneratedData;
-            const bits = parseInt(document.getElementById('ltrimBits').value);
+        function displayLtrimInterwovenView(ltrimData = null) {
+            if (!ltrimData) {
+                const { result, intersection } = lastGeneratedData;
+                const bits = parseInt(document.getElementById('ltrimBits').value);
+                
+                // Generate ltrim data
+                ltrimData = generateLtrimData(result, intersection, bits);
+                currentLtrimData = ltrimData;
+                
+                // Populate filter dropdown
+                populateSumKFilter(ltrimData.sumKValues);
+            }
             
-            // Generate ltrim data
-            const ltrimData = generateLtrimData(result, intersection, bits);
             const { ltrimLSet, ltrimRSet, ltrimIntersection } = ltrimData;
             
             // Create interwoven list - group by ltrim value
@@ -1613,8 +1801,148 @@
             }
         }
 
+        function filterLtrimBySumK() {
+            if (!currentLtrimData) return;
+            
+            const selectedSumK = document.getElementById('ltrimSumKFilter').value;
+            
+            // Filter the data based on selected sum of k
+            const filteredData = filterLtrimDataBySumK(currentLtrimData, selectedSumK);
+            
+            // Update the display based on current mode
+            const sideBySideDiv = document.getElementById('ltrimSideBySide');
+            const interwovenDiv = document.getElementById('ltrimInterwoven');
+            
+            if (sideBySideDiv.style.display !== 'none') {
+                displayLtrimSideBySideView(filteredData);
+            } else {
+                displayLtrimInterwovenView(filteredData);
+            }
+        }
+
+        function filterMainSetsBySumK() {
+            if (!currentMainData) return;
+            
+            const selectedSumK = document.getElementById('mainSumKFilter').value;
+            
+            // Filter the data based on selected sum of k
+            const filteredData = filterMainDataBySumK(currentMainData, selectedSumK);
+            
+            // Update the display based on current mode
+            if (currentViewMode === 'separate') {
+                displaySets(filteredData.result, filteredData.intersection, filteredData.n, filteredData.maxDisplay);
+            } else if (currentViewMode === 'interleaved') {
+                displayInterleavedView();
+            } else if (currentViewMode === 'scatter') {
+                displayScatterPlot();
+            }
+        }
+
+        function filterLtrimDataBySumK(ltrimData, selectedSumK) {
+            if (!selectedSumK) {
+                return ltrimData; // Return all data if no filter
+            }
+            
+            const sumK = parseInt(selectedSumK);
+            const filteredLSet = new Map();
+            const filteredRSet = new Map();
+            const filteredIntersection = new Map();
+            
+            // Filter L set
+            for (const [ltrimValue, items] of ltrimData.ltrimLSet) {
+                const filteredItems = items.filter(item => item.sumK === sumK);
+                if (filteredItems.length > 0) {
+                    filteredLSet.set(ltrimValue, filteredItems);
+                }
+            }
+            
+            // Filter R set
+            for (const [ltrimValue, items] of ltrimData.ltrimRSet) {
+                const filteredItems = items.filter(item => item.sumK === sumK);
+                if (filteredItems.length > 0) {
+                    filteredRSet.set(ltrimValue, filteredItems);
+                }
+            }
+            
+            // Filter intersection
+            for (const [ltrimValue, data] of ltrimData.ltrimIntersection) {
+                const filteredLItems = data.lItems.filter(item => item.sumK === sumK);
+                const filteredRItems = data.rItems.filter(item => item.sumK === sumK);
+                
+                if (filteredLItems.length > 0 || filteredRItems.length > 0) {
+                    filteredIntersection.set(ltrimValue, {
+                        ...data,
+                        lItems: filteredLItems,
+                        rItems: filteredRItems
+                    });
+                }
+            }
+            
+            return {
+                ltrimLSet: filteredLSet,
+                ltrimRSet: filteredRSet,
+                ltrimIntersection: filteredIntersection,
+                sumKValues: ltrimData.sumKValues
+            };
+        }
+
+        function filterMainDataBySumK(mainData, selectedSumK) {
+            if (!selectedSumK) {
+                return mainData; // Return all data if no filter
+            }
+            
+            const sumK = parseInt(selectedSumK);
+            const filteredLSet = new Map();
+            const filteredRSet = new Map();
+            const filteredIntersection = new Map();
+            
+            // Filter L set
+            for (const [key, data] of mainData.result.lSet) {
+                const sumKValue = data.kValues.reduce((a, b) => a + b, 0);
+                if (sumKValue === sumK) {
+                    filteredLSet.set(key, data);
+                }
+            }
+            
+            // Filter R set
+            for (const [key, data] of mainData.result.rSet) {
+                const sumKValue = data.kValues.reduce((a, b) => a + b, 0);
+                if (sumKValue === sumK) {
+                    filteredRSet.set(key, data);
+                }
+            }
+            
+            // Filter intersection
+            for (const [tupleKey, data] of mainData.intersection) {
+                if (data.sumK === sumK) {
+                    filteredIntersection.set(tupleKey, data);
+                }
+            }
+            
+            return {
+                result: {
+                    lSet: filteredLSet,
+                    rSet: filteredRSet,
+                    totalCombinations: mainData.result.totalCombinations,
+                    actualMaxC: mainData.result.actualMaxC,
+                    allRValuesGreaterThanMaxL: mainData.result.allRValuesGreaterThanMaxL
+                },
+                intersection: filteredIntersection,
+                n: mainData.n,
+                maxDisplay: mainData.maxDisplay
+            };
+        }
+
         function displayScatterPlot() {
-            const { result, intersection, n } = lastGeneratedData;
+            let dataToUse = lastGeneratedData;
+            
+            // Check if we have a filter applied
+            const selectedSumK = document.getElementById('mainSumKFilter').value;
+            if (selectedSumK && currentMainData) {
+                dataToUse = filterMainDataBySumK(currentMainData, selectedSumK);
+            }
+            
+            const { result, intersection, n } = dataToUse;
             const hideOppositeSigns = document.getElementById('hideOppositeSigns')?.checked || false;
             
             // Update fixed columns from UI
