@@ -356,3 +356,98 @@ $$
 $l_i$ are positive integers >= 0.
 
 The above sum is not divisible by $D = 2^{l_n+1}-3^n$ if $\frac{N}{D} > 0$ and $n>1$.
+
+### Another approach
+
+The only known solution to Collatz is a siries of k_n that are all equal to 2. This gives us an interesting bit of information:
+
+$$
+c \cdot ({2^{k_0+k_1+k_2+k_3+k_4+k_5} - 3^{n}}) = \begin{matrix}\begin{align}
+&2 \cdot 3^{5} \\
+&+ 3^{4} \cdot 2^{k_0-1} \\
+&+ 3^{3} \cdot 2^{k_0+k_1-1} \\
+&+ 3^{2} \cdot 2^{k_0+k_1+k_2-1} \\
+&+ 3^{1} \cdot 2^{k_0+k_1+k_2+k_3-1} \\
+&+ 3^{0} \cdot 2^{k_0+k_1+k_2+k_3+k_4-1} \\
+&- 2^{k_0+k_1+k_2+k_3+k_4+k_5-1}
+\end{align}\end{matrix}
+$$
+
+
+$$
+2^{2n}= \begin{matrix}\begin{align}
+&+ 3^{n-1} \cdot 2^{1}\\
+...  \\
+&+ 3^{4} \cdot 2^{3} \\
+&+ 3^{3} \cdot 2^{5} \\
+&+ 3^{2} \cdot 2^{7} \\
+&+ 3^{1} \cdot 2^{9} \\
+...\\
+&+ 3^{0} \cdot 2^{n-3}
+\end{align}\end{matrix}
+$$
+
+Which we know is true because this requirement must be fulfilled in order to make the numerator divisible by the denominator.
+
+$$
+\begin{matrix}\begin{align}
+&2 \cdot 3^{5} \\
+&+ 3^{4} \cdot 2^{k_0-1} \\
+&+ 3^{3} \cdot 2^{k_0+k_1-1} \\
+&+ 3^{2} \cdot 2^{k_0+k_1+k_2-1} \\
+&+ 3^{1} \cdot 2^{k_0+k_1+k_2+k_3-1} \\
+...\\
+&+ 3^{0} \cdot 2^{k_0+k_1+k_2+k_3...k_{n-1}-1} \\
+&- 2^{k_0+k_1+k_2+k_3+k_4...k_{n-1}-1}
+\end{align}\end{matrix} = \begin{matrix}\begin{align}
+&+ c \cdot 3^{ksum/2-1} \cdot 2^{1}\\
+...  \\
+&+ c \cdot 3^{4} \cdot 2^{3} \\
+&+ c \cdot 3^{3} \cdot 2^{5} \\
+&+ c \cdot 3^{2} \cdot 2^{7} \\
+&+ c \cdot 3^{1} \cdot 2^{9} \\
+...\\
+&+ c \cdot 3^{0} \cdot 2^{ksum-3} \\
+&- c \cdot 3^n
+\end{align}\end{matrix}
+$$
+
+
+$$
+\begin{matrix}\begin{align}
+&2 \cdot 3^{n-1} \\
+\end{align}\end{matrix} = \begin{matrix}\begin{align}
+&+ c \cdot 3^{ksum/2-1} \cdot 2^{1} \text{(Never has a 1 or 2 in first column)}\\
+...  \\
+&+ c \cdot 3^{5} \cdot 2^{3} - 3^{5} \cdot 2^{k_0-1} \text{(Never has a 1 or 2 in first column)} \\
+&+ c \cdot 3^{4} \cdot 2^{5} - 3^{4} \cdot 2^{k_0+k_1-1} \text{(Never has a 1 or 2 in first column)} \\
+&+ c \cdot 3^{3} \cdot 2^{7} - 3^{3} \cdot 2^{k_0+k_1+k_2-1}   \text{(Never has a 1 or 2 in first column)}\\
+&+ c \cdot 3^{2} \cdot 2^{9} - 3^{2} \cdot 2^{k_0+k_1+k_2+k_3-1}  \text{(Never has a 1 or 2 in first column)}\\
+&+ c \cdot 3^{1} \cdot 2^{11} - 3^{1} \cdot 2^{k_0+k_1+k_2+k_3+k_4-1} \text{(Never has a 1 or 2 in first column but always has one in the 2nd column)} \\
+...\\
+&+ c \cdot 3^{0} \cdot 2^{ksum-3} - 3^{0} \cdot 2^{k_0+k_1+k_2+k_3...k_{n-2}-1} \text{(Might have a 1 or a 2 in the first column when written base 3)} \\
+&2^{k_0+k_1+k_2+k_3+k_4...k_{n-1}-1} - c \cdot 3^n \quad \text{(Always has a 1 or a 2 in the first column when written in base 3)}
+\end{align}\end{matrix}
+$$
+
+Parity table:
+
+```
+                            a, b, c
+ksum is odd  k_{n-1} odd    e, e, e
+ksum is odd  k_{n-1} even   e, o, e
+ksum is even k_{n-1} odd    o, e, o
+ksum is even k_{n-1} even   o, e, o
+
+odd digits  = 2
+even digits = 1
+
+                            a - b +- c
+ksum is odd  k_{n-1} odd    1 - 1 +- 1 = +1, -1
+ksum is odd  k_{n-1} even   1 - 2 +- 1 = 0, -2
+ksum is even k_{n-1} odd    2 - 1 +- 2 = 0, -2
+ksum is even k_{n-1} even   2 - 1 +- 1 = 2, 0
+
+```
+
+$2 \cdot 3^{n-1}$ is exactly 1 digit log (minus the trailing zeros) in base 3. Regardless of the base, the length of a numeric representation times a whole number constant c minus the trailing zeros is always greater than equal to the length of the numeric representation not multiplied by c.
