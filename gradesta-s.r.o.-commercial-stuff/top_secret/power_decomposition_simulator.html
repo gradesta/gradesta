@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Power Decomposition Simulator</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .input-section {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="number"] {
+            width: 200px;
+            padding: 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        input[type="number"]:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: background-color 0.3s;
+            margin-left: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .formula {
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 18px;
+        }
+        .term {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #e9ecef;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        .term-number {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .base2-value {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .base3-value {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .decimal-value {
+            color: #6c757d;
+            font-style: italic;
+        }
+        .error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .tables-container {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .table-section {
+            flex: 1;
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+        }
+        .table-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-align: center;
+            color: #495057;
+        }
+        .digit-table {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.4;
+            display: table;
+            width: 100%;
+            border-collapse: collapse;
+            border: 2px solid #333;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .digit-row {
+            display: table-row;
+        }
+        .digit-row:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        .digit-row:nth-child(odd) {
+            background-color: #ffffff;
+        }
+        .digit-cell {
+            display: table-cell;
+            width: 25px;
+            text-align: center;
+            padding: 8px 4px;
+            border: 1px solid #ddd;
+            vertical-align: middle;
+            font-weight: 500;
+        }
+        .digit-cell.highlight {
+            background-color: #ffeb3b;
+            font-weight: bold;
+        }
+        .sum-row {
+            border-top: 3px solid #333;
+            background-color: #e3f2fd !important;
+        }
+        .sum-row:nth-child(even),
+        .sum-row:nth-child(odd) {
+            background-color: #e3f2fd !important;
+        }
+        .sum-cell {
+            background-color: #e3f2fd !important;
+            font-weight: bold;
+            font-size: 15px;
+            color: #1976d2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Power Decomposition Simulator</h1>
+        
+        <div class="info">
+            <strong>Mathematical Equivalency:</strong> This simulator visualizes the decomposition:
+            <br><strong>2 · 3<sup>n-1</sup> + Σ 3<sup>i</sup> · 2<sup>2i-1</sup> = 2<sup>2n-1</sup></strong>
+            <br>where i goes from n-2 down to 0.
+            <br><br>
+            <strong>Features:</strong>
+            <ul>
+                <li>Shows each term in decimal, base 2, and base 3</li>
+                <li>Displays vertical tables of digits for addition visualization</li>
+                <li>Highlights how terms combine to form the final result</li>
+            </ul>
+        </div>
+
+        <div class="input-section">
+            <label for="nInput">Enter value of n:</label>
+            <input type="number" id="nInput" placeholder="e.g., 5" value="5" min="1" max="15">
+            <button onclick="calculateDecomposition()" id="calculateBtn">Calculate Decomposition</button>
+        </div>
+
+        <div id="result" class="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        function decimalToBase(decimal, base) {
+            if (decimal === 0) return '0';
+            let result = '';
+            while (decimal > 0) {
+                result = (decimal % base).toString() + result;
+                decimal = Math.floor(decimal / base);
+            }
+            return result;
+        }
+
+        function baseToDecimal(str, base) {
+            return parseInt(str, base);
+        }
+
+        function padString(str, length, char = '0') {
+            return str.padStart(length, char);
+        }
+
+        function generateTerms(n) {
+            const terms = [];
+            const target = Math.pow(2, 2 * n - 1); // 2^(2n-1)
+            
+            // First term: 2 · 3^(n-1)
+            terms.push({
+                i: n - 1,
+                j: 0,
+                value: 2 * Math.pow(3, n - 1),
+                base2: decimalToBase(2 * Math.pow(3, n - 1), 2),
+                base3: decimalToBase(2 * Math.pow(3, n - 1), 3),
+                description: `2 · 3^${n-1}`
+            });
+            
+            // Subsequent terms: 3^i · 2^(2*(n-1-i)-1) for i = n-2, n-3, ..., 0
+            for (let i = n - 2; i >= 0; i--) {
+                const j = 2 * (n - 1 - i) - 1; // Pattern: 2*(n-1-i)-1
+                const value = Math.pow(3, i) * Math.pow(2, j);
+                terms.push({
+                    i: i,
+                    j: j,
+                    value: value,
+                    base2: decimalToBase(value, 2),
+                    base3: decimalToBase(value, 3),
+                    description: `3^${i} · 2^${j}`
+                });
+            }
+            
+            return { terms, target };
+        }
+
+        function createDigitTable(values, base, title) {
+            // Find the maximum length among all values AND the sum
+            const sum = values.reduce((acc, val) => acc + baseToDecimal(val, base), 0);
+            const sumStr = decimalToBase(sum, base);
+            const allValues = [...values, sumStr];
+            const maxLength = Math.max(...allValues.map(v => v.length));
+            
+            let html = `<div class="table-title">${title}</div><div class="digit-table">`;
+            
+            // Create rows for each value
+            values.forEach((value, index) => {
+                const paddedValue = padString(value, maxLength);
+                html += '<div class="digit-row">';
+                
+                // Ensure every row has exactly maxLength columns
+                for (let i = 0; i < maxLength; i++) {
+                    const digit = paddedValue[i] || '0';
+                    html += `<div class="digit-cell">${digit}</div>`;
+                }
+                
+                html += '</div>';
+            });
+            
+            // Add sum row
+            html += '<div class="digit-row sum-row">';
+            const paddedSum = padString(sumStr, maxLength);
+            
+            // Ensure sum row also has exactly maxLength columns
+            for (let i = 0; i < maxLength; i++) {
+                const digit = paddedSum[i] || '0';
+                html += `<div class="digit-cell sum-cell">${digit}</div>`;
+            }
+            
+            html += '</div></div>';
+            return html;
+        }
+
+        function calculateDecomposition() {
+            const n = parseInt(document.getElementById('nInput').value);
+            const resultDiv = document.getElementById('result');
+            const calculateBtn = document.getElementById('calculateBtn');
+
+            // Validate input
+            if (!n || n < 1 || n > 15) {
+                resultDiv.innerHTML = '<div class="error">Please enter a valid n value between 1 and 15.</div>';
+                resultDiv.style.display = 'block';
+                return;
+            }
+
+            // Disable button during calculation
+            calculateBtn.disabled = true;
+            calculateBtn.textContent = 'Calculating...';
+
+            const { terms, target } = generateTerms(n);
+            const targetBase2 = decimalToBase(target, 2);
+            const targetBase3 = decimalToBase(target, 3);
+
+            // Display formula
+            let formula = `2 · 3<sup>${n-1}</sup>`;
+            for (let i = n - 2; i >= 0; i--) {
+                const j = 2 * (n - 1 - i) - 1;
+                formula += ` + 3<sup>${i}</sup> · 2<sup>${j}</sup>`;
+            }
+            formula += ` = 2<sup>${2*n-1}</sup>`;
+
+            resultDiv.innerHTML = `
+                <div class="formula">${formula}</div>
+                <h3>Target: 2<sup>${2*n-1}</sup> = ${target} (base 2: ${targetBase2}, base 3: ${targetBase3})</h3>
+            `;
+
+            // Display individual terms
+            terms.forEach((term, index) => {
+                const termDiv = document.createElement('div');
+                termDiv.className = 'term';
+                termDiv.innerHTML = `
+                    <span class="term-number">Term ${index + 1}:</span> 
+                    ${term.description} = 
+                    <span class="decimal-value">${term.value}</span> 
+                    <span class="base2-value">(base 2: ${term.base2})</span> 
+                    <span class="base3-value">(base 3: ${term.base3})</span>
+                `;
+                resultDiv.appendChild(termDiv);
+            });
+
+            // Create tables container
+            const tablesContainer = document.createElement('div');
+            tablesContainer.className = 'tables-container';
+
+            // Base 2 table
+            const base2Values = terms.map(t => t.base2);
+            const base2Table = document.createElement('div');
+            base2Table.className = 'table-section';
+            base2Table.innerHTML = createDigitTable(base2Values, 2, 'Base 2 Addition');
+
+            // Base 3 table
+            const base3Values = terms.map(t => t.base3);
+            const base3Table = document.createElement('div');
+            base3Table.className = 'table-section';
+            base3Table.innerHTML = createDigitTable(base3Values, 3, 'Base 3 Addition');
+
+            tablesContainer.appendChild(base2Table);
+            tablesContainer.appendChild(base3Table);
+            resultDiv.appendChild(tablesContainer);
+
+            // Verification
+            const calculatedSum = terms.reduce((sum, term) => sum + term.value, 0);
+            const verificationDiv = document.createElement('div');
+            verificationDiv.style.marginTop = '20px';
+            verificationDiv.style.padding = '15px';
+            verificationDiv.style.backgroundColor = calculatedSum === target ? '#d4edda' : '#f8d7da';
+            verificationDiv.style.border = `1px solid ${calculatedSum === target ? '#c3e6cb' : '#f5c6cb'}`;
+            verificationDiv.style.borderRadius = '5px';
+            verificationDiv.innerHTML = `
+                <strong>Verification:</strong> 
+                Sum of terms = ${calculatedSum} 
+                ${calculatedSum === target ? '✓' : '✗'} 
+                Target = ${target}
+                <br>Difference: ${calculatedSum - target}
+            `;
+            resultDiv.appendChild(verificationDiv);
+
+            resultDiv.style.display = 'block';
+            
+            // Re-enable button
+            calculateBtn.disabled = false;
+            calculateBtn.textContent = 'Calculate Decomposition';
+        }
+
+        // Allow Enter key to trigger calculation
+        document.getElementById('nInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                calculateDecomposition();
+            }
+        });
+
+        // Auto-calculate when page loads
+        window.onload = function() {
+            calculateDecomposition();
+        };
+    </script>
+</body>
+</html>
