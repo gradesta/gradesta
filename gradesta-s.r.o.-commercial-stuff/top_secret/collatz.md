@@ -336,6 +336,7 @@ c \cdot ({2^{k_0+k_1+k_2+k_3+k_4+k_5} - 3^{n}}) = \begin{matrix}\begin{align}
 &- 2^{2+2+2+2+2+2-1}
 \end{align}\end{matrix}
 $$
+(eq. 0)
 
 And since we know that in this case $c$ is 0 we can create a new equivalency:
 
@@ -350,6 +351,7 @@ $$
 &= 2^{2+2+2+2+2+2-1}
 \end{align}\end{matrix}
 $$
+(eq. 1)
 
 Which can be generalized as:
 
@@ -363,5 +365,163 @@ $$
 &+ 3^{1} \cdot 2^{2 \cdot (n-2) - 1} \\
 &+ 3^{0} \cdot 2^{2 \cdot (n-1) - 1}
 \end{align}\end{matrix}
+$$
+(eq. 2)
+
+The equation in the previous section can be written as:
+
+$$
+x = \frac{\begin{matrix}\begin{align}
+&2 \cdot 3^{5} \\
+&+ 3^{4} \cdot 2^{k_0-1} \\
+&+ 3^{3} \cdot 2^{k_0+k_1-1} \\
+&+ 3^{2} \cdot 2^{k_0+k_1+k_2-1} \\
+&+ 3^{1} \cdot 2^{k_0+k_1+k_2+k_3-1} \\
+&+ 3^{0} \cdot 2^{k_0+k_1+k_2+k_3+k_4-1} \\
+&- 2^{k_0+k_1+k_2+k_3+k_4+k_5-1}
+\end{align}\end{matrix}}{2^{k_0+k_1+k_2+k_3+k_4+k_5} - 3^{6}}
+$$
+(eq. 3)
+
+For various numbers of $k$.
+
+We can replace term 28 of eq. 3 with the RHS of eq 2 if the sum of k is even, or with the 2*RHS if the sum of k is odd.
+
+You can also rewrite the equation like this:
+
+
+$$
+x \cdot (2^{k_0+k_1+k_2+k_3+k_4+k_5} \text {replace this 1} - 3^{6}) = 
+\begin{matrix}
+\begin{array}{rlc}
+&2 \cdot 3^{5} & \\
+&+ 3^{4} \cdot 2^{k_0-1} & \\
+&+ 3^{3} \cdot 2^{k_0+k_1-1} & \\
+&+ 3^{2} \cdot 2^{k_0+k_1+k_2-1} & \\
+&+ 3^{1} \cdot 2^{k_0+k_1+k_2+k_3-1} & \\
+&+ 3^{0} \cdot 2^{k_0+k_1+k_2+k_3+k_4-1} & \\
+& & - 2^{k_0+k_1+k_2+k_3+k_4+k_5-1} \ \text{replace this 2}
+\end{array}
+\end{matrix}
+$$
+(eq. 4)
+
+And finally like this will allow us to see the powers of 3 next to eachother nicely:
+
+$$
+x \cdot 3^{6} =
+\begin{array}{lll}
+    2^{k_0+k_1+k_2+k_3+k_4+k_5-1} & + x \cdot 2^{k_0+k_1+k_2+k_3+k_4+k_5} & - 2 \cdot 3^{5} \\
+    \text{col 1} & \text{col 2} & - 3^{4} \cdot 2^{k_0-1} \\
+    & & - 3^{3} \cdot 2^{k_0+k_1-1} \\
+    & & - 3^{2} \cdot 2^{k_0+k_1+k_2-1} \\
+    & & - 3^{1} \cdot 2^{k_0+k_1+k_2+k_3-1} \\
+    & & - 3^{0} \cdot 2^{k_0+k_1+k_2+k_3+k_4-1} \\
+    & & \text{col 3}
+\end{array}
+$$
+(eq. 5)
+
+### Case 1: Sum of k's = 8
+
+For $K_{\text{sum}} = 8$ (even, $n=4$):
+-   Column 1 $(2^7)$ is replaced with $\mathrm{RHS}(4)$.
+-   Column 2 $(2^8)$ is replaced with $2x \cdot \mathrm{RHS}(4)$.
+
+$$
+x \cdot 3^{6} =
+\begin{array}{lll}
+    & & - 2 \cdot 3^{5} \\
+    & & - 3^{4} \cdot 2^{k_0-1} \\
+    2 \cdot 3^3 & + 2x(2 \cdot 3^3) & - 3^{3} \cdot 2^{k_0+k_1-1} \\
+    + 3^2 \cdot 2^1 & + 2x(3^2 \cdot 2^1) & - 3^{2} \cdot 2^{k_0+k_1+k_2-1} \\
+    + 3^1 \cdot 2^3 & + 2x(3^1 \cdot 2^3) & - 3^{1} \cdot 2^{k_0+k_1+k_2+k_3-1} \\
+    + 3^0 \cdot 2^5 & + 2x(3^0 \cdot 2^5) & - 3^{0} \cdot 2^{k_0+k_1+k_2+k_3+k_4-1} \\
+    \text{col 1} & \text{col 2} & \text{col 3}
+\end{array}
+$$
+
+***
+
+### Case 2: Sum of k's = 9
+
+For $K_{\text{sum}} = 9$ (odd, $n=4$ for col 1, $n=5$ for col 2):
+-   Column 1 $(2^8)$ is replaced with $2 \cdot \mathrm{RHS}(4)$.
+-   Column 2 $(2^9)$ is replaced with $x \cdot \mathrm{RHS}(5)$.
+
+$$
+x \cdot 3^{6} =
+\begin{array}{lll}
+    & & - 2 \cdot 3^{5} \\
+    & + x(2 \cdot 3^4) & - 3^{4} \cdot 2^{k_0-1} \\
+    2(2 \cdot 3^3) & + x(3^3 \cdot 2^1) & - 3^{3} \cdot 2^{k_0+k_1-1} \\
+    + 2(3^2 \cdot 2^1) & + x(3^2 \cdot 2^3) & - 3^{2} \cdot 2^{k_0+k_1+k_2-1} \\
+    + 2(3^1 \cdot 2^3) & + x(3^1 \cdot 2^5) & - 3^{1} \cdot 2^{k_0+k_1+k_2+k_3-1} \\
+    + 2(3^0 \cdot 2^5) & + x(3^0 \cdot 2^7) & - 3^{0} \cdot 2^{k_0+k_1+k_2+k_3+k_4-1} \\
+    \text{col 1} & \text{col 2} & \text{col 3}
+\end{array}
+$$
+
+***
+
+### Case 3: Sum of k's = 10
+
+For $K_{\text{sum}} = 10$ (even, $n=5$):
+-   Column 1 $(2^9)$ is replaced with $\mathrm{RHS}(5)$.
+-   Column 2 $(2^{10})$ is replaced with $2x \cdot \mathrm{RHS}(5)$.
+
+$$
+x \cdot 3^{6} =
+\begin{array}{lll}
+    & & - 2 \cdot 3^{5} \\
+    2 \cdot 3^4 & + 2x(2 \cdot 3^4) & - 3^{4} \cdot 2^{k_0-1} \\
+    + 3^3 \cdot 2^1 & + 2x(3^3 \cdot 2^1) & - 3^{3} \cdot 2^{k_0+k_1-1} \\
+    + 3^2 \cdot 2^3 & + 2x(3^2 \cdot 2^3) & - 3^{2} \cdot 2^{k_0+k_1+k_2-1} \\
+    + 3^1 \cdot 2^5 & + 2x(3^1 \cdot 2^5) & - 3^{1} \cdot 2^{k_0+k_1+k_2+k_3-1} \\
+    + 3^0 \cdot 2^7 & + 2x(3^0 \cdot 2^7) & - 3^{0} \cdot 2^{k_0+k_1+k_2+k_3+k_4-1} \\
+    \text{col 1} & \text{col 2} & \text{col 3}
+\end{array}
+$$
+
+***
+
+### Case 4: Sum of k's = 11
+
+For $K_{\text{sum}} = 11$ (odd, $n=5$ for col 1, $n=6$ for col 2):
+-   Column 1 $(2^{10})$ is replaced with $2 \cdot \mathrm{RHS}(5)$.
+-   Column 2 $(2^{11})$ is replaced with $x \cdot \mathrm{RHS}(6)$.
+
+$$
+x \cdot 3^{6} =
+\begin{array}{lll}
+    & + x(2 \cdot 3^5) & - 2 \cdot 3^{5} \\
+    2(2 \cdot 3^4) & + x(3^4 \cdot 2^1) & - 3^{4} \cdot 2^{k_0-1} \\
+    + 2(3^3 \cdot 2^1) & + x(3^3 \cdot 2^3) & - 3^{3} \cdot 2^{k_0+k_1-1} \\
+    + 2(3^2 \cdot 2^3) & + x(3^2 \cdot 2^5) & - 3^{2} \cdot 2^{k_0+k_1+k_2-1} \\
+    + 2(3^1 \cdot 2^5) & + x(3^1 \cdot 2^7) & - 3^{1} \cdot 2^{k_0+k_1+k_2+k_3-1} \\
+    + 2(3^0 \cdot 2^7) & + x(3^0 \cdot 2^9) & - 3^{0} \cdot 2^{k_0+k_1+k_2+k_3+k_4-1} \\
+    \text{col 1} & \text{col 2} & \text{col 3}
+\end{array}
+$$
+
+***
+
+### Case 5: Sum of k's = 12
+
+For $K_{sum} = 12$ (even, $n=6$):
+-   Column 1 $2^{11}$ is replaced with `RHS(6)`.
+-   Column 2 $2^{12}$ is replaced with $2x \cdot RHS(6)$.
+
+$$
+x \cdot 3^{6} =
+\begin{array}{lll}
+    2 \cdot 3^5 & + 2x(2 \cdot 3^5) & - 2 \cdot 3^{5} \\
+    + 3^4 \cdot 2^1 & + 2x(3^4 \cdot 2^1) & - 3^{4} \cdot 2^{k_0-1} \\
+    + 3^3 \cdot 2^3 & + 2x(3^3 \cdot 2^3) & - 3^{3} \cdot 2^{k_0+k_1-1} \\
+    + 3^2 \cdot 2^5 & + 2x(3^2 \cdot 2^5) & - 3^{2} \cdot 2^{k_0+k_1+k_2-1} \\
+    + 3^1 \cdot 2^7 & + 2x(3^1 \cdot 2^7) & - 3^{1} \cdot 2^{k_0+k_1+k_2+k_3-1} \\
+    + 3^0 \cdot 2^9 & + 2x(3^0 \cdot 2^9) & - 3^{0} \cdot 2^{k_0+k_1+k_2+k_3+k_4-1} \\
+    \text{col 1} & \text{col 2} & \text{col 3}
+\end{array}
 $$
 
