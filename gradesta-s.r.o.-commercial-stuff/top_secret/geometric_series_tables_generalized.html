@@ -348,55 +348,31 @@
         }
 
         function calculateCol2(power, n, m, p, parityFactor, x, power3) {
-            // Match the original file's Column 2 calculations exactly
-            // The original has specific hardcoded logic for each case
+            // General rule from collatz.md:
+            // Column 2 row = x * (A - B), where
+            //   A = 2 * (Column 1 row term) if the power is within Column 1's support, else 0
+            //   B = 2 * 3^{power} for power < p, and an additional +1 at power = 0
 
             if (power < 0) return 0;
 
-            // For case 12 (m=6)
-            if (m === 6) {
-                const row = n - 1 - power; // Convert power back to row
-                if (row === 0) return x * (power3 * 4 - power3 * 2);
-                if (row === 5) return x * (power3 * Math.pow(2, 7 - row) - power3 * 2 - 1);
-                return x * (power3 * Math.pow(2, 7 - row) - power3 * 2);
+            const position = m - 1 - power;
+            let A = 0;
+            if (position >= 0 && position < m) {
+                // Use numeric Column 1 value for this row and double it
+                A = 2 * calculateCol1(power, n, m, parityFactor);
             }
 
-            // For case 11 (m=5, parityFactor=1)
-            if (m === 5 && parityFactor === 1) {
-                const row = n - 1 - power;
-                if (row === 1) return x * (power3 * 2 - power3 * 2);
-                if (row === 5) return x * (power3 * Math.pow(2, 8 - row) - power3 * 2 - 1);
-                return x * (power3 * Math.pow(2, 8 - row) - power3 * 2);
+            let B = 0;
+            if (power < p) {
+                B += 2 * power3;
+            }
+            if (power === 0) {
+                B += 1;
             }
 
-            // For case 10 (m=5, parityFactor=2)
-            if (m === 5 && parityFactor === 2) {
-                const row = n - 1 - power;
-                if (row === 1) return -x * power3 * 2;
-                if (row === 5) return x * (power3 * Math.pow(2, 7 - row) - power3 * 2 - 1);
-                return x * (power3 * Math.pow(2, 7 - row) - power3 * 2);
-            }
+            if (A === 0 && B === 0) return 0;
 
-            // For case 9 (m=4, parityFactor=1)
-            if (m === 4 && parityFactor === 1) {
-                const row = n - 1 - power;
-                if (row === 2) return -x * power3 * 2;
-                if (row === 3) return x * (power3 * 2 - power3 * 2);
-                if (row === 5) return x * (power3 * Math.pow(2, 6 - row) - power3 * 2 - 1);
-                return x * (power3 * Math.pow(2, 6 - row) - power3 * 2);
-            }
-
-            // For case 8 (m=4, parityFactor=2)
-            if (m === 4 && parityFactor === 2) {
-                const row = n - 1 - power;
-                if (row === 2) return -x * power3 * 2;
-                if (row === 3) return -x * power3 * 2;
-                if (row === 5) return x * (power3 * Math.pow(2, 7 - row) - 2 * power3 - 1);
-                return x * (power3 * Math.pow(2, 7 - row) - 2 * power3);
-            }
-
-            // Fallback
-            return 0;
+            return x * (A - B);
         }
 
         function calculateCol3(power, n, kValues) {
@@ -443,21 +419,26 @@
             const position = m - 1 - power;
             const A = position >= 0 ? calculateCol1(power, n, m, parityFactor) : 0;
 
-            let eq = `${xStr} \\cdot (`;
+            // Build inner expression parts for A - B, where
+            // B contributes - 2 * 3^{power} for power < p and additionally -1 at power 0
+            let inner = "";
 
             if (A !== 0) {
-                eq += `${power3Str} \\cdot 2^{${getCorrectExponent(position, m, parityFactor)}}`;
+                inner += `2 \\cdot ${power3Str} \\cdot 2^{${getCorrectExponent(position, m, parityFactor)}}`;
+            }
+
+            if (power < p) {
+                inner += (inner ? " - " : "-") + `2 \\cdot ${power3Str}`;
             }
 
             if (power === 0) {
-                eq += A !== 0 ? " - 1)" : "-1)";
-            } else if (power < p) {
-                eq += A !== 0 ? " - 2)" : "-2)";
-            } else {
-                eq += ")";
+                inner += (inner ? " - " : "-") + "1";
             }
 
-            return eq;
+            // If neither A nor B contributes on this row, show 0 instead of x*( )
+            if (!inner) return "0";
+
+            return `${xStr} \\cdot (${inner})`;
         }
 
         function getCol3Equation(power, powerValue, n, kValues) {
