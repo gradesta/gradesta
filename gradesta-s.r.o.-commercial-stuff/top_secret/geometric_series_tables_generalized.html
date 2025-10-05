@@ -90,7 +90,7 @@
             margin-bottom: 40px;
             border: 1px solid #bdc3c7;
             border-radius: 8px;
-            overflow: hidden;
+            overflow: visible; /* allow tall math content to render fully */
         }
 
         .case-header {
@@ -113,6 +113,7 @@
             padding: 12px;
             text-align: center;
             vertical-align: middle;
+            overflow: visible; /* prevent clipping of MathJax content */
         }
 
         .equation-table th {
@@ -165,10 +166,12 @@
             text-align: center;
             padding: 8px;
             vertical-align: top;
+            overflow: visible;
         }
 
         .equation-cell .equation {
             margin-bottom: 6px;
+            overflow: visible;
         }
 
         .error {
@@ -276,9 +279,13 @@
 
             const results = [];
 
-            // Generate table rows from 3^{n-1} down to 3^0
-            for (let row = 0; row < n; row++) {
-                const power = n - 1 - row; // Power of 3 for this row
+            // Determine top power so that Columns 1 and 2 are fully represented
+            const topPower = Math.max(n - 1, m - 1, p - 1);
+            const numRows = topPower + 1;
+
+            // Generate table rows from 3^{topPower} down to 3^0
+            for (let row = 0; row < numRows; row++) {
+                const power = topPower - row; // Power of 3 for this row
                 const power3 = Math.pow(3, power);
 
                 const col1 = calculateCol1(power, n, m, parityFactor);
@@ -351,7 +358,7 @@
             // General rule from collatz.md:
             // Column 2 row = x * (A - B), where
             //   A = 2 * (Column 1 row term) if the power is within Column 1's support, else 0
-            //   B = 2 * 3^{power} for power < p, and an additional +1 at power = 0
+            //   B = 2 * 3^{power} for power < n, and an additional +1 at power = 0
 
             if (power < 0) return 0;
 
@@ -363,7 +370,7 @@
             }
 
             let B = 0;
-            if (power < p) {
+            if (power < n) {
                 B += 2 * power3;
             }
             if (power === 0) {
@@ -379,8 +386,11 @@
             // Match the original file's Column 3 calculations exactly
             // Original: for row i, sum first i k values, multiply by -power3 * 2^{kSum-1}
 
-            // Convert power back to row: row = n - 1 - power
-            const row = n - 1 - power;
+            // For powers above the Column 3 top (n-1), there is no contribution
+            if (power > n - 1) return 0;
+
+            // Convert power back to row relative to Column 3's top: row = (n - 1) - power
+            const row = (n - 1) - power;
 
             if (row === 0) {
                 return -Math.pow(3, power) * 2; // -power3 * 2
@@ -420,14 +430,14 @@
             const A = position >= 0 ? calculateCol1(power, n, m, parityFactor) : 0;
 
             // Build inner expression parts for A - B, where
-            // B contributes - 2 * 3^{power} for power < p and additionally -1 at power 0
+            // B contributes - 2 * 3^{power} for power < n and additionally -1 at power 0
             let inner = "";
 
             if (A !== 0) {
                 inner += `2 \\cdot ${power3Str} \\cdot 2^{${getCorrectExponent(position, m, parityFactor)}}`;
             }
 
-            if (power < p) {
+            if (power < n) {
                 inner += (inner ? " - " : "-") + `2 \\cdot ${power3Str}`;
             }
 
@@ -448,9 +458,11 @@
                 return `-2 \\cdot ${power3Str}`;
             }
 
+            if (power > n - 1) return "0";
+
             let kSumStr = "";
             let kSum = 0;
-            const numKValues = n - 1 - power;
+            const numKValues = (n - 1) - power;
 
             for (let i = 0; i < numKValues && i < kValues.length; i++) {
                 if (i > 0) kSumStr += "+";
@@ -518,7 +530,7 @@
                     html += `
                         <tr>
                             <td class="row-label">${calc.row}</td>
-                            <td>$$3^{${n - 1 - calc.row}}$$</td>
+                            <td>$$3^{${calc.power}}$$</td>
                             <td class="equation-cell">
                                 <div class="equation">$$${calc.col1Eq}$$</div>
                                 <div class="base3-value">${toBase3(calc.col1)}</div>
@@ -586,7 +598,7 @@
                         <br><br>
                         <strong>General Formula:</strong> 2^{(${(K-1)%2})} × RHS(${m}) + x × (2 × 2^{(${(K-1)%2})} × RHS(${m}) - B) + Column 3 terms = 0
                         <br>
-                        where B = 2 × Σ₀^{${p-1}} 3ʲ + 1 for the 3⁰ term
+                        where B = 2 × Σ₀^{${n-1}} 3ʲ + 1 for the 3⁰ term
                     </div>
                 `;
 
