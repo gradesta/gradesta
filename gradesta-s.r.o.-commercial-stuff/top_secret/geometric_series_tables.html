@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generalized Collatz Equation Calculator - Base 3 Analysis</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            }
+        };
+    </script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .input-section {
+            background: #ecf0f1;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #34495e;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #bdc3c7;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+        
+        button {
+            background: #3498db;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        
+        button:hover {
+            background: #2980b9;
+        }
+        
+        .results {
+            margin-top: 30px;
+        }
+        
+        .case-section {
+            margin-bottom: 40px;
+            border: 1px solid #bdc3c7;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .case-header {
+            background: #34495e;
+            color: white;
+            padding: 15px;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        
+        .equation-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0;
+        }
+        
+        .equation-table th,
+        .equation-table td {
+            border: 1px solid #bdc3c7;
+            padding: 12px;
+            text-align: center;
+            vertical-align: middle;
+        }
+        
+        .equation-table th {
+            background: #ecf0f1;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .equation-table td {
+            background: white;
+        }
+        
+        .row-label {
+            background: #e8f4f8 !important;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .base3-value {
+            font-family: 'Courier New', monospace;
+            background: #f8f9fa;
+            padding: 4px 8px;
+            border-radius: 3px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .decimal-value {
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+        
+        .equation {
+            font-size: 0.9em;
+            color: #2c3e50;
+            margin: 4px 0;
+            padding: 4px;
+            background: #f8f9fa;
+            border-radius: 3px;
+            text-align: center;
+            font-family: 'Times New Roman', serif;
+        }
+        
+        .equation.no-mathjax {
+            font-family: 'Courier New', monospace;
+            background: #e8f4f8;
+            border: 1px solid #bdc3c7;
+        }
+        
+        .equation-cell {
+            text-align: center;
+            padding: 8px;
+            vertical-align: top;
+        }
+        
+        .equation-cell .equation {
+            margin-bottom: 6px;
+        }
+        
+        .error {
+            color: #e74c3c;
+            background: #fdf2f2;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .sum-display {
+            background: #d4edda;
+            color: #155724;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Collatz Equation Calculator - Base 3 Analysis</h1>
+        
+        <div class="info">
+            <strong>Instructions:</strong> Enter comma-separated k values (e.g., "2,2,2,2,2,2"). 
+            You need at least 6 k values - the first 5 are used in the equation, and the 6th (along with all others) 
+            determines which case applies based on the total sum. The calculator will show the corresponding equation 
+            case and display all calculations in base 3 format.
+        </div>
+        
+        <div class="input-section">
+            <div class="input-group">
+                <label for="kValues">Enter k values (comma-separated):</label>
+                <input type="text" id="kValues" placeholder="e.g., 2,2,2,2,2,2" value="2,2,2,2,2,2">
+            </div>
+            <div class="input-group">
+                <label for="xValue">Enter x value (optional, defaults to 1):</label>
+                <input type="text" id="xValue" placeholder="1" value="1">
+            </div>
+            <button onclick="clearResults()">Clear</button>
+        </div>
+        
+        <div id="results" class="results"></div>
+    </div>
+
+    <script>
+        // Convert decimal to base 3
+        function toBase3(decimal) {
+            if (decimal === 0) return "0";
+            if (decimal < 0) return "-" + toBase3(-decimal);
+            
+            let result = "";
+            while (decimal > 0) {
+                result = (decimal % 3) + result;
+                decimal = Math.floor(decimal / 3);
+            }
+            return result;
+        }
+        
+        // Parse k values from input
+        function parseKValues(input) {
+            return input.split(',').map(k => parseInt(k.trim())).filter(k => !isNaN(k) && k > 0);
+        }
+        
+        // Calculate RHS function based on equation 2 from the document
+        function calculateRHS(n) {
+            let result = 0;
+            for (let i = 0; i < n; i++) {
+                result += Math.pow(3, n - 1 - i) * Math.pow(2, 2 * i + 1);
+            }
+            return result;
+        }
+        
+        // Calculate column values for each case
+        function calculateColumnValues(kValues, x, caseType) {
+            const sumK = kValues.reduce((a, b) => a + b, 0);
+            const results = [];
+            
+            for (let row = 0; row < 6; row++) {
+                const power3 = Math.pow(3, 5 - row);
+                const col1 = calculateCol1(row, power3, caseType, sumK);
+                const col2 = calculateCol2(row, power3, x, caseType, sumK);
+                const col3 = calculateCol3(row, power3, kValues);
+                
+                const col1Eq = getCol1Equation(row, power3, caseType, sumK);
+                const col2Eq = getCol2Equation(row, power3, x, caseType, sumK);
+                const col3Eq = getCol3Equation(row, power3, kValues);
+                
+                results.push({
+                    row: row,
+                    power3: power3,
+                    col1: col1,
+                    col2: col2,
+                    col3: col3,
+                    total: col1 + col2 + col3,
+                    col1Eq: col1Eq,
+                    col2Eq: col2Eq,
+                    col3Eq: col3Eq
+                });
+            }
+            
+            return results;
+        }
+        
+        function calculateCol1(row, power3, caseType, sumK) {
+            switch (caseType) {
+                case 8: // K_sum = 8
+                    if (row === 0) return 0;
+                    if (row === 1) return 0;
+                    if (row === 2) return power3 * Math.pow(2, 1);
+                    if (row === 3) return power3 * Math.pow(2, 1);
+                    if (row === 4) return power3 * Math.pow(2, 3);
+                    if (row === 5) return power3 * Math.pow(2, 5);
+                    return 0;
+                case 9: // K_sum = 9
+                    if (row === 0) return 0;
+                    if (row === 1) return 2 * power3 * Math.pow(2, 1);
+                    if (row === 2) return 2 * power3 * Math.pow(2, 1);
+                    if (row === 3) return 2 * power3 * Math.pow(2, 3);
+                    if (row === 4) return 2 * power3 * Math.pow(2, 3);
+                    if (row === 5) return 2 * power3 * Math.pow(2, 5);
+                    return 0;
+                case 10: // K_sum = 10
+                    if (row === 0) return 0;
+                    if (row === 1) return power3 * Math.pow(2, 1);
+                    if (row === 2) return power3 * Math.pow(2, 1);
+                    if (row === 3) return power3 * Math.pow(2, 3);
+                    if (row === 4) return power3 * Math.pow(2, 5);
+                    if (row === 5) return power3 * Math.pow(2, 7);
+                    return 0;
+                case 11: // K_sum = 11
+                    if (row === 0) return 0;
+                    if (row === 1) return power3 * Math.pow(2, 2);
+                    if (row === 2) return power3 * Math.pow(2, 2);
+                    if (row === 3) return power3 * Math.pow(2, 4);
+                    if (row === 4) return power3 * Math.pow(2, 6);
+                    if (row === 5) return power3 * Math.pow(2, 8);
+                    return 0;
+                case 12: // K_sum = 12
+                    if (row === 0) return power3 * Math.pow(2, 1);
+                    if (row === 1) return power3 * Math.pow(2, 1);
+                    if (row === 2) return power3 * Math.pow(2, 3);
+                    if (row === 3) return power3 * Math.pow(2, 5);
+                    if (row === 4) return power3 * Math.pow(2, 7);
+                    if (row === 5) return power3 * Math.pow(2, 9);
+                    return 0;
+                default:
+                    return 0;
+            }
+        }
+        
+        function calculateCol2(row, power3, x, caseType, sumK) {
+            switch (caseType) {
+                case 8: // K_sum = 8
+                    if (row === 0) return -x * power3 * 2;
+                    if (row === 1) return -x * power3 * 2;
+                    if (row === 5) return x * (power3 * Math.pow(2, 7 - row) - 2 * power3 - 1);
+                    return x * (power3 * Math.pow(2, 7 - row) - 2 * power3);
+                case 9: // K_sum = 9
+                    if (row === 0) return -x * power3 * 2;
+                    if (row === 1) return x * (power3 * 2 - power3 * 2);
+                    if (row === 5) return x * (power3 * Math.pow(2, 6 - row) - power3 * 2 - 1);
+                    return x * (power3 * Math.pow(2, 6 - row) - power3 * 2);
+                case 10: // K_sum = 10
+                    if (row === 0) return -x * power3 * 2;
+                    if (row === 5) return x * (power3 * Math.pow(2, 7 - row) - power3 * 2 - 1);
+                    return x * (power3 * Math.pow(2, 7 - row) - power3 * 2);
+                case 11: // K_sum = 11
+                    if (row === 0) return x * (power3 * 2 - power3 * 2);
+                    if (row === 5) return x * (power3 * Math.pow(2, 8 - row) - power3 * 2 - 1);
+                    return x * (power3 * Math.pow(2, 8 - row) - power3 * 2);
+                case 12: // K_sum = 12
+                    if (row === 0) return x * (power3 * 4 - power3 * 2);
+                    if (row === 5) return x * (power3 * Math.pow(2, 7 - row) - power3 * 2 - 1);
+                    return x * (power3 * Math.pow(2, 7 - row) - power3 * 2);
+                default:
+                    return 0;
+            }
+        }
+        
+        function calculateCol3(row, power3, kValues) {
+            if (row === 0) return -power3 * 2;
+            
+            let kSum = 0;
+            for (let i = 0; i < row; i++) {
+                kSum += kValues[i] || 0;
+            }
+            
+            return -power3 * Math.pow(2, kSum - 1);
+        }
+        
+        // Equation generation functions
+        function getCol1Equation(row, power3, caseType, sumK) {
+            const power3Str = `3^{${5 - row}}`;
+            switch (caseType) {
+                case 8: // K_sum = 8
+                    if (row === 0) return "0";
+                    if (row === 1) return "0";
+                    if (row === 2) return `${power3Str} \\cdot 2^1`;
+                    if (row === 3) return `${power3Str} \\cdot 2^1`;
+                    if (row === 4) return `${power3Str} \\cdot 2^3`;
+                    if (row === 5) return `${power3Str} \\cdot 2^5`;
+                    return "0";
+                case 9: // K_sum = 9
+                    if (row === 0) return "0";
+                    if (row === 1) return `2 \\cdot ${power3Str} \\cdot 2^1`;
+                    if (row === 2) return `2 \\cdot ${power3Str} \\cdot 2^1`;
+                    if (row === 3) return `2 \\cdot ${power3Str} \\cdot 2^3`;
+                    if (row === 4) return `2 \\cdot ${power3Str} \\cdot 2^3`;
+                    if (row === 5) return `2 \\cdot ${power3Str} \\cdot 2^5`;
+                    return "0";
+                case 10: // K_sum = 10
+                    if (row === 0) return "0";
+                    if (row === 1) return `${power3Str} \\cdot 2^1`;
+                    if (row === 2) return `${power3Str} \\cdot 2^1`;
+                    if (row === 3) return `${power3Str} \\cdot 2^3`;
+                    if (row === 4) return `${power3Str} \\cdot 2^5`;
+                    if (row === 5) return `${power3Str} \\cdot 2^7`;
+                    return "0";
+                case 11: // K_sum = 11
+                    if (row === 0) return "0";
+                    if (row === 1) return `${power3Str} \\cdot 2^2`;
+                    if (row === 2) return `${power3Str} \\cdot 2^2`;
+                    if (row === 3) return `${power3Str} \\cdot 2^4`;
+                    if (row === 4) return `${power3Str} \\cdot 2^6`;
+                    if (row === 5) return `${power3Str} \\cdot 2^8`;
+                    return "0";
+                case 12: // K_sum = 12
+                    if (row === 0) return `${power3Str} \\cdot 2^1`;
+                    if (row === 1) return `${power3Str} \\cdot 2^1`;
+                    if (row === 2) return `${power3Str} \\cdot 2^3`;
+                    if (row === 3) return `${power3Str} \\cdot 2^5`;
+                    if (row === 4) return `${power3Str} \\cdot 2^7`;
+                    if (row === 5) return `${power3Str} \\cdot 2^9`;
+                    return "0";
+                default:
+                    return "0";
+            }
+        }
+        
+        function getCol2Equation(row, power3, x, caseType, sumK) {
+            const power3Str = `3^{${5 - row}}`;
+            const xStr = x === 1 ? "x" : `${x}x`;
+            switch (caseType) {
+                case 8: // K_sum = 8
+                    if (row === 0) return `-${xStr}(${power3Str} \\cdot 2)`;
+                    if (row === 1) return `-${xStr}(${power3Str} \\cdot 2)`;
+                    if (row === 5) return `${xStr}(${power3Str} \\cdot 2^{${7 - row}} - 2 \\cdot ${power3Str} - 1)`;
+                    return `${xStr}(${power3Str} \\cdot 2^{${7 - row}} - 2 \\cdot ${power3Str})`;
+                case 9: // K_sum = 9
+                    if (row === 0) return `-${xStr}(${power3Str} \\cdot 2)`;
+                    if (row === 1) return `${xStr}(${power3Str} \\cdot 2 - ${power3Str} \\cdot 2)`;
+                    if (row === 5) return `${xStr}(${power3Str} \\cdot 2^{${6 - row}} - ${power3Str} \\cdot 2 - 1)`;
+                    return `${xStr}(${power3Str} \\cdot 2^{${6 - row}} - ${power3Str} \\cdot 2)`;
+                case 10: // K_sum = 10
+                    if (row === 0) return `-${xStr}(${power3Str} \\cdot 2)`;
+                    if (row === 5) return `${xStr}(${power3Str} \\cdot 2^{${7 - row}} - ${power3Str} \\cdot 2 - 1)`;
+                    return `${xStr}(${power3Str} \\cdot 2^{${7 - row}} - ${power3Str} \\cdot 2)`;
+                case 11: // K_sum = 11
+                    if (row === 0) return `${xStr}(${power3Str} \\cdot 2 - ${power3Str} \\cdot 2)`;
+                    if (row === 5) return `${xStr}(${power3Str} \\cdot 2^{${8 - row}} - ${power3Str} \\cdot 2 - 1)`;
+                    return `${xStr}(${power3Str} \\cdot 2^{${8 - row}} - ${power3Str} \\cdot 2)`;
+                case 12: // K_sum = 12
+                    if (row === 0) return `${xStr}(${power3Str} \\cdot 2^2 - ${power3Str} \\cdot 2)`;
+                    if (row === 5) return `${xStr}(${power3Str} \\cdot 2^{${7 - row}} - ${power3Str} \\cdot 2 - 1)`;
+                    return `${xStr}(${power3Str} \\cdot 2^{${7 - row}} - ${power3Str} \\cdot 2)`;
+                default:
+                    return "0";
+            }
+        }
+        
+        function getCol3Equation(row, power3, kValues) {
+            const power3Str = `3^{${5 - row}}`;
+            if (row === 0) return `-${power3Str} \\cdot 2`;
+            
+            let kSumStr = "";
+            let kSum = 0;
+            for (let i = 0; i < row; i++) {
+                if (i > 0) kSumStr += "+";
+                kSumStr += `k_{${i}}`;
+                kSum += kValues[i] || 0;
+            }
+            
+            const finalExponent = kSum - 1;
+            return `-${power3Str} \\cdot 2^{${kSumStr}-1} = -${power3Str} \\cdot 2^{${finalExponent}}`;
+        }
+        
+        function determineCase(sumK) {
+            if (sumK === 8) return 8;
+            if (sumK === 9) return 9;
+            if (sumK === 10) return 10;
+            if (sumK === 11) return 11;
+            if (sumK === 12) return 12;
+            return null;
+        }
+        
+        function calculate() {
+            try {
+                console.log('Calculate function called');
+                const kInput = document.getElementById('kValues').value.trim();
+                const xInput = document.getElementById('xValue').value.trim();
+                const resultsDiv = document.getElementById('results');
+                
+                console.log('kInput:', kInput, 'xInput:', xInput);
+                
+                const x = xInput === '' ? 1 : parseFloat(xInput);
+                console.log('Parsed x value:', x);
+            
+            if (!kInput) {
+                resultsDiv.innerHTML = '<div class="error">Please enter k values.</div>';
+                return;
+            }
+            
+            const kValues = parseKValues(kInput);
+            
+            if (kValues.length === 0) {
+                resultsDiv.innerHTML = '<div class="error">Invalid k values. Please enter positive integers separated by commas.</div>';
+                return;
+            }
+            
+            if (kValues.length < 6) {
+                resultsDiv.innerHTML = '<div class="error">Please enter at least 6 k values (e.g., 2,2,2,2,2,2).</div>';
+                return;
+            }
+            
+            // Use first 5 k values for the equation, 6th determines the case
+            const equationKValues = kValues.slice(0, 5);
+            const sumK = kValues.reduce((a, b) => a + b, 0);
+            const caseType = determineCase(sumK);
+            
+            if (!caseType) {
+                resultsDiv.innerHTML = `<div class="error">Sum of k values (${sumK}) must be between 8 and 12.</div>`;
+                return;
+            }
+            
+            const calculations = calculateColumnValues(equationKValues, x, caseType);
+            
+            let html = `
+                <div class="sum-display">
+                    Full K values: [${kValues.join(', ')}] | Equation K values: [${equationKValues.join(', ')}] | Sum: ${sumK} | Case: ${caseType} | x: ${x}
+                </div>
+                <div class="case-section">
+                    <div class="case-header">Case ${caseType}: Sum of k's = ${sumK}</div>
+                    <table class="equation-table">
+                        <thead>
+                            <tr>
+                                <th>Row</th>
+                                <th>$$3^{\text{power}}$$</th>
+                                <th>Column 1<br><small>(Equation & Result)</small></th>
+                                <th>Column 2<br><small>(Equation & Result)</small></th>
+                                <th>Column 3<br><small>(Equation & Result)</small></th>
+                                <th>Row Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            calculations.forEach(calc => {
+                html += `
+                    <tr>
+                        <td class="row-label">${calc.row}</td>
+                        <td>$$3^{${5 - calc.row}}$$</td>
+                        <td class="equation-cell">
+                            <div class="equation">$$${calc.col1Eq}$$</div>
+                            <div class="base3-value">${toBase3(calc.col1)}</div>
+                            <div class="decimal-value">(${calc.col1})</div>
+                        </td>
+                        <td class="equation-cell">
+                            <div class="equation">$$${calc.col2Eq}$$</div>
+                            <div class="base3-value">${toBase3(calc.col2)}</div>
+                            <div class="decimal-value">(${calc.col2})</div>
+                        </td>
+                        <td class="equation-cell">
+                            <div class="equation">$$${calc.col3Eq}$$</div>
+                            <div class="base3-value">${toBase3(calc.col3)}</div>
+                            <div class="decimal-value">(${calc.col3})</div>
+                        </td>
+                        <td>
+                            <div class="base3-value">${toBase3(calc.total)}</div>
+                            <div class="decimal-value">(${calc.total})</div>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            // Calculate column totals
+            const col1Total = calculations.reduce((sum, calc) => sum + calc.col1, 0);
+            const col2Total = calculations.reduce((sum, calc) => sum + calc.col2, 0);
+            const col3Total = calculations.reduce((sum, calc) => sum + calc.col3, 0);
+            const grandTotal = col1Total + col2Total + col3Total;
+            
+            html += `
+                        <tr style="background: #f8f9fa; font-weight: bold;">
+                            <td class="row-label">TOTAL</td>
+                            <td>-</td>
+                            <td>
+                                <div class="base3-value">${toBase3(col1Total)}</div>
+                                <div class="decimal-value">(${col1Total})</div>
+                            </td>
+                            <td>
+                                <div class="base3-value">${toBase3(col2Total)}</div>
+                                <div class="decimal-value">(${col2Total})</div>
+                            </td>
+                            <td>
+                                <div class="base3-value">${toBase3(col3Total)}</div>
+                                <div class="decimal-value">(${col3Total})</div>
+                            </td>
+                            <td>
+                                <div class="base3-value">${toBase3(grandTotal)}</div>
+                                <div class="decimal-value">(${grandTotal})</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            `;
+            
+            // Add analysis
+            html += `
+                <div class="info">
+                    <strong>Analysis:</strong> For the equation to equal 0, the first digit in base 3 must be 0. 
+                    This means the sum of the 3^0 columns must be 0, -3, 3, or some other multiple of 3.
+                    <br><br>
+                    <strong>Grand Total:</strong> ${grandTotal} (base 3: ${toBase3(grandTotal)})
+                    <br>
+                    <strong>Modulo 3:</strong> ${grandTotal % 3}
+                </div>
+            `;
+            
+            resultsDiv.innerHTML = html;
+            
+            // Trigger MathJax rendering
+            if (window.MathJax && window.MathJax.typesetPromise) {
+                window.MathJax.typesetPromise([resultsDiv]).catch((err) => console.log('MathJax error:', err));
+            }
+        } catch (error) {
+            console.error('Error in calculate function:', error);
+            resultsDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+        }
+        }
+        
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+        
+        let calculateTimeout;
+        
+        function debouncedCalculate() {
+            console.log('debouncedCalculate called');
+            clearTimeout(calculateTimeout);
+            calculateTimeout = setTimeout(() => {
+                console.log('Executing calculate after delay');
+                calculate();
+            }, 300); // 300ms delay
+        }
+        
+        // Calculate on page load with default values
+        window.onload = function() {
+            calculate();
+            
+            // Add event listeners for automatic updates with debouncing
+            const kInput = document.getElementById('kValues');
+            const xInput = document.getElementById('xValue');
+            
+            if (kInput) {
+                kInput.addEventListener('input', debouncedCalculate);
+                console.log('kValues event listener added');
+            }
+            
+            if (xInput) {
+                xInput.addEventListener('input', debouncedCalculate);
+                console.log('xValue event listener added');
+            }
+        };
+    </script>
+</body>
+</html>

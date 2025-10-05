@@ -424,7 +424,7 @@ $$
 
 ### Case 1: Sum of k's = 8
 
-For $K_{\text{sum}} = 8$ (even, $n=4$):
+For $K_{\text{sum}} = 8$ (even, $n=6$):
 -   Column 1 $(2^7)$ is replaced with $\mathrm{RHS}(4)$.
 -   Column 2 $(2^8)$ is replaced with $2x \cdot \mathrm{RHS}(4)$.
 
@@ -474,7 +474,7 @@ If col 1 is 2 and the first row in column 2 is 1 then the first digit is 2 (whic
 
 ### Case 2: Sum of k's = 9
 
-For $K_{\text{sum}} = 9$ (odd, $n=4$ for col 1, $n=5$ for col 2):
+For $K_{\text{sum}} = 9$ ($n=6$):
 -   Column 1 $(2^8)$ is replaced with $2 \cdot \mathrm{RHS}(4)$.
 -   Column 2 $(2^9)$ is replaced with $x \cdot \mathrm{RHS}(5)$.
 
@@ -495,7 +495,7 @@ $$
 
 ### Case 3: Sum of k's = 10
 
-For $K_{\text{sum}} = 10$ (even, $n=5$):
+For $K_{\text{sum}} = 10$ ($n=6$):
 -   Column 1 $(2^9)$ is replaced with $\mathrm{RHS}(5)$.
 -   Column 2 $(2^{10})$ is replaced with $2x \cdot \mathrm{RHS}(5)$.
 
@@ -516,7 +516,7 @@ $$
 
 ### Case 4: Sum of k's = 11
 
-For $K_{\text{sum}} = 11$ (odd, $n=5$ for col 1, $n=6$ for col 2):
+For $K_{\text{sum}} = 11$ ($n=6$):
 -   Column 1 $(2^{10})$ is replaced with $2 \cdot \mathrm{RHS}(5)$.
 -   Column 2 $(2^{11})$ is replaced with $x \cdot \mathrm{RHS}(6)$.
 
@@ -537,7 +537,7 @@ $$
 
 ### Case 5: Sum of k's = 12
 
-For $K_{sum} = 12$ (even, $n=6$):
+For $K_{sum} = 12$ ($n=6$):
 -   Column 1 $2^{11}$ is replaced with `RHS(6)`.
 -   Column 2 $2^{12}$ is replaced with $2x \cdot RHS(6)$.
 
@@ -554,6 +554,7 @@ x \cdot 3^{6} =
 \end{array}
 $$
 
+In all these cases there are 6 $k$ s overall.
 
 ### Case 1: Sum of k's = 8
 
@@ -658,4 +659,75 @@ $$
     \text{col 1} & \text{col 2} & \text{col 3}
 \end{array}
 $$
+
+The general form of the table representation for a cycle of length `n` where the sum of the exponents is $K_{\text{sum}} = K$.
+
+### Definitions
+
+-   **`n`**: The number of odd steps in the cycle (cycle length).
+-   **`K`**: The sum of the divisions by two, $K = \sum_{i=0}^{n-1} k_i$.
+-   **`m`**: $m = \lfloor K/2 \rfloor$.
+-   **`p`**: $p = \lfloor (K+1)/2 \rfloor$.
+-   **`RHS(q)`**: The function representing the sum for a `k=2` sequence of length `q`:
+    $$RHS(q) = 2 \cdot 3^{q-1} + 3^{q-2} \cdot 2^1 + 3^{q-3} \cdot 2^3 + \cdots + 3^0 \cdot 2^{2q-3}$$
+
+The equation is represented in the form $0 = \text{col 1} + \text{col 2} + \text{col 3}$, where the terms are aligned by powers of 3.
+
+### General Table Structure
+
+$$
+0 =
+\begin{array}{lll}
+    \text{col 1} & \text{col 2} & \text{col 3}
+\end{array}
+$$
+
+The content of each column is determined as follows:
+
+**Column 1:**
+This column represents the term-by-term expansion of:
+$$2^{((K-1) \pmod 2)} \cdot RHS(m)$$
+
+**Column 2:**
+This column represents the term-by-term expansion of $x \cdot (A - B)$, where:
+-   `A` is the expansion of $2 \cdot (2^{((K-1) \pmod 2)} \cdot RHS(m))$.
+-   `B` is the expansion of $(2 \cdot \sum_{j=0}^{p-1} 3^j) + 1$.
+
+**Column 3:**
+This column represents the negative terms from the numerator of the general solution for `x`.
+$$
+\begin{array}{l}
+- 2 \cdot 3^{n-1} \\
+- 3^{n-2} \cdot 2^{k_0-1} \\
+- 3^{n-3} \cdot 2^{k_0+k_1-1} \\
+\quad \vdots \\
+- 3^{0} \cdot 2^{k_0+k_1+\cdots+k_{n-2}-1}
+\end{array}
+$$
+
+### General Table Layout
+
+The table below shows the general form, with rows corresponding to powers of 3.
+
+$$
+0 =
+\begin{array}{llll}
+\text{Power of 3} & \text{Column 1} & \text{Column 2} & \text{Column 3} \\
+\hline
+3^{n-1} & \cdots & + x(\cdots) & - 2 \cdot 3^{n-1} \\
+\vdots & \vdots & \vdots & \vdots \\
+3^{p-1} & \cdots & + x(A_{p-1} - 2 \cdot 3^{p-1}) & - 3^{p-1} \cdot 2^{\dots-1} \\
+\vdots & \vdots & \vdots & \vdots \\
+3^{m-1} & + 2^{((K-1) \pmod 2)} \cdot (2 \cdot 3^{m-1}) & + x(A_{m-1} - B_{m-1}) & - 3^{m-1} \cdot 2^{\dots-1} \\
+3^{m-2} & + 2^{((K-1) \pmod 2)} \cdot (3^{m-2} \cdot 2^1) & + x(A_{m-2} - B_{m-2}) & - 3^{m-2} \cdot 2^{\dots-1} \\
+\vdots & \vdots & \vdots & \vdots \\
+3^1 & + 2^{((K-1) \pmod 2)} \cdot (3^1 \cdot 2^{2m-5}) & + x(A_1 - 2 \cdot 3^1) & - 3^1 \cdot 2^{\dots-1} \\
+3^0 & + 2^{((K-1) \pmod 2)} \cdot (3^0 \cdot 2^{2m-3}) & + x(A_0 - (2 \cdot 3^0 + 1)) & - 3^0 \cdot 2^{k_0+\cdots+k_{n-2}-1}
+\end{array}
+$$
+
+-   $A_j$ is the term corresponding to the power $3^j$ from the expansion of $2 \cdot (\text{Column 1})$.
+-   $B_j$ is the term corresponding to the power $3^j$ from the expansion of $B$ described above.
+-   The terms in Column 3 depend on the specific values of $k_0, k_1, \ldots, k_{n-2}$.
+-   If a power of 3 does not appear in an expansion for a given column, its coefficient is zero. For example, if $n-1 > m-1$, the top rows of Column 1 will be zero.
 
