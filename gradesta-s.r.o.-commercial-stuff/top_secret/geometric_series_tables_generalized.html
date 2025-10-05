@@ -295,6 +295,7 @@
                 const col1Eq = getCol1Equation(power, power, n, m, parityFactor);
                 const col2Eq = getCol2Equation(power, power, n, m, p, parityFactor, x);
                 const col3Eq = getCol3Equation(power, power, n, kValues);
+                const col3EqSummed = getCol3EquationSummed(power, power, n, kValues);
 
                 results.push({
                     row: row,
@@ -306,7 +307,8 @@
                     total: col1 + col2 + col3,
                     col1Eq: col1Eq,
                     col2Eq: col2Eq,
-                    col3Eq: col3Eq
+                    col3Eq: col3Eq,
+                    col3EqSummed: col3EqSummed
                 });
             }
 
@@ -474,6 +476,22 @@
             return `-${power3Str} \\cdot 2^{${kSumStr}-1}`;
         }
 
+        function getCol3EquationSummed(power, powerValue, n, kValues) {
+            const power3Str = `3^{${powerValue}}`;
+            if (power > n - 1) return "0";
+            if (power === n - 1) {
+                return `-2 \\cdot ${power3Str}`;
+            }
+            const numKValues = (n - 1) - power;
+            let kSum = 0;
+            for (let i = 0; i < numKValues && i < kValues.length; i++) {
+                kSum += kValues[i];
+            }
+            if (kSum === 0) return "0";
+            const exponent = kSum - 1;
+            return `-${power3Str} \\cdot 2^{${exponent}}`;
+        }
+
         function calculate() {
             try {
                 console.log('Calculate function called');
@@ -543,6 +561,7 @@
                             </td>
                             <td class="equation-cell">
                                 <div class="equation">$$${calc.col3Eq}$$</div>
+                                <div class="equation">$$${calc.col3EqSummed}$$</div>
                                 <div class="base3-value">${toBase3(calc.col3)}</div>
                                 <div class="decimal-value">(${calc.col3})</div>
                             </td>
