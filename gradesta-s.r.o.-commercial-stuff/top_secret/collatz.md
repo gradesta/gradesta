@@ -441,7 +441,36 @@ x \cdot 3^{6} =
 \end{array}
 $$
 
-***
+We know that the last 6 digits of the LHS are 0 when represented in base 3. What are the last 6 digits of the RHS?
+
+Lets look at the digits right from left
+
+| Digit | Row    | Col 1 | Col 2                        | Col 3                   |
+|-------|--------|-------|------------------------------|-------------------------|
+| 1     | $3^0$  | 2     | (0, 1 or 2 depending on $x$) | -1 or -2 depending on $k$ s|
+| 2     | $3^1$  | 2     | (same as digit 1)            | -1 or -2 depending on $k$ s|
+
+If col 2 is 0 and col 3 is -1 then the first digit is 1. If col 3 is -2 then the first digit will be 0. 
+
+| Digit | Row    | Carry | Col 1 | Col 2                        | Col 3                   |
+|-------|--------|-|------|------------------------------|-------------------------|
+| 1     | $3^0$  | 0| 2     | 0 | 1 |
+| 2     | $3^1$  | 1| 2     | 0 | 1 or 2 depending on $k$ s|
+
+If col 2 is 0 and col 3 is 2 then the first digit will be 1.
+
+If col 2 is 1 then the first digit will be 2 or 1 depending on the value in col 3.
+
+| Digit | Row    | Carry | Col 1 | Col 2                        | Col 3                   |
+|-------|--------|-|------|------------------------------|-------------------------|
+| 1     | $3^0$  | 0| 2     | 1 | 1 |
+| 2     | $3^1$  | 1| 2     | 1 | 1 or 2 depending on $k$ s|
+
+
+
+
+If col 1 is 2 and the first row in column 2 is 1 then the first digit is 2 (which violates the first 6 digits being 0). If col 2 of row 1 is 2 then there will be two carries and thus the value of digit 2 will be 2 or 1.
+
 
 ### Case 2: Sum of k's = 9
 
@@ -521,6 +550,111 @@ x \cdot 3^{6} =
     + 3^2 \cdot 2^5 & + 2x(3^2 \cdot 2^5) & - 3^{2} \cdot 2^{k_0+k_1+k_2-1} \\
     + 3^1 \cdot 2^7 & + 2x(3^1 \cdot 2^7) & - 3^{1} \cdot 2^{k_0+k_1+k_2+k_3-1} \\
     + 3^0 \cdot 2^9 & + 2x(3^0 \cdot 2^9) & - 3^{0} \cdot 2^{k_0+k_1+k_2+k_3+k_4-1} \\
+    \text{col 1} & \text{col 2} & \text{col 3}
+\end{array}
+$$
+
+
+### Case 1: Sum of k's = 8
+
+For $K_{\text{sum}} = 8$:
+-   Column 1 $(2^7)$ is replaced with $\mathrm{RHS}(4)$.
+-   Column 2 $(2^8)$ is replaced with $2x \cdot \mathrm{RHS}(4)$.
+
+$$
+0 =
+\begin{array}{lll}
+    &-x(3^5 \cdot 2) & - 3^5 \cdot 2 \\
+    & - x(3^4\cdot 2 \cdot ) &- 3^{4} \cdot 2^{k_0-1} \\
+    3^3 \cdot 2 & + x(3^3 \cdot 2^2  - 2 \cdot 3^3) & - 3^{3} \cdot 2^{k_0+k_1-1} \\
+    + 3^2 \cdot 2^1 & + x(3^2 \cdot 2^2-2\cdot3^2) & - 3^{2} \cdot 2^{k_0+k_1+k_2-1} \\
+    + 3^1 \cdot 2^3 & + x(3^1 \cdot 2^4-2\cdot3^1) & - 3^{1} \cdot 2^{k_0+k_1+k_2+k_3-1} \\
+    + 3^0 \cdot 2^5 & + x(3^0 \cdot 2^6-2\cdot3^0-1) & - 3^{0} \cdot 2^{k_0+k_1+k_2+k_3+k_4-1} \\
+    
+    \text{col 1} & \text{col 2} & \text{col 3}
+\end{array}
+$$
+
+In order for the overall result to be 0 then the first digit in base 3 must be 0. For this to be true, then the sum of the $3^0$ columns must be 0, -3, 3, or some other multiple of 3.
+
+### Case 2: Sum of k's = 9
+
+For $K_{\text{sum}} = 9$:
+-   Column 1 $(2^8)$ is replaced with $2 \cdot \mathrm{RHS}(4)$.
+-   Column 2 $(2^9)$ is replaced with $x \cdot \mathrm{RHS}(5)$.
+
+$$
+0 =
+\begin{array}{lll}
+    & - x(3^5 \cdot 2) & - 3^{5} \cdot 2 \\
+    & + x(3^4\cdot 2 - 3^4 \cdot 2) & - 3^{4} \cdot 2^{k_0-1} \\
+    + 2(3^3\cdot 2) & + x(3^3 \cdot 2^1 - 3^3 \cdot 2) & - 3^{3} \cdot 2^{k_0+k_1-1} \\
+    + 2(3^2 \cdot 2^1) & + x(3^2 \cdot 2^3 - 3^2 \cdot 2) & - 3^{2} \cdot 2^{k_0+k_1+k_2-1} \\
+    + 2(3^1 \cdot 2^3) & + x(3^1 \cdot 2^5 - 3^1 \cdot 2) & - 3^{1} \cdot 2^{k_0+k_1+k_2+k_3-1} \\
+    + 2(3^0 \cdot 2^5) & + x(3^0 \cdot 2^7 - 3^0 \cdot 2 - 1) & - 3^{0} \cdot 2^{k_0+k_1+k_2+k_3+k_4-1} \\
+    \text{col 1} & \text{col 2} & \text{col 3}
+\end{array}
+$$
+
+***
+
+### Case 3: Sum of k's = 10
+
+For $K_{\text{sum}} = 10$:
+-   Column 1 $(2^9)$ is replaced with $\mathrm{RHS}(5)$.
+-   Column 2 $(2^{10})$ is replaced with $2x \cdot \mathrm{RHS}(5)$.
+
+$$
+0 =
+\begin{array}{lll}
+    & -x(3^5 \cdot 2) & - 3^{5} \cdot 2 \\
+    + 3^4 \cdot 2 & + x(3^4 \cdot 2^2- 3^4\cdot2) & - 3^{4} \cdot 2^{k_0-1} \\
+    + 3^3 \cdot 2^1 & + x(3^3 \cdot 2^2- 3^3\cdot2) & - 3^{3} \cdot 2^{k_0+k_1-1} \\
+    + 3^2 \cdot 2^3 & + x(3^2 \cdot 2^4- 3^2\cdot2) & - 3^{2} \cdot 2^{k_0+k_1+k_2-1} \\
+    + 3^1 \cdot 2^5 & + x(3^1 \cdot 2^6- 3^1\cdot2) & - 3^{1} \cdot 2^{k_0+k_1+k_2+k_3-1} \\
+    + 3^0 \cdot 2^7 & + x(3^0 \cdot 2^8- 3^0\cdot2 - 1) & - 3^{0} \cdot 2^{k_0+k_1+k_2+k_3+k_4-1} \\
+    \text{col 1} & \text{col 2} & \text{col 3}
+\end{array}
+$$
+
+***
+
+### Case 4: Sum of k's = 11
+
+For $K_{\text{sum}} = 11$:
+-   Column 1 $(2^{10})$ is replaced with $2 \cdot \mathrm{RHS}(5)$.
+-   Column 2 $(2^{11})$ is replaced with $x \cdot \mathrm{RHS}(6)$.
+
+$$
+0 =
+\begin{array}{lll}
+    & + x(3^5 \cdot 2-3^5 \cdot 2) & - 2 \cdot 3^{5} \\
+    + (3^4 \cdot 2^2) & + x(3^4 \cdot 2^1-3^4 \cdot 2) & - 3^{4} \cdot 2^{k_0-1} \\
+    + (3^3 \cdot 2^2) & + x(3^3 \cdot 2^3-3^3 \cdot 2) & - 3^{3} \cdot 2^{k_0+k_1-1} \\
+    + (3^2 \cdot 2^4) & + x(3^2 \cdot 2^5-3^2 \cdot 2) & - 3^{2} \cdot 2^{k_0+k_1+k_2-1} \\
+    + (3^1 \cdot 2^6) & + x(3^1 \cdot 2^7-3^1 \cdot 2) & - 3^{1} \cdot 2^{k_0+k_1+k_2+k_3-1} \\
+    + (3^0 \cdot 2^8) & + x(3^0 \cdot 2^9-3^0 \cdot 2-1) & - 3^{0} \cdot 2^{k_0+k_1+k_2+k_3+k_4-1} \\
+    \text{col 1} & \text{col 2} & \text{col 3}
+\end{array}
+$$
+
+***
+
+### Case 5: Sum of k's = 12
+
+For $K_{sum} = 12$:
+-   Column 1 $2^{11}$ is replaced with `RHS(6)`.
+-   Column 2 $2^{12}$ is replaced with $2x \cdot RHS(6)$.
+
+$$
+0 =
+\begin{array}{lll}
+    + 3^5 \cdot 2 & + x(3^5 \cdot 2^2-3^5\cdot2) & - 2 \cdot 3^{5} \\
+    + 3^4 \cdot 2^1 & + x(3^4 \cdot 2^2-3^4\cdot2) & - 3^{4} \cdot 2^{k_0-1} \\
+    + 3^3 \cdot 2^3 & + x(3^3 \cdot 2^4-3^3\cdot2) & - 3^{3} \cdot 2^{k_0+k_1-1} \\
+    + 3^2 \cdot 2^5 & + x(3^2 \cdot 2^6-3^2\cdot2) & - 3^{2} \cdot 2^{k_0+k_1+k_2-1} \\
+    + 3^1 \cdot 2^7 & + x(3^1 \cdot 2^8-3^1\cdot2) & - 3^{1} \cdot 2^{k_0+k_1+k_2+k_3-1} \\
+    + 3^0 \cdot 2^9 & + x(3^0 \cdot 2^{10}-3^0\cdot2-1) & - 3^{0} \cdot 2^{k_0+k_1+k_2+k_3+k_4-1} \\
     \text{col 1} & \text{col 2} & \text{col 3}
 \end{array}
 $$
