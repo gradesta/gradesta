@@ -69,6 +69,7 @@ $$n=1, p=5$$
 
 We start at:
 
+**J1**
 
 $$
 f(1) = log_2(1) - log_2(1) = 0
@@ -90,6 +91,8 @@ $$
 f(3) = log_2(3) - log_2(1) \approx 1.584962
 $$
 
+**J2**
+
 We then jump up to
 
 $$
@@ -102,7 +105,7 @@ $$
 
 And climb down 4 rungs to where we started.
 
-Now if we rewrite the up jumps logarithmic product:
+Now if we rewrite the sum of the up jumps as a logarithmic product:
 
 $$
 log_2(\frac{6 \cdot 16}{1 \cdot 3}) = 5
@@ -110,10 +113,11 @@ $$
 
 If we were to start at rung 3:
 
-
 $$
 f(3) = log_2(3) - log_2(3) = 0
 $$
+
+**J1**
 
 We jump up to $5 \cdot 3 + 1$ which gets us to:
 
@@ -131,6 +135,8 @@ $$
 f(1) = log_2(1) - log_2(3) \approx -1.584962
 $$
 
+**J2**
+
 We then jump up to
 
 $$
@@ -138,7 +144,7 @@ f(5+1) = log_2(6) - log_2(3) = 1
 $$
 
 $$
-\triangle = log_2(\frac{6}{3-3}) \approx 2.584962
+\triangle = log_2(\frac{6 \cdot 3}{3}) \approx 2.584962
 $$
 
 And we climb down one rung back to `0`.
@@ -146,7 +152,7 @@ And we climb down one rung back to `0`.
 In this we have more 3's in the denominator.
 
 $$
-log_2(\frac{16 \cdot 6}{3 \cdot (3 - 3)}) = 5
+log_2(\frac{16 \cdot 6 \cdot 3}{3 \cdot 3}) = 5
 $$
 
 Lets return to the equation which shows the sum of the up jumps:
@@ -165,7 +171,7 @@ $$n=1, p=7$$
 These factors simply never appear. The fraction ends up being:
 
 $$
-log_2(\frac{8}{1})
+log_2(\frac{8}{1}) = 3
 $$
 
 In the case of
@@ -204,7 +210,7 @@ f(13 \cdot 5+1) = log_2(66) - log_2(5)
 $$
 
 $$
-\triangle = log_2(\frac{66}{13+5-5})
+\triangle = log_2(\frac{66\cdot5}{13 \cdot 5})
 $$
 
 
@@ -217,7 +223,7 @@ f(33 \cdot 5+1) = log_2(166) - log_2(5)
 $$
 
 $$
-\triangle = log_2(\frac{166}{33+5-5})
+\triangle = log_2(\frac{166\cdot 5}{33\cdot5})
 $$
 
 Now we could continue for a long time with this, but we already see that we've accumulated a lot of prime factors in both the numerator and the denominator. Here is what we have so far:
@@ -239,3 +245,120 @@ $$
 $$
 
 After each step, we gain a factor and cancel it out, except for that pesky 5 in the denominator. Under what circumstances could that be cancled? Only if we went up by a multiple of 5. This is impossible, however, as we always go up by $1 (mod 5)$. We will never get that missing 5 which was introduced by the $- log(5)$ in the second step. The only reason why this does not occure for loops which contain a 1 is that $- log(1)$ is $0$ and thus no extraneous factor in the denominator is ever introduced.
+
+We then climb down the ladder one rung to
+
+$$
+f(1) = log_2(1) - log_2(3) \approx -1.584962
+$$
+
+We then jump up to
+
+$$
+f(5+1) = log_2(6) - log_2(3) = 1
+$$
+
+$$
+\triangle = log_2(\frac{6\cdot3}{3}) \approx 2.584962
+$$
+
+And we climb down one rung back to `0`.
+
+In this we have more 3's in the denominator.
+
+$$
+log_2(\frac{16 \cdot 6\cdot3}{3 \cdot 3}) = 5
+$$
+
+Lets return to the equation which shows the sum of the up jumps:
+
+$$
+log_2(\frac{6 \cdot 16}{1 \cdot 3}) = 5
+$$
+
+For this to be a whole number, all non 2 factors of the denominator must cancel out with the factors in the numerator. Lets look at where these factors orignate.
+
+In the case of
+
+$$
+n=1, p=7
+$$
+
+
+These factors simply never appear. The fraction ends up being:
+
+$$
+log_2(\frac{8}{1})
+$$
+
+In the case of
+
+
+$$
+log_2(\frac{6 \cdot 16}{1 \cdot 3}) = 5
+$$
+
+The 3 in the numerator comes from the first upwards jump and is imediately cancled out by the delta calculation in the second jump.
+
+Now lets look at what happens when we try to walk the ladders from a starting point that doesn't cycle.
+
+$$
+n=7, p=5
+$$
+
+$$
+f(7) = log_2(7) - log_2(7) = 0
+$$
+
+$$
+f(7\cdot5+1) = log_2(36) - log_2(7)
+$$
+
+$$
+\triangle = log_2(\frac{36}{7})
+$$
+
+$$
+f(9) = log_2(9) - log_2(7)
+$$
+
+$$
+f(9 \cdot 5+1) = log_2(46) - log_2(7)
+$$
+
+$$
+\triangle = log_2(\frac{46 \cdot 7}{9\cdot7})
+$$
+
+
+$$
+f(23) = log_2(23) - log_2(7)
+$$
+
+$$
+f(23 \cdot 5+1) = log_2(116) - log_2(7)
+$$
+
+$$
+\triangle = log_2(\frac{116 \cdot 7}{23 \cdot 7})
+$$
+
+Now we could continue for a long time with this, but we already see that we've accumulated a lot of prime factors in both the numerator and the denominator. Here is what we have so far:
+
+$$
+\sum \triangle = log_2(\frac{36*46*116}{7*9*23})
+$$
+
+Or if we do a prime factorization:
+
+$$
+\sum \triangle = log_2(\frac{3*3*2*2*23*2*29*2*2}{7*3*3*23})
+$$
+
+And simplification:
+
+$$
+\sum \triangle = log_2(\frac{2*2*2*2*29}{7})
+$$
+
+After each step, we gain a factor and cancel it out, except for that pesky 7 in the denominator. Under what circumstances could that be cancled? Only if we went up by a multiple of 7. 
