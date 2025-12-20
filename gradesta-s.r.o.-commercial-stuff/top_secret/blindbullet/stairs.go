@@ -110,6 +110,18 @@ func (s *StairsChapter) getPointForIndexScreen(index int) Point {
 }
 
 func (s *StairsChapter) Update() error {
+	// Handle Shift+Right Arrow to jump to end of stairs (top or bottom)
+	if ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+			endIndex := s.getEndOfStairs(s.selectedIndex)
+			if endIndex != s.selectedIndex {
+				s.selectedIndex = endIndex
+				s.updateCamera()
+			}
+			return nil
+		}
+	}
+	
 	// Handle arrow key input - can go infinitely in either direction
 	// Only allow odd indexes, so skip by 2
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || inpututil.IsKeyJustPressed(ebiten.KeyD) {
@@ -133,54 +145,66 @@ func (s *StairsChapter) Update() error {
 }
 
 func (s *StairsChapter) updateCamera() {
-	// Get the selected point in world coordinates
-	selectedWorldX, selectedWorldY := s.getPointForIndex(s.selectedIndex)
+	// Calculate the entire staircase
+	steps, _ := s.calculateStaircase(s.selectedIndex)
 	
-	// Calculate y value to check if triangle should be shown
-	yValue := int(s.globalCoeficient*float64(s.selectedIndex) + 1.0)
-	k := findLargestPowerOf2(yValue)
-	
-	if k > 0 {
-		// Calculate triangle bounds in world coordinates (math space)
-		powerOf2 := math.Pow(2.0, float64(k))
+	if len(steps) > 0 {
+		// Calculate bounding box of entire staircase in world coordinates
+		minWorldX := math.Inf(1)
+		maxWorldX := math.Inf(-1)
+		minWorldY := math.Inf(1)
+		maxWorldY := math.Inf(-1)
 		
-		// Find intersection of horizontal line from selected point with 2^k line
-		// Horizontal line: y = selectedWorldY
-		// 2^k line: y = 2^k * x
-		// So: selectedWorldY = 2^k * x
-		intersectionWorldX := selectedWorldY / powerOf2
-		intersectionWorldY := selectedWorldY
+		// Start with the selected point
+		startWorldX, startWorldY := s.getPointForIndex(s.selectedIndex)
+		minWorldX = math.Min(minWorldX, startWorldX)
+		maxWorldX = math.Max(maxWorldX, startWorldX)
+		minWorldY = math.Min(minWorldY, startWorldY)
+		maxWorldY = math.Max(maxWorldY, startWorldY)
 		
-		// Find point on globalCoeficient*x+1 line at same x as intersection
-		originalWorldY := s.globalCoeficient*intersectionWorldX + 1.0
-		
-		// Triangle vertices in world coordinates
-		// 1. Selected point: (selectedWorldX, selectedWorldY)
-		// 2. Intersection: (intersectionWorldX, intersectionWorldY)
-		// 3. Original line point: (intersectionWorldX, originalWorldY)
-		
-		// Find bounding box in world coordinates
-		minWorldX := math.Min(selectedWorldX, intersectionWorldX)
-		maxWorldX := math.Max(selectedWorldX, intersectionWorldX)
-		minWorldY := math.Min(selectedWorldY, math.Min(intersectionWorldY, originalWorldY))
-		maxWorldY := math.Max(selectedWorldY, math.Max(intersectionWorldY, originalWorldY))
+		// Process each step in the staircase
+		currentIndex := float64(s.selectedIndex)
+		for _, step := range steps {
+			// Get start point for this step
+			stepStartX, stepStartY := s.getPointForIndex(int(currentIndex))
+			
+			// Calculate 2^k for this step
+			powerOf2 := math.Pow(2.0, float64(step.K))
+			
+			// Find intersection of horizontal line from start point with 2^k line
+			intersectionWorldX := stepStartY / powerOf2
+			
+			// Find point on globalCoeficient*x+1 line at same x as intersection
+			originalWorldY := s.globalCoeficient*intersectionWorldX + 1.0
+			
+			// Get destination point
+			destWorldX := step.DestinationIndex
+			destWorldY := s.globalCoeficient*destWorldX + 1.0
+			
+			// Update bounding box with all triangle vertices
+			minWorldX = math.Min(minWorldX, math.Min(stepStartX, math.Min(intersectionWorldX, destWorldX)))
+			maxWorldX = math.Max(maxWorldX, math.Max(stepStartX, math.Max(intersectionWorldX, destWorldX)))
+			minWorldY = math.Min(minWorldY, math.Min(stepStartY, math.Min(originalWorldY, destWorldY)))
+			maxWorldY = math.Max(maxWorldY, math.Max(stepStartY, math.Max(originalWorldY, destWorldY)))
+			
+			// Move to destination for next step
+			currentIndex = step.DestinationIndex
+		}
 		
 		// Add padding in world units
-		padding := 2.0 // 2 world units of padding
-		minWorldX -= padding
-		maxWorldX += padding
-		minWorldY -= padding
-		maxWorldY += padding
+		paddingWorld := 2.0
+		minWorldX -= paddingWorld
+		maxWorldX += paddingWorld
+		minWorldY -= paddingWorld
+		maxWorldY += paddingWorld
 		
-		// Calculate center in world coordinates
+		// Calculate center and size in world units
 		centerWorldX := (minWorldX + maxWorldX) / 2
 		centerWorldY := (minWorldY + maxWorldY) / 2
-		
-		// Calculate size in world units
 		widthWorld := maxWorldX - minWorldX
 		heightWorld := maxWorldY - minWorldY
 		
-		// Calculate zoom needed to fit triangle on screen
+		// Calculate required zoom to fit the entire staircase
 		// Available screen space (with some margin)
 		availableWidth := float64(screenWidth) * 0.9
 		availableHeight := float64(screenHeight) * 0.9
@@ -190,12 +214,15 @@ func (s *StairsChapter) updateCamera() {
 		zoomY := heightWorld / availableHeight
 		requiredZoom := math.Max(zoomX, zoomY)
 		
-		// Update zoom and camera
+		// Apply the new zoom
 		s.zoom = requiredZoom
+		
+		// Center camera on the staircase's center
 		s.cameraX = centerWorldX
 		s.cameraY = centerWorldY
 	} else {
-		// No triangle, just center on selected point
+		// No staircase, just center on selected point
+		selectedWorldX, selectedWorldY := s.getPointForIndex(s.selectedIndex)
 		s.cameraX = selectedWorldX
 		s.cameraY = selectedWorldY
 		// Keep current zoom or reset to default
@@ -342,66 +369,148 @@ func findLargestPowerOf2(y int) int {
 	return k
 }
 
+// StairStep represents one step in the staircase
+type StairStep struct {
+	StartIndex    int     // Starting index for this step
+	DestinationIndex float64 // Destination index (may be fractional)
+	K             int     // Power of 2 for this step
+}
+
+// calculateStaircase calculates all steps from startIndex to the end of the stairs
+// Returns a slice of StairStep, where each step's destination is different from its start
+// Also returns true if the staircase goes upwards, false if downwards
+func (s *StairsChapter) calculateStaircase(startIndex int) ([]StairStep, bool) {
+	var steps []StairStep
+	currentIndex := float64(startIndex)
+	isUpwards := false
+	
+	for {
+		// Calculate y value for current index
+		yValue := s.globalCoeficient*currentIndex + 1.0
+		yValueInt := int(yValue)
+		
+		// Find k (number of times y is divisible by 2)
+		k := findLargestPowerOf2(yValueInt)
+		if k == 0 {
+			break // No destination if y is odd
+		}
+		
+		// Calculate destination index
+		powerOf2 := math.Pow(2.0, float64(k))
+		destinationIndex := float64(yValueInt) / powerOf2
+		
+		// Check if destination is different from current index
+		if destinationIndex == currentIndex {
+			break // Reached the end of the stairs
+		}
+		
+		// Determine direction on first step
+		if len(steps) == 0 {
+			isUpwards = destinationIndex > currentIndex
+		}
+		
+		// Check if we're still going in the same direction
+		if isUpwards && destinationIndex <= currentIndex {
+			break // Reached the top of the stairs
+		}
+		if !isUpwards && destinationIndex >= currentIndex {
+			break // Reached the bottom of the stairs
+		}
+		
+		// Add this step
+		steps = append(steps, StairStep{
+			StartIndex:      int(currentIndex),
+			DestinationIndex: destinationIndex,
+			K:               k,
+		})
+		
+		// Move to destination for next iteration
+		currentIndex = destinationIndex
+	}
+	
+	return steps, isUpwards
+}
+
+// getEndOfStairs returns the end index (top or bottom) of the staircase starting from startIndex
+func (s *StairsChapter) getEndOfStairs(startIndex int) int {
+	steps, _ := s.calculateStaircase(startIndex)
+	if len(steps) == 0 {
+		return startIndex
+	}
+	// Return the last destination as an integer (round to nearest odd)
+	endIndex := int(steps[len(steps)-1].DestinationIndex)
+	// Ensure it's odd
+	if endIndex%2 == 0 {
+		endIndex++
+	}
+	return endIndex
+}
+
 func (s *StairsChapter) drawTriangle(screen *ebiten.Image) {
-	// Get the selected point in world coordinates (math space)
-	_, selectedWorldY := s.getPointForIndex(s.selectedIndex)
+	// Calculate the entire staircase
+	steps, _ := s.calculateStaircase(s.selectedIndex)
 	
-	// Calculate y value in world coordinates
-	yValue := int(s.globalCoeficient*float64(s.selectedIndex) + 1.0)
-	
-	// Find the largest k where y is divisible by 2^k
-	k := findLargestPowerOf2(yValue)
-	if k == 0 {
-		return // No triangle if y is odd
+	if len(steps) == 0 {
+		return // No staircase to draw
 	}
 	
-	// Calculate 2^k
-	powerOf2 := math.Pow(2.0, float64(k))
-	
-	// The new line has slope 2^k and passes through origin (0,0) in world coordinates
-	// So in world coordinates: y = 2^k * x (riseOverRun = 2^k, constant = 0)
-	
-	// Draw the line with slope 2^k using the drawLine function
-	lineColor := color.RGBA{100, 255, 100, 255} // Green for the new line
-	s.drawLine(screen, powerOf2, 0.0, lineColor)
-	
-	// Find intersection of horizontal line from selected point with the new line
-	// In world units:
-	// Horizontal line: y = selectedWorldY
-	// New line: y = 2^k * x
-	// So: selectedWorldY = 2^k * x
-	// x = selectedWorldY / 2^k
-	intersectionWorldX := selectedWorldY / powerOf2
-	intersectionWorldY := selectedWorldY
-	
-	// Project intersection to screen coordinates
-	intersectionScreenX, intersectionScreenY := s.worldToScreen(intersectionWorldX, intersectionWorldY)
-	intersectionPoint := Point{
-		X: intersectionScreenX,
-		Y: intersectionScreenY,
+		// Draw each step in the staircase
+		currentIndex := float64(s.selectedIndex)
+		for _, step := range steps {
+			// Get start point for this step
+			_, stepStartY := s.getPointForIndex(int(currentIndex))
+		
+		// Calculate 2^k for this step
+		powerOf2 := math.Pow(2.0, float64(step.K))
+		
+		// The new line has slope 2^k and passes through origin (0,0) in world coordinates
+		// So in world coordinates: y = 2^k * x (riseOverRun = 2^k, constant = 0)
+		
+		// Draw the line with slope 2^k using the drawLine function
+		lineColor := color.RGBA{100, 255, 100, 255} // Green for the new line
+		s.drawLine(screen, powerOf2, 0.0, lineColor)
+		
+		// Find intersection of horizontal line from start point with the new line
+		// In world units:
+		// Horizontal line: y = stepStartY
+		// New line: y = 2^k * x
+		// So: stepStartY = 2^k * x
+		// x = stepStartY / 2^k
+		intersectionWorldX := stepStartY / powerOf2
+		intersectionWorldY := stepStartY
+		
+		// Project intersection to screen coordinates
+		intersectionScreenX, intersectionScreenY := s.worldToScreen(intersectionWorldX, intersectionWorldY)
+		intersectionPoint := Point{
+			X: intersectionScreenX,
+			Y: intersectionScreenY,
+		}
+		
+		// Get start point in screen coordinates for drawing
+		startPoint := s.getPointForIndexScreen(int(currentIndex))
+		
+		// Draw horizontal line from start point to intersection
+		horizontalColor := color.RGBA{255, 255, 100, 255} // Yellow for horizontal
+		s.drawLineSegment(screen, startPoint, intersectionPoint, horizontalColor)
+		
+		// Find the point on the original line (y = globalCoeficient*x + 1 in world units) at the same x as intersection
+		// In world units: y = globalCoeficient * intersectionWorldX + 1
+		originalWorldY := s.globalCoeficient*intersectionWorldX + 1.0
+		
+		// Project to screen coordinates
+		originalScreenX, originalScreenY := s.worldToScreen(intersectionWorldX, originalWorldY)
+		originalLinePoint := Point{
+			X: originalScreenX,
+			Y: originalScreenY,
+		}
+		
+		// Draw vertical line from intersection to original line
+		verticalColor := color.RGBA{255, 100, 255, 255} // Magenta for vertical
+		s.drawLineSegment(screen, intersectionPoint, originalLinePoint, verticalColor)
+		
+		// Move to destination for next step
+		currentIndex = step.DestinationIndex
 	}
-	
-	// Get selected point in screen coordinates for drawing
-	selectedPoint := s.getPointForIndexScreen(s.selectedIndex)
-	
-	// Draw horizontal line from selected point to intersection
-	horizontalColor := color.RGBA{255, 255, 100, 255} // Yellow for horizontal
-	s.drawLineSegment(screen, selectedPoint, intersectionPoint, horizontalColor)
-	
-	// Find the point on the original line (y = globalCoeficient*x + 1 in world units) at the same x as intersection
-	// In world units: y = globalCoeficient * intersectionWorldX + 1
-	originalWorldY := s.globalCoeficient*intersectionWorldX + 1.0
-	
-	// Project to screen coordinates
-	originalScreenX, originalScreenY := s.worldToScreen(intersectionWorldX, originalWorldY)
-	originalLinePoint := Point{
-		X: originalScreenX,
-		Y: originalScreenY,
-	}
-	
-	// Draw vertical line from intersection to original line
-	verticalColor := color.RGBA{255, 100, 255, 255} // Magenta for vertical
-	s.drawLineSegment(screen, intersectionPoint, originalLinePoint, verticalColor)
 }
 
 func (s *StairsChapter) drawLineSegment(screen *ebiten.Image, p1, p2 Point, clr color.Color) {
@@ -432,42 +541,33 @@ func (s *StairsChapter) drawLineSegment(screen *ebiten.Image, p1, p2 Point, clr 
 }
 
 func (s *StairsChapter) drawDestinationPoint(screen *ebiten.Image) {
-	// Calculate y value
-	yValue := s.globalCoeficient*float64(s.selectedIndex) + 1.0
-	yValueInt := int(yValue)
+	// Draw all destination points in the staircase
+	steps, _ := s.calculateStaircase(s.selectedIndex)
 	
-	// Calculate k (number of times y is divisible by 2)
-	k := findLargestPowerOf2(yValueInt)
-	if k == 0 {
-		return // No destination if y is odd
-	}
-	
-	// Calculate destination index: destination_index = y / 2^k
-	powerOf2 := math.Pow(2.0, float64(k))
-	destinationIndex := float64(yValueInt) / powerOf2
-	
-	// Calculate the destination point in world coordinates
-	// The destination is on the globalCoeficient*x+1 line at x = destinationIndex
-	destinationWorldX := destinationIndex
-	destinationWorldY := s.globalCoeficient*destinationWorldX + 1.0
-	
-	// Project to screen coordinates
-	destScreenX, destScreenY := s.worldToScreen(destinationWorldX, destinationWorldY)
-	
-	// Only draw if on screen
-	if destScreenX >= -pointSize*2 && destScreenX < float64(screenWidth)+pointSize*2 &&
-		destScreenY >= -pointSize*2 && destScreenY < float64(screenHeight)+pointSize*2 {
+	for _, step := range steps {
+		// Calculate the destination point in world coordinates
+		// The destination is on the globalCoeficient*x+1 line at x = destinationIndex
+		destinationWorldX := step.DestinationIndex
+		destinationWorldY := s.globalCoeficient*destinationWorldX + 1.0
 		
-		// Draw a larger, highlighted point
-		destColor := color.RGBA{100, 255, 255, 255} // Cyan for destination
-		destSize := float64(pointSize + 4)
-		ebitenutil.DrawRect(screen, destScreenX-destSize/2, destScreenY-destSize/2, destSize, destSize, destColor)
+		// Project to screen coordinates
+		destScreenX, destScreenY := s.worldToScreen(destinationWorldX, destinationWorldY)
 		
-		// Draw a bright border
-		ebitenutil.DrawRect(screen, destScreenX-destSize/2-2, destScreenY-destSize/2-2, destSize+4, 2, color.White)
-		ebitenutil.DrawRect(screen, destScreenX-destSize/2-2, destScreenY-destSize/2-2, 2, destSize+4, color.White)
-		ebitenutil.DrawRect(screen, destScreenX+destSize/2, destScreenY-destSize/2-2, 2, destSize+4, color.White)
-		ebitenutil.DrawRect(screen, destScreenX-destSize/2-2, destScreenY+destSize/2, destSize+4, 2, color.White)
+		// Only draw if on screen
+		if destScreenX >= -pointSize*2 && destScreenX < float64(screenWidth)+pointSize*2 &&
+			destScreenY >= -pointSize*2 && destScreenY < float64(screenHeight)+pointSize*2 {
+			
+			// Draw a larger, highlighted point
+			destColor := color.RGBA{100, 255, 255, 255} // Cyan for destination
+			destSize := float64(pointSize + 4)
+			ebitenutil.DrawRect(screen, destScreenX-destSize/2, destScreenY-destSize/2, destSize, destSize, destColor)
+			
+			// Draw a bright border
+			ebitenutil.DrawRect(screen, destScreenX-destSize/2-2, destScreenY-destSize/2-2, destSize+4, 2, color.White)
+			ebitenutil.DrawRect(screen, destScreenX-destSize/2-2, destScreenY-destSize/2-2, 2, destSize+4, color.White)
+			ebitenutil.DrawRect(screen, destScreenX+destSize/2, destScreenY-destSize/2-2, 2, destSize+4, color.White)
+			ebitenutil.DrawRect(screen, destScreenX-destSize/2-2, destScreenY+destSize/2, destSize+4, 2, color.White)
+		}
 	}
 }
 
@@ -486,6 +586,10 @@ func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
 		destinationIndex = float64(yValueInt) / powerOf2
 	}
 	
+	// Calculate staircase steps
+	steps, isUpwards := s.calculateStaircase(s.selectedIndex)
+	stepsCount := len(steps)
+	
 	// Format the display text
 	indexText := "Index: " + strconv.Itoa(s.selectedIndex)
 	yText := "y = " + strconv.FormatFloat(yValue, 'f', 1, 64)
@@ -494,19 +598,19 @@ func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
 	// Draw index
 	indexBounds := text.BoundString(basicfont.Face7x13, indexText)
 	indexX := (screenWidth - indexBounds.Dx()) / 2
-	indexY := screenHeight - 75
+	indexY := screenHeight - 90
 	text.Draw(screen, indexText, basicfont.Face7x13, indexX, indexY, color.White)
 	
 	// Draw y value
 	yBounds := text.BoundString(basicfont.Face7x13, yText)
 	yX := (screenWidth - yBounds.Dx()) / 2
-	yY := screenHeight - 60
+	yY := screenHeight - 75
 	text.Draw(screen, yText, basicfont.Face7x13, yX, yY, color.White)
 	
 	// Draw k value
 	kBounds := text.BoundString(basicfont.Face7x13, kText)
 	kX := (screenWidth - kBounds.Dx()) / 2
-	kY := screenHeight - 45
+	kY := screenHeight - 60
 	text.Draw(screen, kText, basicfont.Face7x13, kX, kY, color.White)
 	
 	// Draw destination index
@@ -514,12 +618,37 @@ func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
 		destText := "destination = " + strconv.FormatFloat(destinationIndex, 'f', 1, 64)
 		destBounds := text.BoundString(basicfont.Face7x13, destText)
 		destX := (screenWidth - destBounds.Dx()) / 2
-		destY := screenHeight - 30
+		destY := screenHeight - 45
 		text.Draw(screen, destText, basicfont.Face7x13, destX, destY, color.RGBA{100, 255, 255, 255}) // Cyan to match point color
 	}
 	
-	// Draw additional info
-	infoText := "Use Arrow Keys or A/D to navigate"
+	// Draw staircase steps count
+	if stepsCount > 0 {
+		endIndex := int(steps[stepsCount-1].DestinationIndex)
+		var directionText string
+		if isUpwards {
+			directionText = "top: " + strconv.Itoa(endIndex)
+		} else {
+			directionText = "bottom: " + strconv.Itoa(endIndex)
+		}
+		stepsText := "Stairs: " + strconv.Itoa(stepsCount) + " steps (" + directionText + ")"
+		stepsBounds := text.BoundString(basicfont.Face7x13, stepsText)
+		stepsX := (screenWidth - stepsBounds.Dx()) / 2
+		stepsY := screenHeight - 30
+		text.Draw(screen, stepsText, basicfont.Face7x13, stepsX, stepsY, color.RGBA{255, 200, 100, 255}) // Orange for stairs info
+	}
+	
+	// Draw additional info - dynamic based on staircase direction
+	var infoText string
+	if stepsCount > 0 {
+		if isUpwards {
+			infoText = "Arrow Keys or A/D: navigate | Shift+Right: jump to top"
+		} else {
+			infoText = "Arrow Keys or A/D: navigate | Shift+Right: jump to bottom"
+		}
+	} else {
+		infoText = "Arrow Keys or A/D: navigate | Shift+Right: jump to end"
+	}
 	infoBounds := text.BoundString(basicfont.Face7x13, infoText)
 	infoX := (screenWidth - infoBounds.Dx()) / 2
 	infoY := screenHeight - 15
