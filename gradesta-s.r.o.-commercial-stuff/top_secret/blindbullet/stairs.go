@@ -15,7 +15,7 @@ import (
 const (
 	pointSize      = 8
 	pointSpacing   = 50.0  // Distance between points along the line
-	pointsToRender = 30    // Number of points to render around the selected point
+	pointsToRender = 3000    // Number of points to render around the selected point
 )
 
 // Point represents a point on the line
@@ -27,43 +27,78 @@ type Point struct {
 // StairsChapter implements the Stairs chapter
 type StairsChapter struct {
 	selectedIndex int
-	cameraX       float64
-	cameraY       float64
-	originX       float64 // World origin X position in screen coordinates
-	originY       float64 // World origin Y position in screen coordinates (y=0 in world coords)
+	cameraX       float64 // Camera position in world units
+	cameraY       float64 // Camera position in world units
+	zoom          float64 // Zoom factor (world units per pixel)
+	originX       float64 // World origin X position in screen coordinates (pixels)
+	originY       float64 // World origin Y position in screen coordinates (pixels)
 }
 
 // NewStairsChapter creates a new Stairs chapter
 func NewStairsChapter() *StairsChapter {
-	originX := 100.0
-	originY := 450.0 // World origin (y=0) position in screen coordinates
+	originX := float64(screenWidth) / 2
+	originY := float64(screenHeight) / 2 // World origin (y=0) position in screen coordinates
 	
 	return &StairsChapter{
 		selectedIndex: 1, // Start at an odd index
-		cameraX:        0,
-		cameraY:        0,
+		cameraX:        0, // Camera at world origin
+		cameraY:        0, // Camera at world origin
+		zoom:           1.0 / pointSpacing, // 1 pixel = 1/pointSpacing world units
 		originX:        originX,
 		originY:        originY,
 	}
 }
 
+// worldToScreen converts world coordinates (math space) to screen coordinates (pixels)
+func (s *StairsChapter) worldToScreen(worldX, worldY float64) (screenX, screenY float64) {
+	// Apply camera offset (camera is in world units)
+	offsetX := worldX - s.cameraX
+	offsetY := worldY - s.cameraY
+	
+	// Convert world units to pixels using zoom (zoom = world units per pixel)
+	pixelX := offsetX / s.zoom
+	pixelY := offsetY / s.zoom
+	
+	// Transform to screen coordinates (origin is center, y is inverted)
+	screenX = s.originX + pixelX
+	screenY = s.originY - pixelY // Invert Y for screen coords
+	
+	return screenX, screenY
+}
+
+// screenToWorld converts screen coordinates (pixels) to world coordinates (math space)
+func (s *StairsChapter) screenToWorld(screenX, screenY float64) (worldX, worldY float64) {
+	// Convert screen coordinates to pixels relative to origin
+	pixelX := screenX - s.originX
+	pixelY := s.originY - screenY // Invert Y
+	
+	// Convert pixels to world units using zoom
+	worldOffsetX := pixelX * s.zoom
+	worldOffsetY := pixelY * s.zoom
+	
+	// Apply camera offset (camera is in world units)
+	worldX = worldOffsetX + s.cameraX
+	worldY = worldOffsetY + s.cameraY
+	
+	return worldX, worldY
+}
+
 // getPointForIndex calculates the point for a given index procedurally
-// Uses world coordinates where y increases upward, then converts to screen coordinates
-func (s *StairsChapter) getPointForIndex(index int) Point {
-	// Calculate world x coordinate in pixels (index * pointSpacing)
-	worldX := float64(index) * pointSpacing
+// Returns point in world coordinates (math space)
+func (s *StairsChapter) getPointForIndex(index int) (worldX, worldY float64) {
+	// Calculate world x coordinate in world units (1 unit per index)
+	worldX = float64(index)
 	
-	// Calculate world y coordinate: y = 3x + 1
-	// x is in world units (1 unit per index), so convert index to units, calculate, then convert to pixels
-	worldXUnits := float64(index)
-	worldYUnits := 3.0*worldXUnits + 1.0
-	worldY := worldYUnits * pointSpacing
+	// Calculate world y coordinate: y = 3x + 1 (in world units)
+	worldY = 3.0*worldX + 1.0
 	
-	// Convert world coordinates to screen coordinates
-	// Screen x = originX + worldX
-	// Screen y = originY - worldY (invert because screen y increases downward)
-	screenX := s.originX + worldX
-	screenY := s.originY - worldY
+	return worldX, worldY
+}
+
+// getPointForIndexScreen returns the point in screen coordinates for drawing
+func (s *StairsChapter) getPointForIndexScreen(index int) Point {
+	worldX, worldY := s.getPointForIndex(index)
+	screenX, screenY := s.worldToScreen(worldX, worldY)
 	
 	return Point{
 		X:     screenX,
@@ -96,64 +131,75 @@ func (s *StairsChapter) Update() error {
 }
 
 func (s *StairsChapter) updateCamera() {
-	// Get the selected point
-	selectedPoint := s.getPointForIndex(s.selectedIndex)
+	// Get the selected point in world coordinates
+	selectedWorldX, selectedWorldY := s.getPointForIndex(s.selectedIndex)
 	
 	// Calculate y value to check if triangle should be shown
 	yValue := int(3.0*float64(s.selectedIndex) + 1.0)
 	n := findLargestPowerOf2(yValue)
 	
 	if n > 0 {
-		// Calculate triangle bounds to fit it on screen
+		// Calculate triangle bounds in world coordinates (math space)
 		powerOf2 := math.Pow(2.0, float64(n))
-		selectedWorldY := s.originY - selectedPoint.Y
+		
+		// Find intersection of horizontal line from selected point with 2^n line
+		// Horizontal line: y = selectedWorldY
+		// 2^n line: y = 2^n * x
+		// So: selectedWorldY = 2^n * x
 		intersectionWorldX := selectedWorldY / powerOf2
+		intersectionWorldY := selectedWorldY
+		
+		// Find point on 3x+1 line at same x as intersection
 		originalWorldY := 3.0*intersectionWorldX + 1.0
 		
-		// Get triangle points in screen coordinates
-		intersectionScreenX := s.originX + intersectionWorldX
-		intersectionScreenY := s.originY - selectedWorldY
-		originalScreenX := s.originX + intersectionWorldX
-		originalScreenY := s.originY - originalWorldY
+		// Triangle vertices in world coordinates
+		// 1. Selected point: (selectedWorldX, selectedWorldY)
+		// 2. Intersection: (intersectionWorldX, intersectionWorldY)
+		// 3. Original line point: (intersectionWorldX, originalWorldY)
 		
-		// Find bounding box of triangle
-		minX := math.Min(selectedPoint.X, math.Min(intersectionScreenX, originalScreenX))
-		maxX := math.Max(selectedPoint.X, math.Max(intersectionScreenX, originalScreenX))
-		minY := math.Min(selectedPoint.Y, math.Min(intersectionScreenY, originalScreenY))
-		maxY := math.Max(selectedPoint.Y, math.Max(intersectionScreenY, originalScreenY))
+		// Find bounding box in world coordinates
+		minWorldX := math.Min(selectedWorldX, intersectionWorldX)
+		maxWorldX := math.Max(selectedWorldX, intersectionWorldX)
+		minWorldY := math.Min(selectedWorldY, math.Min(intersectionWorldY, originalWorldY))
+		maxWorldY := math.Max(selectedWorldY, math.Max(intersectionWorldY, originalWorldY))
 		
-		// Add padding
-		padding := 50.0
-		minX -= padding
-		maxX += padding
-		minY -= padding
-		maxY += padding
+		// Add padding in world units
+		padding := 2.0 // 2 world units of padding
+		minWorldX -= padding
+		maxWorldX += padding
+		minWorldY -= padding
+		maxWorldY += padding
 		
-		// Calculate center and size
-		centerX := (minX + maxX) / 2
-		centerY := (minY + maxY) / 2
-		width := maxX - minX
-		height := maxY - minY
+		// Calculate center in world coordinates
+		centerWorldX := (minWorldX + maxWorldX) / 2
+		centerWorldY := (minWorldY + maxWorldY) / 2
 		
-		// Calculate scale needed to fit
-		scaleX := float64(screenWidth) / width
-		scaleY := float64(screenHeight) / height
-		scale := math.Min(scaleX, scaleY)
+		// Calculate size in world units
+		widthWorld := maxWorldX - minWorldX
+		heightWorld := maxWorldY - minWorldY
 		
-		// If triangle fits, center it; otherwise center on selected point
-		if scale < 1.0 {
-			// Need to zoom out - center on triangle
-			s.cameraX = centerX - screenWidth/2
-			s.cameraY = centerY - screenHeight/2
-		} else {
-			// Triangle fits, center on selected point
-			s.cameraX = selectedPoint.X - screenWidth/2
-			s.cameraY = selectedPoint.Y - screenHeight/2
-		}
+		// Calculate zoom needed to fit triangle on screen
+		// Available screen space (with some margin)
+		availableWidth := float64(screenWidth) * 0.9
+		availableHeight := float64(screenHeight) * 0.9
+		
+		// Calculate required zoom (world units per pixel)
+		zoomX := widthWorld / availableWidth
+		zoomY := heightWorld / availableHeight
+		requiredZoom := math.Max(zoomX, zoomY)
+		
+		// Update zoom and camera
+		s.zoom = requiredZoom
+		s.cameraX = centerWorldX
+		s.cameraY = centerWorldY
 	} else {
 		// No triangle, just center on selected point
-		s.cameraX = selectedPoint.X - screenWidth/2
-		s.cameraY = selectedPoint.Y - screenHeight/2
+		s.cameraX = selectedWorldX
+		s.cameraY = selectedWorldY
+		// Keep current zoom or reset to default
+		if s.zoom == 0 {
+			s.zoom = 1.0 / pointSpacing
+		}
 	}
 }
 
@@ -175,73 +221,60 @@ func (s *StairsChapter) Draw(screen *ebiten.Image) {
 }
 
 func (s *StairsChapter) drawAxes(screen *ebiten.Image) {
-	// Draw axes at world origin (0, 0)
-	// Transform world origin to screen coordinates
-	originX := s.originX - s.cameraX
-	originY := s.originY - s.cameraY
+	// Draw axes at world origin (0, 0) in math space
+	// Project to screen coordinates
+	originScreenX, originScreenY := s.worldToScreen(0, 0)
 	
 	// Draw vertical line (y-axis) - extends up and down from origin
-	axisLength := 200.0
+	// Use world units for axis length, then project
+	axisLength := 100.0 // 100 world units
 	axisColor := color.RGBA{100, 100, 255, 255} // Blue for axes
 	
-	// Vertical line
-	for y := originY - axisLength; y <= originY + axisLength; y++ {
-		if y >= 0 && y < screenHeight {
-			ebitenutil.DrawRect(screen, originX-0.5, y-0.5, 1, 1, axisColor)
+	// Vertical line: from (0, -axisLength) to (0, axisLength) in world coords
+	_, topY := s.worldToScreen(0, axisLength)
+	_, bottomY := s.worldToScreen(0, -axisLength)
+	
+	// Draw vertical line
+	for y := math.Min(topY, bottomY); y <= math.Max(topY, bottomY); y++ {
+		if y >= 0 && y < float64(screenHeight) {
+			ebitenutil.DrawRect(screen, originScreenX-0.5, y-0.5, 1, 1, axisColor)
 		}
 	}
 	
-	// Horizontal line (x-axis) - extends left and right from origin
-	for x := originX - axisLength; x <= originX + axisLength; x++ {
-		if x >= 0 && x < screenWidth {
-			ebitenutil.DrawRect(screen, x-0.5, originY-0.5, 1, 1, axisColor)
+	// Horizontal line (x-axis): from (-axisLength, 0) to (axisLength, 0) in world coords
+	leftX, _ := s.worldToScreen(-axisLength, 0)
+	rightX, _ := s.worldToScreen(axisLength, 0)
+	
+	// Draw horizontal line
+	for x := math.Min(leftX, rightX); x <= math.Max(leftX, rightX); x++ {
+		if x >= 0 && x < float64(screenWidth) {
+			ebitenutil.DrawRect(screen, x-0.5, originScreenY-0.5, 1, 1, axisColor)
 		}
 	}
 }
 
 func (s *StairsChapter) drawLine(screen *ebiten.Image, riseOverRun, constant float64, lineColor color.Color) {
-	// Draw a line procedurally using world coordinates with equation y = riseOverRun*x + constant
-	// Use the same coordinate system as getPointForIndex
-	// Calculate visible range in world coordinates based on what's on screen
+	// Draw a line procedurally in math space (world coordinates)
+	// Equation: y = riseOverRun*x + constant (in world units)
 	
-	// Screen coordinates visible range
-	minScreenX := -100.0
-	maxScreenX := float64(screenWidth) + 100.0
+	// Calculate visible range in world coordinates
+	// Convert screen bounds to world coordinates
+	minWorldX, _ := s.screenToWorld(-100, 0)
+	maxWorldX, _ := s.screenToWorld(float64(screenWidth)+100, 0)
 	
-	// Convert to world x coordinates
-	// Points use: screenX = originX + worldX (without camera in stored coords)
-	// But when drawing, we apply camera: actualScreenX = storedX - cameraX
-	// So: actualScreenX = originX + worldX - cameraX
-	// Therefore: worldX = actualScreenX - originX + cameraX
-	minWorldX := (minScreenX - s.originX + s.cameraX)
-	maxWorldX := (maxScreenX - s.originX + s.cameraX)
-	
-	// Draw the line directly using the equation y = riseOverRun*x + constant
-	// Note: worldX is in pixels, but the equation expects world units
-	// We need to normalize: 1 world unit = pointSpacing pixels
-	stepSize := 0.5
+	// Draw the line with appropriate step size in world units
+	stepSize := 0.1 // Small step in world units for smooth line
 	for worldX := minWorldX; worldX <= maxWorldX; worldX += stepSize {
-		// Convert worldX from pixels to world units
-		worldXUnits := worldX / pointSpacing
-		// Calculate world y in world units: y = riseOverRun*x + constant
-		// At world x=0, this gives world y=constant
-		worldYUnits := riseOverRun*worldXUnits + constant
-		// Convert back to pixels
-		worldY := worldYUnits * pointSpacing
+		// Calculate world y: y = riseOverRun*x + constant (in world units)
+		worldY := riseOverRun*worldX + constant
 		
-		// Convert to screen coordinates using the same formula as getPointForIndex
-		// Then apply camera offset when drawing
-		storedScreenX := s.originX + worldX
-		storedScreenY := s.originY - worldY
-		
-		// Apply camera transform for actual screen position
-		actualScreenX := storedScreenX - s.cameraX
-		actualScreenY := storedScreenY - s.cameraY
+		// Project to screen coordinates
+		screenX, screenY := s.worldToScreen(worldX, worldY)
 		
 		// Only draw if on screen
-		if actualScreenX >= 0 && actualScreenX < float64(screenWidth) && 
-		   actualScreenY >= 0 && actualScreenY < float64(screenHeight) {
-			ebitenutil.DrawRect(screen, actualScreenX-0.5, actualScreenY-0.5, 1, 1, lineColor)
+		if screenX >= 0 && screenX < float64(screenWidth) && 
+		   screenY >= 0 && screenY < float64(screenHeight) {
+			ebitenutil.DrawRect(screen, screenX-0.5, screenY-0.5, 1, 1, lineColor)
 		}
 	}
 }
@@ -251,10 +284,10 @@ func (s *StairsChapter) drawPoints(screen *ebiten.Image) {
 	startIndex := s.selectedIndex - pointsToRender
 	endIndex := s.selectedIndex + pointsToRender
 	
-	for i := startIndex; i <= endIndex; i++ {
+		for i := startIndex; i <= endIndex; i++ {
 		// Only draw odd indexes
 		if i%2 != 0 {
-			point := s.getPointForIndex(i)
+			point := s.getPointForIndexScreen(i)
 			isSelected := (i == s.selectedIndex)
 			s.drawPoint(screen, point, isSelected)
 		}
@@ -262,9 +295,9 @@ func (s *StairsChapter) drawPoints(screen *ebiten.Image) {
 }
 
 func (s *StairsChapter) drawPoint(screen *ebiten.Image, point Point, selected bool) {
-	// Transform point to screen coordinates
-	x := point.X - s.cameraX
-	y := point.Y - s.cameraY
+	// Point is already in screen coordinates (from getPointForIndexScreen)
+	x := point.X
+	y := point.Y
 	
 	// Only draw if on screen (with some padding)
 	if x < -pointSize || x > float64(screenWidth)+pointSize ||
@@ -304,8 +337,8 @@ func findLargestPowerOf2(y int) int {
 }
 
 func (s *StairsChapter) drawTriangle(screen *ebiten.Image) {
-	// Get the selected point
-	selectedPoint := s.getPointForIndex(s.selectedIndex)
+	// Get the selected point in world coordinates (math space)
+	_, selectedWorldY := s.getPointForIndex(s.selectedIndex)
 	
 	// Calculate y value in world coordinates
 	yValue := int(3.0*float64(s.selectedIndex) + 1.0)
@@ -326,42 +359,35 @@ func (s *StairsChapter) drawTriangle(screen *ebiten.Image) {
 	lineColor := color.RGBA{100, 255, 100, 255} // Green for the new line
 	s.drawLine(screen, powerOf2, 0.0, lineColor)
 	
-	// Convert selected point to world coordinates (in world units, not pixels)
-	// selectedPoint is in screen coordinates, convert to world units
-	selectedWorldYPixels := s.originY - selectedPoint.Y // Invert for world coords
-	selectedWorldYUnits := selectedWorldYPixels / pointSpacing
-	
 	// Find intersection of horizontal line from selected point with the new line
 	// In world units:
-	// Horizontal line: y = selectedWorldYUnits
+	// Horizontal line: y = selectedWorldY
 	// New line: y = 2^n * x
-	// So: selectedWorldYUnits = 2^n * x
-	// x = selectedWorldYUnits / 2^n
-	intersectionWorldXUnits := selectedWorldYUnits / powerOf2
-	intersectionWorldYUnits := selectedWorldYUnits
+	// So: selectedWorldY = 2^n * x
+	// x = selectedWorldY / 2^n
+	intersectionWorldX := selectedWorldY / powerOf2
+	intersectionWorldY := selectedWorldY
 	
-	// Convert intersection from world units to pixels, then to screen coordinates
-	intersectionWorldXPixels := intersectionWorldXUnits * pointSpacing
-	intersectionWorldYPixels := intersectionWorldYUnits * pointSpacing
-	intersectionScreenX := s.originX + intersectionWorldXPixels
-	intersectionScreenY := s.originY - intersectionWorldYPixels
+	// Project intersection to screen coordinates
+	intersectionScreenX, intersectionScreenY := s.worldToScreen(intersectionWorldX, intersectionWorldY)
 	intersectionPoint := Point{
 		X: intersectionScreenX,
 		Y: intersectionScreenY,
 	}
+	
+	// Get selected point in screen coordinates for drawing
+	selectedPoint := s.getPointForIndexScreen(s.selectedIndex)
 	
 	// Draw horizontal line from selected point to intersection
 	horizontalColor := color.RGBA{255, 255, 100, 255} // Yellow for horizontal
 	s.drawLineSegment(screen, selectedPoint, intersectionPoint, horizontalColor)
 	
 	// Find the point on the original line (y = 3x + 1 in world units) at the same x as intersection
-	// In world units: y = 3 * intersectionWorldXUnits + 1
-	originalWorldYUnits := 3.0*intersectionWorldXUnits + 1.0
+	// In world units: y = 3 * intersectionWorldX + 1
+	originalWorldY := 3.0*intersectionWorldX + 1.0
 	
-	// Convert to pixels, then to screen coordinates
-	originalWorldYPixels := originalWorldYUnits * pointSpacing
-	originalScreenX := s.originX + intersectionWorldXPixels
-	originalScreenY := s.originY - originalWorldYPixels
+	// Project to screen coordinates
+	originalScreenX, originalScreenY := s.worldToScreen(intersectionWorldX, originalWorldY)
 	originalLinePoint := Point{
 		X: originalScreenX,
 		Y: originalScreenY,
@@ -373,11 +399,11 @@ func (s *StairsChapter) drawTriangle(screen *ebiten.Image) {
 }
 
 func (s *StairsChapter) drawLineSegment(screen *ebiten.Image, p1, p2 Point, clr color.Color) {
-	// Transform points to screen coordinates
-	x1 := p1.X - s.cameraX
-	y1 := p1.Y - s.cameraY
-	x2 := p2.X - s.cameraX
-	y2 := p2.Y - s.cameraY
+	// Points are already in screen coordinates (from projection)
+	x1 := p1.X
+	y1 := p1.Y
+	x2 := p2.X
+	y2 := p2.Y
 	
 	// Draw line using multiple small rectangles
 	dx := x2 - x1
