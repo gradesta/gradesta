@@ -17,7 +17,7 @@ const (
 	pointSize = 8
 )
 
-// Point represents a point on the 45-degree line
+// Point represents a point on the line
 type Point struct {
 	X, Y float64
 }
@@ -34,17 +34,24 @@ type StairsChapter struct {
 func NewStairsChapter() *StairsChapter {
 	points := make([]Point, numPoints)
 	
-	// Create points along a 45-degree line
-	// Starting from top-left, going to bottom-right
+	// Create points along a line with equation y = 3x + 1
+	// Starting from left, going to right
+	// The line has a slope of 3 (rise/run = 3/1) and y-intercept of 1
+	// In screen coordinates, y increases downward, so we invert to make it go upward
 	startX := 100.0
-	startY := 100.0
-	lineLength := 500.0
+	startY := 400.0 // Base Y position (lower on screen)
+	xRange := 500.0 // Total x distance
 	
 	for i := 0; i < numPoints; i++ {
 		t := float64(i) / float64(numPoints-1)
+		x := startX + t*xRange
+		// Calculate y = 3x + 1, but invert it so line goes upward on screen
+		// As x increases, we subtract from startY to go upward
+		yOffset := 3.0*(x-startX) + 1.0 // y = 3x + 1 relative to start
+		y := startY - yOffset // Subtract to go upward on screen
 		points[i] = Point{
-			X: startX + t*lineLength,
-			Y: startY + t*lineLength, // 45 degrees means equal X and Y change
+			X: x,
+			Y: y,
 		}
 	}
 	
@@ -78,7 +85,10 @@ func (s *StairsChapter) updateCamera() {
 }
 
 func (s *StairsChapter) Draw(screen *ebiten.Image) {
-	// Draw the 45-degree line
+	// Draw axes at point 0
+	s.drawAxes(screen)
+	
+	// Draw the line with slope 3x+1
 	s.drawLine(screen)
 	
 	// Draw all points
@@ -88,6 +98,37 @@ func (s *StairsChapter) Draw(screen *ebiten.Image) {
 	
 	// Draw selected point index at the bottom
 	s.drawIndex(screen)
+}
+
+func (s *StairsChapter) drawAxes(screen *ebiten.Image) {
+	if len(s.points) == 0 {
+		return
+	}
+	
+	// Get point 0 (origin)
+	origin := s.points[0]
+	
+	// Transform origin to screen coordinates
+	originX := origin.X - s.cameraX
+	originY := origin.Y - s.cameraY
+	
+	// Draw vertical line (y-axis) - extends up and down from origin
+	axisLength := 200.0
+	axisColor := color.RGBA{100, 100, 255, 255} // Blue for axes
+	
+	// Vertical line
+	for y := originY - axisLength; y <= originY + axisLength; y++ {
+		if y >= 0 && y < screenHeight {
+			ebitenutil.DrawRect(screen, originX-0.5, y-0.5, 1, 1, axisColor)
+		}
+	}
+	
+	// Horizontal line (x-axis) - extends left and right from origin
+	for x := originX - axisLength; x <= originX + axisLength; x++ {
+		if x >= 0 && x < screenWidth {
+			ebitenutil.DrawRect(screen, x-0.5, originY-0.5, 1, 1, axisColor)
+		}
+	}
 }
 
 func (s *StairsChapter) drawLine(screen *ebiten.Image) {
