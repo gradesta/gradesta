@@ -33,6 +33,13 @@ type StairsChapter struct {
 	originX          float64 // World origin X position in screen coordinates (pixels)
 	originY          float64 // World origin Y position in screen coordinates (pixels)
 	globalCoeficient float64 // Coefficient for the line equation (y = globalCoeficient*x + 1)
+	
+	// Cached staircase calculation
+	cachedSteps      []StairStep
+	cachedIsUpwards  bool
+	cachedHitLimit   bool
+	cachedForIndex   int
+	cachedForCoef    float64
 }
 
 // NewStairsChapter creates a new Stairs chapter
@@ -110,12 +117,22 @@ func (s *StairsChapter) getPointForIndexScreen(index int) Point {
 }
 
 func (s *StairsChapter) Update() error {
+	needsRecalc := false
+	
+	// Handle 'c' key to cycle through global coefficient values (odd numbers 1-21)
+	if inpututil.IsKeyJustPressed(ebiten.KeyC) {
+		s.cycleGlobalCoeficient()
+		needsRecalc = true
+		s.updateCamera()
+	}
+	
 	// Handle Shift+Right Arrow to jump to end of stairs (top or bottom)
 	if ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight) {
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
 			endIndex := s.getEndOfStairs(s.selectedIndex)
 			if endIndex != s.selectedIndex {
 				s.selectedIndex = endIndex
+				needsRecalc = true
 				s.updateCamera()
 			}
 			return nil
@@ -130,6 +147,7 @@ func (s *StairsChapter) Update() error {
 		if s.selectedIndex%2 == 0 {
 			s.selectedIndex++
 		}
+		needsRecalc = true
 		s.updateCamera()
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || inpututil.IsKeyJustPressed(ebiten.KeyA) {
@@ -138,15 +156,21 @@ func (s *StairsChapter) Update() error {
 		if s.selectedIndex%2 == 0 {
 			s.selectedIndex--
 		}
+		needsRecalc = true
 		s.updateCamera()
+	}
+	
+	// Invalidate cache if needed
+	if needsRecalc {
+		s.cachedForIndex = -1 // Invalidate cache
 	}
 	
 	return nil
 }
 
 func (s *StairsChapter) updateCamera() {
-	// Calculate the entire staircase
-	steps, _ := s.calculateStaircase(s.selectedIndex)
+	// Calculate the entire staircase (use cache)
+	steps, _, _ := s.getCachedStaircase()
 	
 	if len(steps) > 0 {
 		// Calculate bounding box of entire staircase in world coordinates
@@ -294,9 +318,39 @@ func (s *StairsChapter) drawLine(screen *ebiten.Image, riseOverRun, constant flo
 	minWorldX, _ := s.screenToWorld(-100, 0)
 	maxWorldX, _ := s.screenToWorld(float64(screenWidth)+100, 0)
 	
-	// Draw the line with appropriate step size in world units
-	stepSize := 0.1 // Small step in world units for smooth line
-	for worldX := minWorldX; worldX <= maxWorldX; worldX += stepSize {
+	// Calculate range size
+	rangeSize := math.Abs(maxWorldX - minWorldX)
+	if rangeSize == 0 {
+		return // No range to draw
+	}
+	
+	// Limit the number of iterations to prevent hanging
+	maxIterations := 2000
+	
+	// Calculate step size to ensure we don't exceed max iterations
+	// But also ensure we have enough points for a visible line
+	minIterations := 100 // Minimum points to draw a visible line
+	stepSize := rangeSize / float64(maxIterations)
+	
+	// If step size would result in too few points, use a smaller step size
+	if rangeSize/stepSize < float64(minIterations) {
+		stepSize = rangeSize / float64(minIterations)
+	}
+	
+	// Clamp step size to reasonable bounds
+	if stepSize < 0.01 {
+		stepSize = 0.01 // Minimum step size for smooth lines when zoomed in
+	}
+	if stepSize > 10.0 {
+		stepSize = 10.0 // Maximum step size to prevent gaps
+	}
+	
+	iterations := 0
+	
+	// Draw the line with adaptive step size
+	for worldX := minWorldX; worldX <= maxWorldX && iterations < maxIterations; worldX += stepSize {
+		iterations++
+		
 		// Calculate world y: y = riseOverRun*x + constant (in world units)
 		worldY := riseOverRun*worldX + constant
 		
@@ -379,12 +433,16 @@ type StairStep struct {
 // calculateStaircase calculates all steps from startIndex to the end of the stairs
 // Returns a slice of StairStep, where each step's destination is different from its start
 // Also returns true if the staircase goes upwards, false if downwards
-func (s *StairsChapter) calculateStaircase(startIndex int) ([]StairStep, bool) {
+// Third return value is true if the 50-step limit was hit
+// Maximum of 50 steps to prevent infinite loops
+func (s *StairsChapter) calculateStaircase(startIndex int) ([]StairStep, bool, bool) {
 	var steps []StairStep
 	currentIndex := float64(startIndex)
 	isUpwards := false
+	maxSteps := 15
+	hitLimit := false
 	
-	for {
+	for len(steps) < maxSteps {
 		// Calculate y value for current index
 		yValue := s.globalCoeficient*currentIndex + 1.0
 		yValueInt := int(yValue)
@@ -428,12 +486,38 @@ func (s *StairsChapter) calculateStaircase(startIndex int) ([]StairStep, bool) {
 		currentIndex = destinationIndex
 	}
 	
-	return steps, isUpwards
+	// Check if we hit the limit
+	if len(steps) >= maxSteps {
+		hitLimit = true
+	}
+	
+	return steps, isUpwards, hitLimit
+}
+
+// getCachedStaircase returns the cached staircase or calculates it if cache is invalid
+func (s *StairsChapter) getCachedStaircase() ([]StairStep, bool, bool) {
+	// Check if cache is valid
+	if s.cachedForIndex == s.selectedIndex && s.cachedForCoef == s.globalCoeficient {
+		return s.cachedSteps, s.cachedIsUpwards, s.cachedHitLimit
+	}
+	
+	// Cache is invalid, recalculate
+	steps, isUpwards, hitLimit := s.calculateStaircase(s.selectedIndex)
+	
+	// Update cache
+	s.cachedSteps = steps
+	s.cachedIsUpwards = isUpwards
+	s.cachedHitLimit = hitLimit
+	s.cachedForIndex = s.selectedIndex
+	s.cachedForCoef = s.globalCoeficient
+	
+	return steps, isUpwards, hitLimit
 }
 
 // getEndOfStairs returns the end index (top or bottom) of the staircase starting from startIndex
 func (s *StairsChapter) getEndOfStairs(startIndex int) int {
-	steps, _ := s.calculateStaircase(startIndex)
+	// For this function, we need to calculate for a specific index, not the cached one
+	steps, _, _ := s.calculateStaircase(startIndex)
 	if len(steps) == 0 {
 		return startIndex
 	}
@@ -446,9 +530,33 @@ func (s *StairsChapter) getEndOfStairs(startIndex int) int {
 	return endIndex
 }
 
+// cycleGlobalCoeficient cycles through odd numbers from 1 to 21
+func (s *StairsChapter) cycleGlobalCoeficient() {
+	// Odd numbers from 1 to 21: 1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21
+	oddNumbers := []float64{1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21}
+	
+	// Find current index
+	currentIndex := -1
+	for i, val := range oddNumbers {
+		if val == s.globalCoeficient {
+			currentIndex = i
+			break
+		}
+	}
+	
+	// If not found, default to index 1 (value 3)
+	if currentIndex == -1 {
+		currentIndex = 1
+	}
+	
+	// Cycle to next value
+	currentIndex = (currentIndex + 1) % len(oddNumbers)
+	s.globalCoeficient = oddNumbers[currentIndex]
+}
+
 func (s *StairsChapter) drawTriangle(screen *ebiten.Image) {
-	// Calculate the entire staircase
-	steps, _ := s.calculateStaircase(s.selectedIndex)
+	// Calculate the entire staircase (use cache)
+	steps, _, _ := s.getCachedStaircase()
 	
 	if len(steps) == 0 {
 		return // No staircase to draw
@@ -541,8 +649,8 @@ func (s *StairsChapter) drawLineSegment(screen *ebiten.Image, p1, p2 Point, clr 
 }
 
 func (s *StairsChapter) drawDestinationPoint(screen *ebiten.Image) {
-	// Draw all destination points in the staircase
-	steps, _ := s.calculateStaircase(s.selectedIndex)
+	// Draw all destination points in the staircase (use cache)
+	steps, _, _ := s.getCachedStaircase()
 	
 	for _, step := range steps {
 		// Calculate the destination point in world coordinates
@@ -572,12 +680,12 @@ func (s *StairsChapter) drawDestinationPoint(screen *ebiten.Image) {
 }
 
 func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
-	// Calculate staircase steps
-	steps, isUpwards := s.calculateStaircase(s.selectedIndex)
+	// Calculate staircase steps (use cache)
+	steps, isUpwards, hitLimit := s.getCachedStaircase()
 	stepsCount := len(steps)
 	
-	// Draw table header at top left (with padding from top)
-	headerY := 35
+	// Draw table header at top left (with padding from top to avoid overlap with summary text)
+	headerY := 55
 	lineHeight := 13
 	
 	// Column positions (left-aligned)
@@ -603,7 +711,7 @@ func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
 	
 	// Draw table rows - include starting point as row 0, then all steps
 	currentIndex := float64(s.selectedIndex)
-	maxRows := 15 // Limit number of visible rows to fit on screen
+	maxRows := 50 // Limit number of visible rows to fit on screen
 	totalRows := stepsCount + 1 // Include starting point
 	startRow := 0
 	if totalRows > maxRows {
@@ -699,6 +807,10 @@ func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
 	
 	// Draw summary info above the table (with padding)
 	summaryY := 20
+	// Draw global coefficient
+	coefText := "Coefficient: " + strconv.FormatFloat(s.globalCoeficient, 'f', 0, 64) + " (Press C to change)"
+	text.Draw(screen, coefText, basicfont.Face7x13, 10, summaryY, color.RGBA{100, 255, 100, 255}) // Green
+	
 	if stepsCount > 0 {
 		endIndex := int(steps[stepsCount-1].DestinationIndex)
 		var directionText string
@@ -708,10 +820,13 @@ func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
 			directionText = "bottom: " + strconv.Itoa(endIndex)
 		}
 		stepsText := "Stairs: " + strconv.Itoa(stepsCount) + " steps (" + directionText + ")"
+		if hitLimit {
+			stepsText += " [LIMIT REACHED]"
+		}
 		if stepsCount > maxRows {
 			stepsText += " (showing last " + strconv.Itoa(maxRows) + ")"
 		}
-		text.Draw(screen, stepsText, basicfont.Face7x13, 10, summaryY, color.RGBA{255, 200, 100, 255}) // Orange
+		text.Draw(screen, stepsText, basicfont.Face7x13, 10, summaryY+13, color.RGBA{255, 200, 100, 255}) // Orange
 	} else {
 		// No staircase - show current point info
 		yValue := s.globalCoeficient*float64(s.selectedIndex) + 1.0
@@ -724,19 +839,19 @@ func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
 			destinationIndex := float64(yValueInt) / powerOf2
 			infoText += " | Dest: " + strconv.FormatFloat(destinationIndex, 'f', 1, 64)
 		}
-		text.Draw(screen, infoText, basicfont.Face7x13, 10, summaryY, color.White)
+		text.Draw(screen, infoText, basicfont.Face7x13, 10, summaryY+13, color.White)
 	}
 	
 	// Draw additional info at the very bottom
 	var infoText string
 	if stepsCount > 0 {
 		if isUpwards {
-			infoText = "Arrow Keys or A/D: navigate | Shift+Right: jump to top"
+			infoText = "Arrow/A/D: navigate | Shift+Right: jump to top | C: change coefficient"
 		} else {
-			infoText = "Arrow Keys or A/D: navigate | Shift+Right: jump to bottom"
+			infoText = "Arrow/A/D: navigate | Shift+Right: jump to bottom | C: change coefficient"
 		}
 	} else {
-		infoText = "Arrow Keys or A/D: navigate | Shift+Right: jump to end"
+		infoText = "Arrow/A/D: navigate | Shift+Right: jump to end | C: change coefficient"
 	}
 	infoBounds := text.BoundString(basicfont.Face7x13, infoText)
 	infoX := (screenWidth - infoBounds.Dx()) / 2
