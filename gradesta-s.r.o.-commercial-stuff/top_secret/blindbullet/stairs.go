@@ -572,57 +572,133 @@ func (s *StairsChapter) drawDestinationPoint(screen *ebiten.Image) {
 }
 
 func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
-	// Calculate the mathematical y value (globalCoeficient*x + 1) where x is the index
-	yValue := s.globalCoeficient*float64(s.selectedIndex) + 1.0
-	yValueInt := int(yValue)
-	
-	// Calculate k (number of times y is divisible by 2)
-	k := findLargestPowerOf2(yValueInt)
-	
-	// Calculate destination index
-	var destinationIndex float64
-	if k > 0 {
-		powerOf2 := math.Pow(2.0, float64(k))
-		destinationIndex = float64(yValueInt) / powerOf2
-	}
-	
 	// Calculate staircase steps
 	steps, isUpwards := s.calculateStaircase(s.selectedIndex)
 	stepsCount := len(steps)
 	
-	// Format the display text
-	indexText := "Index: " + strconv.Itoa(s.selectedIndex)
-	yText := "y = " + strconv.FormatFloat(yValue, 'f', 1, 64)
-	kText := "k = " + strconv.Itoa(k)
+	// Draw table header at top left (with padding from top)
+	headerY := 35
+	lineHeight := 13
 	
-	// Draw index
-	indexBounds := text.BoundString(basicfont.Face7x13, indexText)
-	indexX := (screenWidth - indexBounds.Dx()) / 2
-	indexY := screenHeight - 90
-	text.Draw(screen, indexText, basicfont.Face7x13, indexX, indexY, color.White)
+	// Column positions (left-aligned)
+	colStepX := 10
+	colIndexX := 60
+	colYValueX := 130
+	colKX := 200
+	colDestX := 240
 	
-	// Draw y value
-	yBounds := text.BoundString(basicfont.Face7x13, yText)
-	yX := (screenWidth - yBounds.Dx()) / 2
-	yY := screenHeight - 75
-	text.Draw(screen, yText, basicfont.Face7x13, yX, yY, color.White)
+	// Draw header row
+	text.Draw(screen, "Step", basicfont.Face7x13, colStepX, headerY, color.RGBA{200, 200, 255, 255})
+	text.Draw(screen, "Index", basicfont.Face7x13, colIndexX, headerY, color.RGBA{200, 200, 255, 255})
+	text.Draw(screen, "Y", basicfont.Face7x13, colYValueX, headerY, color.RGBA{200, 200, 255, 255})
+	text.Draw(screen, "K", basicfont.Face7x13, colKX, headerY, color.RGBA{200, 200, 255, 255})
+	text.Draw(screen, "Dest", basicfont.Face7x13, colDestX, headerY, color.RGBA{200, 200, 255, 255})
 	
-	// Draw k value
-	kBounds := text.BoundString(basicfont.Face7x13, kText)
-	kX := (screenWidth - kBounds.Dx()) / 2
-	kY := screenHeight - 60
-	text.Draw(screen, kText, basicfont.Face7x13, kX, kY, color.White)
+	// Draw separator line
+	headerY += lineHeight + 2
+	for x := 10; x < screenWidth-10; x++ {
+		ebitenutil.DrawRect(screen, float64(x), float64(headerY), 1, 1, color.Gray{Y: 100})
+	}
+	headerY += 2
 	
-	// Draw destination index
-	if k > 0 {
-		destText := "destination = " + strconv.FormatFloat(destinationIndex, 'f', 1, 64)
-		destBounds := text.BoundString(basicfont.Face7x13, destText)
-		destX := (screenWidth - destBounds.Dx()) / 2
-		destY := screenHeight - 45
-		text.Draw(screen, destText, basicfont.Face7x13, destX, destY, color.RGBA{100, 255, 255, 255}) // Cyan to match point color
+	// Draw table rows - include starting point as row 0, then all steps
+	currentIndex := float64(s.selectedIndex)
+	maxRows := 15 // Limit number of visible rows to fit on screen
+	totalRows := stepsCount + 1 // Include starting point
+	startRow := 0
+	if totalRows > maxRows {
+		// If too many rows, show the last maxRows
+		startRow = totalRows - maxRows
 	}
 	
-	// Draw staircase steps count
+	rowNum := 0
+	// Draw starting point (row 0) only if there are no steps
+	// If there are steps, the starting point will be shown as step 1's starting index
+	if stepsCount == 0 && startRow == 0 {
+		rowY := headerY + lineHeight*rowNum
+		if rowY < screenHeight-50 {
+			startYValue := s.globalCoeficient*currentIndex + 1.0
+			startYValueInt := int(startYValue)
+			startK := findLargestPowerOf2(startYValueInt)
+			
+			// Draw step number
+			text.Draw(screen, "0", basicfont.Face7x13, colStepX, rowY, color.RGBA{255, 255, 100, 255}) // Yellow for start
+			
+			// Draw index
+			indexText := strconv.Itoa(int(currentIndex))
+			text.Draw(screen, indexText, basicfont.Face7x13, colIndexX, rowY, color.RGBA{255, 255, 100, 255})
+			
+			// Draw Y value
+			yText := strconv.FormatFloat(startYValue, 'f', 1, 64)
+			text.Draw(screen, yText, basicfont.Face7x13, colYValueX, rowY, color.RGBA{255, 255, 100, 255})
+			
+			// Draw K value
+			kText := strconv.Itoa(startK)
+			text.Draw(screen, kText, basicfont.Face7x13, colKX, rowY, color.RGBA{255, 255, 100, 255})
+			
+			// Draw destination (if K > 0)
+			if startK > 0 {
+				powerOf2 := math.Pow(2.0, float64(startK))
+				destinationIndex := float64(startYValueInt) / powerOf2
+				destText := strconv.FormatFloat(destinationIndex, 'f', 1, 64)
+				text.Draw(screen, destText, basicfont.Face7x13, colDestX, rowY, color.RGBA{100, 255, 255, 255}) // Cyan
+			} else {
+				text.Draw(screen, "-", basicfont.Face7x13, colDestX, rowY, color.Gray{Y: 100})
+			}
+		}
+		rowNum++
+	}
+	
+	// Update currentIndex for skipped steps
+	for i := 0; i < startRow-1 && i < stepsCount; i++ {
+		currentIndex = steps[i].DestinationIndex
+	}
+	
+	// Draw step rows
+	for i := startRow - 1; i < stepsCount; i++ {
+		if i < 0 {
+			continue // Skip if we're before the first step
+		}
+		
+		step := steps[i]
+		rowY := headerY + lineHeight*rowNum
+		
+		if rowY >= screenHeight-50 {
+			break // Stop if we've run out of screen space
+		}
+		
+		// Calculate values for this step
+		stepYValue := s.globalCoeficient*currentIndex + 1.0
+		stepK := step.K
+		stepDest := step.DestinationIndex
+		
+		// Draw step number
+		stepText := strconv.Itoa(i + 1)
+		text.Draw(screen, stepText, basicfont.Face7x13, colStepX, rowY, color.White)
+		
+		// Draw index
+		indexText := strconv.Itoa(int(currentIndex))
+		text.Draw(screen, indexText, basicfont.Face7x13, colIndexX, rowY, color.White)
+		
+		// Draw Y value
+		yText := strconv.FormatFloat(stepYValue, 'f', 1, 64)
+		text.Draw(screen, yText, basicfont.Face7x13, colYValueX, rowY, color.White)
+		
+		// Draw K value
+		kText := strconv.Itoa(stepK)
+		text.Draw(screen, kText, basicfont.Face7x13, colKX, rowY, color.White)
+		
+		// Draw destination
+		destText := strconv.FormatFloat(stepDest, 'f', 1, 64)
+		text.Draw(screen, destText, basicfont.Face7x13, colDestX, rowY, color.RGBA{100, 255, 255, 255}) // Cyan
+		
+		// Move to destination for next iteration
+		currentIndex = step.DestinationIndex
+		rowNum++
+	}
+	
+	// Draw summary info above the table (with padding)
+	summaryY := 20
 	if stepsCount > 0 {
 		endIndex := int(steps[stepsCount-1].DestinationIndex)
 		var directionText string
@@ -632,13 +708,26 @@ func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
 			directionText = "bottom: " + strconv.Itoa(endIndex)
 		}
 		stepsText := "Stairs: " + strconv.Itoa(stepsCount) + " steps (" + directionText + ")"
-		stepsBounds := text.BoundString(basicfont.Face7x13, stepsText)
-		stepsX := (screenWidth - stepsBounds.Dx()) / 2
-		stepsY := screenHeight - 30
-		text.Draw(screen, stepsText, basicfont.Face7x13, stepsX, stepsY, color.RGBA{255, 200, 100, 255}) // Orange for stairs info
+		if stepsCount > maxRows {
+			stepsText += " (showing last " + strconv.Itoa(maxRows) + ")"
+		}
+		text.Draw(screen, stepsText, basicfont.Face7x13, 10, summaryY, color.RGBA{255, 200, 100, 255}) // Orange
+	} else {
+		// No staircase - show current point info
+		yValue := s.globalCoeficient*float64(s.selectedIndex) + 1.0
+		yValueInt := int(yValue)
+		k := findLargestPowerOf2(yValueInt)
+		
+		infoText := "Index: " + strconv.Itoa(s.selectedIndex) + " | Y: " + strconv.FormatFloat(yValue, 'f', 1, 64) + " | K: " + strconv.Itoa(k)
+		if k > 0 {
+			powerOf2 := math.Pow(2.0, float64(k))
+			destinationIndex := float64(yValueInt) / powerOf2
+			infoText += " | Dest: " + strconv.FormatFloat(destinationIndex, 'f', 1, 64)
+		}
+		text.Draw(screen, infoText, basicfont.Face7x13, 10, summaryY, color.White)
 	}
 	
-	// Draw additional info - dynamic based on staircase direction
+	// Draw additional info at the very bottom
 	var infoText string
 	if stepsCount > 0 {
 		if isUpwards {
@@ -651,7 +740,7 @@ func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
 	}
 	infoBounds := text.BoundString(basicfont.Face7x13, infoText)
 	infoX := (screenWidth - infoBounds.Dx()) / 2
-	infoY := screenHeight - 15
+	infoY := screenHeight - 2
 	text.Draw(screen, infoText, basicfont.Face7x13, infoX, infoY, color.Gray{Y: 100})
 }
 
