@@ -26,12 +26,13 @@ type Point struct {
 
 // StairsChapter implements the Stairs chapter
 type StairsChapter struct {
-	selectedIndex int
-	cameraX       float64 // Camera position in world units
-	cameraY       float64 // Camera position in world units
-	zoom          float64 // Zoom factor (world units per pixel)
-	originX       float64 // World origin X position in screen coordinates (pixels)
-	originY       float64 // World origin Y position in screen coordinates (pixels)
+	selectedIndex    int
+	cameraX          float64 // Camera position in world units
+	cameraY          float64 // Camera position in world units
+	zoom             float64 // Zoom factor (world units per pixel)
+	originX          float64 // World origin X position in screen coordinates (pixels)
+	originY          float64 // World origin Y position in screen coordinates (pixels)
+	globalCoeficient float64 // Coefficient for the line equation (y = globalCoeficient*x + 1)
 }
 
 // NewStairsChapter creates a new Stairs chapter
@@ -40,12 +41,13 @@ func NewStairsChapter() *StairsChapter {
 	originY := float64(screenHeight) / 2 // World origin (y=0) position in screen coordinates
 	
 	return &StairsChapter{
-		selectedIndex: 1, // Start at an odd index
-		cameraX:        0, // Camera at world origin
-		cameraY:        0, // Camera at world origin
-		zoom:           1.0 / pointSpacing, // 1 pixel = 1/pointSpacing world units
-		originX:        originX,
-		originY:        originY,
+		selectedIndex:    1, // Start at an odd index
+		cameraX:              0, // Camera at world origin
+		cameraY:              0, // Camera at world origin
+		zoom:                 1.0 / pointSpacing, // 1 pixel = 1/pointSpacing world units
+		originX:               originX,
+		originY:               originY,
+		globalCoeficient:     3.0, // y = 3x + 1
 	}
 }
 
@@ -89,8 +91,8 @@ func (s *StairsChapter) getPointForIndex(index int) (worldX, worldY float64) {
 	// Calculate world x coordinate in world units (1 unit per index)
 	worldX = float64(index)
 	
-	// Calculate world y coordinate: y = 3x + 1 (in world units)
-	worldY = 3.0*worldX + 1.0
+	// Calculate world y coordinate: y = globalCoeficient*x + 1 (in world units)
+	worldY = s.globalCoeficient*worldX + 1.0
 	
 	return worldX, worldY
 }
@@ -135,7 +137,7 @@ func (s *StairsChapter) updateCamera() {
 	selectedWorldX, selectedWorldY := s.getPointForIndex(s.selectedIndex)
 	
 	// Calculate y value to check if triangle should be shown
-	yValue := int(3.0*float64(s.selectedIndex) + 1.0)
+	yValue := int(s.globalCoeficient*float64(s.selectedIndex) + 1.0)
 	k := findLargestPowerOf2(yValue)
 	
 	if k > 0 {
@@ -149,8 +151,8 @@ func (s *StairsChapter) updateCamera() {
 		intersectionWorldX := selectedWorldY / powerOf2
 		intersectionWorldY := selectedWorldY
 		
-		// Find point on 3x+1 line at same x as intersection
-		originalWorldY := 3.0*intersectionWorldX + 1.0
+		// Find point on globalCoeficient*x+1 line at same x as intersection
+		originalWorldY := s.globalCoeficient*intersectionWorldX + 1.0
 		
 		// Triangle vertices in world coordinates
 		// 1. Selected point: (selectedWorldX, selectedWorldY)
@@ -207,14 +209,17 @@ func (s *StairsChapter) Draw(screen *ebiten.Image) {
 	// Draw axes at point 0
 	s.drawAxes(screen)
 	
-	// Draw the line with slope 3x+1 procedurally
-	s.drawLine(screen, 3.0, 1.0, color.Gray{Y: 100})
+	// Draw the line with slope globalCoeficient*x+1 procedurally
+	s.drawLine(screen, s.globalCoeficient, 1.0, color.Gray{Y: 100})
 	
 	// Draw the triangle for the selected point
 	s.drawTriangle(screen)
 	
 	// Draw visible points procedurally
 	s.drawPoints(screen)
+	
+	// Draw destination point if it exists
+	s.drawDestinationPoint(screen)
 	
 	// Draw selected point index and y value at the bottom
 	s.drawIndex(screen)
@@ -342,7 +347,7 @@ func (s *StairsChapter) drawTriangle(screen *ebiten.Image) {
 	_, selectedWorldY := s.getPointForIndex(s.selectedIndex)
 	
 	// Calculate y value in world coordinates
-	yValue := int(3.0*float64(s.selectedIndex) + 1.0)
+	yValue := int(s.globalCoeficient*float64(s.selectedIndex) + 1.0)
 	
 	// Find the largest k where y is divisible by 2^k
 	k := findLargestPowerOf2(yValue)
@@ -383,9 +388,9 @@ func (s *StairsChapter) drawTriangle(screen *ebiten.Image) {
 	horizontalColor := color.RGBA{255, 255, 100, 255} // Yellow for horizontal
 	s.drawLineSegment(screen, selectedPoint, intersectionPoint, horizontalColor)
 	
-	// Find the point on the original line (y = 3x + 1 in world units) at the same x as intersection
-	// In world units: y = 3 * intersectionWorldX + 1
-	originalWorldY := 3.0*intersectionWorldX + 1.0
+	// Find the point on the original line (y = globalCoeficient*x + 1 in world units) at the same x as intersection
+	// In world units: y = globalCoeficient * intersectionWorldX + 1
+	originalWorldY := s.globalCoeficient*intersectionWorldX + 1.0
 	
 	// Project to screen coordinates
 	originalScreenX, originalScreenY := s.worldToScreen(intersectionWorldX, originalWorldY)
@@ -426,13 +431,60 @@ func (s *StairsChapter) drawLineSegment(screen *ebiten.Image, p1, p2 Point, clr 
 	}
 }
 
-func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
-	// Calculate the mathematical y value (3x + 1) where x is the index
-	yValue := 3.0*float64(s.selectedIndex) + 1.0
+func (s *StairsChapter) drawDestinationPoint(screen *ebiten.Image) {
+	// Calculate y value
+	yValue := s.globalCoeficient*float64(s.selectedIndex) + 1.0
 	yValueInt := int(yValue)
 	
 	// Calculate k (number of times y is divisible by 2)
 	k := findLargestPowerOf2(yValueInt)
+	if k == 0 {
+		return // No destination if y is odd
+	}
+	
+	// Calculate destination index: destination_index = y / 2^k
+	powerOf2 := math.Pow(2.0, float64(k))
+	destinationIndex := float64(yValueInt) / powerOf2
+	
+	// Calculate the destination point in world coordinates
+	// The destination is on the globalCoeficient*x+1 line at x = destinationIndex
+	destinationWorldX := destinationIndex
+	destinationWorldY := s.globalCoeficient*destinationWorldX + 1.0
+	
+	// Project to screen coordinates
+	destScreenX, destScreenY := s.worldToScreen(destinationWorldX, destinationWorldY)
+	
+	// Only draw if on screen
+	if destScreenX >= -pointSize*2 && destScreenX < float64(screenWidth)+pointSize*2 &&
+		destScreenY >= -pointSize*2 && destScreenY < float64(screenHeight)+pointSize*2 {
+		
+		// Draw a larger, highlighted point
+		destColor := color.RGBA{100, 255, 255, 255} // Cyan for destination
+		destSize := float64(pointSize + 4)
+		ebitenutil.DrawRect(screen, destScreenX-destSize/2, destScreenY-destSize/2, destSize, destSize, destColor)
+		
+		// Draw a bright border
+		ebitenutil.DrawRect(screen, destScreenX-destSize/2-2, destScreenY-destSize/2-2, destSize+4, 2, color.White)
+		ebitenutil.DrawRect(screen, destScreenX-destSize/2-2, destScreenY-destSize/2-2, 2, destSize+4, color.White)
+		ebitenutil.DrawRect(screen, destScreenX+destSize/2, destScreenY-destSize/2-2, 2, destSize+4, color.White)
+		ebitenutil.DrawRect(screen, destScreenX-destSize/2-2, destScreenY+destSize/2, destSize+4, 2, color.White)
+	}
+}
+
+func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
+	// Calculate the mathematical y value (globalCoeficient*x + 1) where x is the index
+	yValue := s.globalCoeficient*float64(s.selectedIndex) + 1.0
+	yValueInt := int(yValue)
+	
+	// Calculate k (number of times y is divisible by 2)
+	k := findLargestPowerOf2(yValueInt)
+	
+	// Calculate destination index
+	var destinationIndex float64
+	if k > 0 {
+		powerOf2 := math.Pow(2.0, float64(k))
+		destinationIndex = float64(yValueInt) / powerOf2
+	}
 	
 	// Format the display text
 	indexText := "Index: " + strconv.Itoa(s.selectedIndex)
@@ -442,20 +494,29 @@ func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
 	// Draw index
 	indexBounds := text.BoundString(basicfont.Face7x13, indexText)
 	indexX := (screenWidth - indexBounds.Dx()) / 2
-	indexY := screenHeight - 60
+	indexY := screenHeight - 75
 	text.Draw(screen, indexText, basicfont.Face7x13, indexX, indexY, color.White)
 	
 	// Draw y value
 	yBounds := text.BoundString(basicfont.Face7x13, yText)
 	yX := (screenWidth - yBounds.Dx()) / 2
-	yY := screenHeight - 45
+	yY := screenHeight - 60
 	text.Draw(screen, yText, basicfont.Face7x13, yX, yY, color.White)
 	
 	// Draw k value
 	kBounds := text.BoundString(basicfont.Face7x13, kText)
 	kX := (screenWidth - kBounds.Dx()) / 2
-	kY := screenHeight - 30
+	kY := screenHeight - 45
 	text.Draw(screen, kText, basicfont.Face7x13, kX, kY, color.White)
+	
+	// Draw destination index
+	if k > 0 {
+		destText := "destination = " + strconv.FormatFloat(destinationIndex, 'f', 1, 64)
+		destBounds := text.BoundString(basicfont.Face7x13, destText)
+		destX := (screenWidth - destBounds.Dx()) / 2
+		destY := screenHeight - 30
+		text.Draw(screen, destText, basicfont.Face7x13, destX, destY, color.RGBA{100, 255, 255, 255}) // Cyan to match point color
+	}
 	
 	// Draw additional info
 	infoText := "Use Arrow Keys or A/D to navigate"
