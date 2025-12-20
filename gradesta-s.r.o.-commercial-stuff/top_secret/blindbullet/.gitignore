@@ -1,0 +1,40 @@
+# Compiled binary
+blindbullet
+
+# Nix build results
+result
+result-*
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# Go test binary, built with `go test -c`
+*.test
+
+# Go coverage files
+*.cover
+coverage.txt
+coverage.html
+
+# Go workspace file
+go.work
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary files
+*.tmp
+*.log
+
