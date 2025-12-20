@@ -136,16 +136,16 @@ func (s *StairsChapter) updateCamera() {
 	
 	// Calculate y value to check if triangle should be shown
 	yValue := int(3.0*float64(s.selectedIndex) + 1.0)
-	n := findLargestPowerOf2(yValue)
+	k := findLargestPowerOf2(yValue)
 	
-	if n > 0 {
+	if k > 0 {
 		// Calculate triangle bounds in world coordinates (math space)
-		powerOf2 := math.Pow(2.0, float64(n))
+		powerOf2 := math.Pow(2.0, float64(k))
 		
-		// Find intersection of horizontal line from selected point with 2^n line
+		// Find intersection of horizontal line from selected point with 2^k line
 		// Horizontal line: y = selectedWorldY
-		// 2^n line: y = 2^n * x
-		// So: selectedWorldY = 2^n * x
+		// 2^k line: y = 2^k * x
+		// So: selectedWorldY = 2^k * x
 		intersectionWorldX := selectedWorldY / powerOf2
 		intersectionWorldY := selectedWorldY
 		
@@ -323,17 +323,18 @@ func (s *StairsChapter) drawPoint(screen *ebiten.Image, point Point, selected bo
 	}
 }
 
-// findLargestPowerOf2 finds the largest n such that y is divisible by 2^n
+// findLargestPowerOf2 finds the largest k such that y is divisible by 2^k
+// k is the number of times y is divisible by 2
 func findLargestPowerOf2(y int) int {
 	if y == 0 {
 		return 0
 	}
-	n := 0
+	k := 0
 	for y%2 == 0 {
 		y /= 2
-		n++
+		k++
 	}
-	return n
+	return k
 }
 
 func (s *StairsChapter) drawTriangle(screen *ebiten.Image) {
@@ -343,28 +344,28 @@ func (s *StairsChapter) drawTriangle(screen *ebiten.Image) {
 	// Calculate y value in world coordinates
 	yValue := int(3.0*float64(s.selectedIndex) + 1.0)
 	
-	// Find the largest n where y is divisible by 2^n
-	n := findLargestPowerOf2(yValue)
-	if n == 0 {
+	// Find the largest k where y is divisible by 2^k
+	k := findLargestPowerOf2(yValue)
+	if k == 0 {
 		return // No triangle if y is odd
 	}
 	
-	// Calculate 2^n
-	powerOf2 := math.Pow(2.0, float64(n))
+	// Calculate 2^k
+	powerOf2 := math.Pow(2.0, float64(k))
 	
-	// The new line has slope 2^n and passes through origin (0,0) in world coordinates
-	// So in world coordinates: y = 2^n * x (riseOverRun = 2^n, constant = 0)
+	// The new line has slope 2^k and passes through origin (0,0) in world coordinates
+	// So in world coordinates: y = 2^k * x (riseOverRun = 2^k, constant = 0)
 	
-	// Draw the line with slope 2^n using the drawLine function
+	// Draw the line with slope 2^k using the drawLine function
 	lineColor := color.RGBA{100, 255, 100, 255} // Green for the new line
 	s.drawLine(screen, powerOf2, 0.0, lineColor)
 	
 	// Find intersection of horizontal line from selected point with the new line
 	// In world units:
 	// Horizontal line: y = selectedWorldY
-	// New line: y = 2^n * x
-	// So: selectedWorldY = 2^n * x
-	// x = selectedWorldY / 2^n
+	// New line: y = 2^k * x
+	// So: selectedWorldY = 2^k * x
+	// x = selectedWorldY / 2^k
 	intersectionWorldX := selectedWorldY / powerOf2
 	intersectionWorldY := selectedWorldY
 	
@@ -428,22 +429,33 @@ func (s *StairsChapter) drawLineSegment(screen *ebiten.Image, p1, p2 Point, clr 
 func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
 	// Calculate the mathematical y value (3x + 1) where x is the index
 	yValue := 3.0*float64(s.selectedIndex) + 1.0
+	yValueInt := int(yValue)
+	
+	// Calculate k (number of times y is divisible by 2)
+	k := findLargestPowerOf2(yValueInt)
 	
 	// Format the display text
 	indexText := "Index: " + strconv.Itoa(s.selectedIndex)
 	yText := "y = " + strconv.FormatFloat(yValue, 'f', 1, 64)
+	kText := "k = " + strconv.Itoa(k)
 	
 	// Draw index
 	indexBounds := text.BoundString(basicfont.Face7x13, indexText)
 	indexX := (screenWidth - indexBounds.Dx()) / 2
-	indexY := screenHeight - 45
+	indexY := screenHeight - 60
 	text.Draw(screen, indexText, basicfont.Face7x13, indexX, indexY, color.White)
 	
 	// Draw y value
 	yBounds := text.BoundString(basicfont.Face7x13, yText)
 	yX := (screenWidth - yBounds.Dx()) / 2
-	yY := screenHeight - 30
+	yY := screenHeight - 45
 	text.Draw(screen, yText, basicfont.Face7x13, yX, yY, color.White)
+	
+	// Draw k value
+	kBounds := text.BoundString(basicfont.Face7x13, kText)
+	kX := (screenWidth - kBounds.Dx()) / 2
+	kY := screenHeight - 30
+	text.Draw(screen, kText, basicfont.Face7x13, kX, kY, color.White)
 	
 	// Draw additional info
 	infoText := "Use Arrow Keys or A/D to navigate"
