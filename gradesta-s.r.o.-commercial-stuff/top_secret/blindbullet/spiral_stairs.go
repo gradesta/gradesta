@@ -48,6 +48,12 @@ func (s *SpiralStairsChapter) Update() error {
 		s.cycleGlobalCoeficient()
 	}
 	
+	// Handle 'r' key to reset to step 1
+	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
+		s.currentStep.SetInt64(1)
+		return nil
+	}
+	
 	// Handle shift+arrow keys to jump by frequency
 	if ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight) {
 		steps, _, _ := s.getCachedStaircase()
@@ -340,7 +346,7 @@ func (s *SpiralStairsChapter) drawCurrentStep(screen *ebiten.Image, centerX, cen
 	text.Draw(screen, stepText, basicfont.Face7x13, stepX, stepY, color.White)
 	
 	// Draw controls
-	controlsText := "LEFT/RIGHT: move | Shift+LEFT/RIGHT: jump by frequency | C: change coefficient | ESC: back"
+	controlsText := "LEFT/RIGHT: move | Shift+LEFT/RIGHT: jump by frequency | C: change coefficient | R: reset to step 1 | ESC: back"
 	controlsBounds := text.BoundString(basicfont.Face7x13, controlsText)
 	controlsX := (screenWidth - controlsBounds.Dx()) / 2
 	controlsY := screenHeight - 15

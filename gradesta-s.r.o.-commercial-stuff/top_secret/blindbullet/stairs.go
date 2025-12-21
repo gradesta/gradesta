@@ -125,6 +125,14 @@ func (s *StairsChapter) Update() error {
 		s.updateCamera()
 	}
 	
+	// Handle 'r' key to reset to index 1
+	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
+		s.selectedIndex = 1
+		needsRecalc = true
+		s.updateCamera()
+		return nil
+	}
+	
 	// Handle Shift+Right Arrow to jump to end of stairs (top or bottom)
 	if ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight) {
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
@@ -623,12 +631,12 @@ func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
 	var infoText string
 	if stepsCount > 0 {
 		if isUpwards {
-			infoText = "Arrow/A/D: navigate | Shift+Right: jump to top | C: change coefficient"
+			infoText = "Arrow/A/D: navigate | Shift+Right: jump to top | C: change coefficient | R: reset to index 1"
 		} else {
-			infoText = "Arrow/A/D: navigate | Shift+Right: jump to bottom | C: change coefficient"
+			infoText = "Arrow/A/D: navigate | Shift+Right: jump to bottom | C: change coefficient | R: reset to index 1"
 		}
 	} else {
-		infoText = "Arrow/A/D: navigate | Shift+Right: jump to end | C: change coefficient"
+		infoText = "Arrow/A/D: navigate | Shift+Right: jump to end | C: change coefficient | R: reset to index 1"
 	}
 	infoBounds := text.BoundString(basicfont.Face7x13, infoText)
 	infoX := (screenWidth - infoBounds.Dx()) / 2
