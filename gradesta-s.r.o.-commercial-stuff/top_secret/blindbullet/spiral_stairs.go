@@ -38,17 +38,14 @@ func NewSpiralStairsChapter() *SpiralStairsChapter {
 		currentStep:      1,   // Start at an odd step
 		zoom:             1.0,
 		globalCoeficient: 3.0, // y = 3x + 1
-		cachedForIndex:   -1,   // Invalid cache initially
+		// Cache will be invalid initially since cachedForIndex (0) != currentStep (1)
 	}
 }
 
 func (s *SpiralStairsChapter) Update() error {
-	needsRecalc := false
-	
 	// Handle 'c' key to cycle through global coefficient values (odd numbers 1-21)
 	if inpututil.IsKeyJustPressed(ebiten.KeyC) {
 		s.cycleGlobalCoeficient()
-		needsRecalc = true
 	}
 	
 	// Handle left/right movement - only allow odd steps
@@ -58,7 +55,6 @@ func (s *SpiralStairsChapter) Update() error {
 		if s.currentStep%2 == 0 {
 			s.currentStep++
 		}
-		needsRecalc = true
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || inpututil.IsKeyJustPressed(ebiten.KeyA) {
 		s.currentStep -= 2 // Move by 2 to stay on odd steps
@@ -66,13 +62,11 @@ func (s *SpiralStairsChapter) Update() error {
 		if s.currentStep%2 == 0 {
 			s.currentStep--
 		}
-		needsRecalc = true
 	}
 	
-	// Invalidate cache if needed
-	if needsRecalc {
-		s.cachedForIndex = -1 // Invalidate cache
-	}
+	// Cache will be automatically invalidated in getCachedStaircase() 
+	// by checking if cachedForIndex != currentStep or cachedForCoef != globalCoeficient
+	// No need to manually invalidate here
 	
 	return nil
 }

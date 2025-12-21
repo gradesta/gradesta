@@ -13,13 +13,19 @@ import (
 
 // findLargestPowerOf2 finds the largest k such that y is divisible by 2^k
 // k is the number of times y is divisible by 2
+// Works correctly for both positive and negative numbers
 func findLargestPowerOf2(y int) int {
 	if y == 0 {
 		return 0
 	}
+	// Work with absolute value to handle negative numbers correctly
+	absY := y
+	if absY < 0 {
+		absY = -absY
+	}
 	k := 0
-	for y%2 == 0 {
-		y /= 2
+	for absY%2 == 0 {
+		absY /= 2
 		k++
 	}
 	return k
