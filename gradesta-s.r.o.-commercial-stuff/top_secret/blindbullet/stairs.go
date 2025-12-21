@@ -3,6 +3,7 @@ package main
 import (
 	"image/color"
 	"math"
+	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -39,6 +40,10 @@ type StairsChapter struct {
 	cachedHitLimit   bool
 	cachedForIndex   int
 	cachedForCoef    float64
+	
+	// Cached frequency jump for shift-hold behavior
+	cachedFrequencyJump int  // Jump amount (frequency * 2) cached when shift is first pressed
+	shiftWasPressed     bool // Track if shift was just pressed (to recalculate frequency)
 }
 
 // NewStairsChapter creates a new Stairs chapter
@@ -134,7 +139,11 @@ func (s *StairsChapter) Update() error {
 	}
 	
 	// Handle Shift+Right Arrow to jump to end of stairs (top or bottom)
-	if ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight) {
+	shiftPressed := ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)
+	shiftJustPressed := inpututil.IsKeyJustPressed(ebiten.KeyShiftLeft) || inpututil.IsKeyJustPressed(ebiten.KeyShiftRight)
+	
+	if shiftPressed {
+		// Shift+Right: jump to end of stairs
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
 			endIndex := s.getEndOfStairs(s.selectedIndex)
 			if endIndex != s.selectedIndex {
@@ -144,6 +153,29 @@ func (s *StairsChapter) Update() error {
 			}
 			return nil
 		}
+		
+		// Shift+Left: jump by frequency (with hold support)
+		if shiftJustPressed || !s.shiftWasPressed {
+			// Recalculate frequency when shift is first pressed
+			steps, _, _ := s.getCachedStaircase()
+			frequency := s.calculateFrequency(steps)
+			s.cachedFrequencyJump = frequency * 2 // Multiply by 2 to stay on odd steps
+			s.shiftWasPressed = true
+		}
+		
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || inpututil.IsKeyJustPressed(ebiten.KeyA) {
+			s.selectedIndex -= s.cachedFrequencyJump
+			// Ensure we stay on odd index
+			if s.selectedIndex%2 == 0 {
+				s.selectedIndex--
+			}
+			needsRecalc = true
+			s.updateCamera()
+			return nil
+		}
+	} else {
+		// Shift is not pressed, reset the flag
+		s.shiftWasPressed = false
 	}
 	
 	// Handle arrow key input - can go infinitely in either direction
@@ -611,6 +643,52 @@ func (s *StairsChapter) drawDestinationPoint(screen *ebiten.Image) {
 	}
 }
 
+func (s *StairsChapter) calculateFrequency(steps []StairStep) int {
+	// Frequency is the product of 2^k for each k value
+	// Include the starting point's k value
+	frequency := 1
+	
+	// Calculate k for the starting point
+	startYValue := s.globalCoeficient*float64(s.selectedIndex) + 1.0
+	startYValueInt := int(startYValue)
+	startK := findLargestPowerOf2(startYValueInt)
+	if startK > 0 {
+		// Calculate 2^k using bit shifting
+		frequency *= 1 << uint(startK)
+	}
+	
+	// Multiply by k values from all steps
+	for _, step := range steps {
+		// Each k value contributes 2^k to the frequency
+		if step.K > 0 {
+			// Calculate 2^k using bit shifting
+			frequency *= 1 << uint(step.K)
+		}
+		// If k is 0, we multiply by 1 (no change), so we can skip it
+	}
+	return frequency
+}
+
+func (s *StairsChapter) drawShiftOverlay(screen *ebiten.Image) {
+	// Draw a small indicator at the bottom when shift is held
+	if s.cachedFrequencyJump > 0 {
+		// Draw a small background box at the bottom
+		boxX := 10.0
+		boxY := float64(screenHeight) - 50.0
+		boxWidth := 200.0
+		boxHeight := 40.0
+		ebitenutil.DrawRect(screen, boxX, boxY, boxWidth, boxHeight, color.RGBA{0, 100, 200, 150}) // Semi-transparent blue
+		
+		// Draw frequency jump info
+		jumpText := "Jump: " + strconv.Itoa(s.cachedFrequencyJump)
+		text.Draw(screen, jumpText, basicfont.Face7x13, int(boxX+5), int(boxY+13), color.White)
+		
+		// Draw instruction
+		instText := "Press Shift+LEFT to jump"
+		text.Draw(screen, instText, basicfont.Face7x13, int(boxX+5), int(boxY+26), color.RGBA{200, 200, 255, 255})
+	}
+}
+
 func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
 	// Calculate staircase steps (use cache)
 	steps, isUpwards, hitLimit := s.getCachedStaircase()
@@ -631,12 +709,12 @@ func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
 	var infoText string
 	if stepsCount > 0 {
 		if isUpwards {
-			infoText = "Arrow/A/D: navigate | Shift+Right: jump to top | C: change coefficient | R: reset to index 1"
+			infoText = "Arrow/A/D: navigate | Shift+Right: jump to top | Shift+Left: jump by frequency | C: change coefficient | R: reset to index 1"
 		} else {
-			infoText = "Arrow/A/D: navigate | Shift+Right: jump to bottom | C: change coefficient | R: reset to index 1"
+			infoText = "Arrow/A/D: navigate | Shift+Right: jump to bottom | Shift+Left: jump by frequency | C: change coefficient | R: reset to index 1"
 		}
 	} else {
-		infoText = "Arrow/A/D: navigate | Shift+Right: jump to end | C: change coefficient | R: reset to index 1"
+		infoText = "Arrow/A/D: navigate | Shift+Right: jump to end | Shift+Left: jump by frequency | C: change coefficient | R: reset to index 1"
 	}
 	infoBounds := text.BoundString(basicfont.Face7x13, infoText)
 	infoX := (screenWidth - infoBounds.Dx()) / 2

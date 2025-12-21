@@ -30,6 +30,10 @@ type SpiralStairsChapter struct {
 	cachedHitLimit   bool
 	cachedForIndex   *big.Int // Cache key for currentStep
 	cachedForCoef    float64
+	
+	// Cached frequency jump for shift-hold behavior
+	cachedFrequencyJump *big.Int // Jump amount (frequency * 2) cached when shift is first pressed
+	shiftWasPressed     bool     // Track if shift was just pressed (to recalculate frequency)
 }
 
 // NewSpiralStairsChapter creates a new Spiral Staircase chapter
@@ -55,14 +59,21 @@ func (s *SpiralStairsChapter) Update() error {
 	}
 	
 	// Handle shift+arrow keys to jump by frequency
-	if ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight) {
-		steps, _, _ := s.getCachedStaircase()
-		frequency := s.calculateFrequency(steps)
-		// Multiply by 2 to stay on odd steps
-		freqTimes2 := new(big.Int).Mul(frequency, big.NewInt(2))
+	shiftPressed := ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)
+	shiftJustPressed := inpututil.IsKeyJustPressed(ebiten.KeyShiftLeft) || inpututil.IsKeyJustPressed(ebiten.KeyShiftRight)
+	
+	if shiftPressed {
+		// If shift was just pressed, recalculate frequency
+		if shiftJustPressed || !s.shiftWasPressed {
+			steps, _, _ := s.getCachedStaircase()
+			frequency := s.calculateFrequency(steps)
+			// Multiply by 2 to stay on odd steps
+			s.cachedFrequencyJump = new(big.Int).Mul(frequency, big.NewInt(2))
+			s.shiftWasPressed = true
+		}
 		
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || inpututil.IsKeyJustPressed(ebiten.KeyD) {
-			s.currentStep.Add(s.currentStep, freqTimes2)
+			s.currentStep.Add(s.currentStep, s.cachedFrequencyJump)
 			// Ensure we stay on odd step
 			mod := new(big.Int).Mod(s.currentStep, big.NewInt(2))
 			if mod.Sign() == 0 {
@@ -71,7 +82,7 @@ func (s *SpiralStairsChapter) Update() error {
 			return nil
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || inpututil.IsKeyJustPressed(ebiten.KeyA) {
-			s.currentStep.Sub(s.currentStep, freqTimes2)
+			s.currentStep.Sub(s.currentStep, s.cachedFrequencyJump)
 			// Ensure we stay on odd step
 			mod := new(big.Int).Mod(s.currentStep, big.NewInt(2))
 			if mod.Sign() == 0 {
@@ -79,6 +90,9 @@ func (s *SpiralStairsChapter) Update() error {
 			}
 			return nil
 		}
+	} else {
+		// Shift is not pressed, reset the flag
+		s.shiftWasPressed = false
 	}
 	
 	// Handle left/right movement - only allow odd steps
@@ -117,6 +131,11 @@ func (s *SpiralStairsChapter) Draw(screen *ebiten.Image) {
 	
 	// Draw the Collatz table
 	s.drawCollatzTable(screen)
+	
+	// Draw shift overlay if shift is pressed
+	if ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight) {
+		s.drawShiftOverlay(screen)
+	}
 	
 	// Draw the current step indicator
 	s.drawCurrentStep(screen, centerX, centerY)
@@ -334,6 +353,26 @@ func (s *SpiralStairsChapter) drawCollatzTable(screen *ebiten.Image) {
 	freqX := screenWidth - freqBounds.Dx() - 10 // Right-aligned with padding
 	freqY := 20 // Top of screen
 	text.Draw(screen, freqText, basicfont.Face7x13, freqX, freqY, color.RGBA{200, 150, 255, 255}) // Purple
+}
+
+func (s *SpiralStairsChapter) drawShiftOverlay(screen *ebiten.Image) {
+	// Draw a small indicator at the bottom when shift is held
+	if s.cachedFrequencyJump != nil {
+		// Draw a small background box at the bottom
+		boxX := 10.0
+		boxY := float64(screenHeight) - 50.0
+		boxWidth := 200.0
+		boxHeight := 40.0
+		ebitenutil.DrawRect(screen, boxX, boxY, boxWidth, boxHeight, color.RGBA{0, 100, 200, 150}) // Semi-transparent blue
+		
+		// Draw frequency jump info
+		jumpText := "Jump: " + s.cachedFrequencyJump.String()
+		text.Draw(screen, jumpText, basicfont.Face7x13, int(boxX+5), int(boxY+13), color.White)
+		
+		// Draw instruction
+		instText := "Press LEFT/RIGHT to jump"
+		text.Draw(screen, instText, basicfont.Face7x13, int(boxX+5), int(boxY+26), color.RGBA{200, 200, 255, 255})
+	}
 }
 
 func (s *SpiralStairsChapter) drawCurrentStep(screen *ebiten.Image, centerX, centerY float64) {
