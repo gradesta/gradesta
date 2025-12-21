@@ -21,7 +21,6 @@ const (
 // SpiralStairsChapter implements the Spiral Staircase chapter
 type SpiralStairsChapter struct {
 	currentStep int     // Current step (0-based, can be negative)
-	cameraAngle float64 // Camera rotation angle in radians
 	zoom        float64 // Zoom level
 }
 
@@ -29,34 +28,25 @@ type SpiralStairsChapter struct {
 func NewSpiralStairsChapter() *SpiralStairsChapter {
 	return &SpiralStairsChapter{
 		currentStep: 1, // Start at an odd step
-		cameraAngle: 0,
 		zoom:        1.0,
 	}
 }
 
 func (s *SpiralStairsChapter) Update() error {
-	// Handle up/down movement - only allow odd steps
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW) {
+	// Handle left/right movement - only allow odd steps
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || inpututil.IsKeyJustPressed(ebiten.KeyD) {
 		s.currentStep += 2 // Move by 2 to stay on odd steps
 		// Ensure we stay on odd step
 		if s.currentStep%2 == 0 {
 			s.currentStep++
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyS) {
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || inpututil.IsKeyJustPressed(ebiten.KeyA) {
 		s.currentStep -= 2 // Move by 2 to stay on odd steps
 		// Ensure we stay on odd step
 		if s.currentStep%2 == 0 {
 			s.currentStep--
 		}
-	}
-	
-	// Handle rotation (left/right to rotate view)
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || inpututil.IsKeyJustPressed(ebiten.KeyA) {
-		s.cameraAngle -= math.Pi / 8 // Rotate 22.5 degrees
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || inpututil.IsKeyJustPressed(ebiten.KeyD) {
-		s.cameraAngle += math.Pi / 8 // Rotate 22.5 degrees
 	}
 	
 	return nil
@@ -109,8 +99,7 @@ func (s *SpiralStairsChapter) drawStep(screen *ebiten.Image, centerX, centerY fl
 	// Step 1 should be at angle 0, so we subtract the angle for step 1
 	alignmentOffset := -anglePerStep // Step 1 (first odd step) should be at angle 0
 	
-	// Apply camera rotation
-	angle := baseAngle + alignmentOffset + s.cameraAngle
+	angle := baseAngle + alignmentOffset
 	
 	// Calculate radius - steps get further from center as we go up
 	// Use step number to determine radius (higher steps = larger radius)
@@ -157,6 +146,7 @@ func (s *SpiralStairsChapter) drawStep(screen *ebiten.Image, centerX, centerY fl
 
 func (s *SpiralStairsChapter) drawCurrentStep(screen *ebiten.Image, centerX, centerY float64) {
 	// Draw info text at the bottom
+	// Force recalculation of step text every frame to ensure it updates
 	stepText := "Step: " + strconv.Itoa(s.currentStep)
 	stepBounds := text.BoundString(basicfont.Face7x13, stepText)
 	stepX := (screenWidth - stepBounds.Dx()) / 2
@@ -164,7 +154,7 @@ func (s *SpiralStairsChapter) drawCurrentStep(screen *ebiten.Image, centerX, cen
 	text.Draw(screen, stepText, basicfont.Face7x13, stepX, stepY, color.White)
 	
 	// Draw controls
-	controlsText := "UP/DOWN: move | LEFT/RIGHT: rotate | ESC: back"
+	controlsText := "LEFT/RIGHT: move | ESC: back"
 	controlsBounds := text.BoundString(basicfont.Face7x13, controlsText)
 	controlsX := (screenWidth - controlsBounds.Dx()) / 2
 	controlsY := screenHeight - 15
