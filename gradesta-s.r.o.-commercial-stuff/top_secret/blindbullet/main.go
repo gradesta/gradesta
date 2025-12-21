@@ -22,7 +22,7 @@ type GameState int
 const (
 	StateLaunchScreen GameState = iota
 	StateStairs
-	StateExit
+	StateSpiralStairs
 )
 
 // Chapter represents a selectable chapter
@@ -30,14 +30,16 @@ type Chapter int
 
 const (
 	ChapterStairs Chapter = iota
+	ChapterSpiralStairs
 	ChapterExit
 	ChapterCount // Total number of chapters
 )
 
 // Game is the main game struct
 type Game struct {
-	state         GameState
-	stairs        *StairsChapter
+	state           GameState
+	stairs          *StairsChapter
+	spiralStairs    *SpiralStairsChapter
 	selectedChapter Chapter
 }
 
@@ -46,6 +48,7 @@ func NewGame() *Game {
 	return &Game{
 		state:           StateLaunchScreen,
 		stairs:          NewStairsChapter(),
+		spiralStairs:    NewSpiralStairsChapter(),
 		selectedChapter: ChapterStairs,
 	}
 }
@@ -72,6 +75,8 @@ func (g *Game) Update() error {
 			switch g.selectedChapter {
 			case ChapterStairs:
 				g.state = StateStairs
+			case ChapterSpiralStairs:
+				g.state = StateSpiralStairs
 			case ChapterExit:
 				return errors.New("user requested exit")
 			}
@@ -83,6 +88,13 @@ func (g *Game) Update() error {
 		}
 	case StateStairs:
 		if err := g.stairs.Update(); err != nil {
+			return err
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			g.state = StateLaunchScreen
+		}
+	case StateSpiralStairs:
+		if err := g.spiralStairs.Update(); err != nil {
 			return err
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
@@ -100,6 +112,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawLaunchScreen(screen)
 	case StateStairs:
 		g.stairs.Draw(screen)
+	case StateSpiralStairs:
+		g.spiralStairs.Draw(screen)
 	}
 }
 
@@ -127,7 +141,7 @@ func (g *Game) drawLaunchScreen(screen *ebiten.Image) {
 
 	// Draw chapter list
 	chapterText := "Chapters:"
-	text.Draw(screen, chapterText, basicfont.Face7x13, 50, screenHeight-100, color.Gray{Y: 200})
+	text.Draw(screen, chapterText, basicfont.Face7x13, 50, screenHeight-125, color.Gray{Y: 200})
 	
 	// Draw Stairs chapter
 	stairsText := "- Stairs"
@@ -136,7 +150,16 @@ func (g *Game) drawLaunchScreen(screen *ebiten.Image) {
 		stairsText = "> Stairs"
 		stairsColor = color.White
 	}
-	text.Draw(screen, stairsText, basicfont.Face7x13, 50, screenHeight-80, stairsColor)
+	text.Draw(screen, stairsText, basicfont.Face7x13, 50, screenHeight-110, stairsColor)
+	
+	// Draw Spiral Stairs chapter
+	spiralText := "- The Spiral Staircase"
+	var spiralColor color.Color = color.Gray{Y: 150}
+	if g.selectedChapter == ChapterSpiralStairs {
+		spiralText = "> The Spiral Staircase"
+		spiralColor = color.White
+	}
+	text.Draw(screen, spiralText, basicfont.Face7x13, 50, screenHeight-95, spiralColor)
 	
 	// Draw Exit chapter
 	exitChapterText := "- Exit"
@@ -145,7 +168,7 @@ func (g *Game) drawLaunchScreen(screen *ebiten.Image) {
 		exitChapterText = "> Exit"
 		exitChapterColor = color.White
 	}
-	text.Draw(screen, exitChapterText, basicfont.Face7x13, 50, screenHeight-65, exitChapterColor)
+	text.Draw(screen, exitChapterText, basicfont.Face7x13, 50, screenHeight-80, exitChapterColor)
 	
 	// Draw navigation instructions
 	navText := "Use UP/DOWN arrows to select, ENTER/SPACE to activate"
