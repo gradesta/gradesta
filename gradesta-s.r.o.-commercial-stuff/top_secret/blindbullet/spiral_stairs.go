@@ -104,8 +104,13 @@ func (s *SpiralStairsChapter) drawStep(screen *ebiten.Image, centerX, centerY fl
 	anglePerStep := 2.0 * math.Pi / stepsPerTurn
 	baseAngle := float64(step) * anglePerStep
 	
+	// Add offset to align rightmost and leftmost steps horizontally
+	// We want step 1 to be at the rightmost position (angle 0)
+	// Step 1 should be at angle 0, so we subtract the angle for step 1
+	alignmentOffset := -anglePerStep // Step 1 (first odd step) should be at angle 0
+	
 	// Apply camera rotation
-	angle := baseAngle + s.cameraAngle
+	angle := baseAngle + alignmentOffset + s.cameraAngle
 	
 	// Calculate radius - steps get further from center as we go up
 	// Use step number to determine radius (higher steps = larger radius)
