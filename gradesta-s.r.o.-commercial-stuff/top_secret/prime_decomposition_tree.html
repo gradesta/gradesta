@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Prime Decomposition Tree</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.8;
+            font-size: 1.1em;
+        }
+
+        .controls {
+            padding: 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .input-group label {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .input-group input {
+            padding: 12px 20px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 16px;
+            width: 120px;
+            text-align: center;
+            transition: border-color 0.3s ease;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .results {
+            padding: 30px;
+        }
+
+        .summary {
+            background: #e8f5e8;
+            border: 2px solid #28a745;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .summary h2 {
+            margin: 0 0 10px 0;
+            color: #155724;
+        }
+
+        .summary .stats {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+            margin-top: 15px;
+        }
+
+        .stat {
+            background: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .stat .number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat .label {
+            color: #6c757d;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        .tree-container {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .tree {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+            overflow-x: auto;
+        }
+
+        .prime {
+            color: #dc3545;
+            font-weight: bold;
+        }
+
+        .composite {
+            color: #6c757d;
+        }
+
+        .decomposition {
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+            border-radius: 10px;
+            padding: 20px;
+            color: #721c24;
+            text-align: center;
+        }
+
+        .examples {
+            margin-top: 20px;
+            padding: 20px;
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 10px;
+        }
+
+        .examples h3 {
+            margin: 0 0 15px 0;
+            color: #856404;
+        }
+
+        .example-btn {
+            background: #ffc107;
+            color: #212529;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            margin: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s ease;
+        }
+
+        .example-btn:hover {
+            background: #e0a800;
+        }
+
+        /* Enhanced tree styling */
+        .tree-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            margin: 20px 0;
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .tree-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+
+        .tree-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            font-weight: 600;
+            font-size: 1.1em;
+        }
+
+        .tree-content {
+            padding: 20px;
+        }
+
+        .clickable-number {
+            color: #667eea;
+            cursor: pointer;
+            font-weight: bold;
+            text-decoration: underline;
+            transition: color 0.2s ease;
+            padding: 2px 4px;
+            border-radius: 4px;
+        }
+
+        .clickable-number:hover {
+            color: #764ba2;
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .tree-line {
+            margin: 8px 0;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            border-radius: 0 8px 8px 0;
+            transition: background-color 0.2s ease;
+        }
+
+        .tree-line:hover {
+            background: #e9ecef;
+        }
+
+        .tree-line.prime {
+            border-left-color: #dc3545;
+        }
+
+        .tree-line.composite {
+            border-left-color: #6c757d;
+        }
+
+        .addition-section {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .addition-controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        .addition-input {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .addition-input input {
+            padding: 10px 15px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 16px;
+            width: 80px;
+            text-align: center;
+        }
+
+        .addition-input input:focus {
+            outline: none;
+            border-color: #ffc107;
+            box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.1);
+        }
+
+        .plus-sign {
+            font-size: 24px;
+            font-weight: bold;
+            color: #ffc107;
+        }
+
+        .equals-sign {
+            font-size: 24px;
+            font-weight: bold;
+            color: #28a745;
+        }
+
+        .result-number {
+            font-size: 20px;
+            font-weight: bold;
+            color: #28a745;
+            padding: 10px 20px;
+            background: #d4edda;
+            border-radius: 8px;
+        }
+
+        .tree-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .source-tree {
+            border: 2px solid #17a2b8;
+        }
+
+        .source-tree .tree-header {
+            background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+        }
+
+        .result-tree {
+            border: 2px solid #28a745;
+        }
+
+        .result-tree .tree-header {
+            background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+        }
+
+        .tree-stats {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .tree-stat {
+            background: #e9ecef;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.9em;
+            color: #495057;
+        }
+
+        .tree-stat .number {
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .collapsible {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .collapsible:hover {
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .collapsible-content {
+            margin-left: 20px;
+            border-left: 2px solid #dee2e6;
+            padding-left: 15px;
+        }
+
+        .expand-icon {
+            display: inline-block;
+            margin-right: 8px;
+            transition: transform 0.2s ease;
+        }
+
+        .expanded .expand-icon {
+            transform: rotate(90deg);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Interactive Prime Decomposition Tree</h1>
+            <p>Explore how numbers can be broken down into sums of prime numbers. Click on any number to see its decomposition!</p>
+        </div>
+
+        <div class="controls">
+            <div class="input-group">
+                <label for="numberInput">Enter a number:</label>
+                <input type="number" id="numberInput" min="2" max="50" value="6" placeholder="6">
+                <button class="btn" onclick="generateDecomposition()">Generate Tree</button>
+            </div>
+            
+            <div class="examples">
+                <h3>Try these examples:</h3>
+                <button class="example-btn" onclick="setNumber(6)">6</button>
+                <button class="example-btn" onclick="setNumber(8)">8</button>
+                <button class="example-btn" onclick="setNumber(10)">10</button>
+                <button class="example-btn" onclick="setNumber(12)">12</button>
+                <button class="example-btn" onclick="setNumber(15)">15</button>
+                <button class="example-btn" onclick="setNumber(20)">20</button>
+            </div>
+        </div>
+
+        <div class="addition-section">
+            <h3 style="margin-top: 0; color: #856404;">Addition Mode</h3>
+            <div class="addition-controls">
+                <div class="addition-input">
+                    <input type="number" id="addInput1" min="2" max="25" value="6" placeholder="6">
+                </div>
+                <div class="plus-sign">+</div>
+                <div class="addition-input">
+                    <input type="number" id="addInput2" min="2" max="25" value="9" placeholder="9">
+                </div>
+                <div class="equals-sign">=</div>
+                <div class="result-number" id="addResult">15</div>
+                <button class="btn" onclick="generateAddition()">Show Addition Trees</button>
+            </div>
+        </div>
+
+        <div class="results" id="results">
+            <div class="loading" id="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Generating decomposition tree...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state for caching decompositions
+        const decompositionCache = new Map();
+        
+        // Generate primes up to a given limit using Sieve of Eratosthenes
+        function generatePrimes(limit) {
+            const primes = [];
+            const isPrime = new Array(limit + 1).fill(true);
+            isPrime[0] = isPrime[1] = false;
+            
+            for (let i = 2; i <= limit; i++) {
+                if (isPrime[i]) {
+                    primes.push(i);
+                    for (let j = i * i; j <= limit; j += i) {
+                        isPrime[j] = false;
+                    }
+                }
+            }
+            return primes;
+        }
+
+        // Check if a number is prime
+        function isPrime(n) {
+            if (n < 2) return false;
+            if (n === 2) return true;
+            if (n % 2 === 0) return false;
+            for (let i = 3; i * i <= n; i += 2) {
+                if (n % i === 0) return false;
+            }
+            return true;
+        }
+
+        // Find all ways to decompose a number into primes
+        function findPrimeDecompositions(n, primes, memo = {}) {
+            if (n in memo) return memo[n];
+            if (n < 2) return [];
+            if (isPrime(n)) return [[n]];
+            
+            const decompositions = [];
+            
+            // Try each prime that's less than n
+            for (const prime of primes) {
+                if (prime >= n) break;
+                
+                const remainder = n - prime;
+                if (remainder >= 2) {
+                    const subDecompositions = findPrimeDecompositions(remainder, primes, memo);
+                    for (const subDecomp of subDecompositions) {
+                        decompositions.push([prime, ...subDecomp].sort((a, b) => b - a));
+                    }
+                }
+            }
+            
+            // Remove duplicates
+            const uniqueDecompositions = [];
+            const seen = new Set();
+            for (const decomp of decompositions) {
+                const key = decomp.join(',');
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    uniqueDecompositions.push(decomp);
+                }
+            }
+            
+            memo[n] = uniqueDecompositions;
+            return uniqueDecompositions;
+        }
+
+        // Create interactive tree HTML
+        function createInteractiveTree(n, decompositions, isClickable = true) {
+            if (decompositions.length === 0) {
+                return `<div class="tree-line prime">${n} (prime)</div>`;
+            }
+            
+            let html = '';
+            for (let i = 0; i < decompositions.length; i++) {
+                const decomp = decompositions[i];
+                const sum = decomp.join(' + ');
+                const lineClass = decomp.every(num => isPrime(num)) ? 'prime' : 'composite';
+                
+                html += `<div class="tree-line ${lineClass}">${sum}</div>`;
+                
+                // Add clickable numbers for composite numbers
+                for (const num of decomp) {
+                    if (!isPrime(num) && num > 3 && isClickable) {
+                        html += `<div class="collapsible" onclick="toggleCollapsible(this)">
+                            <span class="expand-icon">▶</span>
+                            <span class="clickable-number" onclick="event.stopPropagation(); showNumberTree(${num})">${num}</span>
+                            <div class="collapsible-content" style="display: none;"></div>
+                        </div>`;
+                    }
+                }
+            }
+            
+            return html;
+        }
+
+        // Toggle collapsible content
+        function toggleCollapsible(element) {
+            const content = element.querySelector('.collapsible-content');
+            const icon = element.querySelector('.expand-icon');
+            
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                element.classList.add('expanded');
+                
+                // Generate content if not already generated
+                if (!content.innerHTML) {
+                    const number = parseInt(element.querySelector('.clickable-number').textContent);
+                    const primes = generatePrimes(number - 1);
+                    const decompositions = findPrimeDecompositions(number, primes);
+                    content.innerHTML = createInteractiveTree(number, decompositions, false);
+                }
+            } else {
+                content.style.display = 'none';
+                element.classList.remove('expanded');
+            }
+        }
+
+        // Show tree for a specific number
+        function showNumberTree(n) {
+            const primes = generatePrimes(n - 1);
+            const decompositions = findPrimeDecompositions(n, primes);
+            
+            const treeCard = document.createElement('div');
+            treeCard.className = 'tree-card';
+            treeCard.innerHTML = `
+                <div class="tree-header">Decomposition of ${n}</div>
+                <div class="tree-content">
+                    <div class="tree-stats">
+                        <div class="tree-stat"><span class="number">${decompositions.length}</span> ways</div>
+                        <div class="tree-stat"><span class="number">${decompositions.length > 0 ? Math.max(...decompositions.map(d => d.length)) : 0}</span> max terms</div>
+                    </div>
+                    ${createInteractiveTree(n, decompositions)}
+                </div>
+            `;
+            
+            document.getElementById('results').appendChild(treeCard);
+            treeCard.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Generate and display decomposition
+        function generateDecomposition() {
+            const numberInput = document.getElementById('numberInput');
+            const resultsDiv = document.getElementById('results');
+            
+            const n = parseInt(numberInput.value);
+            
+            if (isNaN(n) || n < 2) {
+                resultsDiv.innerHTML = '<div class="error">Please enter a valid number greater than 1.</div>';
+                return;
+            }
+            
+            if (n > 50) {
+                resultsDiv.innerHTML = '<div class="error">Number too large. Please enter a number ≤ 50 for better performance.</div>';
+                return;
+            }
+            
+            // Show loading
+            resultsDiv.innerHTML = '<div class="loading"><div class="spinner"></div><p>Generating decomposition tree...</p></div>';
+            
+            // Use setTimeout to allow UI to update
+            setTimeout(() => {
+                try {
+                    const primes = generatePrimes(n - 1);
+                    const decompositions = findPrimeDecompositions(n, primes);
+                    
+                    // Count statistics
+                    const totalDecompositions = decompositions.length;
+                    const maxLength = decompositions.length > 0 ? Math.max(...decompositions.map(d => d.length)) : 0;
+                    const minLength = decompositions.length > 0 ? Math.min(...decompositions.map(d => d.length)) : 0;
+                    
+                    // Display results
+                    resultsDiv.innerHTML = `
+                        <div class="summary">
+                            <h2>Decomposition Results for ${n}</h2>
+                            <div class="stats">
+                                <div class="stat">
+                                    <div class="number">${totalDecompositions}</div>
+                                    <div class="label">Total Ways</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="number">${maxLength}</div>
+                                    <div class="label">Max Terms</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="number">${minLength}</div>
+                                    <div class="label">Min Terms</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="tree-card">
+                            <div class="tree-header">Decomposition of ${n}</div>
+                            <div class="tree-content">
+                                <div class="tree-stats">
+                                    <div class="tree-stat"><span class="number">${totalDecompositions}</span> ways</div>
+                                    <div class="tree-stat"><span class="number">${maxLength}</span> max terms</div>
+                                </div>
+                                ${createInteractiveTree(n, decompositions)}
+                            </div>
+                        </div>
+                    `;
+                    
+                } catch (error) {
+                    resultsDiv.innerHTML = `<div class="error">Error generating decomposition: ${error.message}</div>`;
+                }
+            }, 100);
+        }
+
+        // Generate addition trees
+        function generateAddition() {
+            const input1 = parseInt(document.getElementById('addInput1').value);
+            const input2 = parseInt(document.getElementById('addInput2').value);
+            const resultsDiv = document.getElementById('results');
+            
+            if (isNaN(input1) || isNaN(input2) || input1 < 2 || input2 < 2) {
+                resultsDiv.innerHTML = '<div class="error">Please enter valid numbers greater than 1.</div>';
+                return;
+            }
+            
+            const sum = input1 + input2;
+            document.getElementById('addResult').textContent = sum;
+            
+            // Show loading
+            resultsDiv.innerHTML = '<div class="loading"><div class="spinner"></div><p>Generating addition trees...</p></div>';
+            
+            setTimeout(() => {
+                try {
+                    const primes1 = generatePrimes(input1 - 1);
+                    const primes2 = generatePrimes(input2 - 1);
+                    const primesSum = generatePrimes(sum - 1);
+                    
+                    const decompositions1 = findPrimeDecompositions(input1, primes1);
+                    const decompositions2 = findPrimeDecompositions(input2, primes2);
+                    const decompositionsSum = findPrimeDecompositions(sum, primesSum);
+                    
+                    resultsDiv.innerHTML = `
+                        <div class="summary">
+                            <h2>Addition: ${input1} + ${input2} = ${sum}</h2>
+                            <div class="stats">
+                                <div class="stat">
+                                    <div class="number">${decompositionsSum.length}</div>
+                                    <div class="label">Total Ways for ${sum}</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="number">${decompositions1.length}</div>
+                                    <div class="label">Ways for ${input1}</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="number">${decompositions2.length}</div>
+                                    <div class="label">Ways for ${input2}</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="tree-grid">
+                            <div class="tree-card source-tree">
+                                <div class="tree-header">Source: ${input1}</div>
+                                <div class="tree-content">
+                                    <div class="tree-stats">
+                                        <div class="tree-stat"><span class="number">${decompositions1.length}</span> ways</div>
+                                    </div>
+                                    ${createInteractiveTree(input1, decompositions1)}
+                                </div>
+                            </div>
+                            
+                            <div class="tree-card source-tree">
+                                <div class="tree-header">Source: ${input2}</div>
+                                <div class="tree-content">
+                                    <div class="tree-stats">
+                                        <div class="tree-stat"><span class="number">${decompositions2.length}</span> ways</div>
+                                    </div>
+                                    ${createInteractiveTree(input2, decompositions2)}
+                                </div>
+                            </div>
+                            
+                            <div class="tree-card result-tree">
+                                <div class="tree-header">Result: ${sum}</div>
+                                <div class="tree-content">
+                                    <div class="tree-stats">
+                                        <div class="tree-stat"><span class="number">${decompositionsSum.length}</span> ways</div>
+                                    </div>
+                                    ${createInteractiveTree(sum, decompositionsSum)}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                } catch (error) {
+                    resultsDiv.innerHTML = `<div class="error">Error generating addition trees: ${error.message}</div>`;
+                }
+            }, 100);
+        }
+
+        // Set number from example buttons
+        function setNumber(n) {
+            document.getElementById('numberInput').value = n;
+            generateDecomposition();
+        }
+
+        // Update addition result when inputs change
+        function updateAdditionResult() {
+            const input1 = parseInt(document.getElementById('addInput1').value) || 0;
+            const input2 = parseInt(document.getElementById('addInput2').value) || 0;
+            document.getElementById('addResult').textContent = input1 + input2;
+        }
+
+        // Event listeners
+        document.getElementById('numberInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                generateDecomposition();
+            }
+        });
+
+        document.getElementById('addInput1').addEventListener('input', updateAdditionResult);
+        document.getElementById('addInput2').addEventListener('input', updateAdditionResult);
+
+        // Generate initial decomposition for n=6
+        window.onload = function() {
+            generateDecomposition();
+            updateAdditionResult();
+        };
+    </script>
+</body>
+</html>

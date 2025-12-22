@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"math"
+	"math/big"
 	"strconv"
 	"strings"
 
@@ -328,10 +329,15 @@ func (s *StairsChapter) updateCamera() {
 		maxWorldY = math.Max(maxWorldY, startWorldY)
 		
 		// Process each step in the staircase
-		currentIndex := float64(s.selectedIndex)
+		currentIndexBig := big.NewInt(int64(s.selectedIndex))
 		for _, step := range steps {
+			// Convert currentIndex to int for getPointForIndex (it uses int)
+			currentIndexInt := 0
+			if currentIndexBig.IsInt64() {
+				currentIndexInt = int(currentIndexBig.Int64())
+			}
 			// Get start point for this step
-			stepStartX, stepStartY := s.getPointForIndex(int(currentIndex))
+			stepStartX, stepStartY := s.getPointForIndex(currentIndexInt)
 			
 			// Calculate 2^k for this step
 			powerOf2 := math.Pow(2.0, float64(step.K))
@@ -342,8 +348,9 @@ func (s *StairsChapter) updateCamera() {
 			// Find point on globalCoeficient*x+1 line at same x as intersection
 			originalWorldY := s.globalCoeficient*intersectionWorldX + 1.0
 			
-			// Get destination point
-			destWorldX := step.DestinationIndex
+			// Get destination point - convert big.Int to float64
+			destFloat := new(big.Float).SetInt(step.DestinationIndex)
+			destWorldX, _ := destFloat.Float64()
 			destWorldY := s.globalCoeficient*destWorldX + 1.0
 			
 			// Update bounding box with all triangle vertices
@@ -353,7 +360,7 @@ func (s *StairsChapter) updateCamera() {
 			maxWorldY = math.Max(maxWorldY, math.Max(stepStartY, math.Max(originalWorldY, destWorldY)))
 			
 			// Move to destination for next step
-			currentIndex = step.DestinationIndex
+			currentIndexBig.Set(step.DestinationIndex)
 		}
 		
 		// Add padding in world units
@@ -557,7 +564,8 @@ func (s *StairsChapter) drawPoint(screen *ebiten.Image, point Point, selected bo
 // Maximum of 50 steps to prevent infinite loops
 func (s *StairsChapter) calculateStaircase(startIndex int) ([]StairStep, bool, bool) {
 	maxSteps := 50
-	return CalculateStaircase(startIndex, s.globalCoeficient, maxSteps, true) // Stop on direction change
+	startIndexBig := big.NewInt(int64(startIndex))
+	return CalculateStaircase(startIndexBig, s.globalCoeficient, maxSteps, true) // Stop on direction change
 }
 
 // getCachedStaircase returns the cached staircase or calculates it if cache is invalid
@@ -588,7 +596,12 @@ func (s *StairsChapter) getEndOfStairs(startIndex int) int {
 		return startIndex
 	}
 	// Return the last destination as an integer (round to nearest odd)
-	endIndex := int(steps[len(steps)-1].DestinationIndex)
+	// Convert big.Int to int
+	lastDest := steps[len(steps)-1].DestinationIndex
+	endIndex := 0
+	if lastDest.IsInt64() {
+		endIndex = int(lastDest.Int64())
+	}
 	// Ensure it's odd
 	if endIndex%2 == 0 {
 		endIndex++
@@ -629,10 +642,15 @@ func (s *StairsChapter) drawTriangle(screen *ebiten.Image) {
 	}
 	
 		// Draw each step in the staircase
-		currentIndex := float64(s.selectedIndex)
+		currentIndexBig := big.NewInt(int64(s.selectedIndex))
 		for _, step := range steps {
+			// Convert currentIndex to int for getPointForIndex
+			currentIndexInt := 0
+			if currentIndexBig.IsInt64() {
+				currentIndexInt = int(currentIndexBig.Int64())
+			}
 			// Get start point for this step
-			_, stepStartY := s.getPointForIndex(int(currentIndex))
+			_, stepStartY := s.getPointForIndex(currentIndexInt)
 		
 		// Calculate 2^k for this step
 		powerOf2 := math.Pow(2.0, float64(step.K))
@@ -661,7 +679,7 @@ func (s *StairsChapter) drawTriangle(screen *ebiten.Image) {
 		}
 		
 		// Get start point in screen coordinates for drawing
-		startPoint := s.getPointForIndexScreen(int(currentIndex))
+		startPoint := s.getPointForIndexScreen(currentIndexInt)
 		
 		// Draw horizontal line from start point to intersection
 		horizontalColor := color.RGBA{255, 255, 100, 255} // Yellow for horizontal
@@ -683,7 +701,7 @@ func (s *StairsChapter) drawTriangle(screen *ebiten.Image) {
 		s.drawLineSegment(screen, intersectionPoint, originalLinePoint, verticalColor)
 		
 		// Move to destination for next step
-		currentIndex = step.DestinationIndex
+		currentIndexBig.Set(step.DestinationIndex)
 	}
 }
 
@@ -721,7 +739,9 @@ func (s *StairsChapter) drawDestinationPoint(screen *ebiten.Image) {
 	for _, step := range steps {
 		// Calculate the destination point in world coordinates
 		// The destination is on the globalCoeficient*x+1 line at x = destinationIndex
-		destinationWorldX := step.DestinationIndex
+		// Convert big.Int to float64
+		destFloat := new(big.Float).SetInt(step.DestinationIndex)
+		destinationWorldX, _ := destFloat.Float64()
 		destinationWorldY := s.globalCoeficient*destinationWorldX + 1.0
 		
 		// Project to screen coordinates
@@ -925,7 +945,7 @@ func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
 	// Use the utility function to draw the table
 	data := CollatzTableData{
 		Steps:      steps,
-		StartIndex: s.selectedIndex,
+		StartIndex: big.NewInt(int64(s.selectedIndex)),
 		Coefficient: s.globalCoeficient,
 		IsUpwards:  isUpwards,
 		HitLimit:   hitLimit,

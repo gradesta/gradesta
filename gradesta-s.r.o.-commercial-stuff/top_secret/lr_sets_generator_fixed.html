@@ -302,101 +302,6 @@
             display: block;
         }
 
-        .ltrim-view {
-            display: none;
-        }
-
-        .ltrim-view.active {
-            display: block;
-        }
-
-        .ltrim-item {
-            margin-bottom: 0.5rem;
-            padding: 0.8rem;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            background: rgba(255,255,255,0.7);
-            border-left: 4px solid #667eea;
-        }
-
-        .ltrim-l-value {
-            background: rgba(168, 237, 234, 0.3);
-            border-left: 4px solid #4ecdc4;
-        }
-
-        .ltrim-r-value {
-            background: rgba(255, 182, 159, 0.3);
-            border-left: 4px solid #ff6b6b;
-        }
-
-        .ltrim-intersection-value {
-            background: rgba(155, 181, 255, 0.3);
-            border-left: 4px solid #764ba2;
-        }
-
-        .ltrim-controls {
-            margin-bottom: 1rem;
-        }
-
-        .ltrim-side-by-side {
-            display: block;
-        }
-
-        .ltrim-interwoven {
-            display: none;
-        }
-
-        .ltrim-set-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 2rem;
-            margin-bottom: 2rem;
-        }
-
-        .ltrim-set {
-            padding: 1.5rem;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-
-        .ltrim-l-set {
-            background: linear-gradient(135deg, #a8edea, #fed6e3);
-        }
-
-        .ltrim-r-set {
-            background: linear-gradient(135deg, #ffecd2, #fcb69f);
-        }
-
-        .ltrim-intersection-set {
-            background: linear-gradient(135deg, #e0c3fc, #9bb5ff);
-        }
-
-        .ltrim-set h4 {
-            margin-top: 0;
-            margin-bottom: 1rem;
-            color: #333;
-        }
-
-        .ltrim-item {
-            margin-bottom: 1rem;
-            padding: 1rem;
-            background: rgba(255,255,255,0.7);
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
-        }
-
-        .ltrim-binary {
-            font-family: 'Courier New', monospace;
-            font-weight: bold;
-            color: #2c3e50;
-            background: rgba(255,255,255,0.8);
-            padding: 0.3rem 0.5rem;
-            border-radius: 4px;
-            margin: 0.2rem 0;
-        }
-
         #scatterCanvas {
             border: 1px solid #ddd;
             border-radius: 8px;
@@ -524,18 +429,12 @@
                         <label for="maxCoefficient">Max Coefficient (c):</label>
                         <input type="number" id="maxCoefficient" value="10" min="2">
                     </div>
-                    
-                    <div class="form-group">
-                        <label for="ltrimBits">LTrim Bits:</label>
-                        <input type="number" id="ltrimBits" value="4" min="1" max="16">
-                    </div>
                 </div>
 
                 <div class="button-group">
                     <button class="btn btn-primary" onclick="generateSets()">Generate L and R Sets & Analyze</button>
                     <button class="btn btn-secondary" onclick="toggleView()">Toggle Interleaved View</button>
                     <button class="btn btn-warning" onclick="toggleScatterPlot()">Toggle Scatter Plot</button>
-                    <button class="btn btn-secondary" onclick="toggleLtrimView()">Toggle LTrim View</button>
                 </div>
             </div>
 
@@ -562,7 +461,7 @@
     <script>
         // Global variables
         let generator = null;
-        let currentViewMode = 'separate'; // 'separate', 'interleaved', 'scatter', or 'ltrim'
+        let currentViewMode = 'separate'; // 'separate', 'interleaved', or 'scatter'
         let lastGeneratedData = null;
 
         // Scatter plot variables
@@ -573,41 +472,6 @@
         let lastPanX = 0;
         let lastPanY = 0;
         let fixedColumns = 6; // Fixed number of columns to display
-
-        // LTrim function implementation (based on Python code)
-        function intToBase(n, base, keepSign = true) {
-            if (!(2 <= base && base <= 36)) {
-                throw new Error("base must be in the range 2–36");
-            }
-            // Special-case zero
-            if (n === 0) {
-                return "0";
-            }
-            const digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-            const sign = (n < 0 && keepSign) ? "-" : "";
-            n = Math.abs(n);
-            const out = [];
-            while (n) {
-                const remainder = n % base;
-                n = Math.floor(n / base);
-                out.push(digits[remainder]);
-            }
-            return sign + out.reverse().join("");
-        }
-
-        function ltrim(number, base, digits) {
-            if (!(2 <= base && base <= 36)) {
-                throw new Error("base must be between 2 and 36 (inclusive).");
-            }
-            if (digits < 1) {
-                throw new Error("digits must be a positive integer.");
-            }
-            const cutoff = Math.pow(base, digits);
-            const absRem = Math.abs(number) % cutoff; // numeric remainder
-            const strRem = intToBase(absRem, base).padStart(digits, '0');
-            // Return signed numeric value
-            return absRem;
-        }
 
         // LRSetsGenerator class
         class LRSetsGenerator {
@@ -927,14 +791,10 @@
                     lastGeneratedData = { result, intersection, n, maxDisplay };
                     displaySets(result, intersection, n, maxDisplay);
                     
-                    // Clear any existing views
+                    // Clear any existing scatter plot
                     const scatterContainer = document.querySelector('.scatter-plot-container');
-                    const ltrimDiv = document.querySelector('.ltrim-view');
                     if (scatterContainer) {
                         scatterContainer.classList.remove('active');
-                    }
-                    if (ltrimDiv) {
-                        ltrimDiv.classList.remove('active');
                     }
                     
                     currentViewMode = 'separate';
@@ -948,14 +808,10 @@
         function displaySets(result, intersection, n, maxDisplay) {
             const resultsDiv = document.getElementById('results');
             
-            // Hide other views when showing separate view
+            // Hide interleaved view when showing separate view
             const interleavedDiv = document.querySelector('.interleaved-view');
-            const ltrimDiv = document.querySelector('.ltrim-view');
             if (interleavedDiv) {
                 interleavedDiv.classList.remove('active');
-            }
-            if (ltrimDiv) {
-                ltrimDiv.classList.remove('active');
             }
             
             let html = `
@@ -979,33 +835,6 @@
                 <div class="interleaved-view">
                     <h3><i class="fas fa-layer-group"></i> Interleaved View</h3>
                     <div id="interleavedItems"></div>
-                </div>
-                
-                <div class="ltrim-view">
-                    <h3><i class="fas fa-cut"></i> LTrim View (Base 2)</h3>
-                    <div class="ltrim-controls">
-                        <button class="btn btn-secondary" onclick="toggleLtrimMode()">Toggle Side-by-Side / Interwoven</button>
-                    </div>
-                    <div id="ltrimSideBySide" class="ltrim-side-by-side">
-                        <div class="ltrim-set-container">
-                            <div class="ltrim-set ltrim-l-set">
-                                <h4><i class="fas fa-list-ol"></i> L Set LTrim</h4>
-                                <div id="ltrimLSetItems"></div>
-                            </div>
-                            <div class="ltrim-set ltrim-r-set">
-                                <h4><i class="fas fa-list-ol"></i> R Set LTrim</h4>
-                                <div id="ltrimRSetItems"></div>
-                            </div>
-                            <div class="ltrim-set ltrim-intersection-set">
-                                <h4><i class="fas fa-intersection"></i> LTrim Intersection</h4>
-                                <div id="ltrimIntersectionItems"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="ltrimInterwoven" class="ltrim-interwoven" style="display: none;">
-                        <h4><i class="fas fa-layer-group"></i> Interwoven LTrim View</h4>
-                        <div id="ltrimInterwovenItems"></div>
-                    </div>
                 </div>
                 
                 <div class="scatter-plot-container">
@@ -1150,24 +979,24 @@
             
             const interleavedDiv = document.querySelector('.interleaved-view');
             const setContainer = document.querySelector('.set-container');
-            const ltrimDiv = document.querySelector('.ltrim-view');
-            const scatterContainer = document.querySelector('.scatter-plot-container');
             
             if (currentViewMode === 'separate') {
                 // Switch to interleaved
                 displayInterleavedView();
                 interleavedDiv.classList.add('active');
                 setContainer.style.display = 'none';
-                ltrimDiv.classList.remove('active');
-                scatterContainer.classList.remove('active');
                 currentViewMode = 'interleaved';
             } else {
                 // Switch to separate
                 interleavedDiv.classList.remove('active');
                 setContainer.style.display = 'grid';
-                ltrimDiv.classList.remove('active');
-                scatterContainer.classList.remove('active');
                 currentViewMode = 'separate';
+            }
+            
+            // Hide scatter plot when switching views
+            const scatterContainer = document.querySelector('.scatter-plot-container');
+            if (scatterContainer) {
+                scatterContainer.classList.remove('active');
             }
         }
 
@@ -1237,301 +1066,21 @@
             const scatterContainer = document.querySelector('.scatter-plot-container');
             const setContainer = document.querySelector('.set-container');
             const interleavedDiv = document.querySelector('.interleaved-view');
-            const ltrimDiv = document.querySelector('.ltrim-view');
             
             if (currentViewMode === 'scatter') {
                 // Switch back to separate view
                 scatterContainer.classList.remove('active');
                 setContainer.style.display = 'grid';
                 interleavedDiv.classList.remove('active');
-                ltrimDiv.classList.remove('active');
                 currentViewMode = 'separate';
             } else {
                 // Switch to scatter plot
                 scatterContainer.classList.add('active');
                 setContainer.style.display = 'none';
                 interleavedDiv.classList.remove('active');
-                ltrimDiv.classList.remove('active');
                 displayScatterPlot();
                 currentViewMode = 'scatter';
             }
-        }
-
-        function toggleLtrimView() {
-            if (!lastGeneratedData) {
-                alert('Please generate sets first');
-                return;
-            }
-            
-            const ltrimDiv = document.querySelector('.ltrim-view');
-            const setContainer = document.querySelector('.set-container');
-            const interleavedDiv = document.querySelector('.interleaved-view');
-            const scatterContainer = document.querySelector('.scatter-plot-container');
-            
-            if (currentViewMode === 'ltrim') {
-                // Switch back to separate view
-                ltrimDiv.classList.remove('active');
-                setContainer.style.display = 'grid';
-                interleavedDiv.classList.remove('active');
-                scatterContainer.classList.remove('active');
-                currentViewMode = 'separate';
-            } else {
-                // Switch to ltrim view
-                ltrimDiv.classList.add('active');
-                setContainer.style.display = 'none';
-                interleavedDiv.classList.remove('active');
-                scatterContainer.classList.remove('active');
-                displayLtrimView();
-                currentViewMode = 'ltrim';
-            }
-        }
-
-        function toggleLtrimMode() {
-            const sideBySideDiv = document.getElementById('ltrimSideBySide');
-            const interwovenDiv = document.getElementById('ltrimInterwoven');
-            
-            if (sideBySideDiv.style.display === 'none') {
-                // Switch to side-by-side
-                sideBySideDiv.style.display = 'block';
-                interwovenDiv.style.display = 'none';
-            } else {
-                // Switch to interwoven
-                sideBySideDiv.style.display = 'none';
-                interwovenDiv.style.display = 'block';
-                displayLtrimInterwovenView();
-            }
-        }
-
-        function displayLtrimView() {
-            const { result, intersection } = lastGeneratedData;
-            const bits = parseInt(document.getElementById('ltrimBits').value);
-            
-            // Generate ltrim data
-            const ltrimData = generateLtrimData(result, intersection, bits);
-            
-            // Display side-by-side view
-            displayLtrimSideBySideView(ltrimData);
-        }
-
-        function generateLtrimData(result, intersection, bits) {
-            const ltrimLSet = new Map();
-            const ltrimRSet = new Map();
-            const ltrimIntersection = new Map();
-            
-            // Process L set
-            for (const [key, data] of result.lSet) {
-                const ltrimValue = ltrim(data.value, 2, bits);
-                const binaryStr = intToBase(ltrimValue, 2).padStart(bits, '0');
-                const sumK = data.kValues.reduce((a, b) => a + b, 0);
-                
-                if (!ltrimLSet.has(ltrimValue)) {
-                    ltrimLSet.set(ltrimValue, []);
-                }
-                ltrimLSet.get(ltrimValue).push({
-                    originalValue: data.value,
-                    ltrimValue: ltrimValue,
-                    binaryStr: binaryStr,
-                    kValues: data.kValues,
-                    sumK: sumK,
-                    key: key
-                });
-            }
-            
-            // Process R set
-            for (const [key, data] of result.rSet) {
-                const ltrimValue = ltrim(data.value, 2, bits);
-                const binaryStr = intToBase(ltrimValue, 2).padStart(bits, '0');
-                const sumK = data.kValues.reduce((a, b) => a + b, 0);
-                
-                if (!ltrimRSet.has(ltrimValue)) {
-                    ltrimRSet.set(ltrimValue, []);
-                }
-                ltrimRSet.get(ltrimValue).push({
-                    originalValue: data.value,
-                    ltrimValue: ltrimValue,
-                    binaryStr: binaryStr,
-                    kValues: data.kValues,
-                    sumK: sumK,
-                    coefficient: data.coefficient,
-                    key: key
-                });
-            }
-            
-            // Find ltrim intersections
-            for (const [ltrimValue, lItems] of ltrimLSet) {
-                if (ltrimRSet.has(ltrimValue)) {
-                    const rItems = ltrimRSet.get(ltrimValue);
-                    ltrimIntersection.set(ltrimValue, {
-                        ltrimValue: ltrimValue,
-                        binaryStr: intToBase(ltrimValue, 2).padStart(bits, '0'),
-                        lItems: lItems,
-                        rItems: rItems
-                    });
-                }
-            }
-            
-            return { ltrimLSet, ltrimRSet, ltrimIntersection };
-        }
-
-        function displayLtrimSideBySideView(ltrimData) {
-            const { ltrimLSet, ltrimRSet, ltrimIntersection } = ltrimData;
-            
-            // Update headers with counts
-            document.querySelector('.ltrim-l-set h4').innerHTML = `<i class="fas fa-list-ol"></i> L Set LTrim (${ltrimLSet.size} unique values)`;
-            document.querySelector('.ltrim-r-set h4').innerHTML = `<i class="fas fa-list-ol"></i> R Set LTrim (${ltrimRSet.size} unique values)`;
-            document.querySelector('.ltrim-intersection-set h4').innerHTML = `<i class="fas fa-intersection"></i> LTrim Intersection (${ltrimIntersection.size} values)`;
-            
-            // Display L set ltrim - group by ltrim value
-            let lHtml = '';
-            for (const [ltrimValue, items] of ltrimLSet) {
-                lHtml += `
-                    <div class="ltrim-item">
-                        <strong>LTrim Value: ${ltrimValue} (${items.length} occurrence${items.length > 1 ? 's' : ''})</strong><br>
-                        <div class="ltrim-binary">${items[0].binaryStr}</div>
-                        <div style="margin-top: 0.5rem;">
-                `;
-                
-                for (const item of items) {
-                    lHtml += `
-                        <div style="margin: 0.2rem 0; padding: 0.3rem; background: rgba(255,255,255,0.5); border-radius: 4px;">
-                            k=[${item.kValues.join(', ')}] → Original: ${item.originalValue}
-                        </div>
-                    `;
-                }
-                
-                lHtml += `
-                        </div>
-                    </div>
-                `;
-            }
-            document.getElementById('ltrimLSetItems').innerHTML = lHtml;
-            
-            // Display R set ltrim - group by ltrim value
-            let rHtml = '';
-            for (const [ltrimValue, items] of ltrimRSet) {
-                rHtml += `
-                    <div class="ltrim-item">
-                        <strong>LTrim Value: ${ltrimValue} (${items.length} occurrence${items.length > 1 ? 's' : ''})</strong><br>
-                        <div class="ltrim-binary">${items[0].binaryStr}</div>
-                        <div style="margin-top: 0.5rem;">
-                `;
-                
-                for (const item of items) {
-                    const coefficient = item.coefficient ? `, c=${item.coefficient}` : '';
-                    rHtml += `
-                        <div style="margin: 0.2rem 0; padding: 0.3rem; background: rgba(255,255,255,0.5); border-radius: 4px;">
-                            k=[${item.kValues.join(', ')}]${coefficient} → Original: ${item.originalValue}
-                        </div>
-                    `;
-                }
-                
-                rHtml += `
-                        </div>
-                    </div>
-                `;
-            }
-            document.getElementById('ltrimRSetItems').innerHTML = rHtml;
-            
-            // Display ltrim intersection
-            let intersectionHtml = '';
-            if (ltrimIntersection.size > 0) {
-                for (const [ltrimValue, data] of ltrimIntersection) {
-                    intersectionHtml += `
-                        <div class="ltrim-item">
-                            <strong>LTrim Value: ${data.ltrimValue}</strong><br>
-                            <div class="ltrim-binary">${data.binaryStr}</div>
-                            <div style="margin-top: 0.5rem;">
-                                <div style="margin: 0.2rem 0; padding: 0.3rem; background: rgba(168, 237, 234, 0.3); border-radius: 4px;">
-                                    <strong>L Set:</strong> ${data.lItems.length} occurrence${data.lItems.length > 1 ? 's' : ''}
-                                </div>
-                                <div style="margin: 0.2rem 0; padding: 0.3rem; background: rgba(255, 182, 159, 0.3); border-radius: 4px;">
-                                    <strong>R Set:</strong> ${data.rItems.length} occurrence${data.rItems.length > 1 ? 's' : ''}
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                }
-            } else {
-                intersectionHtml = '<p><em>No ltrim intersection found</em></p>';
-            }
-            document.getElementById('ltrimIntersectionItems').innerHTML = intersectionHtml;
-        }
-
-        function displayLtrimInterwovenView() {
-            const { result, intersection } = lastGeneratedData;
-            const bits = parseInt(document.getElementById('ltrimBits').value);
-            
-            // Generate ltrim data
-            const ltrimData = generateLtrimData(result, intersection, bits);
-            const { ltrimLSet, ltrimRSet, ltrimIntersection } = ltrimData;
-            
-            // Create interwoven list - group by ltrim value
-            const interwovenItems = [];
-            
-            // Collect all unique ltrim values
-            const allLtrimValues = new Set([...ltrimLSet.keys(), ...ltrimRSet.keys()]);
-            
-            for (const ltrimValue of allLtrimValues) {
-                const lItems = ltrimLSet.get(ltrimValue) || [];
-                const rItems = ltrimRSet.get(ltrimValue) || [];
-                const isIntersection = ltrimIntersection.has(ltrimValue);
-                
-                interwovenItems.push({
-                    ltrimValue: ltrimValue,
-                    binaryStr: lItems[0]?.binaryStr || rItems[0]?.binaryStr || intToBase(ltrimValue, 2).padStart(bits, '0'),
-                    lItems: lItems,
-                    rItems: rItems,
-                    isIntersection: isIntersection,
-                    type: isIntersection ? 'intersection' : (lItems.length > 0 ? 'L' : 'R')
-                });
-            }
-            
-            // Sort by ltrim value
-            interwovenItems.sort((a, b) => a.ltrimValue - b.ltrimValue);
-            
-            // Display items
-            let html = '';
-            for (const item of interwovenItems) {
-                const cssClass = item.isIntersection ? 'ltrim-intersection-value' : 
-                                (item.lItems.length > 0 ? 'ltrim-l-value' : 'ltrim-r-value');
-                
-                html += `
-                    <div class="ltrim-item ${cssClass}">
-                        <strong>LTrim Value: ${item.ltrimValue}</strong><br>
-                        <div class="ltrim-binary">${item.binaryStr}</div>
-                        <div style="margin-top: 0.5rem;">
-                `;
-                
-                if (item.lItems.length > 0) {
-                    html += `
-                        <div style="margin: 0.2rem 0; padding: 0.3rem; background: rgba(168, 237, 234, 0.3); border-radius: 4px;">
-                            <strong>L Set (${item.lItems.length}):</strong>
-                    `;
-                    for (const lItem of item.lItems) {
-                        html += `<br>&nbsp;&nbsp;k=[${lItem.kValues.join(', ')}] → ${lItem.originalValue}`;
-                    }
-                    html += `</div>`;
-                }
-                
-                if (item.rItems.length > 0) {
-                    html += `
-                        <div style="margin: 0.2rem 0; padding: 0.3rem; background: rgba(255, 182, 159, 0.3); border-radius: 4px;">
-                            <strong>R Set (${item.rItems.length}):</strong>
-                    `;
-                    for (const rItem of item.rItems) {
-                        const coefficient = rItem.coefficient ? `, c=${rItem.coefficient}` : '';
-                        html += `<br>&nbsp;&nbsp;k=[${rItem.kValues.join(', ')}]${coefficient} → ${rItem.originalValue}`;
-                    }
-                    html += `</div>`;
-                }
-                
-                html += `
-                        </div>
-                    </div>
-                `;
-            }
-            
-            document.getElementById('ltrimInterwovenItems').innerHTML = html;
         }
 
         function displayScatterPlot() {
@@ -1631,280 +1180,6 @@
                 scatterPlotView.minX = 0;
                 scatterPlotView.maxX = fixedColumns - 1;
                 renderScatterPlot();
-            }
-        }
-
-
-        function showDotDetailsFromColumn(item) {
-            // Convert the item back to the format expected by showDotDetails
-            const point = {
-                x: item.data.kValues.reduce((a, b) => a + b, 0),
-                y: item.value,
-                type: item.type,
-                data: item.data,
-                isIntersection: item.type === 'intersection',
-                key: item.key
-            };
-            
-            showDotDetails(point);
-        }
-
-        function showColumnDetails(sumK) {
-            if (!lastGeneratedData) {
-                return;
-            }
-            
-            const { result, intersection } = lastGeneratedData;
-            const hideOppositeSigns = document.getElementById('hideOppositeSigns')?.checked || false;
-            const detailsCard = document.getElementById('detailsCard');
-            const detailsContent = document.getElementById('detailsContent');
-            
-            // Get values for this sumK
-            const valuesBySumK = generator.getValuesBySumK(result, intersection);
-            const values = valuesBySumK.get(sumK);
-            
-            if (!values || values.length === 0) {
-                detailsContent.innerHTML = `<strong>No values found for sum k = ${sumK}</strong>`;
-                detailsCard.classList.add('active');
-                return;
-            }
-            
-            // Filter out values with opposite signs if needed
-            let filteredValues = values;
-            if (hideOppositeSigns) {
-                filteredValues = values.filter(item => {
-                    if (item.type === 'L' || item.type === 'intersection') {
-                        return !generator.hasOppositeSigns(item.data.kValues, lastGeneratedData.n);
-                    }
-                    return true; // Keep R values as they are
-                });
-            }
-            
-            // Generate HTML for column details
-            let html = `<div class="column-header">Values for Sum k = ${sumK}</div>`;
-            
-            for (const item of filteredValues) {
-                const base3Highlighted = generator.formatBase3WithHighlight(item.value);
-                const coefficient = item.data.coefficient ? ` (c=${item.data.coefficient})` : '';
-                const label = item.type === 'intersection' ? 'INTERSECTION' : item.type.toUpperCase();
-                
-                html += `
-                    <div class="column-item" 
-                         onclick="showDotDetailsFromColumn(${JSON.stringify(item).replace(/"/g, '&quot;')})"
-                         title="Click to see individual details">
-                        <strong>${label}:</strong> ${base3Highlighted}${coefficient}
-                    </div>
-                `;
-            }
-            
-            if (filteredValues.length === 0) {
-                html += `<p><em>No values visible (filtered by opposite signs)</em></p>`;
-            }
-            
-            detailsContent.innerHTML = html;
-            detailsCard.classList.add('active');
-            
-            // Re-render MathJax for any formulas
-            if (window.MathJax) {
-                MathJax.typesetPromise([detailsCard]);
-            }
-        }
-
-        function setupScatterPlotEvents() {
-            const canvas = document.getElementById('scatterCanvas');
-            
-            // Mouse events
-            canvas.addEventListener('click', (e) => {
-                const rect = canvas.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                
-                const padding = 60;
-                const plotWidth = canvas.width - 2 * padding;
-                const plotHeight = canvas.height - 2 * padding;
-                
-                if (x < padding || x > canvas.width - padding || y < padding || y > canvas.height - padding) {
-                    return;
-                }
-                
-                const xRange = scatterPlotView.maxX - scatterPlotView.minX;
-                const yRange = scatterPlotView.maxY - scatterPlotView.minY;
-                const xScale = plotWidth / Math.max(xRange, 1);
-                const yScale = plotHeight / Math.max(yRange, 1);
-                
-                const dataX = scatterPlotView.minX + (x - padding) / xScale;
-                const dataY = scatterPlotView.maxY - (y - padding) / yScale;
-                
-                // Find closest point
-                let closestPoint = null;
-                let closestDistance = Infinity;
-                
-                for (const point of scatterPlotData) {
-                    if (point.x >= scatterPlotView.minX && point.x <= scatterPlotView.maxX &&
-                        point.y >= scatterPlotView.minY && point.y <= scatterPlotView.maxY) {
-                        const distance = Math.sqrt(Math.pow((point.x - dataX) * xScale, 2) + Math.pow((point.y - dataY) * yScale, 2));
-                        if (distance < closestDistance && distance < 10) {
-                            closestDistance = distance;
-                            closestPoint = point;
-                        }
-                    }
-                }
-                
-                if (closestPoint) {
-                    showDotDetails(closestPoint);
-                    
-                    // Add pulse animation
-                    const screenX = padding + (closestPoint.x - scatterPlotView.minX) * xScale;
-                    const screenY = canvas.height - padding - (closestPoint.y - scatterPlotView.minY) * yScale;
-                    canvas.classList.add('pulse');
-                    setTimeout(() => canvas.classList.remove('pulse'), 300);
-                } else {
-                    // Show column details for the clicked column
-                    const clickedSumK = Math.round(dataX);
-                    showColumnDetails(clickedSumK);
-                }
-            });
-            
-            // Mouse wheel for zooming (Y-axis only)
-            canvas.addEventListener('wheel', (e) => {
-                e.preventDefault();
-                const zoomFactor = e.deltaY > 0 ? 1.1 : 0.9;
-                zoomIn(zoomFactor);
-            });
-            
-            // Mouse drag for panning (Y-axis only)
-            let isDragging = false;
-            let lastMouseY = 0;
-            
-            canvas.addEventListener('mousedown', (e) => {
-                isDragging = true;
-                lastMouseY = e.clientY;
-                canvas.style.cursor = 'grabbing';
-            });
-            
-            canvas.addEventListener('mousemove', (e) => {
-                if (isDragging) {
-                    const deltaY = e.clientY - lastMouseY;
-                    lastMouseY = e.clientY;
-                    
-                    const padding = 60;
-                    const plotHeight = canvas.height - 2 * padding;
-                    const yRange = scatterPlotView.maxY - scatterPlotView.minY;
-                    const yDelta = (deltaY / plotHeight) * yRange;
-                    
-                    scatterPlotView.minY += yDelta;
-                    scatterPlotView.maxY += yDelta;
-                    
-                    renderScatterPlot();
-                }
-            });
-            
-            canvas.addEventListener('mouseup', () => {
-                isDragging = false;
-                canvas.style.cursor = 'crosshair';
-            });
-            
-            canvas.addEventListener('mouseleave', () => {
-                isDragging = false;
-                canvas.style.cursor = 'crosshair';
-            });
-            
-            // Keyboard events
-            document.addEventListener('keydown', handleKeyboardZoom);
-        }
-
-        function showDotDetails(point) {
-            const detailsCard = document.getElementById('detailsCard');
-            const detailsContent = document.getElementById('detailsContent');
-            
-            const coefficient = point.data.coefficient ? `, c = ${point.data.coefficient}` : '';
-            const typeText = point.isIntersection ? 'Intersection' : point.type;
-            
-            detailsContent.innerHTML = `
-                <strong>Basic Information</strong><br>
-                Type: ${typeText}<br>
-                Value: ${point.data.value}<br>
-                Sum of k: ${point.data.kValues.reduce((a, b) => a + b, 0)}<br>
-                k-values: [${point.data.kValues.join(', ')}]${coefficient}<br><br>
-                
-                <strong>Number Representations</strong><br>
-                ${generator.formatNumberInBases(point.data.value)}<br><br>
-                
-                <strong>Formula</strong><br>
-                ${point.data.formula}
-            `;
-            
-            detailsCard.classList.add('active');
-            
-            // Re-render MathJax for the formula
-            if (window.MathJax) {
-                MathJax.typesetPromise([detailsCard]);
-            }
-        }
-
-        function hideDetails() {
-            const detailsCard = document.getElementById('detailsCard');
-            detailsCard.classList.remove('active');
-        }
-
-        function resetZoom() {
-            scatterPlotView.minX = 0;
-            scatterPlotView.maxX = fixedColumns - 1;
-            const yPadding = (scatterPlotBounds.maxY - scatterPlotBounds.minY) * 0.1;
-            scatterPlotView.minY = scatterPlotBounds.minY - yPadding;
-            scatterPlotView.maxY = scatterPlotBounds.maxY + yPadding;
-            renderScatterPlot();
-        }
-
-        function zoomIn(factor = 0.8) {
-            const yCenter = (scatterPlotView.minY + scatterPlotView.maxY) / 2;
-            const yRange = scatterPlotView.maxY - scatterPlotView.minY;
-            const newYRange = yRange * factor;
-            
-            scatterPlotView.minY = yCenter - newYRange / 2;
-            scatterPlotView.maxY = yCenter + newYRange / 2;
-            
-            renderScatterPlot();
-        }
-
-        function zoomOut(factor = 1.2) {
-            zoomIn(factor);
-        }
-
-        function panLeft() {
-            if (scatterPlotView.minX > 0) {
-                scatterPlotView.minX -= 1;
-                scatterPlotView.maxX -= 1;
-                renderScatterPlot();
-            }
-        }
-
-        function panRight() {
-            if (scatterPlotView.maxX < scatterPlotBounds.maxX) {
-                scatterPlotView.minX += 1;
-                scatterPlotView.maxX += 1;
-                renderScatterPlot();
-            }
-        }
-
-        function handleKeyboardZoom(event) {
-            if (currentViewMode !== 'scatter') return;
-            
-            if (event.key === '+' || event.key === '=') {
-                event.preventDefault();
-                zoomIn();
-            } else if (event.key === '-' || event.key === '_') {
-                event.preventDefault();
-                zoomOut();
-            } else if (event.key === '0') {
-                event.preventDefault();
-                resetZoom();
-            } else if (event.key === 'ArrowLeft') {
-                event.preventDefault();
-                panLeft();
-            } else if (event.key === 'ArrowRight') {
-                event.preventDefault();
-                panRight();
             }
         }
 
@@ -2051,9 +1326,7 @@
                     canvas.classList.add('pulse');
                     setTimeout(() => canvas.classList.remove('pulse'), 300);
                 } else {
-                    // Show column details for the clicked column
-                    const clickedSumK = Math.round(dataX);
-                    showColumnDetails(clickedSumK);
+                    hideDetails();
                 }
             });
             

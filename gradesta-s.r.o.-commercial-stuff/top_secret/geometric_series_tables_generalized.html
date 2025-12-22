@@ -352,7 +352,9 @@
                     return position <= 1 ? 1 : (position === 2 ? 3 : 2 * (position - 1) + 1);
                 }
             } else {
-                return 2 * position + 1;
+                // Generalize: duplicate 2^1 at the beginning (positions 0 and 1),
+                // then continue with odd exponents increasing by 2
+                return position <= 1 ? 1 : (2 * (position - 1) + 1);
             }
         }
 

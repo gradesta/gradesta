@@ -256,39 +256,73 @@ func (s *SpiralStairsChapter) drawSpiralStairs(screen *ebiten.Image, centerX, ce
 	// Draw steps around the spiral
 	// Show steps from currentStep - 16 to currentStep + 16 (about 2 turns visible)
 	// Only draw odd steps
-	// Convert to int for the visible range (small window around currentStep)
-	currentStepInt := 0
-	if s.currentStep.IsInt64() {
-		currentStepInt = int(s.currentStep.Int64())
-	} else {
-		// If too large, just show a small range around 0
-		currentStepInt = 0
-	}
-	
-	startStep := currentStepInt - 16
-	endStep := currentStepInt + 16
+	// Use big.Int for the visible range to handle very large numbers
+	startStepBig := new(big.Int).Set(s.currentStep)
+	startStepBig.Sub(startStepBig, big.NewInt(16))
+	endStepBig := new(big.Int).Set(s.currentStep)
+	endStepBig.Add(endStepBig, big.NewInt(16))
 	
 	// Ensure start and end are odd
-	if startStep%2 == 0 {
-		startStep--
+	mod := new(big.Int).Mod(startStepBig, big.NewInt(2))
+	if mod.Sign() == 0 {
+		startStepBig.Sub(startStepBig, big.NewInt(1))
 	}
-	if endStep%2 == 0 {
-		endStep++
+	mod = new(big.Int).Mod(endStepBig, big.NewInt(2))
+	if mod.Sign() == 0 {
+		endStepBig.Add(endStepBig, big.NewInt(1))
 	}
 	
-	for step := startStep; step <= endStep; step += 2 {
+	// Iterate through the range using big.Int
+	stepBig := new(big.Int).Set(startStepBig)
+	two := big.NewInt(2)
+	zero := big.NewInt(0)
+	
+	for stepBig.Cmp(endStepBig) <= 0 {
 		// Only draw odd steps
-		if step%2 != 0 {
-			s.drawStep(screen, centerX, centerY, step, currentStepInt)
+		mod := new(big.Int).Mod(stepBig, two)
+		if mod.Cmp(zero) != 0 {
+			s.drawStep(screen, centerX, centerY, stepBig, s.currentStep)
 		}
+		stepBig.Add(stepBig, two)
 	}
 }
 
-func (s *SpiralStairsChapter) drawStep(screen *ebiten.Image, centerX, centerY float64, step int, currentStepInt int) {
+func (s *SpiralStairsChapter) drawStep(screen *ebiten.Image, centerX, centerY float64, stepBig *big.Int, currentStepBig *big.Int) {
 	// Calculate angle for this step (32 steps per full turn = 2π/32 per step)
 	// Since we only show odd steps, this gives us 16 odd steps per turn
 	anglePerStep := 2.0 * math.Pi / stepsPerTurn
-	baseAngle := float64(step) * anglePerStep
+	
+	// Calculate relative position from currentStep for angle
+	// This works for both small and very large numbers
+	stepDiff := new(big.Int).Sub(stepBig, currentStepBig)
+	
+	// Convert difference to float64 (this is safe since we only show ±16 steps)
+	stepDiffFloat := new(big.Float).SetInt(stepDiff)
+	stepDiffFloat64, _ := stepDiffFloat.Float64()
+	
+	// Calculate angle based on the step's position relative to currentStep
+	// Use the step number directly if it fits, otherwise use relative positioning
+	var baseAngle float64
+	if stepBig.IsInt64() {
+		// For small numbers, use the step number directly
+		stepFloat64 := float64(stepBig.Int64())
+		baseAngle = stepFloat64 * anglePerStep
+	} else {
+		// For very large numbers, calculate relative to currentStep
+		// Get currentStep's angle position using modulo
+		one := big.NewInt(1)
+		two := big.NewInt(2)
+		sixteen := big.NewInt(16)
+		
+		currentMinusOne := new(big.Int).Sub(currentStepBig, one)
+		currentPosition := new(big.Int).Div(currentMinusOne, two)
+		currentSpiralPos := new(big.Int).Mod(currentPosition, sixteen)
+		currentSpiralPosFloat := float64(currentSpiralPos.Int64())
+		currentBaseAngle := currentSpiralPosFloat * anglePerStep
+		
+		// Add the relative difference (in steps, not turns)
+		baseAngle = currentBaseAngle + stepDiffFloat64*anglePerStep
+	}
 	
 	// Add offset to align rightmost and leftmost steps horizontally
 	// We want step 1 to be at the rightmost position (angle 0)
@@ -298,16 +332,19 @@ func (s *SpiralStairsChapter) drawStep(screen *ebiten.Image, centerX, centerY fl
 	angle := baseAngle + alignmentOffset
 	
 	// Calculate radius - steps get further from center as we go up
-	// Use step number to determine radius (higher steps = larger radius)
-	radiusFactor := 1.0 + float64(step-currentStepInt)*0.05
+	// Use relative difference from currentStep
+	radiusFactor := 1.0 + stepDiffFloat64*0.05
 	radius := spiralRadius * radiusFactor * s.zoom
 	
 	// Calculate step position
 	stepX := centerX + radius*math.Cos(angle)
 	stepY := centerY + radius*math.Sin(angle)
 	
-	// Determine if this is the current step
-	isCurrent := (step == currentStepInt)
+	// Check if this is the current step using big.Int comparison
+	isCurrent := (stepBig.Cmp(currentStepBig) == 0)
+	
+	// Determine if step is before or after current for coloring
+	isBefore := (stepBig.Cmp(currentStepBig) < 0)
 	
 	// Draw the step
 	stepSize := 20.0 * s.zoom
@@ -322,7 +359,7 @@ func (s *SpiralStairsChapter) drawStep(screen *ebiten.Image, centerX, centerY fl
 	} else {
 		// Other steps
 		stepColor := color.RGBA{150, 150, 150, 255}
-		if step < currentStepInt {
+		if isBefore {
 			// Steps below are darker
 			stepColor = color.RGBA{100, 100, 100, 255}
 		} else {
@@ -353,15 +390,7 @@ func (s *SpiralStairsChapter) getCachedStaircase() ([]StairStep, bool, bool) {
 	// Cache is invalid, recalculate
 	// For spiral staircase, continue up to 50 steps even if direction changes
 	maxSteps := 50
-	// Convert big.Int to int for CalculateStaircase (it expects int)
-	startIndex := 0
-	if s.currentStep.IsInt64() {
-		startIndex = int(s.currentStep.Int64())
-	} else {
-		// If too large, use 0 as fallback
-		startIndex = 0
-	}
-	steps, isUpwards, hitLimit := CalculateStaircase(startIndex, s.globalCoeficient, maxSteps, false)
+	steps, isUpwards, hitLimit := CalculateStaircase(s.currentStep, s.globalCoeficient, maxSteps, false)
 	
 	// Update cache
 	s.cachedSteps = steps
@@ -423,14 +452,9 @@ func (s *SpiralStairsChapter) drawCollatzTable(screen *ebiten.Image) {
 	frequency := s.calculateFrequency(steps)
 	
 	// Use the utility function to draw the table
-	// Convert big.Int to int for StartIndex
-	startIndexInt := 0
-	if s.currentStep.IsInt64() {
-		startIndexInt = int(s.currentStep.Int64())
-	}
 	data := CollatzTableData{
 		Steps:      steps,
-		StartIndex: startIndexInt,
+		StartIndex: new(big.Int).Set(s.currentStep),
 		Coefficient: s.globalCoeficient,
 		IsUpwards:  isUpwards,
 		HitLimit:   hitLimit,
