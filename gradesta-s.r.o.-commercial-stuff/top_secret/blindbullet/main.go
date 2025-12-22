@@ -23,6 +23,7 @@ const (
 	StateLaunchScreen GameState = iota
 	StateStairs
 	StateSpiralStairs
+	StateZigZag
 )
 
 // Chapter represents a selectable chapter
@@ -31,6 +32,7 @@ type Chapter int
 const (
 	ChapterStairs Chapter = iota
 	ChapterSpiralStairs
+	ChapterZigZag
 	ChapterExit
 	ChapterCount // Total number of chapters
 )
@@ -40,6 +42,7 @@ type Game struct {
 	state           GameState
 	stairs          *StairsChapter
 	spiralStairs    *SpiralStairsChapter
+	zigZag          *ZigZagChapter
 	selectedChapter Chapter
 }
 
@@ -49,6 +52,7 @@ func NewGame() *Game {
 		state:           StateLaunchScreen,
 		stairs:          NewStairsChapter(),
 		spiralStairs:    NewSpiralStairsChapter(),
+		zigZag:          NewZigZagChapter(),
 		selectedChapter: ChapterStairs,
 	}
 }
@@ -77,6 +81,8 @@ func (g *Game) Update() error {
 				g.state = StateStairs
 			case ChapterSpiralStairs:
 				g.state = StateSpiralStairs
+			case ChapterZigZag:
+				g.state = StateZigZag
 			case ChapterExit:
 				return errors.New("user requested exit")
 			}
@@ -102,6 +108,14 @@ func (g *Game) Update() error {
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !g.spiralStairs.WasEscConsumed() {
 			g.state = StateLaunchScreen
 		}
+	case StateZigZag:
+		if err := g.zigZag.Update(); err != nil {
+			return err
+		}
+		// Only return to home if ESC was pressed and not consumed by a dialog
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !g.zigZag.WasEscConsumed() {
+			g.state = StateLaunchScreen
+		}
 	}
 	return nil
 }
@@ -116,6 +130,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.stairs.Draw(screen)
 	case StateSpiralStairs:
 		g.spiralStairs.Draw(screen)
+	case StateZigZag:
+		g.zigZag.Draw(screen)
 	}
 }
 
@@ -163,6 +179,15 @@ func (g *Game) drawLaunchScreen(screen *ebiten.Image) {
 	}
 	text.Draw(screen, spiralText, basicfont.Face7x13, 50, screenHeight-95, spiralColor)
 	
+	// Draw Zig Zag chapter
+	zigzagText := "- N-Dimensional Zig Zag"
+	var zigzagColor color.Color = color.Gray{Y: 150}
+	if g.selectedChapter == ChapterZigZag {
+		zigzagText = "> N-Dimensional Zig Zag"
+		zigzagColor = color.White
+	}
+	text.Draw(screen, zigzagText, basicfont.Face7x13, 50, screenHeight-80, zigzagColor)
+	
 	// Draw Exit chapter
 	exitChapterText := "- Exit"
 	var exitChapterColor color.Color = color.Gray{Y: 150}
@@ -170,7 +195,7 @@ func (g *Game) drawLaunchScreen(screen *ebiten.Image) {
 		exitChapterText = "> Exit"
 		exitChapterColor = color.White
 	}
-	text.Draw(screen, exitChapterText, basicfont.Face7x13, 50, screenHeight-80, exitChapterColor)
+	text.Draw(screen, exitChapterText, basicfont.Face7x13, 50, screenHeight-65, exitChapterColor)
 	
 	// Draw navigation instructions
 	navText := "Use UP/DOWN arrows to select, ENTER/SPACE to activate"
