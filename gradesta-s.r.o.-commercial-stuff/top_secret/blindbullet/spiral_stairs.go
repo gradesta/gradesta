@@ -32,8 +32,11 @@ type SpiralStairsChapter struct {
 	cachedForCoef    float64
 	
 	// Cached frequency jump for shift-hold behavior
-	cachedFrequencyJump *big.Int // Jump amount (frequency * 2) cached when shift is first pressed
-	shiftWasPressed     bool     // Track if shift was just pressed (to recalculate frequency)
+	cachedFrequencyJump *big.Int // Jump amount (frequency * 2) set by 'f' key
+	
+	// Jump input mode
+	jumpInputMode bool   // Whether we're in jump input mode
+	jumpInputBuffer string // Buffer for typing step number
 }
 
 // NewSpiralStairsChapter creates a new Spiral Staircase chapter
@@ -52,26 +55,88 @@ func (s *SpiralStairsChapter) Update() error {
 		s.cycleGlobalCoeficient()
 	}
 	
+	// Handle 'f' key to update frequency jump based on current step
+	if inpututil.IsKeyJustPressed(ebiten.KeyF) {
+		steps, _, _ := s.getCachedStaircase()
+		frequency := s.calculateFrequency(steps)
+		// Multiply by 2 to stay on odd steps
+		s.cachedFrequencyJump = new(big.Int).Mul(frequency, big.NewInt(2))
+		return nil
+	}
+	
+	// Handle 'j' key to enter jump input mode
+	if inpututil.IsKeyJustPressed(ebiten.KeyJ) {
+		s.jumpInputMode = true
+		s.jumpInputBuffer = ""
+		return nil
+	}
+	
+	// Handle jump input mode
+	if s.jumpInputMode {
+		// Handle Escape to cancel
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			s.jumpInputMode = false
+			s.jumpInputBuffer = ""
+			return nil
+		}
+		
+		// Handle Enter to confirm jump
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+			if s.jumpInputBuffer != "" {
+				// Parse the input as big.Int
+				targetStep := new(big.Int)
+				if _, ok := targetStep.SetString(s.jumpInputBuffer, 10); ok {
+					s.currentStep.Set(targetStep)
+					// Ensure we stay on odd step
+					mod := new(big.Int).Mod(s.currentStep, big.NewInt(2))
+					if mod.Sign() == 0 {
+						s.currentStep.Add(s.currentStep, big.NewInt(1))
+					}
+				}
+			}
+			s.jumpInputMode = false
+			s.jumpInputBuffer = ""
+			return nil
+		}
+		
+		// Handle Backspace to delete last character
+		if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) {
+			if len(s.jumpInputBuffer) > 0 {
+				s.jumpInputBuffer = s.jumpInputBuffer[:len(s.jumpInputBuffer)-1]
+			}
+			return nil
+		}
+		
+		// Handle numeric keys (0-9)
+		keys := []ebiten.Key{ebiten.Key0, ebiten.Key1, ebiten.Key2, ebiten.Key3, ebiten.Key4,
+			ebiten.Key5, ebiten.Key6, ebiten.Key7, ebiten.Key8, ebiten.Key9}
+		for i, key := range keys {
+			if inpututil.IsKeyJustPressed(key) {
+				s.jumpInputBuffer += string(rune('0' + i))
+				return nil
+			}
+		}
+		
+		// Handle minus sign (only at the start)
+		if inpututil.IsKeyJustPressed(ebiten.KeyMinus) && len(s.jumpInputBuffer) == 0 {
+			s.jumpInputBuffer = "-"
+			return nil
+		}
+		
+		// In jump input mode, ignore other keys
+		return nil
+	}
+	
 	// Handle 'r' key to reset to step 1
 	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
 		s.currentStep.SetInt64(1)
 		return nil
 	}
 	
-	// Handle shift+arrow keys to jump by frequency
+	// Handle shift+arrow keys to jump by cached frequency
 	shiftPressed := ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)
-	shiftJustPressed := inpututil.IsKeyJustPressed(ebiten.KeyShiftLeft) || inpututil.IsKeyJustPressed(ebiten.KeyShiftRight)
 	
-	if shiftPressed {
-		// If shift was just pressed, recalculate frequency
-		if shiftJustPressed || !s.shiftWasPressed {
-			steps, _, _ := s.getCachedStaircase()
-			frequency := s.calculateFrequency(steps)
-			// Multiply by 2 to stay on odd steps
-			s.cachedFrequencyJump = new(big.Int).Mul(frequency, big.NewInt(2))
-			s.shiftWasPressed = true
-		}
-		
+	if shiftPressed && s.cachedFrequencyJump != nil {
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || inpututil.IsKeyJustPressed(ebiten.KeyD) {
 			s.currentStep.Add(s.currentStep, s.cachedFrequencyJump)
 			// Ensure we stay on odd step
@@ -90,9 +155,6 @@ func (s *SpiralStairsChapter) Update() error {
 			}
 			return nil
 		}
-	} else {
-		// Shift is not pressed, reset the flag
-		s.shiftWasPressed = false
 	}
 	
 	// Handle left/right movement - only allow odd steps
@@ -135,6 +197,11 @@ func (s *SpiralStairsChapter) Draw(screen *ebiten.Image) {
 	// Draw shift overlay if shift is pressed
 	if ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight) {
 		s.drawShiftOverlay(screen)
+	}
+	
+	// Draw jump input overlay if in jump input mode
+	if s.jumpInputMode {
+		s.drawJumpInput(screen)
 	}
 	
 	// Draw the current step indicator
@@ -287,29 +354,9 @@ func (s *SpiralStairsChapter) cycleGlobalCoeficient() {
 }
 
 func (s *SpiralStairsChapter) calculateFrequency(steps []StairStep) *big.Int {
-	// Frequency is the product of 2^k for each k value
-	// Include the starting point's k value
+	// Frequency is the product of 2^k for all k values in the staircase steps
 	// Use big.Int to handle arbitrarily large values
 	frequency := big.NewInt(1)
-	
-	// Calculate k for the starting point
-	// Convert big.Int to float64 for calculation
-	currentStepFloat := 0.0
-	if s.currentStep.IsInt64() {
-		currentStepFloat = float64(s.currentStep.Int64())
-	} else {
-		// For very large numbers, use a big.Float conversion
-		bigFloat := new(big.Float).SetInt(s.currentStep)
-		currentStepFloat, _ = bigFloat.Float64()
-	}
-	startYValue := s.globalCoeficient*currentStepFloat + 1.0
-	startYValueInt := int(startYValue)
-	startK := findLargestPowerOf2(startYValueInt)
-	if startK > 0 {
-		// Calculate 2^k using big.Int
-		powerOf2 := new(big.Int).Lsh(big.NewInt(1), uint(startK)) // 1 << k
-		frequency.Mul(frequency, powerOf2)
-	}
 	
 	// Multiply by k values from all steps
 	for _, step := range steps {
@@ -375,6 +422,37 @@ func (s *SpiralStairsChapter) drawShiftOverlay(screen *ebiten.Image) {
 	}
 }
 
+func (s *SpiralStairsChapter) drawJumpInput(screen *ebiten.Image) {
+	// Draw a small dialog box in the center
+	dialogWidth := 300.0
+	dialogHeight := 80.0
+	dialogX := (float64(screenWidth) - dialogWidth) / 2
+	dialogY := (float64(screenHeight) - dialogHeight) / 2
+	
+	// Draw dialog background
+	ebitenutil.DrawRect(screen, dialogX, dialogY, dialogWidth, dialogHeight, color.RGBA{40, 40, 50, 255})
+	
+	// Draw dialog border
+	ebitenutil.DrawRect(screen, dialogX, dialogY, dialogWidth, 2, color.White)
+	ebitenutil.DrawRect(screen, dialogX, dialogY, 2, dialogHeight, color.White)
+	ebitenutil.DrawRect(screen, dialogX+dialogWidth-2, dialogY, 2, dialogHeight, color.White)
+	ebitenutil.DrawRect(screen, dialogX, dialogY+dialogHeight-2, dialogWidth, 2, color.White)
+	
+	// Draw input prompt
+	promptText := "Jump to step: " + s.jumpInputBuffer + "_"
+	promptBounds := text.BoundString(basicfont.Face7x13, promptText)
+	promptX := int(dialogX + (dialogWidth-float64(promptBounds.Dx()))/2)
+	promptY := int(dialogY + 25)
+	text.Draw(screen, promptText, basicfont.Face7x13, promptX, promptY, color.White)
+	
+	// Draw instruction
+	instText := "Enter: confirm | ESC: cancel"
+	instBounds := text.BoundString(basicfont.Face7x13, instText)
+	instX := int(dialogX + (dialogWidth-float64(instBounds.Dx()))/2)
+	instY := int(dialogY + 45)
+	text.Draw(screen, instText, basicfont.Face7x13, instX, instY, color.Gray{Y: 150})
+}
+
 func (s *SpiralStairsChapter) drawCurrentStep(screen *ebiten.Image, centerX, centerY float64) {
 	// Draw info text at the bottom
 	// Force recalculation of step text every frame to ensure it updates
@@ -385,7 +463,7 @@ func (s *SpiralStairsChapter) drawCurrentStep(screen *ebiten.Image, centerX, cen
 	text.Draw(screen, stepText, basicfont.Face7x13, stepX, stepY, color.White)
 	
 	// Draw controls
-	controlsText := "LEFT/RIGHT: move | Shift+LEFT/RIGHT: jump by frequency | C: change coefficient | R: reset to step 1 | ESC: back"
+	controlsText := "LEFT/RIGHT: move | J: jump to step | F: update frequency | Shift+LEFT/RIGHT: jump by frequency | C: change coefficient | R: reset to step 1 | ESC: back"
 	controlsBounds := text.BoundString(basicfont.Face7x13, controlsText)
 	controlsX := (screenWidth - controlsBounds.Dx()) / 2
 	controlsY := screenHeight - 15

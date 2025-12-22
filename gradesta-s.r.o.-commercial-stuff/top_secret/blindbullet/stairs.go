@@ -42,8 +42,11 @@ type StairsChapter struct {
 	cachedForCoef    float64
 	
 	// Cached frequency jump for shift-hold behavior
-	cachedFrequencyJump int  // Jump amount (frequency * 2) cached when shift is first pressed
-	shiftWasPressed     bool // Track if shift was just pressed (to recalculate frequency)
+	cachedFrequencyJump int  // Jump amount (frequency * 2) set by 'f' key
+	
+	// Jump input mode
+	jumpInputMode bool   // Whether we're in jump input mode
+	jumpInputBuffer string // Buffer for typing step number
 }
 
 // NewStairsChapter creates a new Stairs chapter
@@ -130,6 +133,77 @@ func (s *StairsChapter) Update() error {
 		s.updateCamera()
 	}
 	
+	// Handle 'f' key to update frequency jump based on current index
+	if inpututil.IsKeyJustPressed(ebiten.KeyF) {
+		steps, _, _ := s.getCachedStaircase()
+		frequency := s.calculateFrequency(steps)
+		s.cachedFrequencyJump = frequency * 2 // Multiply by 2 to stay on odd steps
+		return nil
+	}
+	
+	// Handle 'j' key to enter jump input mode
+	if inpututil.IsKeyJustPressed(ebiten.KeyJ) {
+		s.jumpInputMode = true
+		s.jumpInputBuffer = ""
+		return nil
+	}
+	
+	// Handle jump input mode
+	if s.jumpInputMode {
+		// Handle Escape to cancel
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			s.jumpInputMode = false
+			s.jumpInputBuffer = ""
+			return nil
+		}
+		
+		// Handle Enter to confirm jump
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+			if s.jumpInputBuffer != "" {
+				// Parse the input as int
+				if targetIndex, err := strconv.Atoi(s.jumpInputBuffer); err == nil {
+					s.selectedIndex = targetIndex
+					// Ensure we stay on odd index
+					if s.selectedIndex%2 == 0 {
+						s.selectedIndex++
+					}
+					needsRecalc = true
+					s.updateCamera()
+				}
+			}
+			s.jumpInputMode = false
+			s.jumpInputBuffer = ""
+			return nil
+		}
+		
+		// Handle Backspace to delete last character
+		if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) {
+			if len(s.jumpInputBuffer) > 0 {
+				s.jumpInputBuffer = s.jumpInputBuffer[:len(s.jumpInputBuffer)-1]
+			}
+			return nil
+		}
+		
+		// Handle numeric keys (0-9)
+		keys := []ebiten.Key{ebiten.Key0, ebiten.Key1, ebiten.Key2, ebiten.Key3, ebiten.Key4,
+			ebiten.Key5, ebiten.Key6, ebiten.Key7, ebiten.Key8, ebiten.Key9}
+		for i, key := range keys {
+			if inpututil.IsKeyJustPressed(key) {
+				s.jumpInputBuffer += string(rune('0' + i))
+				return nil
+			}
+		}
+		
+		// Handle minus sign (only at the start)
+		if inpututil.IsKeyJustPressed(ebiten.KeyMinus) && len(s.jumpInputBuffer) == 0 {
+			s.jumpInputBuffer = "-"
+			return nil
+		}
+		
+		// In jump input mode, ignore other keys
+		return nil
+	}
+	
 	// Handle 'r' key to reset to index 1
 	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
 		s.selectedIndex = 1
@@ -140,7 +214,6 @@ func (s *StairsChapter) Update() error {
 	
 	// Handle Shift+Right Arrow to jump to end of stairs (top or bottom)
 	shiftPressed := ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)
-	shiftJustPressed := inpututil.IsKeyJustPressed(ebiten.KeyShiftLeft) || inpututil.IsKeyJustPressed(ebiten.KeyShiftRight)
 	
 	if shiftPressed {
 		// Shift+Right: jump to end of stairs
@@ -154,28 +227,19 @@ func (s *StairsChapter) Update() error {
 			return nil
 		}
 		
-		// Shift+Left: jump by frequency (with hold support)
-		if shiftJustPressed || !s.shiftWasPressed {
-			// Recalculate frequency when shift is first pressed
-			steps, _, _ := s.getCachedStaircase()
-			frequency := s.calculateFrequency(steps)
-			s.cachedFrequencyJump = frequency * 2 // Multiply by 2 to stay on odd steps
-			s.shiftWasPressed = true
-		}
-		
+		// Shift+Left: jump by cached frequency
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || inpututil.IsKeyJustPressed(ebiten.KeyA) {
-			s.selectedIndex -= s.cachedFrequencyJump
-			// Ensure we stay on odd index
-			if s.selectedIndex%2 == 0 {
-				s.selectedIndex--
+			if s.cachedFrequencyJump > 0 {
+				s.selectedIndex -= s.cachedFrequencyJump
+				// Ensure we stay on odd index
+				if s.selectedIndex%2 == 0 {
+					s.selectedIndex--
+				}
+				needsRecalc = true
+				s.updateCamera()
 			}
-			needsRecalc = true
-			s.updateCamera()
 			return nil
 		}
-	} else {
-		// Shift is not pressed, reset the flag
-		s.shiftWasPressed = false
 	}
 	
 	// Handle arrow key input - can go infinitely in either direction
@@ -644,18 +708,8 @@ func (s *StairsChapter) drawDestinationPoint(screen *ebiten.Image) {
 }
 
 func (s *StairsChapter) calculateFrequency(steps []StairStep) int {
-	// Frequency is the product of 2^k for each k value
-	// Include the starting point's k value
+	// Frequency is the product of 2^k for all k values in the staircase steps
 	frequency := 1
-	
-	// Calculate k for the starting point
-	startYValue := s.globalCoeficient*float64(s.selectedIndex) + 1.0
-	startYValueInt := int(startYValue)
-	startK := findLargestPowerOf2(startYValueInt)
-	if startK > 0 {
-		// Calculate 2^k using bit shifting
-		frequency *= 1 << uint(startK)
-	}
 	
 	// Multiply by k values from all steps
 	for _, step := range steps {
@@ -689,6 +743,37 @@ func (s *StairsChapter) drawShiftOverlay(screen *ebiten.Image) {
 	}
 }
 
+func (s *StairsChapter) drawJumpInput(screen *ebiten.Image) {
+	// Draw a small dialog box in the center
+	dialogWidth := 300.0
+	dialogHeight := 80.0
+	dialogX := (float64(screenWidth) - dialogWidth) / 2
+	dialogY := (float64(screenHeight) - dialogHeight) / 2
+	
+	// Draw dialog background
+	ebitenutil.DrawRect(screen, dialogX, dialogY, dialogWidth, dialogHeight, color.RGBA{40, 40, 50, 255})
+	
+	// Draw dialog border
+	ebitenutil.DrawRect(screen, dialogX, dialogY, dialogWidth, 2, color.White)
+	ebitenutil.DrawRect(screen, dialogX, dialogY, 2, dialogHeight, color.White)
+	ebitenutil.DrawRect(screen, dialogX+dialogWidth-2, dialogY, 2, dialogHeight, color.White)
+	ebitenutil.DrawRect(screen, dialogX, dialogY+dialogHeight-2, dialogWidth, 2, color.White)
+	
+	// Draw input prompt
+	promptText := "Jump to index: " + s.jumpInputBuffer + "_"
+	promptBounds := text.BoundString(basicfont.Face7x13, promptText)
+	promptX := int(dialogX + (dialogWidth-float64(promptBounds.Dx()))/2)
+	promptY := int(dialogY + 25)
+	text.Draw(screen, promptText, basicfont.Face7x13, promptX, promptY, color.White)
+	
+	// Draw instruction
+	instText := "Enter: confirm | ESC: cancel"
+	instBounds := text.BoundString(basicfont.Face7x13, instText)
+	instX := int(dialogX + (dialogWidth-float64(instBounds.Dx()))/2)
+	instY := int(dialogY + 45)
+	text.Draw(screen, instText, basicfont.Face7x13, instX, instY, color.Gray{Y: 150})
+}
+
 func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
 	// Calculate staircase steps (use cache)
 	steps, isUpwards, hitLimit := s.getCachedStaircase()
@@ -709,12 +794,12 @@ func (s *StairsChapter) drawIndex(screen *ebiten.Image) {
 	var infoText string
 	if stepsCount > 0 {
 		if isUpwards {
-			infoText = "Arrow/A/D: navigate | Shift+Right: jump to top | Shift+Left: jump by frequency | C: change coefficient | R: reset to index 1"
+			infoText = "Arrow/A/D: navigate | J: jump to index | F: update frequency | Shift+Right: jump to top | Shift+Left: jump by frequency | C: change coefficient | R: reset to index 1"
 		} else {
-			infoText = "Arrow/A/D: navigate | Shift+Right: jump to bottom | Shift+Left: jump by frequency | C: change coefficient | R: reset to index 1"
+			infoText = "Arrow/A/D: navigate | J: jump to index | F: update frequency | Shift+Right: jump to bottom | Shift+Left: jump by frequency | C: change coefficient | R: reset to index 1"
 		}
 	} else {
-		infoText = "Arrow/A/D: navigate | Shift+Right: jump to end | Shift+Left: jump by frequency | C: change coefficient | R: reset to index 1"
+		infoText = "Arrow/A/D: navigate | J: jump to index | F: update frequency | Shift+Right: jump to end | Shift+Left: jump by frequency | C: change coefficient | R: reset to index 1"
 	}
 	infoBounds := text.BoundString(basicfont.Face7x13, infoText)
 	infoX := (screenWidth - infoBounds.Dx()) / 2
