@@ -90,14 +90,16 @@ func (g *Game) Update() error {
 		if err := g.stairs.Update(); err != nil {
 			return err
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		// Only return to home if ESC was pressed and not consumed by a dialog
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !g.stairs.WasEscConsumed() {
 			g.state = StateLaunchScreen
 		}
 	case StateSpiralStairs:
 		if err := g.spiralStairs.Update(); err != nil {
 			return err
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		// Only return to home if ESC was pressed and not consumed by a dialog
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !g.spiralStairs.WasEscConsumed() {
 			g.state = StateLaunchScreen
 		}
 	}

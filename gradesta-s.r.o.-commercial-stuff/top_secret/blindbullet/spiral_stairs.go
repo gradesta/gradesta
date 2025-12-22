@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
 	"math"
 	"math/big"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -37,6 +39,11 @@ type SpiralStairsChapter struct {
 	// Jump input mode
 	jumpInputMode bool   // Whether we're in jump input mode
 	jumpInputBuffer string // Buffer for typing step number
+	
+	// Help dialog
+	showHelp bool // Whether help dialog is visible
+	helpScrollOffset int // Scroll offset for help dialog
+	escConsumed bool // Whether ESC was consumed by a dialog this frame
 }
 
 // NewSpiralStairsChapter creates a new Spiral Staircase chapter
@@ -50,6 +57,37 @@ func NewSpiralStairsChapter() *SpiralStairsChapter {
 }
 
 func (s *SpiralStairsChapter) Update() error {
+	s.escConsumed = false // Reset at start of frame
+	
+	// Handle 'h' key to toggle help dialog
+	if inpututil.IsKeyJustPressed(ebiten.KeyH) {
+		s.showHelp = !s.showHelp
+		if s.showHelp {
+			s.helpScrollOffset = 0
+		}
+		return nil
+	}
+	
+	// Handle help dialog scrolling
+	if s.showHelp {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyS) {
+			s.helpScrollOffset += 15
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW) {
+			s.helpScrollOffset -= 15
+			if s.helpScrollOffset < 0 {
+				s.helpScrollOffset = 0
+			}
+		}
+		// Close help with Escape or 'h' again
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyH) {
+			s.showHelp = false
+			s.escConsumed = true
+		}
+		// Don't process other keys when help is open
+		return nil
+	}
+	
 	// Handle 'c' key to cycle through global coefficient values (odd numbers 1-21)
 	if inpututil.IsKeyJustPressed(ebiten.KeyC) {
 		s.cycleGlobalCoeficient()
@@ -77,6 +115,7 @@ func (s *SpiralStairsChapter) Update() error {
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 			s.jumpInputMode = false
 			s.jumpInputBuffer = ""
+			s.escConsumed = true
 			return nil
 		}
 		
@@ -134,9 +173,9 @@ func (s *SpiralStairsChapter) Update() error {
 	}
 	
 	// Handle shift+arrow keys to jump by cached frequency
-	shiftPressed := ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)
+	shiftPressedForJump := ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)
 	
-	if shiftPressed && s.cachedFrequencyJump != nil {
+	if shiftPressedForJump && s.cachedFrequencyJump != nil {
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || inpututil.IsKeyJustPressed(ebiten.KeyD) {
 			s.currentStep.Add(s.currentStep, s.cachedFrequencyJump)
 			// Ensure we stay on odd step
@@ -202,6 +241,11 @@ func (s *SpiralStairsChapter) Draw(screen *ebiten.Image) {
 	// Draw jump input overlay if in jump input mode
 	if s.jumpInputMode {
 		s.drawJumpInput(screen)
+	}
+	
+	// Draw help dialog if open
+	if s.showHelp {
+		s.drawHelpDialog(screen)
 	}
 	
 	// Draw the current step indicator
@@ -453,6 +497,111 @@ func (s *SpiralStairsChapter) drawJumpInput(screen *ebiten.Image) {
 	text.Draw(screen, instText, basicfont.Face7x13, instX, instY, color.Gray{Y: 150})
 }
 
+func (s *SpiralStairsChapter) drawHelpDialog(screen *ebiten.Image) {
+	// Draw semi-transparent overlay
+	overlayColor := color.RGBA{0, 0, 0, 200}
+	ebitenutil.DrawRect(screen, 0, 0, float64(screenWidth), float64(screenHeight), overlayColor)
+	
+	// Draw help dialog box
+	dialogWidth := 600.0
+	dialogHeight := 500.0
+	dialogX := (float64(screenWidth) - dialogWidth) / 2
+	dialogY := (float64(screenHeight) - dialogHeight) / 2
+	
+	// Draw dialog background
+	ebitenutil.DrawRect(screen, dialogX, dialogY, dialogWidth, dialogHeight, color.RGBA{30, 30, 40, 255})
+	
+	// Draw dialog border
+	ebitenutil.DrawRect(screen, dialogX, dialogY, dialogWidth, 2, color.White)
+	ebitenutil.DrawRect(screen, dialogX, dialogY, 2, dialogHeight, color.White)
+	ebitenutil.DrawRect(screen, dialogX+dialogWidth-2, dialogY, 2, dialogHeight, color.White)
+	ebitenutil.DrawRect(screen, dialogX, dialogY+dialogHeight-2, dialogWidth, 2, color.White)
+	
+	// Draw title
+	titleText := "HELP - KEYBOARD CONTROLS"
+	titleBounds := text.BoundString(basicfont.Face7x13, titleText)
+	titleX := int(dialogX + (dialogWidth-float64(titleBounds.Dx()))/2)
+	titleY := int(dialogY + 20)
+	text.Draw(screen, titleText, basicfont.Face7x13, titleX, titleY, color.White)
+	
+	// Help content lines
+	helpLines := []string{
+		"",
+		"MOVEMENT:",
+		"  LEFT/RIGHT or A/D    - Move to previous/next odd step",
+		"",
+		"JUMPING:",
+		"  J                    - Open jump dialog to go to specific step",
+		"  Shift+LEFT/RIGHT     - Jump by frequency (set with F key)",
+		"",
+		"FREQUENCY:",
+		"  F                    - Calculate and store frequency jump amount",
+		"                       - Frequency is product of 2^k for all steps",
+		"",
+		"COEFFICIENT:",
+		"  C                    - Cycle through odd coefficients (1-21)",
+		"",
+		"RESET:",
+		"  R                    - Reset to step 1",
+		"",
+		"NAVIGATION:",
+		"  ESC                  - Return to chapter selection",
+		"",
+		"JUMP DIALOG:",
+		"  Type number          - Enter step number",
+		"  Enter               - Confirm and jump",
+		"  ESC                 - Cancel",
+		"  Backspace            - Delete last character",
+		"",
+		"HELP:",
+		"  H                    - Show/hide this help dialog",
+		"  UP/DOWN or W/S       - Scroll help (when open)",
+		"",
+		"",
+		"Press H or ESC to close",
+	}
+	
+	// Draw scrollable content
+	startY := int(dialogY) + 50 - s.helpScrollOffset
+	lineHeight := 15
+	
+	for i, line := range helpLines {
+		y := startY + i*lineHeight
+		// Only draw visible lines
+		if y >= int(dialogY)+40 && y <= int(dialogY)+int(dialogHeight)-30 {
+			// Color code different sections
+			var lineColor color.Color = color.Gray{Y: 200}
+			if len(line) > 0 && line[0] != ' ' {
+				// Section headers
+				lineColor = color.White
+			} else if strings.HasPrefix(line, "  ") {
+				// Regular lines
+				lineColor = color.Gray{Y: 180}
+			}
+			text.Draw(screen, line, basicfont.Face7x13, int(dialogX+20), y, lineColor)
+		}
+	}
+	
+	// Draw scroll indicator if content is scrollable
+	totalHeight := len(helpLines) * lineHeight
+	if totalHeight > int(dialogHeight-70) {
+		// Show scroll position
+		scrollText := fmt.Sprintf("Scroll: %d/%d", s.helpScrollOffset, totalHeight-int(dialogHeight-70))
+		scrollBounds := text.BoundString(basicfont.Face7x13, scrollText)
+		scrollX := int(dialogX + dialogWidth - float64(scrollBounds.Dx()) - 10)
+		scrollY := int(dialogY + dialogHeight - 20)
+		text.Draw(screen, scrollText, basicfont.Face7x13, scrollX, scrollY, color.Gray{Y: 120})
+	}
+}
+
+func (s *SpiralStairsChapter) IsDialogOpen() bool {
+	return s.showHelp || s.jumpInputMode
+}
+
+func (s *SpiralStairsChapter) WasEscConsumed() bool {
+	return s.escConsumed
+}
+
 func (s *SpiralStairsChapter) drawCurrentStep(screen *ebiten.Image, centerX, centerY float64) {
 	// Draw info text at the bottom
 	// Force recalculation of step text every frame to ensure it updates
@@ -463,7 +612,7 @@ func (s *SpiralStairsChapter) drawCurrentStep(screen *ebiten.Image, centerX, cen
 	text.Draw(screen, stepText, basicfont.Face7x13, stepX, stepY, color.White)
 	
 	// Draw controls
-	controlsText := "LEFT/RIGHT: move | J: jump to step | F: update frequency | Shift+LEFT/RIGHT: jump by frequency | C: change coefficient | R: reset to step 1 | ESC: back"
+	controlsText := "Arrow Keys: navigate | Shift+Arrows: jump by frequency | F: update frequency | H: help"
 	controlsBounds := text.BoundString(basicfont.Face7x13, controlsText)
 	controlsX := (screenWidth - controlsBounds.Dx()) / 2
 	controlsY := screenHeight - 15
