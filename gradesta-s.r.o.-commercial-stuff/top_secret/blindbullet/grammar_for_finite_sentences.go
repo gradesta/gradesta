@@ -408,10 +408,9 @@ func (g *GrammarForFiniteSentencesChapter) Draw(screen *ebiten.Image) {
 			StopOnDirectionChange: false, // Continue even if direction changes, like spiral stairs
 		}
 		
-		// Use the same function as spiral stairs (DrawCollatzTable uses default position)
-		// But we need to position it on the right side, so use DrawCollatzTableAt
-		// However, let's use the same default Y position (55) to match spiral stairs behavior
-		DrawCollatzTableAt(screen, tableData, 350, 55)
+		// Draw the table on the right side, aligned vertically with the editable table
+		// The editable table header starts at headerY (70), so align the steps table there too
+		DrawCollatzTableAt(screen, tableData, 350, headerY)
 	}
 	
 	// Draw instructions
