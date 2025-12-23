@@ -21,39 +21,67 @@ type GameState int
 
 const (
 	StateLaunchScreen GameState = iota
+	StateMaxwellsDaemon
+	StateCrystals
 	StateStairs
 	StateSpiralStairs
+	StateThreeRowBootlace
+	StateWaves
 	StateZigZag
+	StateGrammarForFiniteSentences
+	StateSchwingerLimit
+	StateEssenceOfSelf
 )
 
 // Chapter represents a selectable chapter
 type Chapter int
 
 const (
-	ChapterStairs Chapter = iota
+	ChapterMaxwellsDaemon Chapter = iota
+	ChapterCrystals
+	ChapterStairs
 	ChapterSpiralStairs
+	ChapterThreeRowBootlace
+	ChapterWaves
 	ChapterZigZag
+	ChapterGrammarForFiniteSentences
+	ChapterSchwingerLimit
+	ChapterEssenceOfSelf
 	ChapterExit
 	ChapterCount // Total number of chapters
 )
 
 // Game is the main game struct
 type Game struct {
-	state           GameState
-	stairs          *StairsChapter
-	spiralStairs    *SpiralStairsChapter
-	zigZag          *ZigZagChapter
-	selectedChapter Chapter
+	state                        GameState
+	maxwellsDaemon               *MaxwellsDaemonChapter
+	crystals                     *CrystalsChapter
+	stairs                       *StairsChapter
+	spiralStairs                 *SpiralStairsChapter
+	threeRowBootlace             *ThreeRowBootlaceChapter
+	waves                        *WavesChapter
+	zigZag                       *ZigZagChapter
+	grammarForFiniteSentences    *GrammarForFiniteSentencesChapter
+	schwingerLimit               *SchwingerLimitChapter
+	essenceOfSelf                *EssenceOfSelfChapter
+	selectedChapter              Chapter
 }
 
 // NewGame creates a new game instance
 func NewGame() *Game {
 	return &Game{
-		state:           StateLaunchScreen,
-		stairs:          NewStairsChapter(),
-		spiralStairs:    NewSpiralStairsChapter(),
-		zigZag:          NewZigZagChapter(),
-		selectedChapter: ChapterStairs,
+		state:                        StateLaunchScreen,
+		maxwellsDaemon:               NewMaxwellsDaemonChapter(),
+		crystals:                     NewCrystalsChapter(),
+		stairs:                       NewStairsChapter(),
+		spiralStairs:                 NewSpiralStairsChapter(),
+		threeRowBootlace:             NewThreeRowBootlaceChapter(),
+		waves:                        NewWavesChapter(),
+		zigZag:                       NewZigZagChapter(),
+		grammarForFiniteSentences:    NewGrammarForFiniteSentencesChapter(),
+		schwingerLimit:               NewSchwingerLimitChapter(),
+		essenceOfSelf:                NewEssenceOfSelfChapter(),
+		selectedChapter:              ChapterMaxwellsDaemon,
 	}
 }
 
@@ -77,12 +105,26 @@ func (g *Game) Update() error {
 		// Activate selected chapter
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 			switch g.selectedChapter {
+			case ChapterMaxwellsDaemon:
+				g.state = StateMaxwellsDaemon
+			case ChapterCrystals:
+				g.state = StateCrystals
 			case ChapterStairs:
 				g.state = StateStairs
 			case ChapterSpiralStairs:
 				g.state = StateSpiralStairs
+			case ChapterThreeRowBootlace:
+				g.state = StateThreeRowBootlace
+			case ChapterWaves:
+				g.state = StateWaves
 			case ChapterZigZag:
 				g.state = StateZigZag
+			case ChapterGrammarForFiniteSentences:
+				g.state = StateGrammarForFiniteSentences
+			case ChapterSchwingerLimit:
+				g.state = StateSchwingerLimit
+			case ChapterEssenceOfSelf:
+				g.state = StateEssenceOfSelf
 			case ChapterExit:
 				return errors.New("user requested exit")
 			}
@@ -91,6 +133,55 @@ func (g *Game) Update() error {
 		// Allow Escape or Q to exit the application
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyQ) {
 			return errors.New("user requested exit")
+		}
+	case StateMaxwellsDaemon:
+		if err := g.maxwellsDaemon.Update(); err != nil {
+			return err
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !g.maxwellsDaemon.WasEscConsumed() {
+			g.state = StateLaunchScreen
+		}
+	case StateCrystals:
+		if err := g.crystals.Update(); err != nil {
+			return err
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !g.crystals.WasEscConsumed() {
+			g.state = StateLaunchScreen
+		}
+	case StateThreeRowBootlace:
+		if err := g.threeRowBootlace.Update(); err != nil {
+			return err
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !g.threeRowBootlace.WasEscConsumed() {
+			g.state = StateLaunchScreen
+		}
+	case StateWaves:
+		if err := g.waves.Update(); err != nil {
+			return err
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !g.waves.WasEscConsumed() {
+			g.state = StateLaunchScreen
+		}
+	case StateGrammarForFiniteSentences:
+		if err := g.grammarForFiniteSentences.Update(); err != nil {
+			return err
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !g.grammarForFiniteSentences.WasEscConsumed() {
+			g.state = StateLaunchScreen
+		}
+	case StateSchwingerLimit:
+		if err := g.schwingerLimit.Update(); err != nil {
+			return err
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !g.schwingerLimit.WasEscConsumed() {
+			g.state = StateLaunchScreen
+		}
+	case StateEssenceOfSelf:
+		if err := g.essenceOfSelf.Update(); err != nil {
+			return err
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !g.essenceOfSelf.WasEscConsumed() {
+			g.state = StateLaunchScreen
 		}
 	case StateStairs:
 		if err := g.stairs.Update(); err != nil {
@@ -126,83 +217,124 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	switch g.state {
 	case StateLaunchScreen:
 		g.drawLaunchScreen(screen)
+	case StateMaxwellsDaemon:
+		g.maxwellsDaemon.Draw(screen)
+	case StateCrystals:
+		g.crystals.Draw(screen)
 	case StateStairs:
 		g.stairs.Draw(screen)
 	case StateSpiralStairs:
 		g.spiralStairs.Draw(screen)
+	case StateThreeRowBootlace:
+		g.threeRowBootlace.Draw(screen)
+	case StateWaves:
+		g.waves.Draw(screen)
 	case StateZigZag:
 		g.zigZag.Draw(screen)
+	case StateGrammarForFiniteSentences:
+		g.grammarForFiniteSentences.Draw(screen)
+	case StateSchwingerLimit:
+		g.schwingerLimit.Draw(screen)
+	case StateEssenceOfSelf:
+		g.essenceOfSelf.Draw(screen)
 	}
 }
 
 func (g *Game) drawLaunchScreen(screen *ebiten.Image) {
-	// Draw title
+	// Draw title (moved up)
 	titleText := "BLIND BULLET"
 	titleBounds := text.BoundString(basicfont.Face7x13, titleText)
 	titleX := (screenWidth - titleBounds.Dx()) / 2
-	titleY := screenHeight/2 - 50
+	titleY := 80
 	text.Draw(screen, titleText, basicfont.Face7x13, titleX, titleY, color.White)
 
-	// Draw instructions
+	// Draw chapter list (left-aligned, moved down)
+	chapterText := "Chapters:"
+	chapterTextX := 100
+	chapterTextY := 150
+	text.Draw(screen, chapterText, basicfont.Face7x13, chapterTextX, chapterTextY, color.Gray{Y: 200})
+	
+	// Draw chapters in order (left-aligned, starting below the "Chapters:" label)
+	chapterY := chapterTextY + 20
+	chapters := []struct {
+		name    string
+		chapter Chapter
+	}{
+		{"Maxwell's Daemon", ChapterMaxwellsDaemon},
+		{"Crystals", ChapterCrystals},
+		{"Stairs", ChapterStairs},
+		{"The Spiral Staircase", ChapterSpiralStairs},
+		{"Three Row Bootlace", ChapterThreeRowBootlace},
+		{"Waves", ChapterWaves},
+		{"Zig Zag", ChapterZigZag},
+		{"A Grammar for Finite Sentences", ChapterGrammarForFiniteSentences},
+		{"The Schwinger Limit", ChapterSchwingerLimit},
+		{"The Essence of the Self", ChapterEssenceOfSelf},
+		{"Exit", ChapterExit},
+	}
+	
+	for _, ch := range chapters {
+		// Left-align chapters
+		drawChapter(screen, ch.name, ch.chapter, g.selectedChapter, chapterTextX, chapterY)
+		chapterY += 15
+	}
+	
+	// Draw instructions (moved down)
 	instructions := "Press ENTER or SPACE to start"
 	instBounds := text.BoundString(basicfont.Face7x13, instructions)
 	instX := (screenWidth - instBounds.Dx()) / 2
-	instY := screenHeight/2 + 50
+	instY := screenHeight - 60
 	text.Draw(screen, instructions, basicfont.Face7x13, instX, instY, color.Gray{Y: 150})
 	
-	// Draw exit instruction
+	// Draw exit instruction (moved down)
 	exitText := "Press ESC or Q to exit"
 	exitBounds := text.BoundString(basicfont.Face7x13, exitText)
 	exitX := (screenWidth - exitBounds.Dx()) / 2
-	exitY := screenHeight/2 + 70
+	exitY := screenHeight - 45
 	text.Draw(screen, exitText, basicfont.Face7x13, exitX, exitY, color.Gray{Y: 100})
-
-	// Draw chapter list
-	chapterText := "Chapters:"
-	text.Draw(screen, chapterText, basicfont.Face7x13, 50, screenHeight-125, color.Gray{Y: 200})
 	
-	// Draw Stairs chapter
-	stairsText := "- Stairs"
-	var stairsColor color.Color = color.Gray{Y: 150}
-	if g.selectedChapter == ChapterStairs {
-		stairsText = "> Stairs"
-		stairsColor = color.White
-	}
-	text.Draw(screen, stairsText, basicfont.Face7x13, 50, screenHeight-110, stairsColor)
-	
-	// Draw Spiral Stairs chapter
-	spiralText := "- The Spiral Staircase"
-	var spiralColor color.Color = color.Gray{Y: 150}
-	if g.selectedChapter == ChapterSpiralStairs {
-		spiralText = "> The Spiral Staircase"
-		spiralColor = color.White
-	}
-	text.Draw(screen, spiralText, basicfont.Face7x13, 50, screenHeight-95, spiralColor)
-	
-	// Draw Zig Zag chapter
-	zigzagText := "- N-Dimensional Zig Zag"
-	var zigzagColor color.Color = color.Gray{Y: 150}
-	if g.selectedChapter == ChapterZigZag {
-		zigzagText = "> N-Dimensional Zig Zag"
-		zigzagColor = color.White
-	}
-	text.Draw(screen, zigzagText, basicfont.Face7x13, 50, screenHeight-80, zigzagColor)
-	
-	// Draw Exit chapter
-	exitChapterText := "- Exit"
-	var exitChapterColor color.Color = color.Gray{Y: 150}
-	if g.selectedChapter == ChapterExit {
-		exitChapterText = "> Exit"
-		exitChapterColor = color.White
-	}
-	text.Draw(screen, exitChapterText, basicfont.Face7x13, 50, screenHeight-65, exitChapterColor)
-	
-	// Draw navigation instructions
+	// Draw navigation instructions (moved down)
 	navText := "Use UP/DOWN arrows to select, ENTER/SPACE to activate"
 	navBounds := text.BoundString(basicfont.Face7x13, navText)
 	navX := (screenWidth - navBounds.Dx()) / 2
 	navY := screenHeight - 30
 	text.Draw(screen, navText, basicfont.Face7x13, navX, navY, color.Gray{Y: 100})
+}
+
+// drawChapter draws a chapter name with selection highlighting (left-aligned)
+func drawChapter(screen *ebiten.Image, name string, chapter Chapter, selectedChapter Chapter, x, y int) {
+	textStr := "- " + name
+	var textColor color.Color = color.Gray{Y: 150}
+	if selectedChapter == chapter {
+		textStr = "> " + name
+		textColor = color.White
+	}
+	// x is the left-aligned position
+	text.Draw(screen, textStr, basicfont.Face7x13, x, y, textColor)
+}
+
+// drawTODO draws a TODO placeholder screen
+func drawTODO(screen *ebiten.Image, chapterName string) {
+	// Draw chapter name
+	titleText := chapterName
+	titleBounds := text.BoundString(basicfont.Face7x13, titleText)
+	titleX := (screenWidth - titleBounds.Dx()) / 2
+	titleY := screenHeight/2 - 20
+	text.Draw(screen, titleText, basicfont.Face7x13, titleX, titleY, color.White)
+	
+	// Draw TODO text
+	todoText := "TODO"
+	todoBounds := text.BoundString(basicfont.Face7x13, todoText)
+	todoX := (screenWidth - todoBounds.Dx()) / 2
+	todoY := screenHeight/2 + 10
+	text.Draw(screen, todoText, basicfont.Face7x13, todoX, todoY, color.Gray{Y: 150})
+	
+	// Draw instructions
+	instructions := "Press ESC to return"
+	instBounds := text.BoundString(basicfont.Face7x13, instructions)
+	instX := (screenWidth - instBounds.Dx()) / 2
+	instY := screenHeight/2 + 30
+	text.Draw(screen, instructions, basicfont.Face7x13, instX, instY, color.Gray{Y: 100})
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
