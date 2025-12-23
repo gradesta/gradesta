@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"golang.org/x/image/font/basicfont"
 )
@@ -122,12 +121,8 @@ func DrawCollatzTable(screen *ebiten.Image, data CollatzTableData) {
 	text.Draw(screen, "K", basicfont.Face7x13, colKX, headerY, color.RGBA{200, 200, 255, 255})
 	text.Draw(screen, "Dest", basicfont.Face7x13, colDestX, headerY, color.RGBA{200, 200, 255, 255})
 	
-	// Draw separator line
+	// Move headerY down for first row (no separator line)
 	headerY += lineHeight + 2
-	for x := 10; x < screenWidth-10; x++ {
-		ebitenutil.DrawRect(screen, float64(x), float64(headerY), 1, 1, color.Gray{Y: 100})
-	}
-	headerY += 2
 	
 	// Draw table rows - include starting point as row 0, then all steps
 	currentIndexBig := new(big.Int).Set(data.StartIndex)
