@@ -138,6 +138,18 @@ func (g *Game) Update() error {
 		if err := g.maxwellsDaemon.Update(); err != nil {
 			return err
 		}
+		// Check if player chose to go to next chapter
+		if g.maxwellsDaemon.ShouldGoToNextChapter() {
+			g.state = StateCrystals
+			// Reset Maxwell's Daemon chapter for next time
+			g.maxwellsDaemon = NewMaxwellsDaemonChapter()
+		}
+		// Check if chapter is complete (player chose to return to menu after heat death)
+		if g.maxwellsDaemon.IsChapterComplete() {
+			g.state = StateLaunchScreen
+			// Reset the chapter for next time
+			g.maxwellsDaemon = NewMaxwellsDaemonChapter()
+		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !g.maxwellsDaemon.WasEscConsumed() {
 			g.state = StateLaunchScreen
 		}

@@ -26,6 +26,9 @@ coverage.html
 # Go workspace file
 go.work
 
+# Vendor directory (handled by buildGoModule)
+vendor/
+
 # IDE and editor files
 .vscode/
 .idea/

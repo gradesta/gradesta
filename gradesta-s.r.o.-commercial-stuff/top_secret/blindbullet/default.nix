@@ -5,7 +5,7 @@ pkgs.buildGoModule {
   version = "0.1.0";
   src = ./.;
   
-  vendorHash = "sha256-GTEzktjQuXbp4wUU6SgRd7VPVj9xZwsQNLzjq83Z/0o=";
+  vendorHash = null;
   
   nativeBuildInputs = with pkgs; [
     makeWrapper
@@ -24,7 +24,7 @@ pkgs.buildGoModule {
     xorg.libXxf86vm
     xorg.libXext
   ];
-
+  
   env.CGO_ENABLED = "1";
   
   preBuild = ''
