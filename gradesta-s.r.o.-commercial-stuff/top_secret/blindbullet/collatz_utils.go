@@ -129,47 +129,86 @@ func DrawCollatzTableAt(screen *ebiten.Image, data CollatzTableData, offsetX, of
 	// Move headerY down for first row (no separator line)
 	headerY += lineHeight + 2
 	
-	// Draw table rows - show all steps
+	// Draw table rows - show all steps, or special case for indexes with no steps (like 1, -1)
 	rowNum := 0
+	currentIndexBig := new(big.Int).Set(data.StartIndex)
 	
-	// Draw all step rows
-	for i := 0; i < stepsCount; i++ {
-		step := data.Steps[i]
+	// Special case: if there are no steps, show the starting point and its destination
+	if stepsCount == 0 {
 		rowY := headerY + lineHeight*rowNum
-		
-		if rowY >= screenHeight-50 {
-			break // Stop if we've run out of screen space
+		if rowY < screenHeight-50 {
+			// Calculate Y as big.Int
+			coefBig := big.NewInt(int64(data.Coefficient))
+			startYValueBig := new(big.Int).Mul(coefBig, currentIndexBig)
+			startYValueBig.Add(startYValueBig, big.NewInt(1))
+			startK := findLargestPowerOf2Big(startYValueBig)
+			
+			// Draw step number
+			text.Draw(screen, "1", basicfont.Face7x13, colStepX, rowY, color.White)
+			
+			// Draw index
+			indexText := formatNumber(currentIndexBig.String())
+			text.Draw(screen, indexText, basicfont.Face7x13, colIndexX, rowY, color.White)
+			
+			// Draw Y value as integer (with scientific notation if needed)
+			yText := formatNumber(startYValueBig.String())
+			text.Draw(screen, yText, basicfont.Face7x13, colYValueX, rowY, color.White)
+			
+			// Draw K value
+			kText := strconv.Itoa(startK)
+			text.Draw(screen, kText, basicfont.Face7x13, colKX, rowY, color.White)
+			
+			// Draw destination (if K > 0) as big.Int (with scientific notation if needed)
+			if startK > 0 {
+				powerOf2Big := new(big.Int).Lsh(big.NewInt(1), uint(startK)) // 1 << k
+				destinationIndexBig := new(big.Int).Div(startYValueBig, powerOf2Big)
+				destText := formatNumber(destinationIndexBig.String())
+				text.Draw(screen, destText, basicfont.Face7x13, colDestX, rowY, color.RGBA{100, 255, 255, 255}) // Cyan
+			} else {
+				text.Draw(screen, "-", basicfont.Face7x13, colDestX, rowY, color.Gray{Y: 100})
+			}
 		}
-		
-		// Use the stored StartIndex from the step (this is the actual starting index)
-		// Calculate Y value from StartIndex using big.Int
-		coefBig := big.NewInt(int64(data.Coefficient))
-		stepYValueBig := new(big.Int).Mul(coefBig, step.StartIndex)
-		stepYValueBig.Add(stepYValueBig, big.NewInt(1))
-		
-		stepK := step.K
-		
-		// Draw step number
-		stepText := strconv.Itoa(i + 1)
-		text.Draw(screen, stepText, basicfont.Face7x13, colStepX, rowY, color.White)
-		
-		// Draw index - use step.StartIndex (the actual starting index for this step)
-		indexText := formatNumber(step.StartIndex.String())
-		text.Draw(screen, indexText, basicfont.Face7x13, colIndexX, rowY, color.White)
-		
-		// Draw Y value as integer (with scientific notation if needed)
-		yText := formatNumber(stepYValueBig.String())
-		text.Draw(screen, yText, basicfont.Face7x13, colYValueX, rowY, color.White)
-		
-		// Draw K value
-		kText := strconv.Itoa(stepK)
-		text.Draw(screen, kText, basicfont.Face7x13, colKX, rowY, color.White)
-		
-		// Draw destination as integer (with scientific notation if needed)
-		destText := formatNumber(step.DestinationIndex.String())
-		text.Draw(screen, destText, basicfont.Face7x13, colDestX, rowY, color.RGBA{100, 255, 255, 255}) // Cyan
-		
 		rowNum++
+	} else {
+		// Draw all step rows
+		for i := 0; i < stepsCount; i++ {
+			step := data.Steps[i]
+			rowY := headerY + lineHeight*rowNum
+			
+			if rowY >= screenHeight-50 {
+				break // Stop if we've run out of screen space
+			}
+			
+			// Use the stored StartIndex from the step (this is the actual starting index)
+			// Calculate Y value from StartIndex using big.Int
+			coefBig := big.NewInt(int64(data.Coefficient))
+			stepYValueBig := new(big.Int).Mul(coefBig, step.StartIndex)
+			stepYValueBig.Add(stepYValueBig, big.NewInt(1))
+			
+			stepK := step.K
+			
+			// Draw step number
+			stepText := strconv.Itoa(i + 1)
+			text.Draw(screen, stepText, basicfont.Face7x13, colStepX, rowY, color.White)
+			
+			// Draw index - use step.StartIndex (the actual starting index for this step)
+			indexText := formatNumber(step.StartIndex.String())
+			text.Draw(screen, indexText, basicfont.Face7x13, colIndexX, rowY, color.White)
+			
+			// Draw Y value as integer (with scientific notation if needed)
+			yText := formatNumber(stepYValueBig.String())
+			text.Draw(screen, yText, basicfont.Face7x13, colYValueX, rowY, color.White)
+			
+			// Draw K value
+			kText := strconv.Itoa(stepK)
+			text.Draw(screen, kText, basicfont.Face7x13, colKX, rowY, color.White)
+			
+			// Draw destination as integer (with scientific notation if needed)
+			destText := formatNumber(step.DestinationIndex.String())
+			text.Draw(screen, destText, basicfont.Face7x13, colDestX, rowY, color.RGBA{100, 255, 255, 255}) // Cyan
+			
+			rowNum++
+		}
 	}
 	
 	// Draw summary info above the table (with padding) - only if at default position
