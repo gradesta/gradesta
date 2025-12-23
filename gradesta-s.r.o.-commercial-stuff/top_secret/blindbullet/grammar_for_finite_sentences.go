@@ -29,6 +29,9 @@ type GrammarForFiniteSentencesChapter struct {
 	// Scroll offset for displaying rows
 	scrollOffset int
 	
+	// Global coefficient for the division (default 3)
+	globalCoeficient float64
+	
 	// Cached staircase calculations for each row
 	cachedSteps map[int][]StairStep // Maps row index to steps
 	cachedCoef  float64             // Coefficient used for cached steps
@@ -44,11 +47,12 @@ type GrammarForFiniteSentencesChapter struct {
 func NewGrammarForFiniteSentencesChapter() *GrammarForFiniteSentencesChapter {
 	// Start with one row set to 4
 	return &GrammarForFiniteSentencesChapter{
-		rowValues:    []int{4},
-		selectedRow:  0,
-		cachedSteps:  make(map[int][]StairStep),
-		cachedCoef:   3.0, // Default coefficient
-		equationHash: "",
+		rowValues:        []int{4},
+		selectedRow:      0,
+		globalCoeficient: 3.0, // Default coefficient
+		cachedSteps:      make(map[int][]StairStep),
+		cachedCoef:       3.0, // Default coefficient
+		equationHash:     "",
 	}
 }
 
@@ -72,21 +76,21 @@ func (g *GrammarForFiniteSentencesChapter) calculateIndex() *big.Int {
 		return big.NewInt(1)
 	}
 	
-	// Calculate (2^firstValue - 1) / 3
-	three := big.NewInt(3)
+	// Calculate (2^firstValue - 1) / globalCoeficient
+	coef := big.NewInt(int64(g.globalCoeficient))
 	one := big.NewInt(1)
 	
 	// 2^firstValue
 	powerOf2 := new(big.Int).Lsh(one, uint(firstValue)) // 1 << firstValue
 	// 2^firstValue - 1
 	powerOf2Minus1 := new(big.Int).Sub(powerOf2, one)
-	// (2^firstValue - 1) / 3
-	result := new(big.Int).Div(powerOf2Minus1, three)
+	// (2^firstValue - 1) / globalCoeficient
+	result := new(big.Int).Div(powerOf2Minus1, coef)
 	
 	// Check if division is exact
-	remainder := new(big.Int).Mod(powerOf2Minus1, three)
+	remainder := new(big.Int).Mod(powerOf2Minus1, coef)
 	if remainder.Sign() != 0 {
-		// Not divisible by 3, return 0 (invalid)
+		// Not divisible by globalCoeficient, return 0 (invalid)
 		return big.NewInt(0)
 	}
 	
@@ -105,13 +109,13 @@ func (g *GrammarForFiniteSentencesChapter) calculateIndex() *big.Int {
 		// Subtract 1
 		result.Sub(result, one)
 		
-		// Divide by 3
-		remainder := new(big.Int).Mod(result, three)
+		// Divide by globalCoeficient
+		remainder := new(big.Int).Mod(result, coef)
 		if remainder.Sign() != 0 {
-			// Not divisible by 3, return 0 (invalid)
+			// Not divisible by globalCoeficient, return 0 (invalid)
 			return big.NewInt(0)
 		}
-		result.Div(result, three)
+		result.Div(result, coef)
 	}
 	
 	return result
@@ -349,6 +353,14 @@ func (g *GrammarForFiniteSentencesChapter) Update() error {
 		}
 	}
 	
+	// Handle 'c' key: cycle global coefficient
+	if inpututil.IsKeyJustPressed(ebiten.KeyC) {
+		g.cycleGlobalCoeficient()
+		// Invalidate all caches when coefficient changes
+		g.cachedSteps = make(map[int][]StairStep)
+		g.equationHash = "" // Force equation re-render
+	}
+	
 	return nil
 }
 
@@ -446,13 +458,13 @@ func (g *GrammarForFiniteSentencesChapter) Draw(screen *ebiten.Image) {
 	currentIndex := g.calculateIndex()
 	if currentIndex.Sign() > 0 {
 		// Calculate steps for the final index - use same parameters as spiral stairs
-		steps, isUpwards, hitLimit := CalculateStaircase(currentIndex, g.cachedCoef, 50, false)
+		steps, isUpwards, hitLimit := CalculateStaircase(currentIndex, g.globalCoeficient, 50, false)
 		
 		// Prepare data for the table - use same structure as spiral stairs
 		tableData := CollatzTableData{
 			Steps:      steps,
 			StartIndex: new(big.Int).Set(currentIndex),
-			Coefficient: g.cachedCoef,
+			Coefficient: g.globalCoeficient,
 			IsUpwards:  isUpwards,
 			HitLimit:   hitLimit,
 			StopOnDirectionChange: false, // Continue even if direction changes, like spiral stairs
@@ -466,8 +478,14 @@ func (g *GrammarForFiniteSentencesChapter) Draw(screen *ebiten.Image) {
 	// Draw equation at the bottom
 	g.drawEquation(screen)
 	
+	// Draw coefficient display
+	coefText := "Coefficient: " + strconv.FormatFloat(g.globalCoeficient, 'f', -1, 64)
+	coefX := 10
+	coefY := 40
+	text.Draw(screen, coefText, basicfont.Face7x13, coefX, coefY, color.RGBA{200, 200, 255, 255})
+	
 	// Draw instructions
-	instructions := "UP/DOWN: select row | LEFT/RIGHT: cycle valid values | R: reset all to 0 | ESC: return"
+	instructions := "UP/DOWN: select row | LEFT/RIGHT: cycle valid values | C: cycle coefficient | R: reset all to 0 | ESC: return"
 	instBounds := text.BoundString(basicfont.Face7x13, instructions)
 	instX := (screenWidth - instBounds.Dx()) / 2
 	instY := screenHeight - 15
@@ -530,13 +548,15 @@ func (g *GrammarForFiniteSentencesChapter) hashEquation() string {
 		hash.WriteString(strconv.Itoa(val))
 		hash.WriteString(",")
 	}
+	hash.WriteString(strconv.FormatFloat(g.globalCoeficient, 'f', -1, 64))
 	hashBytes := sha256.Sum256([]byte(hash.String()))
 	return hex.EncodeToString(hashBytes[:])
 }
 
 // renderEquationImage renders the equation as an image with proper mathematical notation
-// Renders nested fractions: ((((2^v1-1)/3)*2^v2-1)/3)*2^v3-1)/3
-// The structure is: each term wraps the previous result: ((previous) * 2^vi - 1) / 3
+// Renders nested fractions: ((((2^v1-1)/c)*2^v2-1)/c)*2^v3-1)/c
+// The structure is: each term wraps the previous result: ((previous) * 2^vi - 1) / c
+// where c is the globalCoeficient
 func (g *GrammarForFiniteSentencesChapter) renderEquationImage(validRows []int) (*ebiten.Image, error) {
 	if len(validRows) == 0 {
 		return nil, nil
@@ -591,7 +611,7 @@ func (g *GrammarForFiniteSentencesChapter) renderEquationImage(validRows []int) 
 		numBottom := twoY + float64(twoBounds.Dy())
 		
 		// Draw denominator "3"
-		denomText := "3"
+		denomText := strconv.FormatFloat(g.globalCoeficient, 'f', -1, 64)
 		denomBounds := text.BoundString(basicfont.Face7x13, denomText)
 		denomX := (currentX + numEndX - float64(denomBounds.Dx())) / 2
 		denomY := numBottom + lineHeight
@@ -658,7 +678,7 @@ func (g *GrammarForFiniteSentencesChapter) renderEquationImage(validRows []int) 
 		numBottom := math.Max(innerBounds.bottom, twoY+float64(twoBounds.Dy()))
 		
 		// Draw denominator "3"
-		denomText := "3"
+		denomText := strconv.FormatFloat(g.globalCoeficient, 'f', -1, 64)
 		denomBounds := text.BoundString(basicfont.Face7x13, denomText)
 		denomX := (parenX + numEndX - float64(denomBounds.Dx())) / 2
 		denomY := numBottom + lineHeight
@@ -712,7 +732,7 @@ func (g *GrammarForFiniteSentencesChapter) renderEquationImage(validRows []int) 
 		numTop := math.Min(twoY-float64(twoBounds.Dy()), expY-float64(expBounds.Dy()))
 		numBottom := twoY + float64(twoBounds.Dy())
 		
-		denomText := "3"
+		denomText := strconv.FormatFloat(g.globalCoeficient, 'f', -1, 64)
 		denomBounds := text.BoundString(basicfont.Face7x13, denomText)
 		denomX := (currentX + numEndX - float64(denomBounds.Dx())) / 2
 		denomY := numBottom + lineHeight
@@ -771,7 +791,7 @@ func (g *GrammarForFiniteSentencesChapter) renderEquationImage(validRows []int) 
 		numTop := math.Min(innerBounds.top, expY-float64(expBounds.Dy()))
 		numBottom := math.Max(innerBounds.bottom, twoY+float64(twoBounds.Dy()))
 		
-		denomText := "3"
+		denomText := strconv.FormatFloat(g.globalCoeficient, 'f', -1, 64)
 		denomBounds := text.BoundString(basicfont.Face7x13, denomText)
 		denomX := (parenX + numEndX - float64(denomBounds.Dx())) / 2
 		denomY := numBottom + lineHeight
@@ -789,6 +809,30 @@ func (g *GrammarForFiniteSentencesChapter) renderEquationImage(validRows []int) 
 	}
 	
 	return finalImg, nil
+}
+
+// cycleGlobalCoeficient cycles through odd numbers from 1 to 21
+func (g *GrammarForFiniteSentencesChapter) cycleGlobalCoeficient() {
+	// Odd numbers from 1 to 21
+	oddNumbers := []float64{1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21}
+	
+	// Find current index
+	currentIndex := -1
+	for i, val := range oddNumbers {
+		if val == g.globalCoeficient {
+			currentIndex = i
+			break
+		}
+	}
+	
+	// If not found, default to index 1 (value 3)
+	if currentIndex == -1 {
+		currentIndex = 1
+	}
+	
+	// Cycle to next value
+	currentIndex = (currentIndex + 1) % len(oddNumbers)
+	g.globalCoeficient = oddNumbers[currentIndex]
 }
 
 // calculatePartialIndexReverse calculates the index using the first n rows
@@ -815,19 +859,19 @@ func (g *GrammarForFiniteSentencesChapter) calculatePartialIndexReverse(n int) *
 		return big.NewInt(1)
 	}
 	
-	// Calculate (2^firstValue - 1) / 3
-	three := big.NewInt(3)
+	// Calculate (2^firstValue - 1) / globalCoeficient
+	coef := big.NewInt(int64(g.globalCoeficient))
 	one := big.NewInt(1)
 	
 	// 2^firstValue
 	powerOf2 := new(big.Int).Lsh(one, uint(firstValue))
 	// 2^firstValue - 1
 	powerOf2Minus1 := new(big.Int).Sub(powerOf2, one)
-	// (2^firstValue - 1) / 3
-	result := new(big.Int).Div(powerOf2Minus1, three)
+	// (2^firstValue - 1) / globalCoeficient
+	result := new(big.Int).Div(powerOf2Minus1, coef)
 	
 	// Check if division is exact
-	remainder := new(big.Int).Mod(powerOf2Minus1, three)
+	remainder := new(big.Int).Mod(powerOf2Minus1, coef)
 	if remainder.Sign() != 0 {
 		return big.NewInt(0)
 	}
@@ -846,12 +890,12 @@ func (g *GrammarForFiniteSentencesChapter) calculatePartialIndexReverse(n int) *
 		// Subtract 1
 		result.Sub(result, one)
 		
-		// Divide by 3
-		remainder := new(big.Int).Mod(result, three)
+		// Divide by globalCoeficient
+		remainder := new(big.Int).Mod(result, coef)
 		if remainder.Sign() != 0 {
 			return big.NewInt(0)
 		}
-		result.Div(result, three)
+		result.Div(result, coef)
 	}
 	
 	return result
