@@ -108,11 +108,13 @@ func (g *GrammarForFiniteSentencesChapter) calculateIndex() *big.Int {
 
 // findValidValues finds valid values for a given row index
 // A value is valid if setting it produces a whole number result (calculated in reverse order)
+// Tries values up to a reasonable limit
 func (g *GrammarForFiniteSentencesChapter) findValidValues(rowIndex int) []int {
 	validValues := []int{}
 	
-	// Try values from 0 to some reasonable maximum (e.g., 50)
-	maxValue := 50
+	// Try values from 0 up to a reasonable maximum
+	// Use a higher limit than before, but still bounded to prevent infinite loops
+	maxValue := 200
 	for v := 0; v <= maxValue; v++ {
 		// Temporarily set this value
 		oldValue := -1
@@ -206,83 +208,94 @@ func (g *GrammarForFiniteSentencesChapter) Update() error {
 		for len(g.rowValues) <= g.selectedRow {
 			g.rowValues = append(g.rowValues, -1)
 		}
-		// Adjust scroll if needed (in reverse order, higher row numbers need more scroll offset)
-		maxRow = len(g.rowValues) - 1
-		if maxRow < 0 {
-			maxRow = 0
-		}
-		// In reverse order, selectedRow at top means scrollOffset = maxRow - selectedRow
-		neededOffset := maxRow - g.selectedRow
-		if neededOffset < 0 {
-			neededOffset = 0
-		}
-		if neededOffset > g.scrollOffset {
-			g.scrollOffset = neededOffset
-		}
+		// No scrolling - always show from top
+		g.scrollOffset = 0
 	}
 	
 	// Handle down arrow: move to previous row (lower row number, displayed lower on screen in reverse order)
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyS) {
 		if g.selectedRow > 0 {
 			g.selectedRow--
-			// Adjust scroll if needed
-			maxRow = len(g.rowValues) - 1
-			if maxRow < 0 {
-				maxRow = 0
-			}
-			neededOffset := maxRow - g.selectedRow
-			if neededOffset < 0 {
-				neededOffset = 0
-			}
-			if neededOffset < g.scrollOffset {
-				g.scrollOffset = neededOffset
-			}
 		}
+		// No scrolling - always show from top
+		g.scrollOffset = 0
 	}
 	
-	// Handle left arrow: cycle to previous valid value
+	// Handle right arrow: increase value (no wrap around)
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || inpututil.IsKeyJustPressed(ebiten.KeyD) {
 		validValues := g.findValidValues(g.selectedRow)
 		if len(validValues) > 0 {
 			currentIndex := g.getCurrentValueIndex(g.selectedRow)
 			if currentIndex < 0 {
-				// No current value, set to first valid value
+				// No current value, set to first valid value (0)
 				if len(g.rowValues) <= g.selectedRow {
 					for len(g.rowValues) <= g.selectedRow {
 						g.rowValues = append(g.rowValues, -1)
 					}
 				}
 				g.rowValues[g.selectedRow] = validValues[0]
-			} else {
-				// Cycle to next value (wrap around)
-				newIndex := (currentIndex + 1) % len(validValues)
+			} else if currentIndex < len(validValues)-1 {
+				// Increase to next value (no wrap around - stop at maximum)
+				newIndex := currentIndex + 1
 				g.rowValues[g.selectedRow] = validValues[newIndex]
+				// Invalidate cache for this row and all subsequent rows
+				g.invalidateCacheFromRow(g.selectedRow)
 			}
-			// Invalidate cache for this row and all subsequent rows
-			g.invalidateCacheFromRow(g.selectedRow)
+			// If currentIndex == len(validValues)-1, do nothing (already at maximum)
 		}
 	}
 	
-	// Handle left arrow: also invalidate cache
+	// Handle left arrow: decrease value (no wrap around), or delete row if at top with value 0
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || inpututil.IsKeyJustPressed(ebiten.KeyA) {
+		maxRow := len(g.rowValues) - 1
+		if maxRow < 0 {
+			maxRow = 0
+		}
+		
+		// Check if we're at the top row (maxRow) and value is 0 - delete the row
+		if g.selectedRow == maxRow && g.selectedRow >= 0 && len(g.rowValues) > g.selectedRow && g.rowValues[g.selectedRow] == 0 {
+			// Delete the top row
+			if len(g.rowValues) > 1 {
+				// Remove the last element (top row in reverse display)
+				g.rowValues = g.rowValues[:len(g.rowValues)-1]
+				// Adjust selectedRow to the new top row
+				g.selectedRow = len(g.rowValues) - 1
+				if g.selectedRow < 0 {
+					g.selectedRow = 0
+				}
+				// Reset scroll to top
+				g.scrollOffset = 0
+				// Invalidate all caches
+				g.cachedSteps = make(map[int][]StairStep)
+				return nil // Exit early after deletion
+			} else {
+				// Can't delete the last row, just reset it to 0
+				g.rowValues[0] = 0
+				g.invalidateCacheFromRow(0)
+				return nil
+			}
+		}
+		
+		// Normal behavior: decrease value (no wrap around)
 		validValues := g.findValidValues(g.selectedRow)
 		if len(validValues) > 0 {
 			currentIndex := g.getCurrentValueIndex(g.selectedRow)
 			if currentIndex < 0 {
-				// No current value, set to first valid value
+				// No current value, set to first valid value (which should be 0)
 				if len(g.rowValues) <= g.selectedRow {
 					for len(g.rowValues) <= g.selectedRow {
 						g.rowValues = append(g.rowValues, -1)
 					}
 				}
 				g.rowValues[g.selectedRow] = validValues[0]
-			} else {
-				// Cycle to previous value (wrap around)
-				newIndex := (currentIndex - 1 + len(validValues)) % len(validValues)
+			} else if currentIndex > 0 {
+				// Decrease to previous value (no wrap around - stop at 0)
+				newIndex := currentIndex - 1
 				g.rowValues[g.selectedRow] = validValues[newIndex]
+				// Invalidate cache for this row and all subsequent rows
+				g.invalidateCacheFromRow(g.selectedRow)
 			}
-			// Invalidate cache for this row and all subsequent rows
-			g.invalidateCacheFromRow(g.selectedRow)
+			// If currentIndex == 0, do nothing (already at minimum)
 		}
 	}
 	
@@ -326,22 +339,15 @@ func (g *GrammarForFiniteSentencesChapter) Draw(screen *ebiten.Image) {
 	text.Draw(screen, "Index", basicfont.Face7x13, colIndexX, headerY, color.RGBA{200, 200, 255, 255})
 	
 	// Draw rows in REVERSE order (highest row number at top, row 1 at bottom)
-	visibleRows := (screenHeight - headerY - 50) / lineHeight
+	// No scrolling - always show all rows from top
 	maxRow := len(g.rowValues) - 1
 	if maxRow < 0 {
 		maxRow = 0
 	}
 	
-	// Calculate which rows to display (in reverse order)
-	// scrollOffset represents how many rows from the top (highest) we've scrolled
-	startDisplayRow := maxRow - g.scrollOffset
-	endDisplayRow := startDisplayRow - visibleRows
-	if endDisplayRow < 0 {
-		endDisplayRow = -1 // -1 means we'll show down to row 0
-	}
-	
+	// Display all rows from top (maxRow) down to row 0
 	displayIndex := 0
-	for i := startDisplayRow; i > endDisplayRow; i-- {
+	for i := maxRow; i >= 0; i-- {
 		if i < 0 || i >= len(g.rowValues) {
 			continue
 		}
@@ -389,25 +395,23 @@ func (g *GrammarForFiniteSentencesChapter) Draw(screen *ebiten.Image) {
 	// Draw the full Collatz steps table for the current index (from all rows) on the right side
 	currentIndex := g.calculateIndex()
 	if currentIndex.Sign() > 0 {
-		// Calculate steps for the final index
-		steps, isUpwards, hitLimit := CalculateStaircase(currentIndex, g.cachedCoef, 50, true)
+		// Calculate steps for the final index - use same parameters as spiral stairs
+		steps, isUpwards, hitLimit := CalculateStaircase(currentIndex, g.cachedCoef, 50, false)
 		
-		// Prepare data for the table
+		// Prepare data for the table - use same structure as spiral stairs
 		tableData := CollatzTableData{
-			StartIndex:            currentIndex,
-			Steps:                 steps,
-			Coefficient:           g.cachedCoef,
-			StopOnDirectionChange: true,
-			IsUpwards:             isUpwards,
-			HitLimit:              hitLimit,
+			Steps:      steps,
+			StartIndex: new(big.Int).Set(currentIndex),
+			Coefficient: g.cachedCoef,
+			IsUpwards:  isUpwards,
+			HitLimit:   hitLimit,
+			StopOnDirectionChange: false, // Continue even if direction changes, like spiral stairs
 		}
 		
-		// Draw the table on the right side of the screen
-		stepsTableX := 350
-		stepsTableY := headerY
-		
-		// Use the shared table drawing function with position offset
-		DrawCollatzTableAt(screen, tableData, stepsTableX, stepsTableY)
+		// Use the same function as spiral stairs (DrawCollatzTable uses default position)
+		// But we need to position it on the right side, so use DrawCollatzTableAt
+		// However, let's use the same default Y position (55) to match spiral stairs behavior
+		DrawCollatzTableAt(screen, tableData, 350, 55)
 	}
 	
 	// Draw instructions

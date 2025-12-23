@@ -129,62 +129,11 @@ func DrawCollatzTableAt(screen *ebiten.Image, data CollatzTableData, offsetX, of
 	// Move headerY down for first row (no separator line)
 	headerY += lineHeight + 2
 	
-	// Draw table rows - include starting point as row 0, then all steps
-	currentIndexBig := new(big.Int).Set(data.StartIndex)
-	maxRows := 50 // Limit number of visible rows to fit on screen
-	totalRows := stepsCount + 1 // Include starting point
-	startRow := 0
-	if totalRows > maxRows {
-		// If too many rows, show the last maxRows
-		startRow = totalRows - maxRows
-	}
-	
+	// Draw table rows - show all steps
 	rowNum := 0
-	// Draw starting point (row 0) only if there are no steps
-	// If there are steps, the starting point will be shown as step 1's starting index
-		if stepsCount == 0 && startRow == 0 {
-			rowY := headerY + lineHeight*rowNum
-			if rowY < screenHeight-50 {
-				// Calculate Y as big.Int
-				coefBig := big.NewInt(int64(data.Coefficient))
-				startYValueBig := new(big.Int).Mul(coefBig, currentIndexBig)
-				startYValueBig.Add(startYValueBig, big.NewInt(1))
-				startK := findLargestPowerOf2Big(startYValueBig)
-				
-				// Draw step number
-				text.Draw(screen, "0", basicfont.Face7x13, colStepX, rowY, color.RGBA{255, 255, 100, 255}) // Yellow for start
-				
-				// Draw index
-				indexText := formatNumber(currentIndexBig.String())
-				text.Draw(screen, indexText, basicfont.Face7x13, colIndexX, rowY, color.RGBA{255, 255, 100, 255})
-				
-				// Draw Y value as integer (with scientific notation if needed)
-				yText := formatNumber(startYValueBig.String())
-				text.Draw(screen, yText, basicfont.Face7x13, colYValueX, rowY, color.RGBA{255, 255, 100, 255})
-				
-				// Draw K value
-				kText := strconv.Itoa(startK)
-				text.Draw(screen, kText, basicfont.Face7x13, colKX, rowY, color.RGBA{255, 255, 100, 255})
-				
-				// Draw destination (if K > 0) as big.Int (with scientific notation if needed)
-				if startK > 0 {
-					powerOf2Big := new(big.Int).Lsh(big.NewInt(1), uint(startK)) // 1 << k
-					destinationIndexBig := new(big.Int).Div(startYValueBig, powerOf2Big)
-					destText := formatNumber(destinationIndexBig.String())
-					text.Draw(screen, destText, basicfont.Face7x13, colDestX, rowY, color.RGBA{100, 255, 255, 255}) // Cyan
-				} else {
-					text.Draw(screen, "-", basicfont.Face7x13, colDestX, rowY, color.Gray{Y: 100})
-				}
-			}
-			rowNum++
-		}
 	
-	// Draw step rows
-	for i := startRow - 1; i < stepsCount; i++ {
-		if i < 0 {
-			continue // Skip if we're before the first step
-		}
-		
+	// Draw all step rows
+	for i := 0; i < stepsCount; i++ {
 		step := data.Steps[i]
 		rowY := headerY + lineHeight*rowNum
 		
@@ -238,13 +187,10 @@ func DrawCollatzTableAt(screen *ebiten.Image, data CollatzTableData, offsetX, of
 			} else {
 				directionText = "bottom: " + endIndexText
 			}
-			stepsText := "Stairs: " + strconv.Itoa(stepsCount) + " steps (" + directionText + ")"
-			if data.HitLimit {
-				stepsText += " [LIMIT REACHED]"
-			}
-			if stepsCount > maxRows {
-				stepsText += " (showing last " + strconv.Itoa(maxRows) + ")"
-			}
+		stepsText := "Stairs: " + strconv.Itoa(stepsCount) + " steps (" + directionText + ")"
+		if data.HitLimit {
+			stepsText += " [LIMIT REACHED]"
+		}
 			text.Draw(screen, stepsText, basicfont.Face7x13, 10, summaryY+13, color.RGBA{255, 200, 100, 255}) // Orange
 		} else {
 			// No staircase - show current point info using big.Int
