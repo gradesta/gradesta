@@ -32,9 +32,9 @@ type GrammarForFiniteSentencesChapter struct {
 
 // NewGrammarForFiniteSentencesChapter creates a new A Grammar for Finite Sentences chapter
 func NewGrammarForFiniteSentencesChapter() *GrammarForFiniteSentencesChapter {
-	// Start with one row set to 0 (which produces index 1)
+	// Start with one row set to 4
 	return &GrammarForFiniteSentencesChapter{
-		rowValues:    []int{0},
+		rowValues:    []int{4},
 		selectedRow:  0,
 		cachedSteps:  make(map[int][]StairStep),
 		cachedCoef:   3.0, // Default coefficient
@@ -172,8 +172,13 @@ func (g *GrammarForFiniteSentencesChapter) Update() error {
 	
 	// Handle 'r' key to reset - delete all rows and start fresh
 	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
-		// Reset to initial state: one row with value 0
-		g.rowValues = []int{0}
+		// Reset to initial state: one row with lowest valid value
+		validValues := g.findValidValues(0)
+		lowestValue := 0
+		if len(validValues) > 0 {
+			lowestValue = validValues[0] // First valid value is the lowest
+		}
+		g.rowValues = []int{lowestValue}
 		g.selectedRow = 0
 		g.scrollOffset = 0
 		// Invalidate all caches
@@ -186,27 +191,48 @@ func (g *GrammarForFiniteSentencesChapter) Update() error {
 	if maxRow < 0 {
 		maxRow = 0
 	}
-	if (inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW)) && g.selectedRow == maxRow {
-		// Append a new row at the end (which displays at the top in reverse order)
-		g.rowValues = append(g.rowValues, 0) // New row starts with value 0
-		
-		// Keep selectedRow at the new max (the new row we just added)
-		g.selectedRow = len(g.rowValues) - 1
-		
-		// Reset scroll to top (in reverse order, top means scrollOffset = 0)
-		g.scrollOffset = 0
-		
-		// Invalidate all caches
-		g.cachedSteps = make(map[int][]StairStep)
-		return nil
-	}
-	
-	// Handle up arrow: move to next row (higher row number, displayed higher on screen in reverse order)
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW) {
-		g.selectedRow++
-		// Expand array if needed
-		for len(g.rowValues) <= g.selectedRow {
+		if g.selectedRow == maxRow {
+			// Append a new row at the end (which displays at the top in reverse order)
+			// First, expand the array to the new size to calculate valid values
+			newRowIndex := len(g.rowValues)
+			// Temporarily add a placeholder so findValidValues can work
 			g.rowValues = append(g.rowValues, -1)
+			// Now find valid values for this new row
+			validValues := g.findValidValues(newRowIndex)
+			lowestValue := 0
+			if len(validValues) > 0 {
+				lowestValue = validValues[0] // First valid value is the lowest
+			}
+			// Set the actual value (replacing the -1 placeholder)
+			g.rowValues[newRowIndex] = lowestValue
+			
+			// Keep selectedRow at the new max (the new row we just added)
+			g.selectedRow = len(g.rowValues) - 1
+			
+			// Reset scroll to top (in reverse order, top means scrollOffset = 0)
+			g.scrollOffset = 0
+			
+			// Invalidate all caches
+			g.cachedSteps = make(map[int][]StairStep)
+			return nil
+		}
+		
+		// Move to next row (higher row number, displayed higher on screen in reverse order)
+		g.selectedRow++
+		// Expand array if needed - but don't set to -1, set to lowest valid value
+		for len(g.rowValues) <= g.selectedRow {
+			// Temporarily add placeholder
+			g.rowValues = append(g.rowValues, -1)
+			// Find valid values for this new row
+			rowIndex := len(g.rowValues) - 1
+			validValues := g.findValidValues(rowIndex)
+			lowestValue := 0
+			if len(validValues) > 0 {
+				lowestValue = validValues[0]
+			}
+			// Set the actual value (replacing the -1 placeholder)
+			g.rowValues[rowIndex] = lowestValue
 		}
 		// No scrolling - always show from top
 		g.scrollOffset = 0
@@ -252,27 +278,40 @@ func (g *GrammarForFiniteSentencesChapter) Update() error {
 			maxRow = 0
 		}
 		
-		// Check if we're at the top row (maxRow) and value is 0 - delete the row
-		if g.selectedRow == maxRow && g.selectedRow >= 0 && len(g.rowValues) > g.selectedRow && g.rowValues[g.selectedRow] == 0 {
-			// Delete the top row
-			if len(g.rowValues) > 1 {
-				// Remove the last element (top row in reverse display)
-				g.rowValues = g.rowValues[:len(g.rowValues)-1]
-				// Adjust selectedRow to the new top row
-				g.selectedRow = len(g.rowValues) - 1
-				if g.selectedRow < 0 {
-					g.selectedRow = 0
+		// Check if we're at the top row (maxRow) and at the lowest valid value - delete the row
+		if g.selectedRow == maxRow && g.selectedRow >= 0 && len(g.rowValues) > g.selectedRow {
+			validValues := g.findValidValues(g.selectedRow)
+			currentValue := g.rowValues[g.selectedRow]
+			lowestValue := 0
+			if len(validValues) > 0 {
+				lowestValue = validValues[0] // First valid value is the lowest
+			}
+			if currentValue == lowestValue {
+				// Delete the top row
+				if len(g.rowValues) > 1 {
+					// Remove the last element (top row in reverse display)
+					g.rowValues = g.rowValues[:len(g.rowValues)-1]
+					// Adjust selectedRow to the new top row
+					g.selectedRow = len(g.rowValues) - 1
+					if g.selectedRow < 0 {
+						g.selectedRow = 0
+					}
+					// Reset scroll to top
+					g.scrollOffset = 0
+					// Invalidate all caches
+					g.cachedSteps = make(map[int][]StairStep)
+					return nil // Exit early after deletion
+				} else {
+					// Can't delete the last row, just reset it to lowest valid value
+					resetValidValues := g.findValidValues(0)
+					resetLowestValue := 0
+					if len(resetValidValues) > 0 {
+						resetLowestValue = resetValidValues[0]
+					}
+					g.rowValues[0] = resetLowestValue
+					g.invalidateCacheFromRow(0)
+					return nil
 				}
-				// Reset scroll to top
-				g.scrollOffset = 0
-				// Invalidate all caches
-				g.cachedSteps = make(map[int][]StairStep)
-				return nil // Exit early after deletion
-			} else {
-				// Can't delete the last row, just reset it to 0
-				g.rowValues[0] = 0
-				g.invalidateCacheFromRow(0)
-				return nil
 			}
 		}
 		
