@@ -1,11 +1,17 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"image/color"
+	"log"
+	"math"
 	"math/big"
 	"strconv"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"golang.org/x/image/font/basicfont"
@@ -27,6 +33,10 @@ type GrammarForFiniteSentencesChapter struct {
 	cachedSteps map[int][]StairStep // Maps row index to steps
 	cachedCoef  float64             // Coefficient used for cached steps
 	
+	// Cached equation image
+	equationImage *ebiten.Image
+	equationHash  string // Hash of current equation to detect changes
+	
 	escConsumed bool // Whether ESC was consumed by a dialog this frame
 }
 
@@ -38,6 +48,7 @@ func NewGrammarForFiniteSentencesChapter() *GrammarForFiniteSentencesChapter {
 		selectedRow:  0,
 		cachedSteps:  make(map[int][]StairStep),
 		cachedCoef:   3.0, // Default coefficient
+		equationHash: "",
 	}
 }
 
@@ -452,12 +463,332 @@ func (g *GrammarForFiniteSentencesChapter) Draw(screen *ebiten.Image) {
 		DrawCollatzTableAt(screen, tableData, 350, headerY)
 	}
 	
+	// Draw equation at the bottom
+	g.drawEquation(screen)
+	
 	// Draw instructions
 	instructions := "UP/DOWN: select row | LEFT/RIGHT: cycle valid values | R: reset all to 0 | ESC: return"
 	instBounds := text.BoundString(basicfont.Face7x13, instructions)
 	instX := (screenWidth - instBounds.Dx()) / 2
-	instY := screenHeight - 30
+	instY := screenHeight - 15
 	text.Draw(screen, instructions, basicfont.Face7x13, instX, instY, color.Gray{Y: 150})
+}
+
+// drawEquation draws the grammar equation at the bottom of the screen using LaTeX/MathJax
+func (g *GrammarForFiniteSentencesChapter) drawEquation(screen *ebiten.Image) {
+	// Build equation parts
+	validRows := g.getValidRows()
+	if len(validRows) == 0 {
+		return
+	}
+	
+	// Check if equation has changed
+	newHash := g.hashEquation()
+	if newHash != g.equationHash || g.equationImage == nil {
+		img, err := g.renderEquationImage(validRows)
+		if err != nil {
+			log.Fatalf("Failed to render equation: %v", err)
+		}
+		if img == nil {
+			log.Fatalf("Equation rendering returned nil image")
+		}
+		g.equationImage = img
+		g.equationHash = newHash
+	}
+	
+	// Draw the rendered equation image at the bottom center
+	if g.equationImage == nil {
+		log.Fatal("Equation image is nil when trying to draw")
+	}
+	
+	imgWidth := g.equationImage.Bounds().Dx()
+	imgHeight := g.equationImage.Bounds().Dy()
+	eqX := (screenWidth - imgWidth) / 2
+	// place above instructions with small padding
+	eqY := screenHeight - imgHeight - 25
+	
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(eqX), float64(eqY))
+	screen.DrawImage(g.equationImage, op)
+}
+
+// buildLaTeXEquation builds the LaTeX equation string
+func (g *GrammarForFiniteSentencesChapter) getValidRows() []int {
+	validRows := []int{}
+	for _, val := range g.rowValues {
+		if val >= 0 {
+			validRows = append(validRows, val)
+		}
+	}
+	return validRows
+}
+
+// hashEquation creates a hash of the current equation for caching
+func (g *GrammarForFiniteSentencesChapter) hashEquation() string {
+	var hash strings.Builder
+	for _, val := range g.rowValues {
+		hash.WriteString(strconv.Itoa(val))
+		hash.WriteString(",")
+	}
+	hashBytes := sha256.Sum256([]byte(hash.String()))
+	return hex.EncodeToString(hashBytes[:])
+}
+
+// renderEquationImage renders the equation as an image with proper mathematical notation
+// Renders nested fractions: ((((2^v1-1)/3)*2^v2-1)/3)*2^v3-1)/3
+// The structure is: each term wraps the previous result: ((previous) * 2^vi - 1) / 3
+func (g *GrammarForFiniteSentencesChapter) renderEquationImage(validRows []int) (*ebiten.Image, error) {
+	if len(validRows) == 0 {
+		return nil, nil
+	}
+	
+	textColor := color.RGBA{200, 200, 255, 255}
+	lineColor := color.RGBA{200, 200, 255, 255}
+	
+	padding := 20.0
+	lineHeight := 22.0
+	horizontalSpacing := 8.0
+	
+	// Build from innermost to outermost iteratively
+	// Track bounds of each nested level
+	type FractionBounds struct {
+		left, right, top, bottom float64
+	}
+	
+	// Create temporary image for measurement
+	testImg := ebiten.NewImage(1200, 300)
+	
+	currentX := padding
+	currentY := padding + lineHeight
+	var innerBounds *FractionBounds
+	
+	// Render innermost term first: (2^v1-1)/3
+	if len(validRows) > 0 {
+		exp := validRows[0]
+		expStr := strconv.Itoa(exp)
+		
+		// Draw "2^exp - 1"
+		twoText := "2"
+		twoBounds := text.BoundString(basicfont.Face7x13, twoText)
+		twoX := currentX
+		twoY := currentY
+		text.Draw(testImg, twoText, basicfont.Face7x13, int(twoX), int(twoY)+twoBounds.Dy(), textColor)
+		
+		// Draw superscript
+		expBounds := text.BoundString(basicfont.Face7x13, expStr)
+		expX := twoX + float64(twoBounds.Dx())
+		expY := currentY - float64(expBounds.Dy())*0.6
+		text.Draw(testImg, expStr, basicfont.Face7x13, int(expX), int(expY)+expBounds.Dy(), textColor)
+		
+		// Draw "-1"
+		minusOneText := "-1"
+		minusOneBounds := text.BoundString(basicfont.Face7x13, minusOneText)
+		minusOneX := expX + float64(expBounds.Dx()) + 2
+		text.Draw(testImg, minusOneText, basicfont.Face7x13, int(minusOneX), int(twoY)+minusOneBounds.Dy(), textColor)
+		
+		numEndX := minusOneX + float64(minusOneBounds.Dx())
+		numTop := math.Min(twoY-float64(twoBounds.Dy()), expY-float64(expBounds.Dy()))
+		numBottom := twoY + float64(twoBounds.Dy())
+		
+		// Draw denominator "3"
+		denomText := "3"
+		denomBounds := text.BoundString(basicfont.Face7x13, denomText)
+		denomX := (currentX + numEndX - float64(denomBounds.Dx())) / 2
+		denomY := numBottom + lineHeight
+		text.Draw(testImg, denomText, basicfont.Face7x13, int(denomX), int(denomY)+denomBounds.Dy(), textColor)
+		
+		// Draw fraction line
+		lineY := numBottom + lineHeight*0.7
+		lineLeft := currentX - 4
+		lineRight := numEndX + 4
+		ebitenutil.DrawLine(testImg, lineLeft, lineY, lineRight, lineY, lineColor)
+		
+		innerBounds = &FractionBounds{
+			left:   lineLeft,
+			right:  numEndX,
+			top:    numTop,
+			bottom: denomY + float64(denomBounds.Dy()),
+		}
+	}
+	
+	// Now wrap each subsequent term around the previous one
+	for termIndex := 1; termIndex < len(validRows); termIndex++ {
+		exp := validRows[termIndex]
+		expStr := strconv.Itoa(exp)
+		
+		// Draw opening parenthesis before the previous fraction
+		parenText := "("
+		parenBounds := text.BoundString(basicfont.Face7x13, parenText)
+		parenX := innerBounds.left - float64(parenBounds.Dx()) - 2
+		parenY := (innerBounds.top + innerBounds.bottom) / 2
+		text.Draw(testImg, parenText, basicfont.Face7x13, int(parenX), int(parenY)+parenBounds.Dy(), textColor)
+		
+		// Draw multiplication dot
+		dotX := innerBounds.right + horizontalSpacing
+		dotY := (innerBounds.top + innerBounds.bottom) / 2
+		ebitenutil.DrawRect(testImg, dotX-2, dotY-2, 4, 4, textColor)
+		
+		// Draw "2^exp"
+		twoText := "2"
+		twoBounds := text.BoundString(basicfont.Face7x13, twoText)
+		twoX := dotX + horizontalSpacing
+		twoY := dotY
+		text.Draw(testImg, twoText, basicfont.Face7x13, int(twoX), int(twoY)+twoBounds.Dy(), textColor)
+		
+		// Draw superscript
+		expBounds := text.BoundString(basicfont.Face7x13, expStr)
+		expX := twoX + float64(twoBounds.Dx())
+		expY := twoY - float64(expBounds.Dy())*0.6
+		text.Draw(testImg, expStr, basicfont.Face7x13, int(expX), int(expY)+expBounds.Dy(), textColor)
+		
+		// Draw "-1"
+		minusOneText := "-1"
+		minusOneBounds := text.BoundString(basicfont.Face7x13, minusOneText)
+		minusOneX := expX + float64(expBounds.Dx()) + 2
+		text.Draw(testImg, minusOneText, basicfont.Face7x13, int(minusOneX), int(twoY)+minusOneBounds.Dy(), textColor)
+		
+		// Draw closing parenthesis
+		parenCloseText := ")"
+		parenCloseBounds := text.BoundString(basicfont.Face7x13, parenCloseText)
+		parenCloseX := minusOneX + float64(minusOneBounds.Dx()) + 2
+		text.Draw(testImg, parenCloseText, basicfont.Face7x13, int(parenCloseX), int(parenY)+parenCloseBounds.Dy(), textColor)
+		
+		numEndX := parenCloseX + float64(parenCloseBounds.Dx())
+		numTop := math.Min(innerBounds.top, expY-float64(expBounds.Dy()))
+		numBottom := math.Max(innerBounds.bottom, twoY+float64(twoBounds.Dy()))
+		
+		// Draw denominator "3"
+		denomText := "3"
+		denomBounds := text.BoundString(basicfont.Face7x13, denomText)
+		denomX := (parenX + numEndX - float64(denomBounds.Dx())) / 2
+		denomY := numBottom + lineHeight
+		text.Draw(testImg, denomText, basicfont.Face7x13, int(denomX), int(denomY)+denomBounds.Dy(), textColor)
+		
+		// Draw fraction line spanning from parenX to numEndX
+		lineY := numBottom + lineHeight*0.7
+		ebitenutil.DrawLine(testImg, parenX-4, lineY, numEndX+4, lineY, lineColor)
+		
+		// Update bounds for next iteration
+		innerBounds = &FractionBounds{
+			left:   parenX,
+			right:  numEndX,
+			top:    numTop,
+			bottom: denomY + float64(denomBounds.Dy()),
+		}
+	}
+	
+	// Create final image with proper size
+	finalWidth := int(math.Ceil(innerBounds.right - innerBounds.left + padding*2))
+	finalHeight := int(math.Ceil(innerBounds.bottom - innerBounds.top + padding*2))
+	finalImg := ebiten.NewImage(finalWidth, finalHeight)
+	
+	// Re-render on final image
+	currentX = padding
+	currentY = padding + lineHeight - innerBounds.top
+	innerBounds = nil
+	
+	// Render innermost term
+	if len(validRows) > 0 {
+		exp := validRows[0]
+		expStr := strconv.Itoa(exp)
+		
+		twoText := "2"
+		twoBounds := text.BoundString(basicfont.Face7x13, twoText)
+		twoX := currentX
+		twoY := currentY
+		text.Draw(finalImg, twoText, basicfont.Face7x13, int(twoX), int(twoY)+twoBounds.Dy(), textColor)
+		
+		expBounds := text.BoundString(basicfont.Face7x13, expStr)
+		expX := twoX + float64(twoBounds.Dx())
+		expY := currentY - float64(expBounds.Dy())*0.6
+		text.Draw(finalImg, expStr, basicfont.Face7x13, int(expX), int(expY)+expBounds.Dy(), textColor)
+		
+		minusOneText := "-1"
+		minusOneBounds := text.BoundString(basicfont.Face7x13, minusOneText)
+		minusOneX := expX + float64(expBounds.Dx()) + 2
+		text.Draw(finalImg, minusOneText, basicfont.Face7x13, int(minusOneX), int(twoY)+minusOneBounds.Dy(), textColor)
+		
+		numEndX := minusOneX + float64(minusOneBounds.Dx())
+		numTop := math.Min(twoY-float64(twoBounds.Dy()), expY-float64(expBounds.Dy()))
+		numBottom := twoY + float64(twoBounds.Dy())
+		
+		denomText := "3"
+		denomBounds := text.BoundString(basicfont.Face7x13, denomText)
+		denomX := (currentX + numEndX - float64(denomBounds.Dx())) / 2
+		denomY := numBottom + lineHeight
+		text.Draw(finalImg, denomText, basicfont.Face7x13, int(denomX), int(denomY)+denomBounds.Dy(), textColor)
+		
+		lineY := numBottom + lineHeight*0.7
+		lineLeft := currentX - 4
+		lineRight := numEndX + 4
+		ebitenutil.DrawLine(finalImg, lineLeft, lineY, lineRight, lineY, lineColor)
+		
+		innerBounds = &FractionBounds{
+			left:   lineLeft,
+			right:  numEndX,
+			top:    numTop,
+			bottom: denomY + float64(denomBounds.Dy()),
+		}
+	}
+	
+	// Wrap subsequent terms
+	for termIndex := 1; termIndex < len(validRows); termIndex++ {
+		exp := validRows[termIndex]
+		expStr := strconv.Itoa(exp)
+		
+		parenText := "("
+		parenBounds := text.BoundString(basicfont.Face7x13, parenText)
+		parenX := innerBounds.left - float64(parenBounds.Dx()) - 2
+		parenY := (innerBounds.top + innerBounds.bottom) / 2
+		text.Draw(finalImg, parenText, basicfont.Face7x13, int(parenX), int(parenY)+parenBounds.Dy(), textColor)
+		
+		dotX := innerBounds.right + horizontalSpacing
+		dotY := (innerBounds.top + innerBounds.bottom) / 2
+		ebitenutil.DrawRect(finalImg, dotX-2, dotY-2, 4, 4, textColor)
+		
+		twoText := "2"
+		twoBounds := text.BoundString(basicfont.Face7x13, twoText)
+		twoX := dotX + horizontalSpacing
+		twoY := dotY
+		text.Draw(finalImg, twoText, basicfont.Face7x13, int(twoX), int(twoY)+twoBounds.Dy(), textColor)
+		
+		expBounds := text.BoundString(basicfont.Face7x13, expStr)
+		expX := twoX + float64(twoBounds.Dx())
+		expY := twoY - float64(expBounds.Dy())*0.6
+		text.Draw(finalImg, expStr, basicfont.Face7x13, int(expX), int(expY)+expBounds.Dy(), textColor)
+		
+		minusOneText := "-1"
+		minusOneBounds := text.BoundString(basicfont.Face7x13, minusOneText)
+		minusOneX := expX + float64(expBounds.Dx()) + 2
+		text.Draw(finalImg, minusOneText, basicfont.Face7x13, int(minusOneX), int(twoY)+minusOneBounds.Dy(), textColor)
+		
+		parenCloseText := ")"
+		parenCloseBounds := text.BoundString(basicfont.Face7x13, parenCloseText)
+		parenCloseX := minusOneX + float64(minusOneBounds.Dx()) + 2
+		text.Draw(finalImg, parenCloseText, basicfont.Face7x13, int(parenCloseX), int(parenY)+parenCloseBounds.Dy(), textColor)
+		
+		numEndX := parenCloseX + float64(parenCloseBounds.Dx())
+		numTop := math.Min(innerBounds.top, expY-float64(expBounds.Dy()))
+		numBottom := math.Max(innerBounds.bottom, twoY+float64(twoBounds.Dy()))
+		
+		denomText := "3"
+		denomBounds := text.BoundString(basicfont.Face7x13, denomText)
+		denomX := (parenX + numEndX - float64(denomBounds.Dx())) / 2
+		denomY := numBottom + lineHeight
+		text.Draw(finalImg, denomText, basicfont.Face7x13, int(denomX), int(denomY)+denomBounds.Dy(), textColor)
+		
+		lineY := numBottom + lineHeight*0.7
+		ebitenutil.DrawLine(finalImg, parenX-4, lineY, numEndX+4, lineY, lineColor)
+		
+		innerBounds = &FractionBounds{
+			left:   parenX,
+			right:  numEndX,
+			top:    numTop,
+			bottom: denomY + float64(denomBounds.Dy()),
+		}
+	}
+	
+	return finalImg, nil
 }
 
 // calculatePartialIndexReverse calculates the index using the first n rows
