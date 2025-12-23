@@ -101,18 +101,23 @@ type CollatzTableData struct {
 
 // DrawCollatzTable draws the Collatz table showing steps, index, y, k, and destination values
 func DrawCollatzTable(screen *ebiten.Image, data CollatzTableData) {
+	DrawCollatzTableAt(screen, data, 10, 55)
+}
+
+// DrawCollatzTableAt draws the Collatz table at a specific X, Y position
+func DrawCollatzTableAt(screen *ebiten.Image, data CollatzTableData, offsetX, offsetY int) {
 	stepsCount := len(data.Steps)
 	
-	// Draw table header at top left (with padding from top to avoid overlap with summary text)
-	headerY := 55
+	// Draw table header at specified position
+	headerY := offsetY
 	lineHeight := 13
 	
-	// Column positions (left-aligned)
-	colStepX := 10
-	colIndexX := 60
-	colYValueX := 130
-	colKX := 200
-	colDestX := 240
+	// Column positions (left-aligned, offset by offsetX)
+	colStepX := offsetX
+	colIndexX := offsetX + 50
+	colYValueX := offsetX + 120
+	colKX := offsetX + 190
+	colDestX := offsetX + 230
 	
 	// Draw header row
 	text.Draw(screen, "Step", basicfont.Face7x13, colStepX, headerY, color.RGBA{200, 200, 255, 255})
@@ -218,46 +223,48 @@ func DrawCollatzTable(screen *ebiten.Image, data CollatzTableData) {
 		rowNum++
 	}
 	
-	// Draw summary info above the table (with padding)
-	summaryY := 20
-	// Draw global coefficient
-	coefText := "Coefficient: " + strconv.FormatFloat(data.Coefficient, 'f', 0, 64) + " (Press C to change)"
-	text.Draw(screen, coefText, basicfont.Face7x13, 10, summaryY, color.RGBA{100, 255, 100, 255}) // Green
-	
-	if stepsCount > 0 {
-		endIndexText := formatNumber(data.Steps[stepsCount-1].DestinationIndex.String())
-		var directionText string
-		if data.IsUpwards {
-			directionText = "top: " + endIndexText
-		} else {
-			directionText = "bottom: " + endIndexText
-		}
-		stepsText := "Stairs: " + strconv.Itoa(stepsCount) + " steps (" + directionText + ")"
-		if data.HitLimit {
-			stepsText += " [LIMIT REACHED]"
-		}
-		if stepsCount > maxRows {
-			stepsText += " (showing last " + strconv.Itoa(maxRows) + ")"
-		}
-		text.Draw(screen, stepsText, basicfont.Face7x13, 10, summaryY+13, color.RGBA{255, 200, 100, 255}) // Orange
-	} else {
-		// No staircase - show current point info using big.Int
-		coefBig := big.NewInt(int64(data.Coefficient))
-		startIndexBig := new(big.Int).Set(data.StartIndex)
-		yValueBig := new(big.Int).Mul(coefBig, startIndexBig)
-		yValueBig.Add(yValueBig, big.NewInt(1))
-		k := findLargestPowerOf2Big(yValueBig)
+	// Draw summary info above the table (with padding) - only if at default position
+	if offsetX == 10 && offsetY == 55 {
+		summaryY := 20
+		// Draw global coefficient
+		coefText := "Coefficient: " + strconv.FormatFloat(data.Coefficient, 'f', 0, 64) + " (Press C to change)"
+		text.Draw(screen, coefText, basicfont.Face7x13, 10, summaryY, color.RGBA{100, 255, 100, 255}) // Green
 		
-		yText := formatNumber(yValueBig.String())
-		indexText := formatNumber(startIndexBig.String())
-		infoText := "Index: " + indexText + " | Y: " + yText + " | K: " + strconv.Itoa(k)
-		if k > 0 {
-			powerOf2Big := new(big.Int).Lsh(big.NewInt(1), uint(k))
-			destinationIndexBig := new(big.Int).Div(yValueBig, powerOf2Big)
-			destText := formatNumber(destinationIndexBig.String())
-			infoText += " | Dest: " + destText
+		if stepsCount > 0 {
+			endIndexText := formatNumber(data.Steps[stepsCount-1].DestinationIndex.String())
+			var directionText string
+			if data.IsUpwards {
+				directionText = "top: " + endIndexText
+			} else {
+				directionText = "bottom: " + endIndexText
+			}
+			stepsText := "Stairs: " + strconv.Itoa(stepsCount) + " steps (" + directionText + ")"
+			if data.HitLimit {
+				stepsText += " [LIMIT REACHED]"
+			}
+			if stepsCount > maxRows {
+				stepsText += " (showing last " + strconv.Itoa(maxRows) + ")"
+			}
+			text.Draw(screen, stepsText, basicfont.Face7x13, 10, summaryY+13, color.RGBA{255, 200, 100, 255}) // Orange
+		} else {
+			// No staircase - show current point info using big.Int
+			coefBig := big.NewInt(int64(data.Coefficient))
+			startIndexBig := new(big.Int).Set(data.StartIndex)
+			yValueBig := new(big.Int).Mul(coefBig, startIndexBig)
+			yValueBig.Add(yValueBig, big.NewInt(1))
+			k := findLargestPowerOf2Big(yValueBig)
+			
+			yText := formatNumber(yValueBig.String())
+			indexText := formatNumber(startIndexBig.String())
+			infoText := "Index: " + indexText + " | Y: " + yText + " | K: " + strconv.Itoa(k)
+			if k > 0 {
+				powerOf2Big := new(big.Int).Lsh(big.NewInt(1), uint(k))
+				destinationIndexBig := new(big.Int).Div(yValueBig, powerOf2Big)
+				destText := formatNumber(destinationIndexBig.String())
+				infoText += " | Dest: " + destText
+			}
+			text.Draw(screen, infoText, basicfont.Face7x13, 10, summaryY+13, color.White)
 		}
-		text.Draw(screen, infoText, basicfont.Face7x13, 10, summaryY+13, color.White)
 	}
 }
 

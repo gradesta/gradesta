@@ -42,17 +42,19 @@ func NewGrammarForFiniteSentencesChapter() *GrammarForFiniteSentencesChapter {
 }
 
 // calculateIndex calculates the index using the grammar algorithm
-// For values [v1, v2, v3, ..., vn], the formula is:
+// For values [v1, v2, v3, ..., vn] (where v1 is row 1, v2 is row 2, etc.):
 // result = (2^v1 - 1) / 3
 // result = (result * 2^v2 - 1) / 3
 // result = (result * 2^v3 - 1) / 3
 // ... and so on
+// Note: Display shows rows in reverse order (row n at top, row 1 at bottom),
+// but calculation processes from row 1 (array index 0) to row n (array index n-1)
 func (g *GrammarForFiniteSentencesChapter) calculateIndex() *big.Int {
 	if len(g.rowValues) == 0 {
 		return big.NewInt(1)
 	}
 	
-	// Start with first value
+	// Start with first value (row 1, array index 0)
 	firstValue := g.rowValues[0]
 	if firstValue < 0 {
 		// If first value is not set, return 1
@@ -77,7 +79,7 @@ func (g *GrammarForFiniteSentencesChapter) calculateIndex() *big.Int {
 		return big.NewInt(0)
 	}
 	
-	// Continue with remaining values
+	// Continue with remaining values (from row 2 onwards, array index 1 onwards)
 	for i := 1; i < len(g.rowValues); i++ {
 		value := g.rowValues[i]
 		if value < 0 {
@@ -105,7 +107,7 @@ func (g *GrammarForFiniteSentencesChapter) calculateIndex() *big.Int {
 }
 
 // findValidValues finds valid values for a given row index
-// A value is valid if setting it produces a whole number result
+// A value is valid if setting it produces a whole number result (calculated in reverse order)
 func (g *GrammarForFiniteSentencesChapter) findValidValues(rowIndex int) []int {
 	validValues := []int{}
 	
@@ -125,7 +127,7 @@ func (g *GrammarForFiniteSentencesChapter) findValidValues(rowIndex int) []int {
 			g.rowValues[rowIndex] = v
 		}
 		
-		// Check if this produces a valid (whole number) result
+		// Check if this produces a valid (whole number) result (using reverse order calculation)
 		result := g.calculateIndex()
 		if result.Sign() > 0 {
 			// Valid value
@@ -166,28 +168,75 @@ func (g *GrammarForFiniteSentencesChapter) getCurrentValueIndex(rowIndex int) in
 func (g *GrammarForFiniteSentencesChapter) Update() error {
 	g.escConsumed = false // Reset at start of frame
 	
-	// Handle up arrow: move to previous row
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW) {
-		if g.selectedRow > 0 {
-			g.selectedRow--
-			// Adjust scroll if needed
-			if g.selectedRow < g.scrollOffset {
-				g.scrollOffset = g.selectedRow
-			}
-		}
+	// Handle 'r' key to reset - delete all rows and start fresh
+	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
+		// Reset to initial state: one row with value 0
+		g.rowValues = []int{0}
+		g.selectedRow = 0
+		g.scrollOffset = 0
+		// Invalidate all caches
+		g.cachedSteps = make(map[int][]StairStep)
+		return nil
 	}
 	
-	// Handle down arrow: move to next row
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyS) {
+	// Handle up arrow: add a new row at the top only if we're at the top (selectedRow == maxRow)
+	maxRow := len(g.rowValues) - 1
+	if maxRow < 0 {
+		maxRow = 0
+	}
+	if (inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW)) && g.selectedRow == maxRow {
+		// Append a new row at the end (which displays at the top in reverse order)
+		g.rowValues = append(g.rowValues, 0) // New row starts with value 0
+		
+		// Keep selectedRow at the new max (the new row we just added)
+		g.selectedRow = len(g.rowValues) - 1
+		
+		// Reset scroll to top (in reverse order, top means scrollOffset = 0)
+		g.scrollOffset = 0
+		
+		// Invalidate all caches
+		g.cachedSteps = make(map[int][]StairStep)
+		return nil
+	}
+	
+	// Handle up arrow: move to next row (higher row number, displayed higher on screen in reverse order)
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW) {
 		g.selectedRow++
 		// Expand array if needed
 		for len(g.rowValues) <= g.selectedRow {
 			g.rowValues = append(g.rowValues, -1)
 		}
-		// Adjust scroll if needed
-		visibleRows := (screenHeight - 200) / 15 // Approximate visible rows
-		if g.selectedRow >= g.scrollOffset+visibleRows {
-			g.scrollOffset = g.selectedRow - visibleRows + 1
+		// Adjust scroll if needed (in reverse order, higher row numbers need more scroll offset)
+		maxRow = len(g.rowValues) - 1
+		if maxRow < 0 {
+			maxRow = 0
+		}
+		// In reverse order, selectedRow at top means scrollOffset = maxRow - selectedRow
+		neededOffset := maxRow - g.selectedRow
+		if neededOffset < 0 {
+			neededOffset = 0
+		}
+		if neededOffset > g.scrollOffset {
+			g.scrollOffset = neededOffset
+		}
+	}
+	
+	// Handle down arrow: move to previous row (lower row number, displayed lower on screen in reverse order)
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyS) {
+		if g.selectedRow > 0 {
+			g.selectedRow--
+			// Adjust scroll if needed
+			maxRow = len(g.rowValues) - 1
+			if maxRow < 0 {
+				maxRow = 0
+			}
+			neededOffset := maxRow - g.selectedRow
+			if neededOffset < 0 {
+				neededOffset = 0
+			}
+			if neededOffset < g.scrollOffset {
+				g.scrollOffset = neededOffset
+			}
 		}
 	}
 	
@@ -276,30 +325,37 @@ func (g *GrammarForFiniteSentencesChapter) Draw(screen *ebiten.Image) {
 	text.Draw(screen, "Value", basicfont.Face7x13, colValueX, headerY, color.RGBA{200, 200, 255, 255})
 	text.Draw(screen, "Index", basicfont.Face7x13, colIndexX, headerY, color.RGBA{200, 200, 255, 255})
 	
-	// Draw rows
+	// Draw rows in REVERSE order (highest row number at top, row 1 at bottom)
 	visibleRows := (screenHeight - headerY - 50) / lineHeight
-	startRow := g.scrollOffset
-	endRow := startRow + visibleRows
-	if endRow > len(g.rowValues) {
-		endRow = len(g.rowValues)
+	maxRow := len(g.rowValues) - 1
+	if maxRow < 0 {
+		maxRow = 0
 	}
 	
-	// Always show at least a few rows ahead
-	if endRow < len(g.rowValues) {
-		endRow++
+	// Calculate which rows to display (in reverse order)
+	// scrollOffset represents how many rows from the top (highest) we've scrolled
+	startDisplayRow := maxRow - g.scrollOffset
+	endDisplayRow := startDisplayRow - visibleRows
+	if endDisplayRow < 0 {
+		endDisplayRow = -1 // -1 means we'll show down to row 0
 	}
 	
-	for i := startRow; i < endRow; i++ {
-		rowY := headerY + lineHeight*(i-startRow+1)
+	displayIndex := 0
+	for i := startDisplayRow; i > endDisplayRow; i-- {
+		if i < 0 || i >= len(g.rowValues) {
+			continue
+		}
+		rowY := headerY + lineHeight*(displayIndex+1)
+		displayIndex++
 		
-		// Row number
+		// Row number (displayed row number, 1-indexed from bottom)
 		rowText := strconv.Itoa(i + 1)
 		text.Draw(screen, rowText, basicfont.Face7x13, colRowX, rowY, color.White)
 		
 		// Value
 		var valueText string
 		var valueColor color.Color
-		if i < len(g.rowValues) && g.rowValues[i] >= 0 {
+		if g.rowValues[i] >= 0 {
 			valueText = strconv.Itoa(g.rowValues[i])
 			if i == g.selectedRow {
 				valueColor = color.RGBA{255, 255, 100, 255} // Yellow for selected
@@ -316,9 +372,12 @@ func (g *GrammarForFiniteSentencesChapter) Draw(screen *ebiten.Image) {
 		}
 		text.Draw(screen, valueText, basicfont.Face7x13, colValueX, rowY, valueColor)
 		
-		// Calculate index up to this row
-		// Temporarily calculate with values up to this row
-		partialIndex := g.calculatePartialIndex(i + 1)
+		// Calculate index up to this row (from row 1 to this row)
+		// n is the number of rows from the start (row 1 = index 0, row 2 = index 1, etc.)
+		// Display shows row i+1, which corresponds to array index i
+		// So we want to calculate using rows 1 through (i+1), which is (i+1) rows total
+		n := i + 1
+		partialIndex := g.calculatePartialIndexReverse(n)
 		if partialIndex.Sign() > 0 {
 			indexText := formatNumber(partialIndex.String())
 			text.Draw(screen, indexText, basicfont.Face7x13, colIndexX, rowY, color.RGBA{100, 255, 255, 255}) // Cyan
@@ -327,115 +386,42 @@ func (g *GrammarForFiniteSentencesChapter) Draw(screen *ebiten.Image) {
 		}
 	}
 	
-	// Draw the full Collatz steps table for the selected row on the right side
-	if g.selectedRow < len(g.rowValues) {
-		selectedIndex := g.calculatePartialIndex(g.selectedRow + 1)
-		if selectedIndex.Sign() > 0 {
-			steps := g.getStepsForIndex(selectedIndex, g.selectedRow+1)
-			
-			// Draw steps table on the right side of the screen
-			stepsTableX := 350
-			stepsTableY := headerY
-			
-			// Draw header for steps table
-			colStepX := stepsTableX
-			colStepIndexX := stepsTableX + 50
-			colStepYX := stepsTableX + 120
-			colStepKX := stepsTableX + 190
-			colStepDestX := stepsTableX + 230
-			
-			text.Draw(screen, "Step", basicfont.Face7x13, colStepX, stepsTableY, color.RGBA{200, 200, 255, 255})
-			text.Draw(screen, "Index", basicfont.Face7x13, colStepIndexX, stepsTableY, color.RGBA{200, 200, 255, 255})
-			text.Draw(screen, "Y", basicfont.Face7x13, colStepYX, stepsTableY, color.RGBA{200, 200, 255, 255})
-			text.Draw(screen, "K", basicfont.Face7x13, colStepKX, stepsTableY, color.RGBA{200, 200, 255, 255})
-			text.Draw(screen, "Dest", basicfont.Face7x13, colStepDestX, stepsTableY, color.RGBA{200, 200, 255, 255})
-			
-			// Draw starting point (row 0) - always use selectedIndex
-			coefBig := big.NewInt(int64(g.cachedCoef))
-			rowY := stepsTableY + lineHeight + 2
-			startYValueBig := new(big.Int).Mul(coefBig, selectedIndex)
-			startYValueBig.Add(startYValueBig, big.NewInt(1))
-			startK := findLargestPowerOf2Big(startYValueBig)
-			
-			// Draw step number
-			text.Draw(screen, "0", basicfont.Face7x13, colStepX, rowY, color.RGBA{255, 255, 100, 255}) // Yellow for start
-			
-			// Draw index (use selectedIndex)
-			indexText := formatNumber(selectedIndex.String())
-			text.Draw(screen, indexText, basicfont.Face7x13, colStepIndexX, rowY, color.RGBA{255, 255, 100, 255})
-			
-			// Draw Y value
-			yText := formatNumber(startYValueBig.String())
-			text.Draw(screen, yText, basicfont.Face7x13, colStepYX, rowY, color.RGBA{255, 255, 100, 255})
-			
-			// Draw K value
-			kText := strconv.Itoa(startK)
-			text.Draw(screen, kText, basicfont.Face7x13, colStepKX, rowY, color.RGBA{255, 255, 100, 255})
-			
-			// Draw destination (if K > 0)
-			if startK > 0 {
-				powerOf2Big := new(big.Int).Lsh(big.NewInt(1), uint(startK))
-				destinationIndexBig := new(big.Int).Div(startYValueBig, powerOf2Big)
-				destText := formatNumber(destinationIndexBig.String())
-				text.Draw(screen, destText, basicfont.Face7x13, colStepDestX, rowY, color.RGBA{100, 255, 255, 255}) // Cyan
-			} else {
-				text.Draw(screen, "-", basicfont.Face7x13, colStepDestX, rowY, color.Gray{Y: 100})
-			}
-			
-			// Draw step rows (all steps from the array)
-			// Skip the first step if its StartIndex matches selectedIndex (already shown as row 0)
-			stepOffset := 0
-			if len(steps) > 0 && steps[0].StartIndex.Cmp(selectedIndex) == 0 {
-				stepOffset = 1 // Skip first step, it's already shown as row 0
-			}
-			
-			stepNum := 1
-			for i := stepOffset; i < len(steps); i++ {
-				step := steps[i]
-				rowY = stepsTableY + lineHeight*(stepNum+1) + 2
-				if rowY >= screenHeight-50 {
-					break // Stop if we've run out of screen space
-				}
-				
-				// Calculate Y value from StartIndex
-				stepYValueBig := new(big.Int).Mul(coefBig, step.StartIndex)
-				stepYValueBig.Add(stepYValueBig, big.NewInt(1))
-				
-				// Draw step number
-				stepText := strconv.Itoa(stepNum)
-				text.Draw(screen, stepText, basicfont.Face7x13, colStepX, rowY, color.White)
-				
-				// Draw index
-				indexText := formatNumber(step.StartIndex.String())
-				text.Draw(screen, indexText, basicfont.Face7x13, colStepIndexX, rowY, color.White)
-				
-				// Draw Y value
-				yText := formatNumber(stepYValueBig.String())
-				text.Draw(screen, yText, basicfont.Face7x13, colStepYX, rowY, color.White)
-				
-				// Draw K value
-				kText := strconv.Itoa(step.K)
-				text.Draw(screen, kText, basicfont.Face7x13, colStepKX, rowY, color.White)
-				
-				// Draw destination
-				destText := formatNumber(step.DestinationIndex.String())
-				text.Draw(screen, destText, basicfont.Face7x13, colStepDestX, rowY, color.RGBA{100, 255, 255, 255}) // Cyan
-				
-				stepNum++
-			}
+	// Draw the full Collatz steps table for the current index (from all rows) on the right side
+	currentIndex := g.calculateIndex()
+	if currentIndex.Sign() > 0 {
+		// Calculate steps for the final index
+		steps, isUpwards, hitLimit := CalculateStaircase(currentIndex, g.cachedCoef, 50, true)
+		
+		// Prepare data for the table
+		tableData := CollatzTableData{
+			StartIndex:            currentIndex,
+			Steps:                 steps,
+			Coefficient:           g.cachedCoef,
+			StopOnDirectionChange: true,
+			IsUpwards:             isUpwards,
+			HitLimit:              hitLimit,
 		}
+		
+		// Draw the table on the right side of the screen
+		stepsTableX := 350
+		stepsTableY := headerY
+		
+		// Use the shared table drawing function with position offset
+		DrawCollatzTableAt(screen, tableData, stepsTableX, stepsTableY)
 	}
 	
 	// Draw instructions
-	instructions := "UP/DOWN: select row | LEFT/RIGHT: cycle valid values | ESC: return"
+	instructions := "UP/DOWN: select row | LEFT/RIGHT: cycle valid values | R: reset all to 0 | ESC: return"
 	instBounds := text.BoundString(basicfont.Face7x13, instructions)
 	instX := (screenWidth - instBounds.Dx()) / 2
 	instY := screenHeight - 30
 	text.Draw(screen, instructions, basicfont.Face7x13, instX, instY, color.Gray{Y: 150})
 }
 
-// calculatePartialIndex calculates the index using only the first n rows
-func (g *GrammarForFiniteSentencesChapter) calculatePartialIndex(n int) *big.Int {
+// calculatePartialIndexReverse calculates the index using the first n rows
+// n is the number of rows to use (from row 1 to row n, i.e., array indices 0 to n-1)
+// Note: Display shows rows in reverse order, but calculation always processes from row 1 (index 0) first
+func (g *GrammarForFiniteSentencesChapter) calculatePartialIndexReverse(n int) *big.Int {
 	if n == 0 {
 		return big.NewInt(1)
 	}
@@ -444,9 +430,15 @@ func (g *GrammarForFiniteSentencesChapter) calculatePartialIndex(n int) *big.Int
 		return big.NewInt(1)
 	}
 	
-	// Start with first value
+	// Use the first n rows (row 1 to row n, array indices 0 to n-1)
+	maxRows := n
+	if maxRows > len(g.rowValues) {
+		maxRows = len(g.rowValues)
+	}
+	
+	// Start with first value (row 1, array index 0)
 	firstValue := g.rowValues[0]
-	if firstValue < 0 || n == 0 {
+	if firstValue < 0 || maxRows == 0 {
 		return big.NewInt(1)
 	}
 	
@@ -467,12 +459,7 @@ func (g *GrammarForFiniteSentencesChapter) calculatePartialIndex(n int) *big.Int
 		return big.NewInt(0)
 	}
 	
-	// Continue with remaining values up to n
-	maxRows := n
-	if maxRows > len(g.rowValues) {
-		maxRows = len(g.rowValues)
-	}
-	
+	// Continue with remaining values up to n (from row 2 onwards, array index 1 onwards)
 	for i := 1; i < maxRows; i++ {
 		value := g.rowValues[i]
 		if value < 0 {
