@@ -315,17 +315,18 @@ func (g *GrammarForFiniteSentencesChapter) Update() error {
 			}
 		}
 		
-		// Handle numeric input
-		for i := ebiten.Key0; i <= ebiten.Key9; i++ {
-			if inpututil.IsKeyJustPressed(i) {
-				digit := int(i - ebiten.Key0)
-				g.xInputBuffer += strconv.Itoa(digit)
+		// Handle character input (works with any keyboard layout)
+		chars := ebiten.AppendInputChars(nil)
+		for _, char := range chars {
+			charStr := string(char)
+			// Allow digits 0-9
+			if char >= '0' && char <= '9' {
+				g.xInputBuffer += charStr
 			}
-		}
-		
-		// Handle minus key (only at the start)
-		if inpututil.IsKeyJustPressed(ebiten.KeyMinus) && len(g.xInputBuffer) == 0 {
-			g.xInputBuffer = "-"
+			// Allow minus sign only at the start
+			if char == '-' && len(g.xInputBuffer) == 0 {
+				g.xInputBuffer = "-"
+			}
 		}
 		
 		return nil

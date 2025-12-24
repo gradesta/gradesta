@@ -135,15 +135,16 @@ func (z *ZigZagChapter) Update() error {
 			}
 		}
 		
-		// Handle numeric input and minus sign
-		for i := ebiten.Key0; i <= ebiten.Key9; i++ {
-			if inpututil.IsKeyJustPressed(i) {
-				digit := '0' + (i - ebiten.Key0)
-				z.jumpInputBuffer += string(digit)
+		// Handle character input (works with any keyboard layout)
+		chars := ebiten.AppendInputChars(nil)
+		for _, char := range chars {
+			charStr := string(char)
+			// Allow digits 0-9
+			if char >= '0' && char <= '9' {
+				z.jumpInputBuffer += charStr
 			}
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyMinus) {
-			if z.jumpInputBuffer == "" || z.jumpInputBuffer[0] != '-' {
+			// Allow minus sign only at the start
+			if char == '-' && (z.jumpInputBuffer == "" || z.jumpInputBuffer[0] != '-') {
 				z.jumpInputBuffer = "-" + z.jumpInputBuffer
 			}
 		}

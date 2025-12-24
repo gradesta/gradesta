@@ -146,20 +146,20 @@ func (s *SpiralStairsChapter) Update() error {
 			return nil
 		}
 		
-		// Handle numeric keys (0-9)
-		keys := []ebiten.Key{ebiten.Key0, ebiten.Key1, ebiten.Key2, ebiten.Key3, ebiten.Key4,
-			ebiten.Key5, ebiten.Key6, ebiten.Key7, ebiten.Key8, ebiten.Key9}
-		for i, key := range keys {
-			if inpututil.IsKeyJustPressed(key) {
-				s.jumpInputBuffer += string(rune('0' + i))
+		// Handle character input (works with any keyboard layout)
+		chars := ebiten.AppendInputChars(nil)
+		for _, char := range chars {
+			charStr := string(char)
+			// Allow digits 0-9
+			if char >= '0' && char <= '9' {
+				s.jumpInputBuffer += charStr
 				return nil
 			}
-		}
-		
-		// Handle minus sign (only at the start)
-		if inpututil.IsKeyJustPressed(ebiten.KeyMinus) && len(s.jumpInputBuffer) == 0 {
-			s.jumpInputBuffer = "-"
-			return nil
+			// Allow minus sign only at the start
+			if char == '-' && len(s.jumpInputBuffer) == 0 {
+				s.jumpInputBuffer = "-"
+				return nil
+			}
 		}
 		
 		// In jump input mode, ignore other keys
