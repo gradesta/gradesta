@@ -32,6 +32,16 @@ type GrammarForFiniteSentencesChapter struct {
 	// Global coefficient for the division (default 3)
 	globalCoeficient float64
 	
+	// Constant multiplier x for 2^k terms (default 1)
+	xValue *big.Int
+	
+	// Allow fractional values (if true, any integer value works for every column)
+	allowFractional bool
+	
+	// Input dialog for x value
+	showXDialog bool
+	xInputBuffer string
+	
 	// Cached staircase calculations for each row
 	cachedSteps map[int][]StairStep // Maps row index to steps
 	cachedCoef  float64             // Coefficient used for cached steps
@@ -50,6 +60,7 @@ func NewGrammarForFiniteSentencesChapter() *GrammarForFiniteSentencesChapter {
 		rowValues:        []int{4},
 		selectedRow:      0,
 		globalCoeficient: 3.0, // Default coefficient
+		xValue:          big.NewInt(1), // Default x is 1
 		cachedSteps:      make(map[int][]StairStep),
 		cachedCoef:       3.0, // Default coefficient
 		equationHash:     "",
@@ -76,19 +87,20 @@ func (g *GrammarForFiniteSentencesChapter) calculateIndex() *big.Int {
 		return big.NewInt(1)
 	}
 	
-	// Calculate (2^firstValue - 1) / globalCoeficient
+	// Calculate (x * 2^firstValue - 1) / globalCoeficient
 	coef := big.NewInt(int64(g.globalCoeficient))
 	one := big.NewInt(1)
 	
-	// 2^firstValue
+	// x * 2^firstValue
 	powerOf2 := new(big.Int).Lsh(one, uint(firstValue)) // 1 << firstValue
-	// 2^firstValue - 1
-	powerOf2Minus1 := new(big.Int).Sub(powerOf2, one)
-	// (2^firstValue - 1) / globalCoeficient
-	result := new(big.Int).Div(powerOf2Minus1, coef)
+	xTimesPowerOf2 := new(big.Int).Mul(g.xValue, powerOf2)
+	// x * 2^firstValue - 1
+	xTimesPowerOf2Minus1 := new(big.Int).Sub(xTimesPowerOf2, one)
+	// (x * 2^firstValue - 1) / globalCoeficient
+	result := new(big.Int).Div(xTimesPowerOf2Minus1, coef)
 	
 	// Check if division is exact
-	remainder := new(big.Int).Mod(powerOf2Minus1, coef)
+	remainder := new(big.Int).Mod(xTimesPowerOf2Minus1, coef)
 	if remainder.Sign() != 0 {
 		// Not divisible by globalCoeficient, return 0 (invalid)
 		return big.NewInt(0)
@@ -102,7 +114,7 @@ func (g *GrammarForFiniteSentencesChapter) calculateIndex() *big.Int {
 			break
 		}
 		
-		// Multiply by 2^value
+		// Multiply by 2^value (x is only used in the first term)
 		powerOf2 := new(big.Int).Lsh(one, uint(value)) // 1 << value
 		result.Mul(result, powerOf2)
 		
@@ -121,12 +133,81 @@ func (g *GrammarForFiniteSentencesChapter) calculateIndex() *big.Int {
 	return result
 }
 
+// calculateIndexFractional calculates the index as a fractional value (using big.Rat for precision)
+// Returns the result as a string representation
+func (g *GrammarForFiniteSentencesChapter) calculateIndexFractional() string {
+	if len(g.rowValues) == 0 {
+		return "1"
+	}
+	
+	// Start with first value (row 1, array index 0)
+	firstValue := g.rowValues[0]
+	if firstValue < 0 {
+		// If first value is not set, return 1
+		return "1"
+	}
+	
+	// Calculate (x * 2^firstValue - 1) / globalCoeficient using big.Rat
+	coef := big.NewRat(int64(g.globalCoeficient), 1)
+	one := big.NewRat(1, 1)
+	
+	// x * 2^firstValue
+	powerOf2 := new(big.Int).Lsh(big.NewInt(1), uint(firstValue))
+	xRat := new(big.Rat).SetInt(g.xValue)
+	powerOf2Rat := new(big.Rat).SetInt(powerOf2)
+	xTimesPowerOf2Rat := new(big.Rat).Mul(xRat, powerOf2Rat)
+	
+	// x * 2^firstValue - 1
+	xTimesPowerOf2Minus1 := new(big.Rat).Sub(xTimesPowerOf2Rat, one)
+	
+	// (x * 2^firstValue - 1) / globalCoeficient
+	result := new(big.Rat).Quo(xTimesPowerOf2Minus1, coef)
+	
+	// Continue with remaining values (from row 2 onwards, array index 1 onwards)
+	for i := 1; i < len(g.rowValues); i++ {
+		value := g.rowValues[i]
+		if value < 0 {
+			// This value is not set, stop here
+			break
+		}
+		
+		// Multiply by 2^value (x is only used in the first term)
+		powerOf2 := new(big.Int).Lsh(big.NewInt(1), uint(value))
+		powerOf2Rat := new(big.Rat).SetInt(powerOf2)
+		result.Mul(result, powerOf2Rat)
+		
+		// Subtract 1
+		result.Sub(result, one)
+		
+		// Divide by globalCoeficient
+		result.Quo(result, coef)
+	}
+	
+	// Convert to string, showing as fraction if not whole number
+	if result.IsInt() {
+		return result.Num().String()
+	}
+	// Return as decimal with reasonable precision
+	return result.FloatString(10)
+}
+
 // findValidValues finds valid values for a given row index
 // A value is valid if setting it produces a whole number result (calculated in reverse order)
+// If allowFractional is true, any integer value is valid
 // Tries values up to a reasonable limit
 func (g *GrammarForFiniteSentencesChapter) findValidValues(rowIndex int) []int {
 	validValues := []int{}
 	
+	// If fractional values are allowed, any integer value works
+	if g.allowFractional {
+		maxValue := 200
+		for v := 0; v <= maxValue; v++ {
+			validValues = append(validValues, v)
+		}
+		return validValues
+	}
+	
+	// Otherwise, check for whole number results
 	// Try values from 0 up to a reasonable maximum
 	// Use a higher limit than before, but still bounded to prevent infinite loops
 	maxValue := 200
@@ -184,6 +265,71 @@ func (g *GrammarForFiniteSentencesChapter) getCurrentValueIndex(rowIndex int) in
 // Update updates the A Grammar for Finite Sentences chapter
 func (g *GrammarForFiniteSentencesChapter) Update() error {
 	g.escConsumed = false // Reset at start of frame
+	
+	// Handle 'f' key to toggle fractional values
+	if inpututil.IsKeyJustPressed(ebiten.KeyF) {
+		g.allowFractional = !g.allowFractional
+		// Invalidate caches when toggling
+		g.cachedSteps = make(map[int][]StairStep)
+		return nil
+	}
+	
+	// Handle 'x' key to open x value input dialog
+	if inpututil.IsKeyJustPressed(ebiten.KeyX) {
+		g.showXDialog = true
+		g.xInputBuffer = g.xValue.String()
+		return nil
+	}
+	
+	// Handle x input dialog
+	if g.showXDialog {
+		// Handle ESC to cancel
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			g.showXDialog = false
+			g.xInputBuffer = ""
+			g.escConsumed = true
+			return nil
+		}
+		
+		// Handle Enter to confirm
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+			// Parse the input as a big.Int
+			newX := new(big.Int)
+			_, ok := newX.SetString(g.xInputBuffer, 10)
+			if ok && newX.Sign() != 0 {
+				// Allow any non-zero integer (positive or negative)
+				g.xValue = newX
+				// Invalidate caches when x changes
+				g.cachedSteps = make(map[int][]StairStep)
+				g.equationHash = "" // Force equation re-render
+			}
+			g.showXDialog = false
+			g.xInputBuffer = ""
+			return nil
+		}
+		
+		// Handle Backspace
+		if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) {
+			if len(g.xInputBuffer) > 0 {
+				g.xInputBuffer = g.xInputBuffer[:len(g.xInputBuffer)-1]
+			}
+		}
+		
+		// Handle numeric input
+		for i := ebiten.Key0; i <= ebiten.Key9; i++ {
+			if inpututil.IsKeyJustPressed(i) {
+				digit := int(i - ebiten.Key0)
+				g.xInputBuffer += strconv.Itoa(digit)
+			}
+		}
+		
+		// Handle minus key (only at the start)
+		if inpututil.IsKeyJustPressed(ebiten.KeyMinus) && len(g.xInputBuffer) == 0 {
+			g.xInputBuffer = "-"
+		}
+		
+		return nil
+	}
 	
 	// Handle 'r' key to reset - delete all rows and start fresh
 	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
@@ -377,16 +523,26 @@ func (g *GrammarForFiniteSentencesChapter) Draw(screen *ebiten.Image) {
 	text.Draw(screen, titleText, basicfont.Face7x13, titleX, titleY, color.White)
 	
 	// Calculate the index
-	index := g.calculateIndex()
-	indexText := "Index: " + formatNumber(index.String())
+	var indexText string
+	var textColor color.Color = color.White
+	
+	if g.allowFractional {
+		// Use fractional calculation
+		fractionalIndex := g.calculateIndexFractional()
+		indexText = "Index: " + fractionalIndex
+	} else {
+		// Use integer calculation
+		index := g.calculateIndex()
+		indexText = "Index: " + formatNumber(index.String())
+		if index.Sign() == 0 {
+			indexText = "Index: INVALID"
+			textColor = color.RGBA{255, 100, 100, 255} // Red for invalid
+		}
+	}
+	
 	indexBounds := text.BoundString(basicfont.Face7x13, indexText)
 	indexX := (screenWidth - indexBounds.Dx()) / 2
 	indexY := 40
-	var textColor color.Color = color.White
-	if index.Sign() == 0 {
-		indexText = "Index: INVALID"
-		textColor = color.RGBA{255, 100, 100, 255} // Red for invalid
-	}
 	text.Draw(screen, indexText, basicfont.Face7x13, indexX, indexY, textColor)
 	
 	// Draw table header (grammar table on left)
@@ -455,37 +611,71 @@ func (g *GrammarForFiniteSentencesChapter) Draw(screen *ebiten.Image) {
 	}
 	
 	// Draw the full Collatz steps table for the current index (from all rows) on the right side
-	currentIndex := g.calculateIndex()
-	if currentIndex.Sign() > 0 {
-		// Calculate steps for the final index - use same parameters as spiral stairs
-		steps, isUpwards, hitLimit := CalculateStaircase(currentIndex, g.globalCoeficient, 50, false)
-		
-		// Prepare data for the table - use same structure as spiral stairs
-		tableData := CollatzTableData{
-			Steps:      steps,
-			StartIndex: new(big.Int).Set(currentIndex),
-			Coefficient: g.globalCoeficient,
-			IsUpwards:  isUpwards,
-			HitLimit:   hitLimit,
-			StopOnDirectionChange: false, // Continue even if direction changes, like spiral stairs
+	if g.allowFractional {
+		// Steps table only available for integer indices
+		msgText := "Steps table only available\nfor integer indices"
+		msgX := 350
+		msgY := headerY + 20
+		text.Draw(screen, msgText, basicfont.Face7x13, msgX, msgY, color.Gray{Y: 150})
+	} else {
+		currentIndex := g.calculateIndex()
+		if currentIndex.Sign() > 0 {
+			// Calculate steps for the final index - use same parameters as spiral stairs
+			steps, isUpwards, hitLimit := CalculateStaircase(currentIndex, g.globalCoeficient, 50, false)
+			
+			// Prepare data for the table - use same structure as spiral stairs
+			tableData := CollatzTableData{
+				Steps:      steps,
+				StartIndex: new(big.Int).Set(currentIndex),
+				Coefficient: g.globalCoeficient,
+				IsUpwards:  isUpwards,
+				HitLimit:   hitLimit,
+				StopOnDirectionChange: false, // Continue even if direction changes, like spiral stairs
+			}
+			
+			// Draw the table on the right side, aligned vertically with the editable table
+			// The editable table header starts at headerY (70), so align the steps table there too
+			DrawCollatzTableAt(screen, tableData, 350, headerY)
 		}
-		
-		// Draw the table on the right side, aligned vertically with the editable table
-		// The editable table header starts at headerY (70), so align the steps table there too
-		DrawCollatzTableAt(screen, tableData, 350, headerY)
 	}
 	
 	// Draw equation at the bottom
 	g.drawEquation(screen)
 	
-	// Draw coefficient display
+	// Draw coefficient display (moved up to avoid overlap with table)
 	coefText := "Coefficient: " + strconv.FormatFloat(g.globalCoeficient, 'f', -1, 64)
 	coefX := 10
-	coefY := 40
+	coefY := 20
 	text.Draw(screen, coefText, basicfont.Face7x13, coefX, coefY, color.RGBA{200, 200, 255, 255})
 	
+	// Draw x value display (moved up to avoid overlap with table)
+	xText := "x: " + g.xValue.String()
+	xX := 10
+	xY := 35
+	text.Draw(screen, xText, basicfont.Face7x13, xX, xY, color.RGBA{200, 200, 255, 255})
+	
+	// Draw fractional mode display (moved up to avoid overlap with table)
+	fractionalText := "Fractional: "
+	if g.allowFractional {
+		fractionalText += "ON"
+	} else {
+		fractionalText += "OFF"
+	}
+	fractionalX := 10
+	fractionalY := 50
+	fractionalColor := color.RGBA{200, 200, 255, 255}
+	if g.allowFractional {
+		fractionalColor = color.RGBA{100, 255, 100, 255} // Green when on
+	}
+	text.Draw(screen, fractionalText, basicfont.Face7x13, fractionalX, fractionalY, fractionalColor)
+	
+	// Draw x input dialog
+	if g.showXDialog {
+		g.drawXInputDialog(screen)
+	}
+	
 	// Draw instructions
-	instructions := "UP/DOWN: select row | LEFT/RIGHT: cycle valid values | C: cycle coefficient | R: reset all to 0 | ESC: return"
+	instructions := "UP/DOWN: select row | LEFT/RIGHT: cycle valid values | C: cycle coefficient | X: set x | F: toggle fractional | R: reset all to 0 | ESC: return"
 	instBounds := text.BoundString(basicfont.Face7x13, instructions)
 	instX := (screenWidth - instBounds.Dx()) / 2
 	instY := screenHeight - 15
@@ -549,6 +739,8 @@ func (g *GrammarForFiniteSentencesChapter) hashEquation() string {
 		hash.WriteString(",")
 	}
 	hash.WriteString(strconv.FormatFloat(g.globalCoeficient, 'f', -1, 64))
+	hash.WriteString(",")
+	hash.WriteString(g.xValue.String())
 	hashBytes := sha256.Sum256([]byte(hash.String()))
 	return hex.EncodeToString(hashBytes[:])
 }
@@ -582,15 +774,27 @@ func (g *GrammarForFiniteSentencesChapter) renderEquationImage(validRows []int) 
 	currentY := padding + lineHeight
 	var innerBounds *FractionBounds
 	
-	// Render innermost term first: (2^v1-1)/3
+	// Render innermost term first: (x*2^v1-1)/3
 	if len(validRows) > 0 {
 		exp := validRows[0]
 		expStr := strconv.Itoa(exp)
 		
-		// Draw "2^exp - 1"
+		// Draw "x * 2^exp - 1"
+		xText := g.xValue.String()
+		xBounds := text.BoundString(basicfont.Face7x13, xText)
+		xX := currentX
+		xY := currentY
+		text.Draw(testImg, xText, basicfont.Face7x13, int(xX), int(xY)+xBounds.Dy(), textColor)
+		
+		// Draw multiplication dot
+		dotX := xX + float64(xBounds.Dx()) + horizontalSpacing
+		dotY := xY
+		ebitenutil.DrawRect(testImg, dotX-2, dotY-2, 4, 4, textColor)
+		
+		// Draw "2^exp"
 		twoText := "2"
 		twoBounds := text.BoundString(basicfont.Face7x13, twoText)
-		twoX := currentX
+		twoX := dotX + horizontalSpacing
 		twoY := currentY
 		text.Draw(testImg, twoText, basicfont.Face7x13, int(twoX), int(twoY)+twoBounds.Dy(), textColor)
 		
@@ -648,7 +852,7 @@ func (g *GrammarForFiniteSentencesChapter) renderEquationImage(validRows []int) 
 		dotY := (innerBounds.top + innerBounds.bottom) / 2
 		ebitenutil.DrawRect(testImg, dotX-2, dotY-2, 4, 4, textColor)
 		
-		// Draw "2^exp"
+		// Draw "2^exp" (x is only in the first term, not subsequent ones)
 		twoText := "2"
 		twoBounds := text.BoundString(basicfont.Face7x13, twoText)
 		twoX := dotX + horizontalSpacing
@@ -712,9 +916,21 @@ func (g *GrammarForFiniteSentencesChapter) renderEquationImage(validRows []int) 
 		exp := validRows[0]
 		expStr := strconv.Itoa(exp)
 		
+		// Draw "x * 2^exp - 1"
+		xText := g.xValue.String()
+		xBounds := text.BoundString(basicfont.Face7x13, xText)
+		xX := currentX
+		xY := currentY
+		text.Draw(finalImg, xText, basicfont.Face7x13, int(xX), int(xY)+xBounds.Dy(), textColor)
+		
+		// Draw multiplication dot
+		dotX := xX + float64(xBounds.Dx()) + horizontalSpacing
+		dotY := xY
+		ebitenutil.DrawRect(finalImg, dotX-2, dotY-2, 4, 4, textColor)
+		
 		twoText := "2"
 		twoBounds := text.BoundString(basicfont.Face7x13, twoText)
-		twoX := currentX
+		twoX := dotX + horizontalSpacing
 		twoY := currentY
 		text.Draw(finalImg, twoText, basicfont.Face7x13, int(twoX), int(twoY)+twoBounds.Dy(), textColor)
 		
@@ -766,6 +982,7 @@ func (g *GrammarForFiniteSentencesChapter) renderEquationImage(validRows []int) 
 		dotY := (innerBounds.top + innerBounds.bottom) / 2
 		ebitenutil.DrawRect(finalImg, dotX-2, dotY-2, 4, 4, textColor)
 		
+		// Draw "2^exp" (x is only in the first term, not subsequent ones)
 		twoText := "2"
 		twoBounds := text.BoundString(basicfont.Face7x13, twoText)
 		twoX := dotX + horizontalSpacing
@@ -859,19 +1076,20 @@ func (g *GrammarForFiniteSentencesChapter) calculatePartialIndexReverse(n int) *
 		return big.NewInt(1)
 	}
 	
-	// Calculate (2^firstValue - 1) / globalCoeficient
+	// Calculate (x * 2^firstValue - 1) / globalCoeficient
 	coef := big.NewInt(int64(g.globalCoeficient))
 	one := big.NewInt(1)
 	
-	// 2^firstValue
+	// x * 2^firstValue
 	powerOf2 := new(big.Int).Lsh(one, uint(firstValue))
-	// 2^firstValue - 1
-	powerOf2Minus1 := new(big.Int).Sub(powerOf2, one)
-	// (2^firstValue - 1) / globalCoeficient
-	result := new(big.Int).Div(powerOf2Minus1, coef)
+	xTimesPowerOf2 := new(big.Int).Mul(g.xValue, powerOf2)
+	// x * 2^firstValue - 1
+	xTimesPowerOf2Minus1 := new(big.Int).Sub(xTimesPowerOf2, one)
+	// (x * 2^firstValue - 1) / globalCoeficient
+	result := new(big.Int).Div(xTimesPowerOf2Minus1, coef)
 	
 	// Check if division is exact
-	remainder := new(big.Int).Mod(powerOf2Minus1, coef)
+	remainder := new(big.Int).Mod(xTimesPowerOf2Minus1, coef)
 	if remainder.Sign() != 0 {
 		return big.NewInt(0)
 	}
@@ -927,6 +1145,58 @@ func (g *GrammarForFiniteSentencesChapter) getStepsForIndex(index *big.Int, rowN
 	g.cachedSteps[rowNum] = steps
 	
 	return steps
+}
+
+// drawXInputDialog draws the x value input dialog
+func (g *GrammarForFiniteSentencesChapter) drawXInputDialog(screen *ebiten.Image) {
+	// Draw semi-transparent overlay
+	overlayColor := color.RGBA{0, 0, 0, 200}
+	ebitenutil.DrawRect(screen, 0, 0, float64(screenWidth), float64(screenHeight), overlayColor)
+	
+	// Draw dialog box
+	dialogWidth := 400.0
+	dialogHeight := 120.0
+	dialogX := (float64(screenWidth) - dialogWidth) / 2
+	dialogY := (float64(screenHeight) - dialogHeight) / 2
+	
+	// Draw dialog background
+	ebitenutil.DrawRect(screen, dialogX, dialogY, dialogWidth, dialogHeight, color.RGBA{40, 40, 50, 255})
+	
+	// Draw dialog border
+	ebitenutil.DrawRect(screen, dialogX, dialogY, dialogWidth, 2, color.White)
+	ebitenutil.DrawRect(screen, dialogX, dialogY, 2, dialogHeight, color.White)
+	ebitenutil.DrawRect(screen, dialogX+dialogWidth-2, dialogY, 2, dialogHeight, color.White)
+	ebitenutil.DrawRect(screen, dialogX, dialogY+dialogHeight-2, dialogWidth, 2, color.White)
+	
+	// Draw title
+	titleText := "Set x value"
+	titleBounds := text.BoundString(basicfont.Face7x13, titleText)
+	titleX := int(dialogX + (dialogWidth-float64(titleBounds.Dx()))/2)
+	titleY := int(dialogY + 20)
+	text.Draw(screen, titleText, basicfont.Face7x13, titleX, titleY, color.White)
+	
+	// Draw input prompt
+	promptText := "x = "
+	promptBounds := text.BoundString(basicfont.Face7x13, promptText)
+	promptX := int(dialogX + 20)
+	promptY := int(dialogY + 50)
+	text.Draw(screen, promptText, basicfont.Face7x13, promptX, promptY, color.White)
+	
+	// Draw input buffer
+	inputX := promptX + promptBounds.Dx() + 5
+	inputY := promptY
+	inputText := g.xInputBuffer
+	if inputText == "" {
+		inputText = "_" // Cursor
+	}
+	text.Draw(screen, inputText, basicfont.Face7x13, inputX, inputY, color.RGBA{100, 255, 100, 255})
+	
+	// Draw instruction
+	instText := "Press ENTER to confirm, ESC to cancel"
+	instBounds := text.BoundString(basicfont.Face7x13, instText)
+	instX := int(dialogX + (dialogWidth-float64(instBounds.Dx()))/2)
+	instY := int(dialogY + 90)
+	text.Draw(screen, instText, basicfont.Face7x13, instX, instY, color.Gray{Y: 150})
 }
 
 // WasEscConsumed returns whether ESC was consumed by a dialog this frame
