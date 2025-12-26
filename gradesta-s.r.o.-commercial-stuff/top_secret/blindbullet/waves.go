@@ -49,39 +49,25 @@ func NewWavesChapter() *WavesChapter {
 	}
 }
 
-// generateWaves generates the cosine waves based on the Collatz sequence pattern
-// Starting from -1, each wave's center follows the pattern:
-// Wave 1: center = -1, period = 4
-// Wave 2: center = 1, period = 8
-// Wave 3: center = -3, period = 16
-// Wave 4: center = 5, period = 32
-// etc.
+// generateWaves generates the cosine waves aligned with k values from the Collatz steps table
+// Wave n peaks at positions where k=n
+// Centers are calculated to align with actual k value positions
 func (w *WavesChapter) generateWaves(maxWaves int, periodMultiplier float64) []WaveInfo {
 	waves := []WaveInfo{}
 	
-	// Start with wave 1: center = -1, period = 4
-	center := -1
 	period := 4.0
 	waveNum := 1
 	
 	for len(waves) < maxWaves {
+		// Find center by locating an index where k = waveNum
+		center := findWaveCenterForK(waveNum, w.globalCoeficient)
+		
 		waves = append(waves, WaveInfo{
 			Center:  center,
 			Period:  period * periodMultiplier, // Apply period multiplier
 			WaveNum: waveNum,
 			Label:   strconv.Itoa(waveNum), // Convert 1->"1", 2->"2", etc.
 		})
-		
-		// Calculate next wave
-		// Pattern: alternate between adding and subtracting half the current period
-		halfPeriod := int(period / 2)
-		if waveNum%2 == 1 {
-			// Odd wave number: add half period to get next center
-			center = center + halfPeriod
-		} else {
-			// Even wave number: subtract half period to get next center
-			center = center - halfPeriod
-		}
 		
 		waveNum++
 		period *= 2.0 // Period doubles each time
@@ -218,39 +204,42 @@ func (w *WavesChapter) Update() error {
 	
 	// Handle Up arrow to create new visualization layer
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW) {
-		// Find the wave that has a peak at the current index
-		// Use base multiplier (1.0) to find the original wave
+		// Get the steps table for the current index
+		steps, _, _ := w.getCachedStaircase()
+		
+		// The k value should be from row index equal to history length
+		// Row index = history length (0-indexed)
+		historyLen := len(w.upArrowHistory)
+		
+		var kValue int
+		if historyLen < len(steps) {
+			// Get k value from the steps table at row index = history length
+			kValue = steps[historyLen].K
+		} else {
+			// If we're beyond the steps, calculate k directly from index
+			coefBig := big.NewInt(int64(w.globalCoeficient))
+			yValueBig := new(big.Int).Mul(coefBig, w.currentIndex)
+			yValueBig.Add(yValueBig, big.NewInt(1))
+			kValue = findLargestPowerOf2Big(yValueBig)
+		}
+		
+		// Find the wave info for this k value
+		// Generate base waves to find the wave with this k value
 		waves := w.generateWaves(20, 1.0)
-		currentInt := w.currentIndex.Int64()
-		
-		var bestWave *WaveInfo
-		bestPeriod := math.MaxFloat64
-		
+		var targetWave *WaveInfo
 		for i := range waves {
-			wave := &waves[i]
-			diff := currentInt - int64(wave.Center)
-			periodInt := int64(wave.Period)
-			if periodInt > 0 {
-				diffAbs := diff
-				if diffAbs < 0 {
-					diffAbs = -diffAbs
-				}
-				if diffAbs%periodInt == 0 {
-					if wave.Period < bestPeriod {
-						bestWave = wave
-						bestPeriod = wave.Period
-					}
-				}
+			if waves[i].WaveNum == kValue {
+				targetWave = &waves[i]
+				break
 			}
 		}
 		
 		// If we found a wave, add it to the history
-		// Note: bestWave.Period is from base waves (multiplier=1.0), so it's the base period
-		if bestWave != nil {
+		if targetWave != nil {
 			w.upArrowHistory = append(w.upArrowHistory, WaveHistoryEntry{
-				WaveNum: bestWave.WaveNum,
-				Center:  bestWave.Center,
-				Period:  bestWave.Period, // This is the base period (not multiplied)
+				WaveNum: targetWave.WaveNum,
+				Center:  targetWave.Center,
+				Period:  targetWave.Period, // This is the base period (not multiplied)
 			})
 		}
 	}

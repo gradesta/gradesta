@@ -7,6 +7,9 @@ pkgs.buildGoModule {
   
   vendorHash = null;
   
+  # Skip tests in Nix build - they require a display (GLFW/Ebiten initialization)
+  doCheck = false;
+  
   nativeBuildInputs = with pkgs; [
     makeWrapper
     pkg-config
