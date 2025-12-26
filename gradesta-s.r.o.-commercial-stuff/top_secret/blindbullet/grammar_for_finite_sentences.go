@@ -99,9 +99,10 @@ func (g *GrammarForFiniteSentencesChapter) calculateIndex() *big.Int {
 	// (x * 2^firstValue - 1) / globalCoeficient
 	result := new(big.Int).Div(xTimesPowerOf2Minus1, coef)
 	
-	// Check if division is exact
-	remainder := new(big.Int).Mod(xTimesPowerOf2Minus1, coef)
-	if remainder.Sign() != 0 {
+	// Check if division is exact by verifying result * coef == xTimesPowerOf2Minus1
+	// This works correctly for both positive and negative numbers
+	checkResult := new(big.Int).Mul(result, coef)
+	if checkResult.Cmp(xTimesPowerOf2Minus1) != 0 {
 		// Not divisible by globalCoeficient, return 0 (invalid)
 		return big.NewInt(0)
 	}
@@ -122,12 +123,14 @@ func (g *GrammarForFiniteSentencesChapter) calculateIndex() *big.Int {
 		result.Sub(result, one)
 		
 		// Divide by globalCoeficient
-		remainder := new(big.Int).Mod(result, coef)
-		if remainder.Sign() != 0 {
+		// Check if division is exact by verifying result is divisible
+		oldResult := new(big.Int).Set(result)
+		result.Div(result, coef)
+		checkResult := new(big.Int).Mul(result, coef)
+		if checkResult.Cmp(oldResult) != 0 {
 			// Not divisible by globalCoeficient, return 0 (invalid)
 			return big.NewInt(0)
 		}
-		result.Div(result, coef)
 	}
 	
 	return result
@@ -227,8 +230,8 @@ func (g *GrammarForFiniteSentencesChapter) findValidValues(rowIndex int) []int {
 		
 		// Check if this produces a valid (whole number) result (using reverse order calculation)
 		result := g.calculateIndex()
-		if result.Sign() > 0 {
-			// Valid value
+		if result.Sign() != 0 {
+			// Valid value (any non-zero result is valid, including negative numbers)
 			validValues = append(validValues, v)
 		}
 		
@@ -603,7 +606,8 @@ func (g *GrammarForFiniteSentencesChapter) Draw(screen *ebiten.Image) {
 		// So we want to calculate using rows 1 through (i+1), which is (i+1) rows total
 		n := i + 1
 		partialIndex := g.calculatePartialIndexReverse(n)
-		if partialIndex.Sign() > 0 {
+		if partialIndex.Sign() != 0 {
+			// Valid index (including negative values)
 			indexText := formatNumber(partialIndex.String())
 			text.Draw(screen, indexText, basicfont.Face7x13, colIndexX, rowY, color.RGBA{100, 255, 255, 255}) // Cyan
 		} else {
@@ -620,8 +624,9 @@ func (g *GrammarForFiniteSentencesChapter) Draw(screen *ebiten.Image) {
 		text.Draw(screen, msgText, basicfont.Face7x13, msgX, msgY, color.Gray{Y: 150})
 	} else {
 		currentIndex := g.calculateIndex()
-		if currentIndex.Sign() > 0 {
+		if currentIndex.Sign() != 0 {
 			// Calculate steps for the final index - use same parameters as spiral stairs
+			// (works for both positive and negative indices)
 			steps, isUpwards, hitLimit := CalculateStaircase(currentIndex, g.globalCoeficient, 50, false)
 			
 			// Prepare data for the table - use same structure as spiral stairs
@@ -1089,9 +1094,10 @@ func (g *GrammarForFiniteSentencesChapter) calculatePartialIndexReverse(n int) *
 	// (x * 2^firstValue - 1) / globalCoeficient
 	result := new(big.Int).Div(xTimesPowerOf2Minus1, coef)
 	
-	// Check if division is exact
-	remainder := new(big.Int).Mod(xTimesPowerOf2Minus1, coef)
-	if remainder.Sign() != 0 {
+	// Check if division is exact by verifying result * coef == xTimesPowerOf2Minus1
+	// This works correctly for both positive and negative numbers
+	checkResult := new(big.Int).Mul(result, coef)
+	if checkResult.Cmp(xTimesPowerOf2Minus1) != 0 {
 		return big.NewInt(0)
 	}
 	
@@ -1110,11 +1116,13 @@ func (g *GrammarForFiniteSentencesChapter) calculatePartialIndexReverse(n int) *
 		result.Sub(result, one)
 		
 		// Divide by globalCoeficient
-		remainder := new(big.Int).Mod(result, coef)
-		if remainder.Sign() != 0 {
+		// Check if division is exact by verifying result is divisible
+		oldResult := new(big.Int).Set(result)
+		result.Div(result, coef)
+		checkResult := new(big.Int).Mul(result, coef)
+		if checkResult.Cmp(oldResult) != 0 {
 			return big.NewInt(0)
 		}
-		result.Div(result, coef)
 	}
 	
 	return result
