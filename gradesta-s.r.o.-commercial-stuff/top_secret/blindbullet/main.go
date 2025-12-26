@@ -26,9 +26,9 @@ const (
 	StateStairs
 	StateSpiralStairs
 	StateThreeRowBootlace
-	StateWaves
 	StateZigZag
 	StateGrammarForFiniteSentences
+	StateWaves
 	StateSchwingerLimit
 	StateEssenceOfSelf
 )
@@ -42,9 +42,9 @@ const (
 	ChapterStairs
 	ChapterSpiralStairs
 	ChapterThreeRowBootlace
-	ChapterWaves
 	ChapterZigZag
 	ChapterGrammarForFiniteSentences
+	ChapterWaves
 	ChapterSchwingerLimit
 	ChapterEssenceOfSelf
 	ChapterExit
@@ -277,9 +277,9 @@ func (g *Game) drawLaunchScreen(screen *ebiten.Image) {
 		{"Stairs", ChapterStairs},
 		{"The Spiral Staircase", ChapterSpiralStairs},
 		{"Three Row Bootlace", ChapterThreeRowBootlace},
-		{"Waves", ChapterWaves},
 		{"Zig Zag", ChapterZigZag},
 		{"A Grammar for Finite Sentences", ChapterGrammarForFiniteSentences},
+		{"Waves", ChapterWaves},
 		{"The Schwinger Limit", ChapterSchwingerLimit},
 		{"The Essence of the Self", ChapterEssenceOfSelf},
 		{"Exit", ChapterExit},
