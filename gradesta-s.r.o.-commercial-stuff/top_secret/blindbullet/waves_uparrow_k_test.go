@@ -67,7 +67,9 @@ func TestUpArrowAddsCorrectKValue(t *testing.T) {
 				}
 				
 				// Find the wave info for this k value
-				waves := chapter.generateWaves(20, 1.0)
+				// Use periodMultiplier from history to generate waves correctly
+				periodMultiplier := chapter.calculatePeriodMultiplier()
+				waves := chapter.generateWaves(20, periodMultiplier)
 				var targetWave *WaveInfo
 				for i := range waves {
 					if waves[i].WaveNum == actualK {

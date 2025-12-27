@@ -50,27 +50,174 @@ func NewWavesChapter() *WavesChapter {
 }
 
 // generateWaves generates the cosine waves aligned with k values from the Collatz steps table
-// Wave n peaks at positions where k=n
-// Centers are calculated to align with actual k value positions
+// For base layer: uses findWaveCenterForK to find centers
+// For higher layers: iterates number line and adds waves based on k values from steps table
 func (w *WavesChapter) generateWaves(maxWaves int, periodMultiplier float64) []WaveInfo {
 	waves := []WaveInfo{}
 	
-	period := 4.0
-	waveNum := 1
-	
-	for len(waves) < maxWaves {
-		// Find center by locating an index where k = waveNum
-		center := findWaveCenterForK(waveNum, w.globalCoeficient)
+	// For base layer (no history), use the original approach
+	if len(w.upArrowHistory) == 0 {
+		period := 4.0
+		waveNum := 1
 		
+		for len(waves) < maxWaves {
+			// Find center by locating an index where k = waveNum
+			center := findWaveCenterForK(waveNum, w.globalCoeficient)
+			
+			waves = append(waves, WaveInfo{
+				Center:  center,
+				Period:  period * periodMultiplier, // Apply period multiplier
+				WaveNum: waveNum,
+				Label:   strconv.Itoa(waveNum), // Convert 1->"1", 2->"2", etc.
+			})
+			
+			waveNum++
+			period *= 2.0 // Period doubles each time
+		}
+		
+		return waves
+	}
+	
+	// For higher layers: iterate number line and add waves based on k values
+	// Get the current index and calculate visible range
+	currentInt := w.currentIndex.Int64()
+	layerPeriod := w.getCurrentLayerPeriod()
+	visibleRange := layerPeriod * 20 // Check a reasonable range
+	historyLen := len(w.upArrowHistory)
+	
+	// Track which k values we've already added waves for
+	addedKValues := make(map[int]bool)
+	
+	// First, ensure we generate a wave for the k value at the current index
+	// This ensures the test can always find a wave for the current position
+	currentSteps, _, _ := CalculateStaircase(w.currentIndex, w.globalCoeficient, 50, false)
+	if historyLen < len(currentSteps) {
+		currentK := currentSteps[historyLen].K
+		if !addedKValues[currentK] {
+			// Calculate frequency for current index
+			frequency := big.NewInt(1)
+			for i := 0; i <= historyLen && i < len(currentSteps); i++ {
+				if currentSteps[i].K > 0 {
+					powerOf2 := new(big.Int).Lsh(big.NewInt(1), uint(currentSteps[i].K))
+					frequency.Mul(frequency, powerOf2)
+				}
+			}
+			frequencyFloat := new(big.Float).SetInt(frequency)
+			freqFloat64, _ := frequencyFloat.Float64()
+			period := 2.0 * freqFloat64
+			if period < 4.0 {
+				period = 4.0
+			}
+			waves = append(waves, WaveInfo{
+				Center:  int(currentInt),
+				Period:  period,
+				WaveNum: currentK,
+				Label:   strconv.Itoa(currentK),
+			})
+			addedKValues[currentK] = true
+		}
+	}
+	
+	// Iterate from left to right on the number line
+	// Check positions spaced by layerPeriod (the points on the number line)
+	startPos := currentInt - int64(visibleRange)
+	endPos := currentInt + int64(visibleRange)
+	
+	// Align startPos to the nearest point on the number line
+	if len(w.upArrowHistory) > 0 {
+		layerCenter := w.getCurrentLayerCenter()
+		// Round to nearest multiple of layerPeriod from layerCenter
+		offset := float64(startPos - int64(layerCenter))
+		alignedOffset := math.Round(offset/layerPeriod) * layerPeriod
+		startPos = int64(layerCenter) + int64(alignedOffset)
+	} else {
+		// Base layer: ensure odd numbers
+		if startPos%2 == 0 {
+			startPos++
+		}
+	}
+	
+	// Step by the layer period to check each point on the number line
+	stepSize := int64(layerPeriod)
+	if stepSize < 1 {
+		stepSize = 1
+	}
+	for pos := startPos; pos <= endPos && len(waves) < maxWaves; pos += stepSize {
+		// Check if any existing wave peaks at this position
+		hasWave := false
+		for _, wave := range waves {
+			diff := pos - int64(wave.Center)
+			periodInt := int64(wave.Period)
+			if periodInt > 0 {
+				diffAbs := diff
+				if diffAbs < 0 {
+					diffAbs = -diffAbs
+				}
+				if diffAbs%periodInt == 0 {
+					hasWave = true
+					break
+				}
+			}
+		}
+		
+		if hasWave {
+			continue // Already have a wave peaking here
+		}
+		
+		// Get the steps table for this position
+		posBig := big.NewInt(pos)
+		steps, _, _ := CalculateStaircase(posBig, w.globalCoeficient, 50, false)
+		
+		// Find the "next k value" using the same logic as up arrow
+		// Row index = history length
+		var kValue int
+		if historyLen < len(steps) {
+			kValue = steps[historyLen].K
+		} else {
+			// If we're beyond the steps, calculate k directly from index
+			coefBig := big.NewInt(int64(w.globalCoeficient))
+			yValueBig := new(big.Int).Mul(coefBig, posBig)
+			yValueBig.Add(yValueBig, big.NewInt(1))
+			kValue = findLargestPowerOf2Big(yValueBig)
+		}
+		
+		// Skip if we've already added a wave for this k value
+		if addedKValues[kValue] {
+			continue
+		}
+		
+		// Calculate period using frequency calculation
+		// Frequency is product of 2^k for all k values in steps up to and including historyLen
+		// This matches the frequency calculation used in other chapters
+		frequency := big.NewInt(1)
+		for i := 0; i <= historyLen && i < len(steps); i++ {
+			if steps[i].K > 0 {
+				powerOf2 := new(big.Int).Lsh(big.NewInt(1), uint(steps[i].K)) // 1 << k
+				frequency.Mul(frequency, powerOf2)
+			}
+		}
+		
+		// Convert frequency to float64 for period calculation
+		// The period should be based on the frequency
+		// Period = 2 * frequency (since period is 2x the spacing between peaks)
+		frequencyFloat := new(big.Float).SetInt(frequency)
+		freqFloat64, _ := frequencyFloat.Float64()
+		period := 2.0 * freqFloat64
+		
+		// Ensure minimum period (at least 4.0)
+		if period < 4.0 {
+			period = 4.0
+		}
+		
+		// Add wave with this k value
 		waves = append(waves, WaveInfo{
-			Center:  center,
-			Period:  period * periodMultiplier, // Apply period multiplier
-			WaveNum: waveNum,
-			Label:   strconv.Itoa(waveNum), // Convert 1->"1", 2->"2", etc.
+			Center:  int(pos),
+			Period:  period,
+			WaveNum: kValue,
+			Label:   strconv.Itoa(kValue),
 		})
 		
-		waveNum++
-		period *= 2.0 // Period doubles each time
+		addedKValues[kValue] = true
 	}
 	
 	return waves
@@ -104,16 +251,25 @@ func (w *WavesChapter) getCurrentLayerCenter() int {
 
 // getCurrentLayerPeriod returns the period spacing for the number line
 // Base layer: spacing of 2 (odd numbers)
-// Other layers: base period (2) * product of (period/2) for each wave in history
-// Example: history [1, 1] with wave 1 period 4 -> 2 * (4/2) * (4/2) = 2 * 2 * 2 = 8
+// Other layers: frequency * 2, where frequency = product of 2^k for each k value in history
+// We multiply by 2 because we're in an odd-only sphere (spacing between odd numbers is 2)
+// Example: history [1, 1] -> (2^1 * 2^1) * 2 = (2 * 2) * 2 = 8
+// Example: history [3, 3] -> (2^3 * 2^3) * 2 = (8 * 8) * 2 = 128
 func (w *WavesChapter) getCurrentLayerPeriod() float64 {
-	// Start with base period of 2
-	spacing := 2.0
-	// Multiply by (period/2) for each wave in history
-	for _, entry := range w.upArrowHistory {
-		spacing *= entry.Period / 2.0
+	if len(w.upArrowHistory) == 0 {
+		// Base layer: spacing of 2 (odd numbers)
+		return 2.0
 	}
-	return spacing
+	
+	// Calculate frequency as product of 2^k for each wave number in history
+	frequency := 1.0
+	for _, entry := range w.upArrowHistory {
+		// Each wave number k contributes 2^k to the frequency
+		powerOf2 := math.Pow(2.0, float64(entry.WaveNum))
+		frequency *= powerOf2
+	}
+	// Multiply by 2 because we're in an odd-only sphere
+	return frequency * 2.0
 }
 
 // Update updates the Waves chapter
@@ -399,8 +555,12 @@ func (w *WavesChapter) Draw(screen *ebiten.Image) {
 	waveAmplitude := 30.0 // Height of waves
 	waveSpacing := 40.0    // Vertical spacing between waves
 	
-	for waveIdx, wave := range waves {
-		waveY := float64(lineY) - float64(waveIdx+1)*waveSpacing
+	// Position waves based on their wave number (k value) to maintain consistent
+	// vertical positioning across all layers, matching the base layer
+	for _, wave := range waves {
+		// Use wave number (k value) for positioning instead of array index
+		// This ensures wave 1 is always at the same height, wave 2 at the same height, etc.
+		waveY := float64(lineY) - float64(wave.WaveNum)*waveSpacing
 		
 		// Draw cosine wave
 		points := []struct{ x, y float64 }{}
