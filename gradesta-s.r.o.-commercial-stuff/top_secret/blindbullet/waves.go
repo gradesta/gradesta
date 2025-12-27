@@ -90,7 +90,14 @@ func (w *WavesChapter) generateWaves(maxWaves int, periodMultiplier float64) []W
 	
 	// First, ensure we generate a wave for the k value at the current index
 	// This ensures the test can always find a wave for the current position
+	// Use extended steps table if we need steps beyond the destination
 	currentSteps, _, _ := CalculateStaircase(w.currentIndex, w.globalCoeficient, 50, false)
+	if historyLen >= len(currentSteps) {
+		// Need extended steps table
+		extendedStepsNeeded := historyLen - len(currentSteps) + 10
+		currentSteps, _, _ = CalculateStaircaseExtended(w.currentIndex, w.globalCoeficient, 50, false, extendedStepsNeeded)
+	}
+	
 	if historyLen < len(currentSteps) {
 		currentK := currentSteps[historyLen].K
 		if !addedKValues[currentK] {
@@ -168,13 +175,19 @@ func (w *WavesChapter) generateWaves(maxWaves int, periodMultiplier float64) []W
 		posBig := big.NewInt(pos)
 		steps, _, _ := CalculateStaircase(posBig, w.globalCoeficient, 50, false)
 		
+		// If we need steps beyond the destination, use extended steps table
+		if historyLen >= len(steps) {
+			extendedStepsNeeded := historyLen - len(steps) + 10
+			steps, _, _ = CalculateStaircaseExtended(posBig, w.globalCoeficient, 50, false, extendedStepsNeeded)
+		}
+		
 		// Find the "next k value" using the same logic as up arrow
 		// Row index = history length
 		var kValue int
 		if historyLen < len(steps) {
 			kValue = steps[historyLen].K
 		} else {
-			// If we're beyond the steps, calculate k directly from index
+			// If we're still beyond the steps, calculate k directly from index
 			coefBig := big.NewInt(int64(w.globalCoeficient))
 			yValueBig := new(big.Int).Mul(coefBig, posBig)
 			yValueBig.Add(yValueBig, big.NewInt(1))
@@ -221,6 +234,60 @@ func (w *WavesChapter) generateWaves(maxWaves int, periodMultiplier float64) []W
 	}
 	
 	return waves
+}
+
+// calculateNextKValue calculates the "next k value" for a given index and history length
+// This recursively follows destination indices when historyLen exceeds the number of steps
+func (w *WavesChapter) calculateNextKValue(index *big.Int, steps []StairStep, historyLen int) int {
+	if historyLen < len(steps) {
+		// Simple case: k value is in the steps table
+		return steps[historyLen].K
+	}
+	
+	// We're beyond the steps - need to recursively follow destination indices
+	if len(steps) == 0 {
+		// No steps at all, calculate k directly from index
+		coefBig := big.NewInt(int64(w.globalCoeficient))
+		yValueBig := new(big.Int).Mul(coefBig, index)
+		yValueBig.Add(yValueBig, big.NewInt(1))
+		return findLargestPowerOf2Big(yValueBig)
+	}
+	
+	// Start from the destination index of the last step
+	currentIndex := steps[len(steps)-1].DestinationIndex
+	stepsUsed := len(steps)
+	
+	// Continue following destination indices until we've gone through historyLen steps
+	for stepsUsed < historyLen {
+		// Calculate the steps table for the current destination index
+		destSteps, _, _ := CalculateStaircase(currentIndex, w.globalCoeficient, 50, false)
+		
+		if len(destSteps) == 0 {
+			// No steps, calculate k directly
+			coefBig := big.NewInt(int64(w.globalCoeficient))
+			yValueBig := new(big.Int).Mul(coefBig, currentIndex)
+			yValueBig.Add(yValueBig, big.NewInt(1))
+			return findLargestPowerOf2Big(yValueBig)
+		}
+		
+		// How many more steps do we need?
+		remainingSteps := historyLen - stepsUsed
+		
+		if remainingSteps < len(destSteps) {
+			// We have enough steps in this cycle
+			return destSteps[remainingSteps].K
+		}
+		
+		// We need to go to the next destination
+		currentIndex = destSteps[len(destSteps)-1].DestinationIndex
+		stepsUsed += len(destSteps)
+	}
+	
+	// If we've used exactly historyLen steps, calculate k from the final destination index
+	coefBig := big.NewInt(int64(w.globalCoeficient))
+	yValueBig := new(big.Int).Mul(coefBig, currentIndex)
+	yValueBig.Add(yValueBig, big.NewInt(1))
+	return findLargestPowerOf2Big(yValueBig)
 }
 
 // calculatePeriodMultiplier calculates the cumulative period multiplier from upArrowHistory
@@ -367,17 +434,8 @@ func (w *WavesChapter) Update() error {
 		// Row index = history length (0-indexed)
 		historyLen := len(w.upArrowHistory)
 		
-		var kValue int
-		if historyLen < len(steps) {
-			// Get k value from the steps table at row index = history length
-			kValue = steps[historyLen].K
-		} else {
-			// If we're beyond the steps, calculate k directly from index
-			coefBig := big.NewInt(int64(w.globalCoeficient))
-			yValueBig := new(big.Int).Mul(coefBig, w.currentIndex)
-			yValueBig.Add(yValueBig, big.NewInt(1))
-			kValue = findLargestPowerOf2Big(yValueBig)
-		}
+		// Calculate next k value using the same recursive logic as wave generation
+		kValue := w.calculateNextKValue(w.currentIndex, steps, historyLen)
 		
 		// Find the wave info for this k value
 		// Generate base waves to find the wave with this k value
@@ -557,6 +615,7 @@ func (w *WavesChapter) Draw(screen *ebiten.Image) {
 	
 	// Position waves based on their wave number (k value) to maintain consistent
 	// vertical positioning across all layers, matching the base layer
+	// Draw all generated waves - they should all be visible
 	for _, wave := range waves {
 		// Use wave number (k value) for positioning instead of array index
 		// This ensures wave 1 is always at the same height, wave 2 at the same height, etc.

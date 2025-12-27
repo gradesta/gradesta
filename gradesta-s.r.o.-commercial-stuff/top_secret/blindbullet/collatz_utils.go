@@ -318,3 +318,56 @@ func CalculateStaircase(startIndex *big.Int, coefficient float64, maxSteps int, 
 	return steps, isUpwards, hitLimit
 }
 
+// CalculateStaircaseExtended calculates the staircase and extends it beyond the destination
+// by continuing from the destination index for additionalSteps more steps
+// This is useful when you need k values beyond what the normal staircase provides
+func CalculateStaircaseExtended(startIndex *big.Int, coefficient float64, maxSteps int, stopOnDirectionChange bool, additionalSteps int) ([]StairStep, bool, bool) {
+	// First, calculate the normal staircase
+	steps, isUpwards, hitLimit := CalculateStaircase(startIndex, coefficient, maxSteps, stopOnDirectionChange)
+	
+	// If we need additional steps and we have a destination, continue from there
+	if additionalSteps > 0 && len(steps) > 0 {
+		// Get the destination index from the last step
+		destinationIndex := steps[len(steps)-1].DestinationIndex
+		
+		// Continue calculating steps from the destination index
+		// We'll continue until we have enough steps or hit a limit
+		currentIndex := new(big.Int).Set(destinationIndex)
+		coefBig := big.NewInt(int64(coefficient))
+		one := big.NewInt(1)
+		
+		for i := 0; i < additionalSteps && len(steps) < maxSteps+additionalSteps; i++ {
+			// Calculate y value for current index
+			yValueBig := new(big.Int).Mul(coefBig, currentIndex)
+			yValueBig.Add(yValueBig, one)
+			
+			// Find k
+			k := findLargestPowerOf2Big(yValueBig)
+			if k == 0 {
+				break // No destination if y is odd
+			}
+			
+			// Calculate destination index
+			powerOf2Big := new(big.Int).Lsh(one, uint(k))
+			destinationIndexBig := new(big.Int).Div(yValueBig, powerOf2Big)
+			
+			// Check if destination is different from current index
+			if destinationIndexBig.Cmp(currentIndex) == 0 {
+				break // Reached the end
+			}
+			
+			// Add this step
+			steps = append(steps, StairStep{
+				StartIndex:      new(big.Int).Set(currentIndex),
+				DestinationIndex: new(big.Int).Set(destinationIndexBig),
+				K:               k,
+			})
+			
+			// Move to destination for next iteration
+			currentIndex.Set(destinationIndexBig)
+		}
+	}
+	
+	return steps, isUpwards, hitLimit
+}
+
