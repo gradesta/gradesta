@@ -37,6 +37,10 @@ type AlternatingJacobsthalChapter struct {
 		kValue  int
 	}
 	
+	// Offset input dialog
+	showOffsetDialog bool
+	offsetInputBuffer string
+	
 	escConsumed bool // Whether ESC was consumed by a dialog this frame
 }
 
@@ -206,12 +210,69 @@ func (a *AlternatingJacobsthalChapter) WasEscConsumed() bool {
 func (a *AlternatingJacobsthalChapter) Update() error {
 	a.escConsumed = false
 	
+	// Handle offset input dialog first (consumes all input when open)
+	if a.showOffsetDialog {
+		// Handle ESC to cancel
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			a.showOffsetDialog = false
+			a.offsetInputBuffer = ""
+			a.escConsumed = true
+			return nil
+		}
+		
+		// Handle Enter to confirm
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+			// Parse the input as an integer
+			if len(a.offsetInputBuffer) > 0 {
+				newOffset, err := strconv.Atoi(a.offsetInputBuffer)
+				if err == nil {
+					a.sequenceOffset = newOffset
+				}
+			}
+			a.showOffsetDialog = false
+			a.offsetInputBuffer = ""
+			return nil
+		}
+		
+		// Handle Backspace
+		if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) {
+			if len(a.offsetInputBuffer) > 0 {
+				a.offsetInputBuffer = a.offsetInputBuffer[:len(a.offsetInputBuffer)-1]
+			}
+		}
+		
+		// Handle character input (works with any keyboard layout)
+		chars := ebiten.AppendInputChars(nil)
+		for _, char := range chars {
+			charStr := string(char)
+			// Allow digits 0-9
+			if char >= '0' && char <= '9' {
+				a.offsetInputBuffer += charStr
+			}
+			// Allow minus sign only at the start
+			if char == '-' && len(a.offsetInputBuffer) == 0 {
+				a.offsetInputBuffer = "-"
+			}
+		}
+		
+		return nil
+	}
+	
+	// Handle 'o' key to open offset input dialog
+	if inpututil.IsKeyJustPressed(ebiten.KeyO) {
+		if a.usingGeneratedSequence {
+			a.showOffsetDialog = true
+			a.offsetInputBuffer = strconv.Itoa(a.sequenceOffset)
+			return nil
+		}
+	}
+	
 	// Check if shift is pressed for offset adjustment
 	shiftPressed := ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)
 	
 	// Handle Shift+Left/Right to adjust sequence offset (check this first)
 	if shiftPressed {
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || inpututil.IsKeyJustPressed(ebiten.KeyA) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
 			a.sequenceOffset--
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || inpututil.IsKeyJustPressed(ebiten.KeyD) {
@@ -234,7 +295,7 @@ func (a *AlternatingJacobsthalChapter) Update() error {
 		}
 		
 		// Left arrow: move to left column (or previous row if already on left)
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || inpututil.IsKeyJustPressed(ebiten.KeyA) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
 			currentRow := a.getCellRow(a.selectedCell)
 			isRight := a.getCellCol(a.selectedCell)
 			
@@ -304,6 +365,63 @@ func (a *AlternatingJacobsthalChapter) Update() error {
 	// Handle 'k' key to scroll sequence left (decrease i by 2, keeping it even)
 	if inpututil.IsKeyJustPressed(ebiten.KeyK) {
 		a.sequenceScrollOffset -= 2
+	}
+	
+	// Check if offset produces matching k values for cells 1, 2, 3
+	// Returns true if cell 1's k = 1, cell 2's k = 2, cell 3's k = 3
+	checkOffsetMatch := func(offset int) bool {
+		if !a.usingGeneratedSequence {
+			return false
+		}
+		// Temporarily set offset to test
+		oldOffset := a.sequenceOffset
+		a.sequenceOffset = offset
+		
+		// Check cells 1, 2, 3
+		// Cell 1: left column, row 0
+		// Cell 2: right column, row 1
+		// Cell 3: left column, row 1
+		cell1Value := a.getCellValue(1)
+		cell2Value := a.getCellValue(2)
+		cell3Value := a.getCellValue(3)
+		
+		k1 := a.calculateNextKValue(cell1Value)
+		k2 := a.calculateNextKValue(cell2Value)
+		k3 := a.calculateNextKValue(cell3Value)
+		
+		// Restore offset
+		a.sequenceOffset = oldOffset
+		
+		// Check if k values match cell numbers (1, 2, 3)
+		return k1 == 1 && k2 == 2 && k3 == 3
+	}
+	
+	// Handle 'a' key to find offset to the left (decrease) where cells 1,2,3 match
+	if inpututil.IsKeyJustPressed(ebiten.KeyA) && !shiftPressed {
+		if a.usingGeneratedSequence {
+			// Search left (decrease offset) until we find a match
+			startOffset := a.sequenceOffset
+			for testOffset := startOffset - 1; testOffset >= startOffset - 1000; testOffset-- {
+				if checkOffsetMatch(testOffset) {
+					a.sequenceOffset = testOffset
+					break
+				}
+			}
+		}
+	}
+	
+	// Handle 's' key to find offset to the right (increase) where cells 1,2,3 match
+	if inpututil.IsKeyJustPressed(ebiten.KeyS) {
+		if a.usingGeneratedSequence {
+			// Search right (increase offset) until we find a match
+			startOffset := a.sequenceOffset
+			for testOffset := startOffset + 1; testOffset <= startOffset + 1000; testOffset++ {
+				if checkOffsetMatch(testOffset) {
+					a.sequenceOffset = testOffset
+					break
+				}
+			}
+		}
 	}
 	
 	// Handle 'r' key to reset (clear generated sequence and history)
@@ -473,11 +591,70 @@ func (a *AlternatingJacobsthalChapter) Draw(screen *ebiten.Image) {
 		text.Draw(screen, offsetText, basicfont.Face7x13, 10, seqY+30, color.RGBA{200, 200, 255, 255})
 	}
 	
+	// Draw offset input dialog if open
+	if a.showOffsetDialog {
+		a.drawOffsetInputDialog(screen)
+	}
+	
 	// Draw instructions
-	instructions := "Arrow Keys: Navigate | Enter: Generate sequence | Shift+Left/Right: Adjust offset | K/L: Scroll sequence | R: Reset | ESC: Return"
+	instructions := "Arrow Keys: Navigate | Enter: Generate sequence | Shift+Left/Right: Adjust offset | O: Set offset | A/S: Find matching offset | K/L: Scroll sequence | R: Reset | ESC: Return"
 	instBounds := text.BoundString(basicfont.Face7x13, instructions)
 	instX := (screenWidth - instBounds.Dx()) / 2
 	instY := screenHeight - 30
 	text.Draw(screen, instructions, basicfont.Face7x13, instX, instY, color.Gray{Y: 150})
+}
+
+// drawOffsetInputDialog draws the offset input dialog
+func (a *AlternatingJacobsthalChapter) drawOffsetInputDialog(screen *ebiten.Image) {
+	// Draw semi-transparent overlay
+	overlayColor := color.RGBA{0, 0, 0, 200}
+	ebitenutil.DrawRect(screen, 0, 0, float64(screenWidth), float64(screenHeight), overlayColor)
+	
+	// Draw dialog box
+	dialogWidth := 400.0
+	dialogHeight := 120.0
+	dialogX := (float64(screenWidth) - dialogWidth) / 2
+	dialogY := (float64(screenHeight) - dialogHeight) / 2
+	
+	// Draw dialog background
+	ebitenutil.DrawRect(screen, dialogX, dialogY, dialogWidth, dialogHeight, color.RGBA{40, 40, 50, 255})
+	
+	// Draw dialog border
+	ebitenutil.DrawRect(screen, dialogX, dialogY, dialogWidth, 2, color.White)
+	ebitenutil.DrawRect(screen, dialogX, dialogY, 2, dialogHeight, color.White)
+	ebitenutil.DrawRect(screen, dialogX+dialogWidth-2, dialogY, 2, dialogHeight, color.White)
+	ebitenutil.DrawRect(screen, dialogX, dialogY+dialogHeight-2, dialogWidth, 2, color.White)
+	
+	// Draw title
+	titleText := "Set offset"
+	titleBounds := text.BoundString(basicfont.Face7x13, titleText)
+	titleX := int(dialogX + (dialogWidth-float64(titleBounds.Dx()))/2)
+	titleY := int(dialogY + 20)
+	text.Draw(screen, titleText, basicfont.Face7x13, titleX, titleY, color.White)
+	
+	// Draw input prompt
+	promptText := "Offset: "
+	promptBounds := text.BoundString(basicfont.Face7x13, promptText)
+	promptX := int(dialogX + 20)
+	promptY := int(dialogY + 50)
+	text.Draw(screen, promptText, basicfont.Face7x13, promptX, promptY, color.White)
+	
+	// Draw input buffer
+	inputX := promptX + promptBounds.Dx() + 5
+	inputY := promptY
+	inputText := a.offsetInputBuffer
+	if inputText == "" {
+		inputText = "_" // Cursor
+	} else {
+		inputText += "_" // Add cursor at end
+	}
+	text.Draw(screen, inputText, basicfont.Face7x13, inputX, inputY, color.RGBA{100, 255, 100, 255})
+	
+	// Draw instruction
+	instText := "Press ENTER to confirm, ESC to cancel"
+	instBounds := text.BoundString(basicfont.Face7x13, instText)
+	instX := int(dialogX + (dialogWidth-float64(instBounds.Dx()))/2)
+	instY := int(dialogY + 90)
+	text.Draw(screen, instText, basicfont.Face7x13, instX, instY, color.RGBA{200, 200, 200, 255})
 }
 
