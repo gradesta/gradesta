@@ -29,6 +29,7 @@ const (
 	StateZigZag
 	StateGrammarForFiniteSentences
 	StateWaves
+	StateAlternatingJacobsthal
 	StateSchwingerLimit
 	StateEssenceOfSelf
 )
@@ -45,6 +46,7 @@ const (
 	ChapterZigZag
 	ChapterGrammarForFiniteSentences
 	ChapterWaves
+	ChapterAlternatingJacobsthal
 	ChapterSchwingerLimit
 	ChapterEssenceOfSelf
 	ChapterExit
@@ -60,6 +62,7 @@ type Game struct {
 	spiralStairs                 *SpiralStairsChapter
 	threeRowBootlace             *ThreeRowBootlaceChapter
 	waves                        *WavesChapter
+	alternatingJacobsthal        *AlternatingJacobsthalChapter
 	zigZag                       *ZigZagChapter
 	grammarForFiniteSentences    *GrammarForFiniteSentencesChapter
 	schwingerLimit               *SchwingerLimitChapter
@@ -77,6 +80,7 @@ func NewGame() *Game {
 		spiralStairs:                 NewSpiralStairsChapter(),
 		threeRowBootlace:             NewThreeRowBootlaceChapter(),
 		waves:                        NewWavesChapter(),
+		alternatingJacobsthal:        NewAlternatingJacobsthalChapter(),
 		zigZag:                       NewZigZagChapter(),
 		grammarForFiniteSentences:    NewGrammarForFiniteSentencesChapter(),
 		schwingerLimit:               NewSchwingerLimitChapter(),
@@ -117,6 +121,8 @@ func (g *Game) Update() error {
 				g.state = StateThreeRowBootlace
 			case ChapterWaves:
 				g.state = StateWaves
+			case ChapterAlternatingJacobsthal:
+				g.state = StateAlternatingJacobsthal
 			case ChapterZigZag:
 				g.state = StateZigZag
 			case ChapterGrammarForFiniteSentences:
@@ -172,6 +178,13 @@ func (g *Game) Update() error {
 			return err
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !g.waves.WasEscConsumed() {
+			g.state = StateLaunchScreen
+		}
+	case StateAlternatingJacobsthal:
+		if err := g.alternatingJacobsthal.Update(); err != nil {
+			return err
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !g.alternatingJacobsthal.WasEscConsumed() {
 			g.state = StateLaunchScreen
 		}
 	case StateGrammarForFiniteSentences:
@@ -241,6 +254,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.threeRowBootlace.Draw(screen)
 	case StateWaves:
 		g.waves.Draw(screen)
+	case StateAlternatingJacobsthal:
+		g.alternatingJacobsthal.Draw(screen)
 	case StateZigZag:
 		g.zigZag.Draw(screen)
 	case StateGrammarForFiniteSentences:
@@ -280,6 +295,7 @@ func (g *Game) drawLaunchScreen(screen *ebiten.Image) {
 		{"Zig Zag", ChapterZigZag},
 		{"A Grammar for Finite Sentences", ChapterGrammarForFiniteSentences},
 		{"Waves", ChapterWaves},
+		{"The Alternating Jacobsthal sequence", ChapterAlternatingJacobsthal},
 		{"The Schwinger Limit", ChapterSchwingerLimit},
 		{"The Essence of the Self", ChapterEssenceOfSelf},
 		{"Exit", ChapterExit},
