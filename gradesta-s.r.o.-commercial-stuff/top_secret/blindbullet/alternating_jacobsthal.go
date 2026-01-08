@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
 	"math/big"
 	"strconv"
@@ -42,6 +43,10 @@ type AlternatingJacobsthalChapter struct {
 	offsetInputBuffer string
 	showScrollOffsetDialog bool
 	scrollOffsetInputBuffer string
+	
+	// Help dialog
+	showHelp bool
+	helpScrollOffset int
 	
 	escConsumed bool // Whether ESC was consumed by a dialog this frame
 }
@@ -211,6 +216,35 @@ func (a *AlternatingJacobsthalChapter) WasEscConsumed() bool {
 // Update updates the Alternating Jacobsthal chapter
 func (a *AlternatingJacobsthalChapter) Update() error {
 	a.escConsumed = false
+	
+	// Handle 'h' key to toggle help dialog
+	if inpututil.IsKeyJustPressed(ebiten.KeyH) {
+		a.showHelp = !a.showHelp
+		if a.showHelp {
+			a.helpScrollOffset = 0
+		}
+		return nil
+	}
+	
+	// Handle help dialog scrolling
+	if a.showHelp {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyS) {
+			a.helpScrollOffset += 15
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW) {
+			a.helpScrollOffset -= 15
+			if a.helpScrollOffset < 0 {
+				a.helpScrollOffset = 0
+			}
+		}
+		// Close help with Escape or 'h' again
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyH) {
+			a.showHelp = false
+			a.escConsumed = true
+		}
+		// Don't process other keys when help is open
+		return nil
+	}
 	
 	// Handle offset input dialogs first (consumes all input when open)
 	if a.showOffsetDialog {
@@ -673,8 +707,13 @@ func (a *AlternatingJacobsthalChapter) Draw(screen *ebiten.Image) {
 		a.drawScrollOffsetInputDialog(screen)
 	}
 	
-	// Draw instructions
-	instructions := "Arrow Keys: Navigate | Enter: Generate sequence | Shift+Left/Right: Adjust offset | O: Set offset | P: Set scroll position | A/S: Find matching offset | K/L: Scroll sequence | R: Reset | ESC: Return"
+	// Draw help dialog if open
+	if a.showHelp {
+		a.drawHelpDialog(screen)
+	}
+	
+	// Draw instructions (simplified - details in help dialog)
+	instructions := "Arrow Keys: Navigate | Enter: Generate sequence | H: Help | ESC: Return"
 	instBounds := text.BoundString(basicfont.Face7x13, instructions)
 	instX := (screenWidth - instBounds.Dx()) / 2
 	instY := screenHeight - 30
@@ -787,4 +826,104 @@ func (a *AlternatingJacobsthalChapter) drawScrollOffsetInputDialog(screen *ebite
 	instX := int(dialogX + (dialogWidth-float64(instBounds.Dx()))/2)
 	instY := int(dialogY + 90)
 	text.Draw(screen, instText, basicfont.Face7x13, instX, instY, color.RGBA{200, 200, 200, 255})
+}
+
+// drawHelpDialog draws the help dialog
+func (a *AlternatingJacobsthalChapter) drawHelpDialog(screen *ebiten.Image) {
+	// Draw semi-transparent overlay
+	overlayColor := color.RGBA{0, 0, 0, 200}
+	ebitenutil.DrawRect(screen, 0, 0, float64(screenWidth), float64(screenHeight), overlayColor)
+	
+	// Draw help dialog box
+	dialogWidth := 600.0
+	dialogHeight := 500.0
+	dialogX := (float64(screenWidth) - dialogWidth) / 2
+	dialogY := (float64(screenHeight) - dialogHeight) / 2
+	
+	// Draw dialog background
+	ebitenutil.DrawRect(screen, dialogX, dialogY, dialogWidth, dialogHeight, color.RGBA{30, 30, 40, 255})
+	
+	// Draw dialog border
+	ebitenutil.DrawRect(screen, dialogX, dialogY, dialogWidth, 2, color.White)
+	ebitenutil.DrawRect(screen, dialogX, dialogY, 2, dialogHeight, color.White)
+	ebitenutil.DrawRect(screen, dialogX+dialogWidth-2, dialogY, 2, dialogHeight, color.White)
+	ebitenutil.DrawRect(screen, dialogX, dialogY+dialogHeight-2, dialogWidth, 2, color.White)
+	
+	// Draw title
+	titleText := "HELP - KEYBOARD CONTROLS"
+	titleBounds := text.BoundString(basicfont.Face7x13, titleText)
+	titleX := int(dialogX + (dialogWidth-float64(titleBounds.Dx()))/2)
+	titleY := int(dialogY + 20)
+	text.Draw(screen, titleText, basicfont.Face7x13, titleX, titleY, color.White)
+	
+	// Help content lines
+	helpLines := []string{
+		"",
+		"NAVIGATION:",
+		"  Arrow Keys            - Navigate cells in the table",
+		"",
+		"SEQUENCE GENERATION:",
+		"  Enter                 - Generate sequence from selected cell",
+		"                       - Formula: jacobsthal_number + i * 2^cell_number",
+		"",
+		"OFFSET ADJUSTMENT:",
+		"  Shift+Left/Right      - Adjust offset for sequence indexing",
+		"  O                     - Open dialog to manually set offset",
+		"  A                     - Auto-find offset to left (cells 1,2,3 match k values)",
+		"  S                     - Auto-find offset to right (cells 1,2,3 match k values)",
+		"",
+		"SEQUENCE SCROLLING:",
+		"  K/L                   - Scroll sequence left/right",
+		"  P                     - Open dialog to jump to specific sequence value",
+		"",
+		"RESET:",
+		"  R                     - Reset sequence and history",
+		"",
+		"DIALOGS:",
+		"  O                     - Open offset input dialog",
+		"  P                     - Open scroll position input dialog",
+		"  Type number           - Enter value in dialog",
+		"  Enter                 - Confirm dialog",
+		"  ESC                   - Cancel dialog",
+		"  Backspace             - Delete last character",
+		"",
+		"HELP:",
+		"  H                     - Show/hide this help dialog",
+		"  UP/DOWN or W/S        - Scroll help (when open)",
+		"",
+		"",
+		"Press H or ESC to close",
+	}
+	
+	// Draw scrollable content
+	startY := int(dialogY) + 50 - a.helpScrollOffset
+	lineHeight := 15
+	
+	for i, line := range helpLines {
+		y := startY + i*lineHeight
+		// Only draw visible lines
+		if y >= int(dialogY)+40 && y <= int(dialogY)+int(dialogHeight)-30 {
+			// Color code different sections
+			var lineColor color.Color = color.Gray{Y: 200}
+			if len(line) > 0 && line[0] != ' ' {
+				// Section headers
+				lineColor = color.White
+			} else if len(line) > 2 && line[:2] == "  " {
+				// Regular lines
+				lineColor = color.Gray{Y: 180}
+			}
+			text.Draw(screen, line, basicfont.Face7x13, int(dialogX+20), y, lineColor)
+		}
+	}
+	
+	// Draw scroll indicator if content is scrollable
+	totalHeight := len(helpLines) * lineHeight
+	if totalHeight > int(dialogHeight-70) {
+		// Show scroll position
+		scrollText := fmt.Sprintf("Scroll: %d/%d", a.helpScrollOffset, totalHeight-int(dialogHeight-70))
+		scrollBounds := text.BoundString(basicfont.Face7x13, scrollText)
+		scrollX := int(dialogX + dialogWidth - float64(scrollBounds.Dx()) - 10)
+		scrollY := int(dialogY + dialogHeight - 20)
+		text.Draw(screen, scrollText, basicfont.Face7x13, scrollX, scrollY, color.Gray{Y: 120})
+	}
 }
