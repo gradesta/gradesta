@@ -37,9 +37,11 @@ type AlternatingJacobsthalChapter struct {
 		kValue  int
 	}
 	
-	// Offset input dialog
+	// Offset input dialogs
 	showOffsetDialog bool
 	offsetInputBuffer string
+	showScrollOffsetDialog bool
+	scrollOffsetInputBuffer string
 	
 	escConsumed bool // Whether ESC was consumed by a dialog this frame
 }
@@ -210,7 +212,7 @@ func (a *AlternatingJacobsthalChapter) WasEscConsumed() bool {
 func (a *AlternatingJacobsthalChapter) Update() error {
 	a.escConsumed = false
 	
-	// Handle offset input dialog first (consumes all input when open)
+	// Handle offset input dialogs first (consumes all input when open)
 	if a.showOffsetDialog {
 		// Handle ESC to cancel
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
@@ -258,11 +260,83 @@ func (a *AlternatingJacobsthalChapter) Update() error {
 		return nil
 	}
 	
+	// Handle scroll offset input dialog
+	if a.showScrollOffsetDialog {
+		// Handle ESC to cancel
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			a.showScrollOffsetDialog = false
+			a.scrollOffsetInputBuffer = ""
+			a.escConsumed = true
+			return nil
+		}
+		
+		// Handle Enter to confirm
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+			// Parse the input as a sequence value (not an index)
+			if len(a.scrollOffsetInputBuffer) > 0 {
+				targetValue, err := strconv.Atoi(a.scrollOffsetInputBuffer)
+				if err == nil {
+					// Find the index that produces this sequence value
+					// Formula: sequenceValue = sequenceCellValue + i * 2^sequenceCellNum
+					// So: i = (targetValue - sequenceCellValue) / 2^sequenceCellNum
+					powerOf2 := 1 << uint(a.sequenceCellNum)
+					index := (targetValue - a.sequenceCellValue) / powerOf2
+					
+					// Round to nearest even number (since we use even indices only)
+					if index%2 != 0 {
+						if index < 0 {
+							index = index - 1
+						} else {
+							index = index + 1
+						}
+					}
+					
+					a.sequenceScrollOffset = index
+				}
+			}
+			a.showScrollOffsetDialog = false
+			a.scrollOffsetInputBuffer = ""
+			return nil
+		}
+		
+		// Handle Backspace
+		if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) {
+			if len(a.scrollOffsetInputBuffer) > 0 {
+				a.scrollOffsetInputBuffer = a.scrollOffsetInputBuffer[:len(a.scrollOffsetInputBuffer)-1]
+			}
+		}
+		
+		// Handle character input (works with any keyboard layout)
+		chars := ebiten.AppendInputChars(nil)
+		for _, char := range chars {
+			charStr := string(char)
+			// Allow digits 0-9
+			if char >= '0' && char <= '9' {
+				a.scrollOffsetInputBuffer += charStr
+			}
+			// Allow minus sign only at the start
+			if char == '-' && len(a.scrollOffsetInputBuffer) == 0 {
+				a.scrollOffsetInputBuffer = "-"
+			}
+		}
+		
+		return nil
+	}
+	
 	// Handle 'o' key to open offset input dialog
 	if inpututil.IsKeyJustPressed(ebiten.KeyO) {
 		if a.usingGeneratedSequence {
 			a.showOffsetDialog = true
 			a.offsetInputBuffer = strconv.Itoa(a.sequenceOffset)
+			return nil
+		}
+	}
+	
+	// Handle 'p' key to open scroll offset input dialog
+	if inpututil.IsKeyJustPressed(ebiten.KeyP) {
+		if a.usingGeneratedSequence {
+			a.showScrollOffsetDialog = true
+			a.scrollOffsetInputBuffer = strconv.Itoa(a.sequenceScrollOffset)
 			return nil
 		}
 	}
@@ -591,13 +665,16 @@ func (a *AlternatingJacobsthalChapter) Draw(screen *ebiten.Image) {
 		text.Draw(screen, offsetText, basicfont.Face7x13, 10, seqY+30, color.RGBA{200, 200, 255, 255})
 	}
 	
-	// Draw offset input dialog if open
+	// Draw offset input dialogs if open
 	if a.showOffsetDialog {
 		a.drawOffsetInputDialog(screen)
 	}
+	if a.showScrollOffsetDialog {
+		a.drawScrollOffsetInputDialog(screen)
+	}
 	
 	// Draw instructions
-	instructions := "Arrow Keys: Navigate | Enter: Generate sequence | Shift+Left/Right: Adjust offset | O: Set offset | A/S: Find matching offset | K/L: Scroll sequence | R: Reset | ESC: Return"
+	instructions := "Arrow Keys: Navigate | Enter: Generate sequence | Shift+Left/Right: Adjust offset | O: Set offset | P: Set scroll position | A/S: Find matching offset | K/L: Scroll sequence | R: Reset | ESC: Return"
 	instBounds := text.BoundString(basicfont.Face7x13, instructions)
 	instX := (screenWidth - instBounds.Dx()) / 2
 	instY := screenHeight - 30
@@ -658,3 +735,56 @@ func (a *AlternatingJacobsthalChapter) drawOffsetInputDialog(screen *ebiten.Imag
 	text.Draw(screen, instText, basicfont.Face7x13, instX, instY, color.RGBA{200, 200, 200, 255})
 }
 
+// drawScrollOffsetInputDialog draws the scroll offset input dialog
+func (a *AlternatingJacobsthalChapter) drawScrollOffsetInputDialog(screen *ebiten.Image) {
+	// Draw semi-transparent overlay
+	overlayColor := color.RGBA{0, 0, 0, 200}
+	ebitenutil.DrawRect(screen, 0, 0, float64(screenWidth), float64(screenHeight), overlayColor)
+	
+	// Draw dialog box
+	dialogWidth := 400.0
+	dialogHeight := 120.0
+	dialogX := (float64(screenWidth) - dialogWidth) / 2
+	dialogY := (float64(screenHeight) - dialogHeight) / 2
+	
+	// Draw dialog background
+	ebitenutil.DrawRect(screen, dialogX, dialogY, dialogWidth, dialogHeight, color.RGBA{40, 40, 50, 255})
+	
+	// Draw dialog border
+	ebitenutil.DrawRect(screen, dialogX, dialogY, dialogWidth, 2, color.White)
+	ebitenutil.DrawRect(screen, dialogX, dialogY, 2, dialogHeight, color.White)
+	ebitenutil.DrawRect(screen, dialogX+dialogWidth-2, dialogY, 2, dialogHeight, color.White)
+	ebitenutil.DrawRect(screen, dialogX, dialogY+dialogHeight-2, dialogWidth, 2, color.White)
+	
+	// Draw title
+	titleText := "Jump to sequence value"
+	titleBounds := text.BoundString(basicfont.Face7x13, titleText)
+	titleX := int(dialogX + (dialogWidth-float64(titleBounds.Dx()))/2)
+	titleY := int(dialogY + 20)
+	text.Draw(screen, titleText, basicfont.Face7x13, titleX, titleY, color.White)
+	
+	// Draw input prompt
+	promptText := "Value: "
+	promptBounds := text.BoundString(basicfont.Face7x13, promptText)
+	promptX := int(dialogX + 20)
+	promptY := int(dialogY + 50)
+	text.Draw(screen, promptText, basicfont.Face7x13, promptX, promptY, color.White)
+	
+	// Draw input buffer
+	inputX := promptX + promptBounds.Dx() + 5
+	inputY := promptY
+	inputText := a.scrollOffsetInputBuffer
+	if inputText == "" {
+		inputText = "_" // Cursor
+	} else {
+		inputText += "_" // Add cursor at end
+	}
+	text.Draw(screen, inputText, basicfont.Face7x13, inputX, inputY, color.RGBA{100, 255, 100, 255})
+	
+	// Draw instruction
+	instText := "Press ENTER to confirm, ESC to cancel"
+	instBounds := text.BoundString(basicfont.Face7x13, instText)
+	instX := int(dialogX + (dialogWidth-float64(instBounds.Dx()))/2)
+	instY := int(dialogY + 90)
+	text.Draw(screen, instText, basicfont.Face7x13, instX, instY, color.RGBA{200, 200, 200, 255})
+}
