@@ -300,7 +300,7 @@ func (j *JumpsChapter) Update() error {
 
 	// Handle 'M' key to cycle through modes
 	if inpututil.IsKeyJustPressed(ebiten.KeyM) {
-		j.displayMode = (j.displayMode + 1) % 4 // Cycle: 0 (Normal) -> 1 (Jump) -> 2 (Index) -> 3 (Incoming) -> 0
+		j.displayMode = (j.displayMode + 1) % 5 // Cycle: 0 (Normal) -> 1 (Jump) -> 2 (Index) -> 3 (Incoming) -> 4 (SourceK) -> 0
 	}
 
 	// Handle arrow keys for navigation with proper key repeat
@@ -383,6 +383,39 @@ func (j *JumpsChapter) Update() error {
 		j.rowScrollOffset = 0
 	}
 
+	// Handle Enter key to jump to incoming index
+	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		currentOddNum := j.getOddNumberForCol(j.selectedCol)
+		currentKValue := j.selectedRow + 1 // Row 0 = k=1
+		
+		// Get incoming source index
+		var sourceIndex int
+		if j.displayMode == 3 {
+			// Incoming mode: cell shows the source index directly
+			sourceIndex = j.getIncomingJumpSource(currentOddNum, currentKValue)
+		} else if j.displayMode == 4 {
+			// SourceK mode: need to calculate source index
+			sourceIndex = j.getIncomingJumpSource(currentOddNum, currentKValue)
+		}
+		
+		// If we found a source index, jump to it
+		if sourceIndex != 0 {
+			// Convert source index to column index
+			// sourceIndex is an odd number, so colIndex = (sourceIndex - 1) / 2
+			sourceColIndex := (sourceIndex - 1) / 2
+			
+			// Jump to that column
+			j.selectedCol = sourceColIndex
+			
+			// Update scroll offset to keep cursor visible
+			if j.selectedCol < j.colScrollOffset {
+				j.colScrollOffset = j.selectedCol
+			} else if j.selectedCol >= j.colScrollOffset+j.visibleCols {
+				j.colScrollOffset = j.selectedCol - j.visibleCols + 1
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -404,14 +437,29 @@ func (j *JumpsChapter) Draw(screen *ebiten.Image) {
 	colLabelWidth := 100
 	rowLabelHeight := 30
 	fixedColWidth := 100
+	kLabelHeight := 15 // Height for outgoing k labels above column headers
 	gridStartX := colLabelWidth + 10
-	gridStartY := rowLabelHeight + 40
+	gridStartY := rowLabelHeight + 40 + kLabelHeight
 
 	// Calculate visible range
 	startCol := j.colScrollOffset
 	endCol := startCol + j.visibleCols
 	startRow := j.rowScrollOffset
 	endRow := startRow + j.visibleRows
+
+	// Draw outgoing k labels above column headers
+	for col := startCol; col < endCol; col++ {
+		oddNum := j.getOddNumberForCol(col)
+		colX := gridStartX + (col-startCol)*cellWidth
+		
+		// Calculate outgoing k (first k value for this odd number)
+		outgoingK := j.getFirstKValue(oddNum)
+		kText := strconv.Itoa(outgoingK)
+		kBounds := text.BoundString(basicfont.Face7x13, kText)
+		kX := colX + (cellWidth-kBounds.Dx())/2
+		kY := gridStartY - rowLabelHeight - 5
+		text.Draw(screen, kText, basicfont.Face7x13, kX, kY, color.RGBA{150, 200, 255, 255}) // Light blue for k labels
+	}
 
 	// Draw column headers (odd numbers)
 	for col := startCol; col < endCol; col++ {
@@ -496,6 +544,15 @@ func (j *JumpsChapter) Draw(screen *ebiten.Image) {
 					// No incoming jump for this k value
 					cellText = ""
 				}
+			case 4: // SourceK mode: show source k value (first k of incoming source)
+				source := j.getIncomingJumpSource(oddNum, kValue)
+				if source != 0 {
+					sourceK := j.getFirstKValue(source)
+					cellText = strconv.Itoa(sourceK)
+				} else {
+					// No incoming jump for this k value
+					cellText = ""
+				}
 			}
 
 			if cellText != "" {
@@ -561,6 +618,8 @@ func (j *JumpsChapter) Draw(screen *ebiten.Image) {
 		modeText = "Index"
 	case 3:
 		modeText = "Incoming"
+	case 4:
+		modeText = "SourceK"
 	}
 	instructions := "Arrow Keys: Navigate | M: Cycle mode (" + modeText + ") | R: Reset to 1 | ESC: Return"
 	instBounds := text.BoundString(basicfont.Face7x13, instructions)
