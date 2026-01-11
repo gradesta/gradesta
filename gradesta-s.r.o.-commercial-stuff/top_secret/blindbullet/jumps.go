@@ -475,7 +475,65 @@ func (j *JumpsChapter) Draw(screen *ebiten.Image) {
 		headerBounds := text.BoundString(basicfont.Face7x13, headerText)
 		headerX := colX + (cellWidth-headerBounds.Dx())/2
 		headerY := gridStartY - 5
-		text.Draw(screen, headerText, basicfont.Face7x13, headerX, headerY, color.White)
+		
+		// Color code index labels based on odd number mod 3 (only in Incoming and SourceK modes)
+		var headerColor color.Color = color.White // Default white
+		if j.displayMode == 3 || j.displayMode == 4 {
+			oddMod3 := oddNum % 3
+			if oddMod3 < 0 {
+				oddMod3 += 3 // Handle negative numbers
+			}
+			switch oddMod3 {
+			case 0:
+				headerColor = color.RGBA{255, 100, 100, 255} // Red for 0 mod 3
+			case 1:
+				headerColor = color.RGBA{100, 255, 100, 255} // Green for 1 mod 3
+			case 2:
+				headerColor = color.RGBA{100, 100, 255, 255} // Blue for 2 mod 3
+			}
+		}
+		text.Draw(screen, headerText, basicfont.Face7x13, headerX, headerY, headerColor)
+	}
+
+	// Draw color key on the far left (only in Incoming and SourceK modes)
+	if j.displayMode == 3 || j.displayMode == 4 {
+		colorKeyX := 10
+		colorKeyY := gridStartY - rowLabelHeight - 5
+		
+		// Draw color key title
+		keyTitle := "Mod 3:"
+		text.Draw(screen, keyTitle, basicfont.Face7x13, colorKeyX, colorKeyY, color.White)
+		
+		// Draw color key items
+		keyItemY := colorKeyY + 15
+		keyBoxSize := 10
+		keyTextX := colorKeyX + keyBoxSize + 5
+		
+		// 0 mod 3 - Red
+		for dy := 0; dy < keyBoxSize; dy++ {
+			for dx := 0; dx < keyBoxSize; dx++ {
+				screen.Set(colorKeyX+dx, keyItemY+dy, color.RGBA{255, 100, 100, 255})
+			}
+		}
+		text.Draw(screen, "0", basicfont.Face7x13, keyTextX, keyItemY+keyBoxSize-2, color.RGBA{255, 100, 100, 255})
+		
+		// 1 mod 3 - Green
+		keyItemY += 15
+		for dy := 0; dy < keyBoxSize; dy++ {
+			for dx := 0; dx < keyBoxSize; dx++ {
+				screen.Set(colorKeyX+dx, keyItemY+dy, color.RGBA{100, 255, 100, 255})
+			}
+		}
+		text.Draw(screen, "1", basicfont.Face7x13, keyTextX, keyItemY+keyBoxSize-2, color.RGBA{100, 255, 100, 255})
+		
+		// 2 mod 3 - Blue
+		keyItemY += 15
+		for dy := 0; dy < keyBoxSize; dy++ {
+			for dx := 0; dx < keyBoxSize; dx++ {
+				screen.Set(colorKeyX+dx, keyItemY+dy, color.RGBA{100, 100, 255, 255})
+			}
+		}
+		text.Draw(screen, "2", basicfont.Face7x13, keyTextX, keyItemY+keyBoxSize-2, color.RGBA{100, 100, 255, 255})
 	}
 
 	// Draw row labels (k values: 1, 2, 3, ...)
@@ -521,6 +579,7 @@ func (j *JumpsChapter) Draw(screen *ebiten.Image) {
 
 			// Calculate and draw cell content
 			var cellText string
+			var textColor color.Color = color.White // Default text color
 			
 			switch j.displayMode {
 			case 0, 1, 2: // Normal, Jump, Index modes: only show in row matching first k
@@ -545,6 +604,19 @@ func (j *JumpsChapter) Draw(screen *ebiten.Image) {
 				source := j.getIncomingJumpSource(oddNum, kValue)
 				if source != 0 {
 					cellText = strconv.Itoa(source)
+					// Color code based on source mod 3
+					sourceMod3 := source % 3
+					if sourceMod3 < 0 {
+						sourceMod3 += 3 // Handle negative numbers
+					}
+					switch sourceMod3 {
+					case 0:
+						textColor = color.RGBA{255, 100, 100, 255} // Red for 0 mod 3
+					case 1:
+						textColor = color.RGBA{100, 255, 100, 255} // Green for 1 mod 3
+					case 2:
+						textColor = color.RGBA{100, 100, 255, 255} // Blue for 2 mod 3
+					}
 				} else {
 					// No incoming jump for this k value
 					cellText = ""
@@ -554,6 +626,19 @@ func (j *JumpsChapter) Draw(screen *ebiten.Image) {
 				if source != 0 {
 					sourceK := j.getFirstKValue(source)
 					cellText = strconv.Itoa(sourceK)
+					// Color code based on source mod 3
+					sourceMod3 := source % 3
+					if sourceMod3 < 0 {
+						sourceMod3 += 3 // Handle negative numbers
+					}
+					switch sourceMod3 {
+					case 0:
+						textColor = color.RGBA{255, 100, 100, 255} // Red for 0 mod 3
+					case 1:
+						textColor = color.RGBA{100, 255, 100, 255} // Green for 1 mod 3
+					case 2:
+						textColor = color.RGBA{100, 100, 255, 255} // Blue for 2 mod 3
+					}
 				} else {
 					// No incoming jump for this k value
 					cellText = ""
@@ -564,7 +649,7 @@ func (j *JumpsChapter) Draw(screen *ebiten.Image) {
 				textBounds := text.BoundString(basicfont.Face7x13, cellText)
 				textX := cellX + (cellWidth-textBounds.Dx())/2
 				textY := cellY + cellHeight - 5
-				text.Draw(screen, cellText, basicfont.Face7x13, textX, textY, color.White)
+				text.Draw(screen, cellText, basicfont.Face7x13, textX, textY, textColor)
 			}
 		}
 	}
