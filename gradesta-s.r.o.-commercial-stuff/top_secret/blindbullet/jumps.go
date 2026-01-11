@@ -298,9 +298,14 @@ func (j *JumpsChapter) Update() error {
 	j.escConsumed = false
 	j.keyRepeatFrame++
 
-	// Handle 'M' key to cycle through modes
-	if inpututil.IsKeyJustPressed(ebiten.KeyM) {
+	// Handle 'M' key to cycle through modes forward
+	if inpututil.IsKeyJustPressed(ebiten.KeyM) && !ebiten.IsKeyPressed(ebiten.KeyShift) {
 		j.displayMode = (j.displayMode + 1) % 5 // Cycle: 0 (Normal) -> 1 (Jump) -> 2 (Index) -> 3 (Incoming) -> 4 (SourceK) -> 0
+	}
+	
+	// Handle Shift+M to cycle through modes backward
+	if inpututil.IsKeyJustPressed(ebiten.KeyM) && ebiten.IsKeyPressed(ebiten.KeyShift) {
+		j.displayMode = (j.displayMode - 1 + 5) % 5 // Cycle backward: 0 -> 4 -> 3 -> 2 -> 1 -> 0
 	}
 
 	// Handle arrow keys for navigation with proper key repeat
