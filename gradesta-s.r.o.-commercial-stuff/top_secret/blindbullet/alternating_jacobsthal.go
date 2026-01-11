@@ -48,6 +48,9 @@ type AlternatingJacobsthalChapter struct {
 	showHelp bool
 	helpScrollOffset int
 	
+	// Number of cells that must match for offset finding (default 3)
+	matchCellCount int
+	
 	escConsumed bool // Whether ESC was consumed by a dialog this frame
 }
 
@@ -61,6 +64,7 @@ func NewAlternatingJacobsthalChapter() *AlternatingJacobsthalChapter {
 		sequenceOffset:         0,
 		sequenceScrollOffset:   -10, // Start showing from i = -10
 		usingGeneratedSequence: false,
+		matchCellCount:         3, // Default: match cells 1, 2, 3
 		escConsumed:            false,
 	}
 }
@@ -228,10 +232,10 @@ func (a *AlternatingJacobsthalChapter) Update() error {
 	
 	// Handle help dialog scrolling
 	if a.showHelp {
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyS) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
 			a.helpScrollOffset += 15
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
 			a.helpScrollOffset -= 15
 			if a.helpScrollOffset < 0 {
 				a.helpScrollOffset = 0
@@ -383,13 +387,13 @@ func (a *AlternatingJacobsthalChapter) Update() error {
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
 			a.sequenceOffset--
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || inpututil.IsKeyJustPressed(ebiten.KeyD) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
 			a.sequenceOffset++
 		}
 	} else {
 		// Handle arrow key navigation (only if shift is not pressed)
 		// Right arrow: move to right column (or next row if already on right)
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || inpututil.IsKeyJustPressed(ebiten.KeyD) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
 			currentRow := a.getCellRow(a.selectedCell)
 			isRight := a.getCellCol(a.selectedCell)
 			
@@ -418,7 +422,7 @@ func (a *AlternatingJacobsthalChapter) Update() error {
 	}
 	
 	// Down arrow: move down (to next row, same column)
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyS) {
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
 		currentRow := a.getCellRow(a.selectedCell)
 		isRight := a.getCellCol(a.selectedCell)
 		if isRight {
@@ -429,7 +433,7 @@ func (a *AlternatingJacobsthalChapter) Update() error {
 	}
 	
 	// Up arrow: move up (to previous row, same column)
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW) {
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
 		currentRow := a.getCellRow(a.selectedCell)
 		if currentRow > 0 {
 			isRight := a.getCellCol(a.selectedCell)
@@ -438,6 +442,22 @@ func (a *AlternatingJacobsthalChapter) Update() error {
 			} else {
 				a.selectedCell = (currentRow-1)*2 + 1
 			}
+		}
+	}
+	
+	// Handle 'w' key to increase match cell count
+	if inpututil.IsKeyJustPressed(ebiten.KeyW) {
+		a.matchCellCount++
+		if a.matchCellCount > 10 {
+			a.matchCellCount = 10 // Cap at 10
+		}
+	}
+	
+	// Handle 's' key to decrease match cell count
+	if inpututil.IsKeyJustPressed(ebiten.KeyS) {
+		a.matchCellCount--
+		if a.matchCellCount < 1 {
+			a.matchCellCount = 1 // Minimum of 1
 		}
 	}
 	
@@ -475,8 +495,8 @@ func (a *AlternatingJacobsthalChapter) Update() error {
 		a.sequenceScrollOffset -= 2
 	}
 	
-	// Check if offset produces matching k values for cells 1, 2, 3
-	// Returns true if cell 1's k = 1, cell 2's k = 2, cell 3's k = 3
+	// Check if offset produces matching k values for the specified number of cells
+	// Returns true if cell i's k = i for i from 1 to matchCellCount
 	checkOffsetMatch := func(offset int) bool {
 		if !a.usingGeneratedSequence {
 			return false
@@ -485,48 +505,72 @@ func (a *AlternatingJacobsthalChapter) Update() error {
 		oldOffset := a.sequenceOffset
 		a.sequenceOffset = offset
 		
-		// Check cells 1, 2, 3
-		// Cell 1: left column, row 0
-		// Cell 2: right column, row 1
-		// Cell 3: left column, row 1
-		cell1Value := a.getCellValue(1)
-		cell2Value := a.getCellValue(2)
-		cell3Value := a.getCellValue(3)
-		
-		k1 := a.calculateNextKValue(cell1Value)
-		k2 := a.calculateNextKValue(cell2Value)
-		k3 := a.calculateNextKValue(cell3Value)
+		// Check cells 1 through matchCellCount
+		allMatch := true
+		for i := 1; i <= a.matchCellCount; i++ {
+			cellValue := a.getCellValue(i)
+			kValue := a.calculateNextKValue(cellValue)
+			if kValue != i {
+				allMatch = false
+				break
+			}
+		}
 		
 		// Restore offset
 		a.sequenceOffset = oldOffset
 		
-		// Check if k values match cell numbers (1, 2, 3)
-		return k1 == 1 && k2 == 2 && k3 == 3
+		return allMatch
 	}
 	
-	// Handle 'a' key to find offset to the left (decrease) where cells 1,2,3 match
+	// Handle 'a' key to find offset to the left (decrease) where cells match
 	if inpututil.IsKeyJustPressed(ebiten.KeyA) && !shiftPressed {
 		if a.usingGeneratedSequence {
 			// Search left (decrease offset) until we find a match
+			// Increase search range based on matchCellCount (more cells = harder to match, need larger range)
+			searchRange := 10000 * a.matchCellCount // Scale search range with match count
 			startOffset := a.sequenceOffset
-			for testOffset := startOffset - 1; testOffset >= startOffset - 1000; testOffset-- {
+			found := false
+			for testOffset := startOffset - 1; testOffset >= startOffset - searchRange; testOffset-- {
 				if checkOffsetMatch(testOffset) {
 					a.sequenceOffset = testOffset
+					found = true
 					break
+				}
+			}
+			// If not found, try searching in the opposite direction as well
+			if !found {
+				for testOffset := startOffset + 1; testOffset <= startOffset + searchRange; testOffset++ {
+					if checkOffsetMatch(testOffset) {
+						a.sequenceOffset = testOffset
+						break
+					}
 				}
 			}
 		}
 	}
 	
-	// Handle 's' key to find offset to the right (increase) where cells 1,2,3 match
-	if inpututil.IsKeyJustPressed(ebiten.KeyS) {
+	// Handle 'd' key to find offset to the right (increase) where cells match
+	if inpututil.IsKeyJustPressed(ebiten.KeyD) && !shiftPressed {
 		if a.usingGeneratedSequence {
 			// Search right (increase offset) until we find a match
+			// Increase search range based on matchCellCount (more cells = harder to match, need larger range)
+			searchRange := 10000 * a.matchCellCount // Scale search range with match count
 			startOffset := a.sequenceOffset
-			for testOffset := startOffset + 1; testOffset <= startOffset + 1000; testOffset++ {
+			found := false
+			for testOffset := startOffset + 1; testOffset <= startOffset + searchRange; testOffset++ {
 				if checkOffsetMatch(testOffset) {
 					a.sequenceOffset = testOffset
+					found = true
 					break
+				}
+			}
+			// If not found, try searching in the opposite direction as well
+			if !found {
+				for testOffset := startOffset - 1; testOffset >= startOffset - searchRange; testOffset-- {
+					if checkOffsetMatch(testOffset) {
+						a.sequenceOffset = testOffset
+						break
+					}
 				}
 			}
 		}
@@ -695,7 +739,7 @@ func (a *AlternatingJacobsthalChapter) Draw(screen *ebiten.Image) {
 		}
 		
 		// Draw offset and scroll info
-		offsetText := "Offset: " + strconv.Itoa(a.sequenceOffset) + " | Scroll: " + strconv.Itoa(a.sequenceScrollOffset)
+		offsetText := "Offset: " + strconv.Itoa(a.sequenceOffset) + " | Scroll: " + strconv.Itoa(a.sequenceScrollOffset) + " | Match cells: " + strconv.Itoa(a.matchCellCount)
 		text.Draw(screen, offsetText, basicfont.Face7x13, 10, seqY+30, color.RGBA{200, 200, 255, 255})
 	}
 	
@@ -869,8 +913,10 @@ func (a *AlternatingJacobsthalChapter) drawHelpDialog(screen *ebiten.Image) {
 		"OFFSET ADJUSTMENT:",
 		"  Shift+Left/Right      - Adjust offset for sequence indexing",
 		"  O                     - Open dialog to manually set offset",
-		"  A                     - Auto-find offset to left (cells 1,2,3 match k values)",
-		"  S                     - Auto-find offset to right (cells 1,2,3 match k values)",
+		"  A                     - Auto-find offset to left (cells match k values)",
+		"  D                     - Auto-find offset to right (cells match k values)",
+		"  W                     - Increase number of cells to match (default: 3)",
+		"  S                     - Decrease number of cells to match (default: 3)",
 		"",
 		"SEQUENCE SCROLLING:",
 		"  K/L                   - Scroll sequence left/right",
