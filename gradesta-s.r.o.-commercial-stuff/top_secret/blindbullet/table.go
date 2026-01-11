@@ -2,6 +2,7 @@ package main
 
 import (
 	"image/color"
+	"math"
 	"math/big"
 	"strconv"
 
@@ -39,6 +40,9 @@ type TableChapter struct {
 	// Key repeat
 	keyRepeatFrame int
 	keyPressFrame   map[ebiten.Key]int // Track when each key was first pressed
+
+	// Frequency display mode
+	showFrequencyLog2 bool // If true, show log2 of frequency; if false, show normal frequency
 }
 
 // NewTableChapter creates a new Table chapter
@@ -288,6 +292,11 @@ func (t *TableChapter) Update() error {
 		t.highlightedCol = nil
 	}
 
+	// Handle 'L' key to toggle frequency display between normal and log2
+	if inpututil.IsKeyJustPressed(ebiten.KeyL) {
+		t.showFrequencyLog2 = !t.showFrequencyLog2
+	}
+
 	return nil
 }
 
@@ -297,7 +306,7 @@ func (t *TableChapter) Draw(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{15, 15, 15, 255})
 
 	// Draw title
-	titleText := "Table"
+	titleText := "K-Table"
 	titleBounds := text.BoundString(basicfont.Face7x13, titleText)
 	titleX := (screenWidth - titleBounds.Dx()) / 2
 	titleY := 20
@@ -362,7 +371,21 @@ func (t *TableChapter) Draw(screen *ebiten.Image) {
 		// Draw frequency above header if this column is in the selection
 		if hasSelection && col >= selStartCol && col <= selEndCol {
 			frequency := t.calculateFrequency(col, selStartRow, selEndRow)
-			freqText := frequency.String()
+			var freqText string
+			if t.showFrequencyLog2 {
+				// Calculate log2 of frequency
+				// Convert big.Int to float64 for log2 calculation
+				freqFloat := new(big.Float).SetInt(frequency)
+				freqFloat64, _ := freqFloat.Float64()
+				if freqFloat64 > 0 {
+					log2Value := math.Log2(freqFloat64)
+					freqText = strconv.FormatFloat(log2Value, 'f', 2, 64)
+				} else {
+					freqText = "0"
+				}
+			} else {
+				freqText = frequency.String()
+			}
 			freqBounds := text.BoundString(basicfont.Face7x13, freqText)
 			freqX := colX + (cellWidth-freqBounds.Dx())/2
 			freqY := gridStartY - rowLabelHeight - frequencyHeight
@@ -453,7 +476,7 @@ func (t *TableChapter) Draw(screen *ebiten.Image) {
 	}
 
 	// Draw instructions
-	instructions := "Arrow Keys: Navigate | Shift+Arrows: Select region | Space: Highlight column | R: Reset to 1 | ESC: Return"
+	instructions := "Arrow Keys: Navigate | Shift+Arrows: Select region | Space: Highlight column | L: Toggle log2 | R: Reset to 1 | ESC: Return"
 	instBounds := text.BoundString(basicfont.Face7x13, instructions)
 	instX := (screenWidth - instBounds.Dx()) / 2
 	instY := screenHeight - 30
