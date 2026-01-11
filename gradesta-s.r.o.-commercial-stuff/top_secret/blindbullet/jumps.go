@@ -130,6 +130,58 @@ func (j *JumpsChapter) getJumpDifference(oddNum int) int {
 	return nextOdd - oddNum
 }
 
+// getIncomingJumpSource finds the source index that jumps to the given destination with the given k value
+// Returns the source index if found, 0 if no incoming jump exists
+// For a destination n and k value k, we need to find m such that:
+//   (3m + 1) / 2^k = n
+//   This means: 3m + 1 = n * 2^k
+//   So: m = (n * 2^k - 1) / 3
+// For this to be valid:
+//   - n * 2^k - 1 must be divisible by 3
+//   - m must be odd
+//   - The k value for m must be k (i.e., when we apply Collatz to m, we get k divisions by 2)
+func (j *JumpsChapter) getIncomingJumpSource(destOddNum int, kValue int) int {
+	// Calculate n * 2^k - 1
+	nBig := big.NewInt(int64(destOddNum))
+	powerOf2 := big.NewInt(1)
+	powerOf2.Lsh(powerOf2, uint(kValue)) // 2^k
+	
+	nTimesPowerOf2 := new(big.Int).Mul(nBig, powerOf2)
+	nTimesPowerOf2Minus1 := new(big.Int).Sub(nTimesPowerOf2, big.NewInt(1))
+	
+	// Check if divisible by 3
+	three := big.NewInt(3)
+	mod := new(big.Int).Mod(nTimesPowerOf2Minus1, three)
+	if mod.Sign() != 0 {
+		// Not divisible by 3, no incoming jump
+		return 0
+	}
+	
+	// Calculate m = (n * 2^k - 1) / 3
+	sourceBig := new(big.Int).Div(nTimesPowerOf2Minus1, three)
+	
+	// Check if m fits in int64
+	if !sourceBig.IsInt64() {
+		return 0
+	}
+	
+	source := int(sourceBig.Int64())
+	
+	// Check if source is odd
+	if source%2 == 0 {
+		return 0
+	}
+	
+	// Verify that the k value for source is actually kValue
+	// (i.e., when we apply Collatz to source, we get kValue divisions by 2)
+	actualK := j.getFirstKValue(source)
+	if actualK != kValue {
+		return 0
+	}
+	
+	return source
+}
+
 // getFixedColumnValue returns the value for the fixed column at a given row
 // In Normal/Jump modes: shows jump differences
 // In Index mode: shows destination index differences
@@ -248,7 +300,7 @@ func (j *JumpsChapter) Update() error {
 
 	// Handle 'M' key to cycle through modes
 	if inpututil.IsKeyJustPressed(ebiten.KeyM) {
-		j.displayMode = (j.displayMode + 1) % 3 // Cycle: 0 (Normal) -> 1 (Jump) -> 2 (Index) -> 0
+		j.displayMode = (j.displayMode + 1) % 4 // Cycle: 0 (Normal) -> 1 (Jump) -> 2 (Index) -> 3 (Incoming) -> 0
 	}
 
 	// Handle arrow keys for navigation with proper key repeat
@@ -415,24 +467,35 @@ func (j *JumpsChapter) Draw(screen *ebiten.Image) {
 			}
 
 			// Calculate and draw cell content
-			// Only show value in the row that matches the first k value
-			firstK := j.getFirstKValue(oddNum)
 			var cellText string
-			if firstK == kValue {
-				// This is the row for this k value
-				switch j.displayMode {
-				case 0: // Normal mode: show k value
-					cellText = strconv.Itoa(kValue)
-				case 1: // Jump mode: show difference between current and next Collatz index
-					jumpDiff := j.getJumpDifference(oddNum)
-					cellText = strconv.Itoa(jumpDiff)
-				case 2: // Index mode: show destination index
-					nextOdd := j.getCollatzNext(oddNum)
-					cellText = strconv.Itoa(nextOdd)
+			
+			switch j.displayMode {
+			case 0, 1, 2: // Normal, Jump, Index modes: only show in row matching first k
+				firstK := j.getFirstKValue(oddNum)
+				if firstK == kValue {
+					// This is the row for this k value
+					switch j.displayMode {
+					case 0: // Normal mode: show k value
+						cellText = strconv.Itoa(kValue)
+					case 1: // Jump mode: show difference between current and next Collatz index
+						jumpDiff := j.getJumpDifference(oddNum)
+						cellText = strconv.Itoa(jumpDiff)
+					case 2: // Index mode: show destination index
+						nextOdd := j.getCollatzNext(oddNum)
+						cellText = strconv.Itoa(nextOdd)
+					}
+				} else {
+					// Not the row for this k value, show nothing
+					cellText = ""
 				}
-			} else {
-				// Not the row for this k value, show nothing
-				cellText = ""
+			case 3: // Incoming mode: show source index that jumps to this destination with this k
+				source := j.getIncomingJumpSource(oddNum, kValue)
+				if source != 0 {
+					cellText = strconv.Itoa(source)
+				} else {
+					// No incoming jump for this k value
+					cellText = ""
+				}
 			}
 
 			if cellText != "" {
@@ -496,6 +559,8 @@ func (j *JumpsChapter) Draw(screen *ebiten.Image) {
 		modeText = "Jump"
 	case 2:
 		modeText = "Index"
+	case 3:
+		modeText = "Incoming"
 	}
 	instructions := "Arrow Keys: Navigate | M: Cycle mode (" + modeText + ") | R: Reset to 1 | ESC: Return"
 	instBounds := text.BoundString(basicfont.Face7x13, instructions)
