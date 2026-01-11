@@ -32,7 +32,10 @@ type JumpsChapter struct {
 	keyPressFrame  map[ebiten.Key]int // Track when each key was first pressed
 
 	// Display mode
-	displayMode int // 0 = Normal (k value), 1 = Jump (difference), 2 = Index (destination)
+	displayMode int // 0 = Normal (k value), 1 = Jump (difference), 2 = Index (destination), 3 = Incoming (source index), 4 = SourceK (source k value)
+
+	// Tracks: store cell positions that have been visited (col, row pairs)
+	tracks map[string]bool // Key format: "col,row" e.g. "5,3"
 }
 
 // NewJumpsChapter creates a new Jumps chapter
@@ -66,6 +69,7 @@ func NewJumpsChapter() *JumpsChapter {
 		visibleRows:    visibleRows,
 		keyPressFrame:  make(map[ebiten.Key]int),
 		displayMode:    0, // Start in Normal mode
+		tracks:         make(map[string]bool),
 	}
 }
 
@@ -388,6 +392,17 @@ func (j *JumpsChapter) Update() error {
 		j.rowScrollOffset = 0
 	}
 
+	// Handle 'T' key to clear all tracks
+	if inpututil.IsKeyJustPressed(ebiten.KeyT) {
+		j.tracks = make(map[string]bool)
+	}
+
+	// Handle 'U' key to remove track from current cell
+	if inpututil.IsKeyJustPressed(ebiten.KeyU) {
+		trackKey := strconv.Itoa(j.selectedCol) + "," + strconv.Itoa(j.selectedRow)
+		delete(j.tracks, trackKey)
+	}
+
 	// Handle Enter key to jump to incoming index
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 		currentOddNum := j.getOddNumberForCol(j.selectedCol)
@@ -405,6 +420,10 @@ func (j *JumpsChapter) Update() error {
 		
 		// If we found a source index, jump to it
 		if sourceIndex != 0 {
+			// Add track at the current cell (where we're jumping from)
+			trackKey := strconv.Itoa(j.selectedCol) + "," + strconv.Itoa(j.selectedRow)
+			j.tracks[trackKey] = true
+			
 			// Convert source index to column index
 			// sourceIndex is an odd number, so colIndex = (sourceIndex - 1) / 2
 			sourceColIndex := (sourceIndex - 1) / 2
@@ -651,6 +670,20 @@ func (j *JumpsChapter) Draw(screen *ebiten.Image) {
 				textY := cellY + cellHeight - 5
 				text.Draw(screen, cellText, basicfont.Face7x13, textX, textY, textColor)
 			}
+			
+			// Draw track dot if this cell has a track
+			trackKey := strconv.Itoa(col) + "," + strconv.Itoa(row)
+			if j.tracks[trackKey] {
+				// Draw a small dot in the top-right corner of the cell
+				dotX := cellX + cellWidth - 8
+				dotY := cellY + 3
+				dotSize := 3
+				for dy := 0; dy < dotSize; dy++ {
+					for dx := 0; dx < dotSize; dx++ {
+						screen.Set(dotX+dx, dotY+dy, color.RGBA{255, 255, 0, 255}) // Yellow dot
+					}
+				}
+			}
 		}
 	}
 
@@ -711,7 +744,7 @@ func (j *JumpsChapter) Draw(screen *ebiten.Image) {
 	case 4:
 		modeText = "SourceK"
 	}
-	instructions := "Arrow Keys: Navigate | M: Cycle mode (" + modeText + ") | R: Reset to 1 | ESC: Return"
+	instructions := "Arrow Keys: Navigate | M: Cycle mode (" + modeText + ") | Enter: Jump | T: Clear all tracks | U: Remove track | R: Reset to 1 | ESC: Return"
 	instBounds := text.BoundString(basicfont.Face7x13, instructions)
 	instX := (screenWidth - instBounds.Dx()) / 2
 	instY := screenHeight - 30
