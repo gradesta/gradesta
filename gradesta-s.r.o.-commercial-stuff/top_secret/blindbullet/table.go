@@ -22,6 +22,12 @@ type TableChapter struct {
 	// Highlighted column (set with space bar)
 	highlightedCol *int // Column index that is highlighted (nil if none)
 
+	// Selection state (for rectangular selection with Shift+Arrow)
+	selectionStartCol *int // Start column of selection (nil if no selection)
+	selectionStartRow *int // Start row of selection
+	selectionEndCol   int   // End column of selection (current selectedCol)
+	selectionEndRow   int   // End row of selection (current selectedRow)
+
 	// Scroll offsets
 	colScrollOffset int // Horizontal scroll offset (column index)
 	rowScrollOffset int // Vertical scroll offset (row index)
@@ -118,6 +124,35 @@ func (t *TableChapter) calculateKValue(oddNum int, index int) int {
 	return 0
 }
 
+// calculateFrequency calculates the frequency for a column's selected row range
+// Frequency is the product of 2^k for all k values in the selected rows
+func (t *TableChapter) calculateFrequency(colIndex int, startRow, endRow int) *big.Int {
+	if startRow < 0 || endRow < 0 {
+		return big.NewInt(1)
+	}
+
+	// Ensure startRow <= endRow
+	if startRow > endRow {
+		startRow, endRow = endRow, startRow
+	}
+
+	oddNum := t.getOddNumberForCol(colIndex)
+	frequency := big.NewInt(1)
+
+	// Multiply by 2^k for each row in the selection
+	for row := startRow; row <= endRow; row++ {
+		kValue := t.calculateKValue(oddNum, row)
+		if kValue > 0 {
+			// Calculate 2^k using big.Int
+			powerOf2 := new(big.Int).Lsh(big.NewInt(1), uint(kValue)) // 1 << k
+			frequency.Mul(frequency, powerOf2)
+		}
+		// If k is 0, we multiply by 1 (no change), so we can skip it
+	}
+
+	return frequency
+}
+
 // Update updates the Table chapter
 func (t *TableChapter) Update() error {
 	t.escConsumed = false
@@ -138,9 +173,59 @@ func (t *TableChapter) Update() error {
 		}
 	}
 
+	// Check if Shift is pressed
+	shiftPressed := ebiten.IsKeyPressed(ebiten.KeyShift)
+
 	// Handle arrow keys for navigation with proper key repeat
 	initialDelay := 20  // Frames to wait before first repeat
 	repeatDelay := 10  // Frames between repeats after initial delay
+
+	// Helper function to move cursor and update selection
+	moveCursor := func(deltaCol, deltaRow int) {
+		// If Shift is pressed, extend selection; otherwise, clear selection
+		if shiftPressed {
+			// Extend selection
+			if t.selectionStartCol == nil {
+				// Start new selection at current position (before moving)
+				startCol := t.selectedCol
+				startRow := t.selectedRow
+				t.selectionStartCol = &startCol
+				t.selectionStartRow = &startRow
+			}
+		} else {
+			// Clear selection when not holding Shift
+			t.selectionStartCol = nil
+			t.selectionStartRow = nil
+		}
+
+		// Move cursor
+		t.selectedCol += deltaCol
+		t.selectedRow += deltaRow
+
+		// Update selection end if in selection mode
+		if shiftPressed && t.selectionStartCol != nil {
+			t.selectionEndCol = t.selectedCol
+			t.selectionEndRow = t.selectedRow
+		}
+
+		// Clamp row to non-negative
+		if t.selectedRow < 0 {
+			t.selectedRow = 0
+		}
+
+		// Update scroll offsets to keep cursor visible
+		if t.selectedCol < t.colScrollOffset {
+			t.colScrollOffset = t.selectedCol
+		} else if t.selectedCol >= t.colScrollOffset+t.visibleCols {
+			t.colScrollOffset = t.selectedCol - t.visibleCols + 1
+		}
+
+		if t.selectedRow < t.rowScrollOffset {
+			t.rowScrollOffset = t.selectedRow
+		} else if t.selectedRow >= t.rowScrollOffset+t.visibleRows {
+			t.rowScrollOffset = t.selectedRow - t.visibleRows + 1
+		}
+	}
 
 	// Check each arrow key
 	arrowKeys := []ebiten.Key{ebiten.KeyArrowLeft, ebiten.KeyArrowRight, ebiten.KeyArrowUp, ebiten.KeyArrowDown}
@@ -151,36 +236,13 @@ func (t *TableChapter) Update() error {
 			// Handle the key immediately
 			switch key {
 			case ebiten.KeyArrowLeft:
-				t.selectedCol--
-				if t.selectedCol < t.colScrollOffset {
-					t.colScrollOffset = t.selectedCol
-				} else if t.selectedCol >= t.colScrollOffset+t.visibleCols {
-					t.colScrollOffset = t.selectedCol - t.visibleCols + 1
-				}
+				moveCursor(-1, 0)
 			case ebiten.KeyArrowRight:
-				t.selectedCol++
-				if t.selectedCol < t.colScrollOffset {
-					t.colScrollOffset = t.selectedCol
-				} else if t.selectedCol >= t.colScrollOffset+t.visibleCols {
-					t.colScrollOffset = t.selectedCol - t.visibleCols + 1
-				}
+				moveCursor(1, 0)
 			case ebiten.KeyArrowUp:
-				t.selectedRow--
-				if t.selectedRow < 0 {
-					t.selectedRow = 0
-				}
-				if t.selectedRow < t.rowScrollOffset {
-					t.rowScrollOffset = t.selectedRow
-				} else if t.selectedRow >= t.rowScrollOffset+t.visibleRows {
-					t.rowScrollOffset = t.selectedRow - t.visibleRows + 1
-				}
+				moveCursor(0, -1)
 			case ebiten.KeyArrowDown:
-				t.selectedRow++
-				if t.selectedRow < t.rowScrollOffset {
-					t.rowScrollOffset = t.selectedRow
-				} else if t.selectedRow >= t.rowScrollOffset+t.visibleRows {
-					t.rowScrollOffset = t.selectedRow - t.visibleRows + 1
-				}
+				moveCursor(0, 1)
 			}
 		} else if ebiten.IsKeyPressed(key) {
 			// Key is held down - check if we should repeat
@@ -192,36 +254,13 @@ func (t *TableChapter) Update() error {
 						// Handle the key repeat
 						switch key {
 						case ebiten.KeyArrowLeft:
-							t.selectedCol--
-							if t.selectedCol < t.colScrollOffset {
-								t.colScrollOffset = t.selectedCol
-							} else if t.selectedCol >= t.colScrollOffset+t.visibleCols {
-								t.colScrollOffset = t.selectedCol - t.visibleCols + 1
-							}
+							moveCursor(-1, 0)
 						case ebiten.KeyArrowRight:
-							t.selectedCol++
-							if t.selectedCol < t.colScrollOffset {
-								t.colScrollOffset = t.selectedCol
-							} else if t.selectedCol >= t.colScrollOffset+t.visibleCols {
-								t.colScrollOffset = t.selectedCol - t.visibleCols + 1
-							}
+							moveCursor(1, 0)
 						case ebiten.KeyArrowUp:
-							t.selectedRow--
-							if t.selectedRow < 0 {
-								t.selectedRow = 0
-							}
-							if t.selectedRow < t.rowScrollOffset {
-								t.rowScrollOffset = t.selectedRow
-							} else if t.selectedRow >= t.rowScrollOffset+t.visibleRows {
-								t.rowScrollOffset = t.selectedRow - t.visibleRows + 1
-							}
+							moveCursor(0, -1)
 						case ebiten.KeyArrowDown:
-							t.selectedRow++
-							if t.selectedRow < t.rowScrollOffset {
-								t.rowScrollOffset = t.selectedRow
-							} else if t.selectedRow >= t.rowScrollOffset+t.visibleRows {
-								t.rowScrollOffset = t.selectedRow - t.visibleRows + 1
-							}
+							moveCursor(0, 1)
 						}
 					}
 				}
@@ -232,12 +271,21 @@ func (t *TableChapter) Update() error {
 		}
 	}
 
+	// Clear selection when Shift is released
+	if !shiftPressed && t.selectionStartCol != nil {
+		// Keep selection until explicitly cleared or new selection started
+		// (Selection persists even after releasing Shift)
+	}
+
 	// Handle 'R' key to reset to column 1 (column index 0)
 	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
 		t.selectedCol = 0 // Column index 0 = odd number 1
 		t.selectedRow = 0
 		t.colScrollOffset = 0
 		t.rowScrollOffset = 0
+		t.selectionStartCol = nil
+		t.selectionStartRow = nil
+		t.highlightedCol = nil
 	}
 
 	return nil
@@ -260,8 +308,9 @@ func (t *TableChapter) Draw(screen *ebiten.Image) {
 	cellHeight := 25
 	colLabelWidth := 100
 	rowLabelHeight := 30
+	frequencyHeight := 15 // Space for frequency display above headers
 	gridStartX := colLabelWidth + 10
-	gridStartY := rowLabelHeight + 40
+	gridStartY := rowLabelHeight + 40 + frequencyHeight
 
 	// Calculate visible range
 	startCol := t.colScrollOffset
@@ -269,7 +318,25 @@ func (t *TableChapter) Draw(screen *ebiten.Image) {
 	startRow := t.rowScrollOffset
 	endRow := startRow + t.visibleRows
 
-	// Draw column headers (odd numbers)
+	// Calculate selection bounds if there's a selection
+	var selStartCol, selEndCol, selStartRow, selEndRow int
+	hasSelection := false
+	if t.selectionStartCol != nil && t.selectionStartRow != nil {
+		hasSelection = true
+		selStartCol = *t.selectionStartCol
+		selEndCol = t.selectionEndCol
+		selStartRow = *t.selectionStartRow
+		selEndRow = t.selectionEndRow
+		// Ensure start <= end
+		if selStartCol > selEndCol {
+			selStartCol, selEndCol = selEndCol, selStartCol
+		}
+		if selStartRow > selEndRow {
+			selStartRow, selEndRow = selEndRow, selStartRow
+		}
+	}
+
+	// Draw column headers (odd numbers) and frequencies
 	for col := startCol; col < endCol; col++ {
 		oddNum := t.getOddNumberForCol(col)
 		colX := gridStartX + (col-startCol)*cellWidth
@@ -291,6 +358,16 @@ func (t *TableChapter) Draw(screen *ebiten.Image) {
 		headerX := colX + (cellWidth-headerBounds.Dx())/2
 		headerY := gridStartY - 5
 		text.Draw(screen, headerText, basicfont.Face7x13, headerX, headerY, color.White)
+
+		// Draw frequency above header if this column is in the selection
+		if hasSelection && col >= selStartCol && col <= selEndCol {
+			frequency := t.calculateFrequency(col, selStartRow, selEndRow)
+			freqText := frequency.String()
+			freqBounds := text.BoundString(basicfont.Face7x13, freqText)
+			freqX := colX + (cellWidth-freqBounds.Dx())/2
+			freqY := gridStartY - rowLabelHeight - frequencyHeight
+			text.Draw(screen, freqText, basicfont.Face7x13, freqX, freqY, color.RGBA{100, 255, 100, 255}) // Green for frequency
+		}
 	}
 
 	// Draw row labels (indices)
@@ -315,6 +392,12 @@ func (t *TableChapter) Draw(screen *ebiten.Image) {
 			// Check if this column is highlighted
 			isHighlighted := t.highlightedCol != nil && *t.highlightedCol == col
 			
+			// Check if this cell is in the selection
+			isInSelection := false
+			if hasSelection {
+				isInSelection = (col >= selStartCol && col <= selEndCol && row >= selStartRow && row <= selEndRow)
+			}
+			
 			// Draw cell background if selected
 			isSelected := (col == t.selectedCol && row == t.selectedRow)
 			if isSelected {
@@ -322,6 +405,13 @@ func (t *TableChapter) Draw(screen *ebiten.Image) {
 				for dy := 0; dy < cellHeight-1; dy++ {
 					for dx := 0; dx < cellWidth-1; dx++ {
 						screen.Set(cellX+dx, cellY+dy, color.RGBA{100, 150, 255, 200})
+					}
+				}
+			} else if isInSelection {
+				// Draw selection region highlight (lighter blue)
+				for dy := 0; dy < cellHeight-1; dy++ {
+					for dx := 0; dx < cellWidth-1; dx++ {
+						screen.Set(cellX+dx, cellY+dy, color.RGBA{100, 150, 255, 100})
 					}
 				}
 			} else if isHighlighted {
@@ -363,7 +453,7 @@ func (t *TableChapter) Draw(screen *ebiten.Image) {
 	}
 
 	// Draw instructions
-	instructions := "Arrow Keys: Navigate | Space: Highlight column | R: Reset to 1 | ESC: Return"
+	instructions := "Arrow Keys: Navigate | Shift+Arrows: Select region | Space: Highlight column | R: Reset to 1 | ESC: Return"
 	instBounds := text.BoundString(basicfont.Face7x13, instructions)
 	instX := (screenWidth - instBounds.Dx()) / 2
 	instY := screenHeight - 30
