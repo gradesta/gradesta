@@ -580,8 +580,84 @@ fn ui_system(
         }
     }
 
+    // Poll for Nextcloud login completion (runs every frame, independent of UI panels)
+    if let Some(ref login_state) = app_state.nextcloud_login_state.clone() {
+        if login_state.started.elapsed() > Duration::from_millis(500) {
+            match identity::poll_login_completion(&login_state.poll_endpoint, &login_state.poll_token) {
+                Ok(Some((server, username, app_password))) => {
+                    app_state.status = format!("Logged in as {}@{}, setting up identity...", username, server);
+                    eprintln!("Login successful: {}@{}", username, server);
+
+                    // Setup identity (generate keys, upload, create share)
+                    match identity::setup_identity(&server, &username, &app_password) {
+                        Ok((signing_key, share_url)) => {
+                            let display_name = format!("{}@{}", username, server.replace("https://", "").replace("http://", ""));
+                            eprintln!("Identity created: {}", display_name);
+                            let new_identity = Identity {
+                                display_name: display_name.clone(),
+                                nextcloud_url: server,
+                                username,
+                                app_password,
+                                share_url,
+                                remembered_servers: Vec::new(),
+                                signing_key: Some(signing_key),
+                            };
+                            app_state.identity_config.identities.push(new_identity);
+                            let _ = app_state.identity_config.save();
+                            app_state.status = format!("Identity {} created successfully!", display_name);
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to setup identity: {}", e);
+                            app_state.status = format!("Failed to setup identity: {}", e);
+                        }
+                    }
+                    app_state.nextcloud_login_state = None;
+                }
+                Ok(None) => {
+                    // Still waiting - update the started time to throttle polling
+                    if let Some(ref mut state) = app_state.nextcloud_login_state {
+                        state.started = Instant::now();
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Login poll error: {}", e);
+                    app_state.status = format!("Login failed: {}", e);
+                    app_state.nextcloud_login_state = None;
+                }
+            }
+        }
+    }
+
+    // Awaiting Nextcloud activation modal (shown when login flow is in progress)
+    let mut cancel_login = false;
+    if let Some(ref login_state) = app_state.nextcloud_login_state {
+        let nc_url = login_state.nextcloud_url.clone();
+        egui::Window::new("⏳ Awaiting Nextcloud Activation")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.add_space(10.0);
+                ui.label(format!("Connecting to: {}", nc_url));
+                ui.add_space(10.0);
+                ui.label("Please complete the login in your web browser.");
+                ui.label("This dialog will close automatically when done.");
+                ui.add_space(10.0);
+                ui.spinner();
+                ui.add_space(10.0);
+                if ui.button("Cancel").clicked() {
+                    cancel_login = true;
+                }
+            });
+        // Request repaint to keep polling
+        ctx.request_repaint();
+    }
+    if cancel_login {
+        app_state.nextcloud_login_state = None;
+    }
+
     // Identity management panel
-    if app_state.show_identity_panel {
+    if app_state.show_identity_panel && app_state.nextcloud_login_state.is_none() {
         egui::Window::new("🔑 Identity Management")
             .collapsible(false)
             .resizable(true)
@@ -617,79 +693,31 @@ fn ui_system(
                 ui.separator();
                 ui.heading("Add Nextcloud Account");
 
-                // Check if login flow is in progress
-                if let Some(ref login_state) = app_state.nextcloud_login_state {
-                    ui.label(format!("Waiting for login to {}...", login_state.nextcloud_url));
-                    ui.label("Please complete the login in your browser.");
+                ui.horizontal(|ui| {
+                    ui.label("Nextcloud URL:");
+                    ui.text_edit_singleline(&mut app_state.nextcloud_url_input);
+                });
 
-                    // Poll for completion
-                    if login_state.started.elapsed() > Duration::from_secs(1) {
-                        match identity::poll_login_completion(&login_state.poll_endpoint, &login_state.poll_token) {
-                            Ok(Some((server, username, app_password))) => {
-                                app_state.status = format!("Logged in as {}@{}", username, server);
-
-                                // Setup identity (generate keys, upload, create share)
-                                match identity::setup_identity(&server, &username, &app_password) {
-                                    Ok((signing_key, share_url)) => {
-                                        let identity = Identity {
-                                            display_name: format!("{}@{}", username, server.replace("https://", "").replace("http://", "")),
-                                            nextcloud_url: server,
-                                            username,
-                                            app_password,
-                                            share_url,
-                                            remembered_servers: Vec::new(),
-                                            signing_key: Some(signing_key),
-                                        };
-                                        app_state.identity_config.identities.push(identity);
-                                        let _ = app_state.identity_config.save();
-                                        app_state.status = "Identity created successfully!".to_string();
-                                    }
-                                    Err(e) => {
-                                        app_state.status = format!("Failed to setup identity: {}", e);
-                                    }
-                                }
-                                app_state.nextcloud_login_state = None;
-                            }
-                            Ok(None) => {
-                                // Still waiting
+                if ui.button("Connect Nextcloud Account").clicked() {
+                    let nc_url = app_state.nextcloud_url_input.trim().to_string();
+                    if !nc_url.is_empty() {
+                        match identity::initiate_nextcloud_login(&nc_url) {
+                            Ok((login_url, poll_endpoint, poll_token)) => {
+                                // Open browser for login in a separate thread (non-blocking)
+                                let login_url_clone = login_url.clone();
+                                thread::spawn(move || {
+                                    let _ = open::that(&login_url_clone);
+                                });
+                                app_state.nextcloud_login_state = Some(NextcloudLoginState {
+                                    nextcloud_url: nc_url,
+                                    poll_endpoint,
+                                    poll_token,
+                                    started: Instant::now(),
+                                });
+                                app_state.status = "Opening browser for Nextcloud login...".to_string();
                             }
                             Err(e) => {
-                                app_state.status = format!("Login failed: {}", e);
-                                app_state.nextcloud_login_state = None;
-                            }
-                        }
-                    }
-
-                    if ui.button("Cancel").clicked() {
-                        app_state.nextcloud_login_state = None;
-                    }
-                } else {
-                    ui.horizontal(|ui| {
-                        ui.label("Nextcloud URL:");
-                        ui.text_edit_singleline(&mut app_state.nextcloud_url_input);
-                    });
-
-                    if ui.button("Connect Nextcloud Account").clicked() {
-                        let nc_url = app_state.nextcloud_url_input.trim().to_string();
-                        if !nc_url.is_empty() {
-                            match identity::initiate_nextcloud_login(&nc_url) {
-                                Ok((login_url, poll_endpoint, poll_token)) => {
-                                    // Open browser for login
-                                    if let Err(e) = open::that(&login_url) {
-                                        app_state.status = format!("Failed to open browser: {}", e);
-                                    } else {
-                                        app_state.nextcloud_login_state = Some(NextcloudLoginState {
-                                            nextcloud_url: nc_url,
-                                            poll_endpoint,
-                                            poll_token,
-                                            started: Instant::now(),
-                                        });
-                                        app_state.status = "Opening browser for Nextcloud login...".to_string();
-                                    }
-                                }
-                                Err(e) => {
-                                    app_state.status = format!("Failed to initiate login: {}", e);
-                                }
+                                app_state.status = format!("Failed to initiate login: {}", e);
                             }
                         }
                     }

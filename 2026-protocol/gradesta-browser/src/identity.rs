@@ -225,16 +225,21 @@ pub fn create_public_share(
 ) -> Result<String> {
     let client = reqwest::blocking::Client::new();
     let url = format!(
-        "{}/ocs/v2.php/apps/files_sharing/api/v1/shares",
+        "{}/ocs/v2.php/apps/files_sharing/api/v1/shares?format=json",
         nextcloud_url.trim_end_matches('/')
     );
 
-    #[derive(Deserialize)]
+    #[derive(Debug, Deserialize)]
     struct ShareResponse {
-        ocs: OcsData<ShareData>,
+        ocs: OcsWrapper,
     }
 
-    #[derive(Deserialize)]
+    #[derive(Debug, Deserialize)]
+    struct OcsWrapper {
+        data: ShareData,
+    }
+
+    #[derive(Debug, Deserialize)]
     struct ShareData {
         url: String,
     }
@@ -243,6 +248,7 @@ pub fn create_public_share(
         .post(&url)
         .basic_auth(username, Some(app_password))
         .header("OCS-APIRequest", "true")
+        .header("Accept", "application/json")
         .form(&[
             ("path", path),
             ("shareType", "3"), // 3 = public link
@@ -252,10 +258,15 @@ pub fn create_public_share(
         .context("Failed to create share")?;
 
     if !resp.status().is_success() {
-        return Err(anyhow!("Share creation failed: {}", resp.status()));
+        let status = resp.status();
+        let body = resp.text().unwrap_or_default();
+        return Err(anyhow!("Share creation failed: {} - {}", status, body));
     }
 
-    let share: ShareResponse = resp.json().context("Failed to parse share response")?;
+    let body = resp.text().context("Failed to read share response body")?;
+    eprintln!("Share response: {}", body);
+
+    let share: ShareResponse = serde_json::from_str(&body).context("Failed to parse share response JSON")?;
     Ok(share.ocs.data.url)
 }
 
