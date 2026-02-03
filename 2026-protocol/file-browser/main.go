@@ -176,7 +176,13 @@ func handleWatchLandmark(conn *websocket.Conn, actionID uint64, uri string) erro
 			if err := sendSetVertexLabel(conn, actionID, entry.contentID, entry.mimeType, entry.labelBytes); err != nil {
 				return err
 			}
-			if err := sendSetEdges(conn, actionID, entry.contentID, 0, 0, 0, 0, 0, 0, editabilityMaskNone); err != nil {
+			// Content's WEST edge points back to entry (so user can navigate back)
+			// Exception: for ".." entry, the content IS the west link, so don't point back
+			contentWestID := uint64(0)
+			if !entry.isParent {
+				contentWestID = entry.entryID
+			}
+			if err := sendSetEdges(conn, actionID, entry.contentID, contentWestID, 0, 0, 0, 0, 0, editabilityMaskNone); err != nil {
 				return err
 			}
 		}
