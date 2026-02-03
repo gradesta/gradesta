@@ -527,8 +527,8 @@ fn ui_system(
         let grid = build_grid_view(&graph, current_id);
 
         let zoom = app_state.zoom_level;
-        let cell_width = 160.0f32 * zoom;
-        let cell_height = 45.0f32 * zoom;
+        let cell_width = 120.0f32 * zoom;
+        let cell_height = 100.0f32 * zoom;
         let padding = 4.0f32 * zoom;
         let font_size = 13.0f32 * zoom;
 
@@ -627,8 +627,13 @@ fn ui_system(
                         } else {
                             // For non-images, show icon and label
                             let label = String::from_utf8_lossy(&vertex.label);
-                            let display_label: String = label.chars().take(18).collect();
-                            let display_label = if label.len() > 18 {
+                            // Calculate max chars based on cell width (roughly 7px per char at font_size 13)
+                            let char_width = font_size * 0.55;
+                            let available_width = cell_width - 8.0 * zoom; // padding
+                            let max_chars = ((available_width / char_width) as usize).saturating_sub(3); // reserve for icon + ellipsis
+                            let max_chars = max_chars.max(5); // at least show something
+                            let display_label: String = label.chars().take(max_chars).collect();
+                            let display_label = if label.chars().count() > max_chars {
                                 format!("{}…", display_label)
                             } else {
                                 display_label
