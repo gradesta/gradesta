@@ -38,6 +38,8 @@ struct GraphState {
     vertices: HashMap<u64, Vertex>,
     context_uri: Option<String>,
     pending_jump_context: Option<String>, // If set, jump to first non-portal vertex of this context
+    landmark_vertices: HashMap<String, Vec<u64>>, // Maps landmark URI -> vertices that belong to it
+    current_receiving_landmark: Option<String>, // Which landmark we're currently receiving data for
 }
 
 #[derive(Resource)]
@@ -773,49 +775,33 @@ fn auto_expand_nearby_links(
     let Some(current_id) = app_state.current_vertex else { return };
     let Some(cmd_tx) = &ws_cmd_tx.0 else { return };
     let Some(current) = graph.vertices.get(&current_id) else { return };
-    
+
     // FIRST: If we're sitting on a portal, auto-follow it immediately
     if current.mime.as_deref() == Some("text/gradesta-url") {
         let landmark_url = String::from_utf8_lossy(&current.label).to_string();
-        
-        // Check if this landmark was already loaded - if so, find a non-portal vertex to jump to
-        // The landmark data would have come in as vertices that reference this portal
-        // We need to find a vertex in the graph that:
-        // 1. Has this portal as one of its edges (meaning it's part of that landmark)
-        // 2. Is NOT itself a portal
-        let mut found_target: Option<u64> = None;
-        for (vid, vertex) in graph.vertices.iter() {
-            // Skip the current portal and other portals
-            if *vid == current_id || vertex.mime.as_deref() == Some("text/gradesta-url") {
-                continue;
-            }
-            // Check if this vertex has the current portal as any of its edges
-            // (meaning it's connected to this landmark)
-            for edge_id in vertex.edges {
-                if edge_id == current_id {
-                    found_target = Some(*vid);
-                    break;
+
+        // Check if this landmark was already loaded by looking up vertices associated with it
+        if let Some(vertices) = graph.landmark_vertices.get(&landmark_url) {
+            // Find the first non-portal vertex in this landmark
+            for &vid in vertices {
+                if let Some(vertex) = graph.vertices.get(&vid) {
+                    if vertex.mime.as_deref() != Some("text/gradesta-url") {
+                        // Found a content vertex - jump to it
+                        app_state.history.push(current_id);
+                        app_state.current_vertex = Some(vid);
+                        app_state.following_portal = None;
+                        return;
+                    }
                 }
             }
-            if found_target.is_some() {
-                break;
-            }
         }
-        
-        if let Some(target_id) = found_target {
-            // Landmark already loaded - jump directly
-            app_state.history.push(current_id);
-            app_state.current_vertex = Some(target_id);
-            app_state.following_portal = None;
-            return;
-        }
-        
+
         // Not loaded yet - request it
         if !app_state.requested_landmarks.contains(&landmark_url) {
             app_state.requested_landmarks.insert(landmark_url.clone());
             let _ = cmd_tx.send(WsCommand::WatchLandmark(landmark_url.clone()));
         }
-        
+
         // Set up to jump when it loads
         if app_state.following_portal.is_none() {
             app_state.following_portal = Some(landmark_url);
@@ -1002,18 +988,24 @@ fn ingest_server_events(
                 app_state.status = format!("Error: {message}");
             }
             ServerEvent::SetContext { uri } => {
+                // Track which landmark we're receiving data for
+                graph.current_receiving_landmark = Some(uri.clone());
+
+                // Initialize the vertex list for this landmark if not already present
+                graph.landmark_vertices.entry(uri.clone()).or_insert_with(Vec::new);
+
                 // Check if we're following a portal to this context
                 let is_following = app_state.following_portal.as_ref()
                     .map(|p| p == &uri)
                     .unwrap_or(false);
-                
+
                 if is_following {
                     // We're arriving at a followed portal - clear it and mark that
                     // we should jump to the first vertex of this context
                     app_state.following_portal = None;
                     graph.pending_jump_context = Some(uri.clone());
                 }
-                
+
                 graph.context_uri = Some(uri.clone());
                 app_state.status = format!("Viewing: {uri}");
                 // Update the URL bar to show current landmark
@@ -1026,7 +1018,16 @@ fn ingest_server_events(
                 entry.id = vertex_id;
                 entry.label = data;
                 entry.mime = Some(mime.clone());
-                
+
+                // Track which landmark this vertex belongs to
+                if let Some(landmark) = graph.current_receiving_landmark.clone() {
+                    if let Some(vertices) = graph.landmark_vertices.get_mut(&landmark) {
+                        if !vertices.contains(&vertex_id) {
+                            vertices.push(vertex_id);
+                        }
+                    }
+                }
+
                 // If we're waiting to jump to a new context, and this vertex is NOT a portal,
                 // jump to it (skip portals since they're just links)
                 if graph.pending_jump_context.is_some() && mime != "text/gradesta-url" {
