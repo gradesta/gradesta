@@ -75,6 +75,8 @@ struct AppState {
     text_modal_content: String,
     show_image_modal: bool,
     image_modal_vertex_id: Option<u64>,
+    // Zoom state
+    zoom_level: f32,
 }
 
 const KEY_REPEAT_DELAY: Duration = Duration::from_millis(400); // Initial delay before repeat starts
@@ -97,9 +99,14 @@ impl Default for AppState {
             text_modal_content: String::new(),
             show_image_modal: false,
             image_modal_vertex_id: None,
+            zoom_level: 1.0,
         }
     }
 }
+
+const ZOOM_MIN: f32 = 0.25;
+const ZOOM_MAX: f32 = 4.0;
+const ZOOM_STEP: f32 = 0.1;
 
 #[derive(Resource, Default)]
 struct MediaCache {
@@ -300,7 +307,7 @@ fn ui_system(
 ) {
     let ctx = contexts.ctx_mut();
 
-    // Handle modal keyboard shortcuts
+    // Handle modal keyboard shortcuts and zoom
     ctx.input(|i| {
         // Escape to close modals
         if i.key_pressed(egui::Key::Escape) {
@@ -329,7 +336,31 @@ fn ui_system(
                 }
             }
         }
+        // Ctrl++ / Ctrl+= to zoom in
+        if i.modifiers.ctrl && (i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals)) {
+            app_state.zoom_level = (app_state.zoom_level + ZOOM_STEP).min(ZOOM_MAX);
+        }
+        // Ctrl+- to zoom out
+        if i.modifiers.ctrl && i.key_pressed(egui::Key::Minus) {
+            app_state.zoom_level = (app_state.zoom_level - ZOOM_STEP).max(ZOOM_MIN);
+        }
+        // Ctrl+0 to reset zoom
+        if i.modifiers.ctrl && i.key_pressed(egui::Key::Num0) {
+            app_state.zoom_level = 1.0;
+        }
+        // Mouse wheel zoom (with Ctrl)
+        if i.modifiers.ctrl && i.raw_scroll_delta.y != 0.0 {
+            let delta = i.raw_scroll_delta.y * 0.001;
+            app_state.zoom_level = (app_state.zoom_level + delta).clamp(ZOOM_MIN, ZOOM_MAX);
+        }
+        // Pinch zoom (touch/trackpad)
+        if i.zoom_delta() != 1.0 {
+            app_state.zoom_level = (app_state.zoom_level * i.zoom_delta()).clamp(ZOOM_MIN, ZOOM_MAX);
+        }
     });
+
+    // Apply zoom by scaling the UI - we do this manually in rendering instead of using pixels_per_point
+    // because set_pixels_per_point causes layout issues
 
     // Top panel with URL bar
     egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
@@ -372,6 +403,8 @@ fn ui_system(
                 ui.separator();
                 ui.label(format!("Landmark: {}", uri));
             }
+            ui.separator();
+            ui.label(format!("Zoom: {:.0}%", app_state.zoom_level * 100.0));
         });
         ui.add_space(8.0);
     });
@@ -380,7 +413,7 @@ fn ui_system(
     egui::TopBottomPanel::bottom("help_panel").show(ctx, |ui| {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.label("Navigation: ↑↓←→ or WASD | PageUp/Down = Up/Down | Backspace = Back | Ctrl+Enter = View content | Esc = Close");
+            ui.label("↑↓←→/WASD = Navigate | Ctrl+Enter = View | Ctrl+/- = Zoom | Ctrl+0 = Reset zoom | Esc = Close");
         });
         ui.add_space(4.0);
     });
@@ -493,9 +526,11 @@ fn ui_system(
 
         let grid = build_grid_view(&graph, current_id);
 
-        let cell_width = 160.0f32;
-        let cell_height = 45.0f32;
-        let padding = 4.0f32;
+        let zoom = app_state.zoom_level;
+        let cell_width = 160.0f32 * zoom;
+        let cell_height = 45.0f32 * zoom;
+        let padding = 4.0f32 * zoom;
+        let font_size = 13.0f32 * zoom;
 
         let available = ui.available_size();
         let panel_min = ui.min_rect().min;
@@ -526,16 +561,16 @@ fn ui_system(
                         let to_x = (tx - grid.min_x) as f32 * (cell_width + padding) + cell_width / 2.0;
                         let to_y = (ty - grid.min_y) as f32 * (cell_height + padding) + cell_height / 2.0;
                         let to = base_pos + egui::vec2(to_x, to_y);
-                        painter.line_segment([from, to], egui::Stroke::new(1.5, egui::Color32::from_rgb(70, 70, 80)));
+                        painter.line_segment([from, to], egui::Stroke::new(1.5 * zoom, egui::Color32::from_rgb(70, 70, 80)));
                     }
                 }
-                
+
                 if vertex.edges[EDGE_EAST] != 0 {
                     if let Some(&(tx, ty)) = grid.positions.get(&vertex.edges[EDGE_EAST]) {
                         let to_x = (tx - grid.min_x) as f32 * (cell_width + padding) + cell_width / 2.0;
                         let to_y = (ty - grid.min_y) as f32 * (cell_height + padding) + cell_height / 2.0;
                         let to = base_pos + egui::vec2(to_x, to_y);
-                        painter.line_segment([from, to], egui::Stroke::new(1.5, egui::Color32::from_rgb(70, 70, 80)));
+                        painter.line_segment([from, to], egui::Stroke::new(1.5 * zoom, egui::Color32::from_rgb(70, 70, 80)));
                     }
                 }
             }
@@ -574,15 +609,16 @@ fn ui_system(
                             (egui::Color32::from_rgb(50, 50, 55), egui::Color32::from_rgb(80, 80, 90))
                         };
 
-                        painter.rect_filled(rect, 4.0, bg_color);
-                        painter.rect_stroke(rect, 4.0, egui::Stroke::new(if is_current { 3.0 } else { 2.0 }, border_color));
+                        let corner_radius = 4.0 * zoom;
+                        painter.rect_filled(rect, corner_radius, bg_color);
+                        painter.rect_stroke(rect, corner_radius, egui::Stroke::new(if is_current { 3.0 * zoom } else { 2.0 * zoom }, border_color));
 
                         // For images, render the image in the cell
                         if is_image {
                             if let Some(tex) = get_or_load_texture(vertex_id, &vertex.label, mime, &mut media_cache, ctx) {
                                 let tex_size = tex.size_vec2();
                                 // Scale to fit in cell with some padding
-                                let inner_rect = rect.shrink(4.0);
+                                let inner_rect = rect.shrink(4.0 * zoom);
                                 let scale = (inner_rect.width() / tex_size.x).min(inner_rect.height() / tex_size.y);
                                 let scaled_size = tex_size * scale;
                                 let img_rect = egui::Rect::from_center_size(rect.center(), scaled_size);
@@ -618,14 +654,15 @@ fn ui_system(
                                 rect.center(),
                                 egui::Align2::CENTER_CENTER,
                                 format!("{}{}", icon, display_label),
-                                egui::FontId::proportional(13.0),
+                                egui::FontId::proportional(font_size),
                                 egui::Color32::WHITE,
                             );
                         }
                     } else {
                         // No vertex data - just draw empty cell
-                        painter.rect_filled(rect, 4.0, egui::Color32::from_rgb(50, 50, 55));
-                        painter.rect_stroke(rect, 4.0, egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 80, 90)));
+                        let corner_radius = 4.0 * zoom;
+                        painter.rect_filled(rect, corner_radius, egui::Color32::from_rgb(50, 50, 55));
+                        painter.rect_stroke(rect, corner_radius, egui::Stroke::new(2.0 * zoom, egui::Color32::from_rgb(80, 80, 90)));
                     }
                 }
             }
