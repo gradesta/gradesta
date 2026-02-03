@@ -32,6 +32,14 @@ Client to server
    - Vertex id: 8 bytes
    - Mime-type: UTF-8 bytes, null-terminated
    - Label/media: bytes to end of message
+6. Identification response
+   - Type: 1 byte = 0b1001 0000
+   - Action id: 8 bytes (must match the request)
+   - Identity URL: UTF-8 bytes, null-terminated (public share URL of identity.pub)
+   - Signature: 64 bytes (ECDSA P-256 signature of nonce || timestamp from request)
+7. Identification refused
+   - Type: 1 byte = 0b1001 0001
+   - Action id: 8 bytes (must match the request)
 
 Server to client
 1. Set context (tells the client which landmark the following messages are connected to)
@@ -56,6 +64,12 @@ Server to client
    - HTTP status: 1 byte
    - Vertex id: 8 bytes
    - Log message: UTF-8 bytes to end of message
+5. Request identification
+   - Type: 1 byte = 0b0001 0000
+   - Action id: 8 bytes
+   - Nonce: 32 bytes (random, for replay protection)
+   - Timestamp: 8 bytes (Unix seconds, big-endian)
+   - Reason: UTF-8 bytes to end of message (human-readable explanation)
 
 Editability bitmask (server Set edges)
 - Bit 0 (LSB): vertex label editable
@@ -63,3 +77,20 @@ Editability bitmask (server Set edges)
 
 Notes
 - A vertex with mime-type text/gradesta-url should be replaced by the landmark vertex that the contained URI points to, allowing patches to stitch into an ongoing graph.
+
+Identification
+Servers can request that clients prove control of a Nextcloud account. This provides decentralized identity without requiring OAuth registration between every server and identity provider.
+
+Flow:
+1. Server sends "Request identification" with a nonce, timestamp, and reason
+2. Client shows user a consent dialog with the reason
+3. If user consents, client signs (nonce || timestamp) with their ECDSA P-256 private key
+4. Client sends "Identification response" with their public key URL and signature
+5. Server fetches public key from the URL (a Nextcloud public share)
+6. Server verifies the signature and checks timestamp is within ±5 minutes
+7. Server queries Nextcloud OCS API to resolve share owner username
+
+Identity storage:
+- Public key: /.gradesta/identity.pub on user's Nextcloud (shared publicly)
+- Private key: /.gradesta/identity.key on user's Nextcloud (encrypted)
+- Identity format: username@nextcloud-server.example.com

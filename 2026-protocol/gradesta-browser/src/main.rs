@@ -12,11 +12,17 @@ use std::time::{Duration, Instant};
 use tungstenite::{client, Message};
 use url::Url;
 
+mod identity;
+use identity::{Identity, IdentityConfig};
+
 const MSG_CLIENT_WATCH_LANDMARK: u8 = 0x81;
+const MSG_CLIENT_IDENTIFICATION_RESPONSE: u8 = 0x90;
+const MSG_CLIENT_IDENTIFICATION_REFUSED: u8 = 0x91;
 const MSG_SERVER_SET_CONTEXT: u8 = 0x01;
 const MSG_SERVER_SET_EDGES: u8 = 0x03;
 const MSG_SERVER_SET_VERTEX_LABEL: u8 = 0x05;
 const MSG_SERVER_LOG: u8 = 0x0F;
+const MSG_SERVER_REQUEST_IDENTIFICATION: u8 = 0x10;
 
 const EDGE_WEST: usize = 0;
 const EDGE_EAST: usize = 1;
@@ -52,6 +58,14 @@ struct NetEventsTx(Sender<ServerEvent>);
 #[derive(Clone, Debug)]
 enum WsCommand {
     WatchLandmark(String),
+    IdentificationResponse {
+        action_id: u64,
+        identity_url: String,
+        signature: Vec<u8>,
+    },
+    IdentificationRefused {
+        action_id: u64,
+    },
 }
 
 #[derive(Resource)]
@@ -77,13 +91,50 @@ struct AppState {
     image_modal_vertex_id: Option<u64>,
     // Zoom state
     zoom_level: f32,
+    // Identity state
+    show_identity_panel: bool,
+    identity_config: IdentityConfig,
+    // Identity consent dialog
+    pending_identification: Option<PendingIdentification>,
+    selected_identity_index: usize,
+    // Nextcloud login flow state
+    nextcloud_login_state: Option<NextcloudLoginState>,
+    nextcloud_url_input: String,
 }
 
 const KEY_REPEAT_DELAY: Duration = Duration::from_millis(400); // Initial delay before repeat starts
 const KEY_REPEAT_RATE: Duration = Duration::from_millis(50);   // Rate of repeat once started
 
+/// Pending identification request from a server
+#[derive(Clone, Debug)]
+struct PendingIdentification {
+    action_id: u64,
+    nonce: [u8; 32],
+    timestamp: u64,
+    reason: String,
+    server_url: String,
+}
+
+/// State for ongoing Nextcloud login flow
+#[derive(Clone, Debug)]
+struct NextcloudLoginState {
+    nextcloud_url: String,
+    poll_endpoint: String,
+    poll_token: String,
+    started: Instant,
+}
+
+/// Action to take for identification request
+enum IdentificationAction {
+    Identify { remember: bool },
+    Refuse,
+}
+
 impl Default for AppState {
     fn default() -> Self {
+        // Try to load identity config
+        let identity_config = IdentityConfig::load().unwrap_or_default();
+
         Self {
             url_input: "ws://localhost:8080/ws?landmark=/home/".to_string(),
             status: "Enter URL and click Connect".to_string(),
@@ -100,6 +151,12 @@ impl Default for AppState {
             show_image_modal: false,
             image_modal_vertex_id: None,
             zoom_level: 1.0,
+            show_identity_panel: false,
+            identity_config,
+            pending_identification: None,
+            selected_identity_index: 0,
+            nextcloud_login_state: None,
+            nextcloud_url_input: "https://".to_string(),
         }
     }
 }
@@ -130,6 +187,12 @@ enum ServerEvent {
     Log { message: String },
     Connected { base_url: String },
     Error { message: String },
+    RequestIdentification {
+        action_id: u64,
+        nonce: [u8; 32],
+        timestamp: u64,
+        reason: String,
+    },
 }
 
 #[derive(Default, Clone)]
@@ -414,6 +477,15 @@ fn ui_system(
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.label("↑↓←→/WASD = Navigate | Ctrl+Enter = View | Ctrl+/- = Zoom | Ctrl+0 = Reset zoom | Esc = Close");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("🔑 Identities").clicked() {
+                    app_state.show_identity_panel = !app_state.show_identity_panel;
+                }
+                let id_count = app_state.identity_config.identities.len();
+                if id_count > 0 {
+                    ui.label(format!("{} identity(s)", id_count));
+                }
+            });
         });
         ui.add_space(4.0);
     });
@@ -504,6 +576,252 @@ fn ui_system(
                                 }
                             });
                     });
+            }
+        }
+    }
+
+    // Identity management panel
+    if app_state.show_identity_panel {
+        egui::Window::new("🔑 Identity Management")
+            .collapsible(false)
+            .resizable(true)
+            .default_size([500.0, 400.0])
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button("Close").clicked() {
+                        app_state.show_identity_panel = false;
+                    }
+                });
+                ui.separator();
+
+                // List existing identities
+                ui.heading("Your Identities");
+                if app_state.identity_config.identities.is_empty() {
+                    ui.label("No identities configured. Add a Nextcloud account below.");
+                } else {
+                    let mut to_remove = None;
+                    for (i, identity) in app_state.identity_config.identities.iter().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.label(format!("• {}", identity.display_name));
+                            if ui.small_button("Remove").clicked() {
+                                to_remove = Some(i);
+                            }
+                        });
+                    }
+                    if let Some(i) = to_remove {
+                        app_state.identity_config.identities.remove(i);
+                        let _ = app_state.identity_config.save();
+                    }
+                }
+
+                ui.separator();
+                ui.heading("Add Nextcloud Account");
+
+                // Check if login flow is in progress
+                if let Some(ref login_state) = app_state.nextcloud_login_state {
+                    ui.label(format!("Waiting for login to {}...", login_state.nextcloud_url));
+                    ui.label("Please complete the login in your browser.");
+
+                    // Poll for completion
+                    if login_state.started.elapsed() > Duration::from_secs(1) {
+                        match identity::poll_login_completion(&login_state.poll_endpoint, &login_state.poll_token) {
+                            Ok(Some((server, username, app_password))) => {
+                                app_state.status = format!("Logged in as {}@{}", username, server);
+
+                                // Setup identity (generate keys, upload, create share)
+                                match identity::setup_identity(&server, &username, &app_password) {
+                                    Ok((signing_key, share_url)) => {
+                                        let identity = Identity {
+                                            display_name: format!("{}@{}", username, server.replace("https://", "").replace("http://", "")),
+                                            nextcloud_url: server,
+                                            username,
+                                            app_password,
+                                            share_url,
+                                            remembered_servers: Vec::new(),
+                                            signing_key: Some(signing_key),
+                                        };
+                                        app_state.identity_config.identities.push(identity);
+                                        let _ = app_state.identity_config.save();
+                                        app_state.status = "Identity created successfully!".to_string();
+                                    }
+                                    Err(e) => {
+                                        app_state.status = format!("Failed to setup identity: {}", e);
+                                    }
+                                }
+                                app_state.nextcloud_login_state = None;
+                            }
+                            Ok(None) => {
+                                // Still waiting
+                            }
+                            Err(e) => {
+                                app_state.status = format!("Login failed: {}", e);
+                                app_state.nextcloud_login_state = None;
+                            }
+                        }
+                    }
+
+                    if ui.button("Cancel").clicked() {
+                        app_state.nextcloud_login_state = None;
+                    }
+                } else {
+                    ui.horizontal(|ui| {
+                        ui.label("Nextcloud URL:");
+                        ui.text_edit_singleline(&mut app_state.nextcloud_url_input);
+                    });
+
+                    if ui.button("Connect Nextcloud Account").clicked() {
+                        let nc_url = app_state.nextcloud_url_input.trim().to_string();
+                        if !nc_url.is_empty() {
+                            match identity::initiate_nextcloud_login(&nc_url) {
+                                Ok((login_url, poll_endpoint, poll_token)) => {
+                                    // Open browser for login
+                                    if let Err(e) = open::that(&login_url) {
+                                        app_state.status = format!("Failed to open browser: {}", e);
+                                    } else {
+                                        app_state.nextcloud_login_state = Some(NextcloudLoginState {
+                                            nextcloud_url: nc_url,
+                                            poll_endpoint,
+                                            poll_token,
+                                            started: Instant::now(),
+                                        });
+                                        app_state.status = "Opening browser for Nextcloud login...".to_string();
+                                    }
+                                }
+                                Err(e) => {
+                                    app_state.status = format!("Failed to initiate login: {}", e);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+    }
+
+    // Identification consent dialog
+    // Handle identification in a separate pass to avoid borrow conflicts
+    let mut id_action: Option<IdentificationAction> = None;
+
+    if let Some(ref pending) = app_state.pending_identification.clone() {
+        let selected_idx = app_state.selected_identity_index;
+
+        // Check if this is a remembered server (auto-identify)
+        let is_remembered = app_state.identity_config.identities.get(selected_idx)
+            .map(|id| id.remembered_servers.contains(&pending.server_url))
+            .unwrap_or(false);
+
+        if is_remembered {
+            id_action = Some(IdentificationAction::Identify { remember: false });
+        } else {
+            // Show consent dialog
+            egui::Window::new("🔐 Identification Request")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.heading("Server requests identification");
+                    ui.separator();
+
+                    ui.label(format!("Server: {}", pending.server_url));
+                    ui.label(format!("Reason: {}", pending.reason));
+                    ui.separator();
+
+                    if app_state.identity_config.identities.is_empty() {
+                        ui.label("No identities configured.");
+                        ui.label("Add a Nextcloud account in Identity Management first.");
+                        if ui.button("Refuse").clicked() {
+                            id_action = Some(IdentificationAction::Refuse);
+                        }
+                    } else {
+                        ui.label("Identify as:");
+                        // Collect display names first to avoid borrow conflict
+                        let display_names: Vec<String> = app_state.identity_config.identities
+                            .iter()
+                            .map(|id| id.display_name.clone())
+                            .collect();
+                        for (i, name) in display_names.iter().enumerate() {
+                            ui.radio_value(&mut app_state.selected_identity_index, i, name);
+                        }
+
+                        ui.separator();
+                        ui.horizontal(|ui| {
+                            if ui.button("Identify").clicked() {
+                                id_action = Some(IdentificationAction::Identify { remember: false });
+                            }
+                            if ui.button("Identify + Remember").clicked() {
+                                id_action = Some(IdentificationAction::Identify { remember: true });
+                            }
+                            if ui.button("Refuse").clicked() {
+                                id_action = Some(IdentificationAction::Refuse);
+                            }
+                        });
+                    }
+                });
+        }
+    }
+
+    // Process identification action outside the UI closure
+    if let Some(action) = id_action {
+        if let Some(pending) = app_state.pending_identification.take() {
+            match action {
+                IdentificationAction::Identify { remember } => {
+                    let idx = app_state.selected_identity_index;
+                    let mut success = false;
+                    let mut display_name = String::new();
+
+                    // First, load the signing key if needed
+                    if let Some(identity) = app_state.identity_config.identities.get(idx) {
+                        if identity.signing_key.is_none() {
+                            match identity::load_signing_key(&identity.nextcloud_url, &identity.username, &identity.app_password) {
+                                Ok(key) => {
+                                    if let Some(id) = app_state.identity_config.identities.get_mut(idx) {
+                                        id.signing_key = Some(key);
+                                    }
+                                }
+                                Err(e) => {
+                                    app_state.status = format!("Failed to load signing key: {}", e);
+                                }
+                            }
+                        }
+                    }
+
+                    // Now sign and send
+                    if let Some(identity) = app_state.identity_config.identities.get(idx) {
+                        if let Some(ref signing_key) = identity.signing_key {
+                            let signature = identity::sign_challenge(signing_key, &pending.nonce, pending.timestamp);
+                            if let Some(ref tx) = ws_cmd_tx.0 {
+                                let _ = tx.send(WsCommand::IdentificationResponse {
+                                    action_id: pending.action_id,
+                                    identity_url: identity.share_url.clone(),
+                                    signature,
+                                });
+                            }
+                            display_name = identity.display_name.clone();
+                            success = true;
+                        }
+                    }
+
+                    if success {
+                        if remember {
+                            if let Some(identity) = app_state.identity_config.identities.get_mut(idx) {
+                                if !identity.remembered_servers.contains(&pending.server_url) {
+                                    identity.remembered_servers.push(pending.server_url.clone());
+                                    let _ = app_state.identity_config.save();
+                                }
+                            }
+                            app_state.status = format!("Identified as {} (remembered)", display_name);
+                        } else {
+                            app_state.status = format!("Identified as {}", display_name);
+                        }
+                    }
+                }
+                IdentificationAction::Refuse => {
+                    if let Some(ref tx) = ws_cmd_tx.0 {
+                        let _ = tx.send(WsCommand::IdentificationRefused {
+                            action_id: pending.action_id,
+                        });
+                    }
+                    app_state.status = "Identification refused".to_string();
+                }
             }
         }
     }
@@ -1178,6 +1496,24 @@ fn run_ws(uri: String, net_tx: Sender<ServerEvent>, cmd_rx: Receiver<WsCommand>)
                     buf.extend_from_slice(landmark.as_bytes());
                     socket.send(Message::Binary(buf))?;
                 }
+                WsCommand::IdentificationResponse { action_id, identity_url, signature } => {
+                    eprintln!("SEND IdentificationResponse action={} url={:?}", action_id, identity_url);
+                    // Type (1) + Action ID (8) + Identity URL (null-terminated) + Signature (64)
+                    let mut buf = Vec::with_capacity(1 + 8 + identity_url.len() + 1 + 64);
+                    buf.push(MSG_CLIENT_IDENTIFICATION_RESPONSE);
+                    buf.extend_from_slice(&action_id.to_be_bytes());
+                    buf.extend_from_slice(identity_url.as_bytes());
+                    buf.push(0); // null terminator
+                    buf.extend_from_slice(&signature);
+                    socket.send(Message::Binary(buf))?;
+                }
+                WsCommand::IdentificationRefused { action_id } => {
+                    eprintln!("SEND IdentificationRefused action={}", action_id);
+                    let mut buf = Vec::with_capacity(1 + 8);
+                    buf.push(MSG_CLIENT_IDENTIFICATION_REFUSED);
+                    buf.extend_from_slice(&action_id.to_be_bytes());
+                    socket.send(Message::Binary(buf))?;
+                }
             }
         }
         
@@ -1242,6 +1578,20 @@ fn parse_server_message(data: &[u8]) -> Result<ServerEvent> {
             let message = String::from_utf8(rest.to_vec())?;
             eprintln!("RECV Log action={} status={} vertex={} msg={:?}", action_id, status, vertex_id, message);
             Ok(ServerEvent::Log { message })
+        }
+        MSG_SERVER_REQUEST_IDENTIFICATION => {
+            // Type (1) + Action ID (8) + Nonce (32) + Timestamp (8) + Reason (string)
+            if data.len() < 1 + 8 + 32 + 8 {
+                return Err(anyhow!("Request identification message too short"));
+            }
+            let (action_id, rest) = read_u64(&data[1..])?;
+            let mut nonce = [0u8; 32];
+            nonce.copy_from_slice(&rest[..32]);
+            let (timestamp, rest) = read_u64(&rest[32..])?;
+            let reason = String::from_utf8(rest.to_vec()).unwrap_or_else(|_| "Unknown".to_string());
+            eprintln!("RECV RequestIdentification action={} nonce={:?}... timestamp={} reason={:?}",
+                action_id, &nonce[..8], timestamp, reason);
+            Ok(ServerEvent::RequestIdentification { action_id, nonce, timestamp, reason })
         }
         other => {
             eprintln!("RECV Unknown message type: 0x{:02x}", other);
@@ -1343,6 +1693,46 @@ fn ingest_server_events(
             }
             ServerEvent::Log { message } => {
                 app_state.status = format!("Server: {message}");
+            }
+            ServerEvent::RequestIdentification { action_id, nonce, timestamp, reason } => {
+                // Check if we have any identities configured
+                if app_state.identity_config.identities.is_empty() {
+                    app_state.status = "Server requests identification, but no identities configured".to_string();
+                    // Auto-refuse if no identities
+                    // (We'd need WsCommandTx here to send the refusal - will handle in UI)
+                } else {
+                    // Get server URL from current connection
+                    let server_url = app_state.base_ws_url.clone().unwrap_or_default();
+
+                    // Check if this server is remembered for any identity
+                    let remembered_identity = app_state.identity_config.identities.iter()
+                        .position(|id| id.remembered_servers.contains(&server_url));
+
+                    if let Some(idx) = remembered_identity {
+                        // Auto-identify with remembered identity
+                        app_state.selected_identity_index = idx;
+                        // Set pending so UI can handle it
+                        app_state.pending_identification = Some(PendingIdentification {
+                            action_id,
+                            nonce,
+                            timestamp,
+                            reason: reason.clone(),
+                            server_url,
+                        });
+                        app_state.status = format!("Auto-identifying as {}...",
+                            app_state.identity_config.identities[idx].display_name);
+                    } else {
+                        // Show consent dialog
+                        app_state.pending_identification = Some(PendingIdentification {
+                            action_id,
+                            nonce,
+                            timestamp,
+                            reason,
+                            server_url,
+                        });
+                        app_state.status = "Server requests identification".to_string();
+                    }
+                }
             }
         }
     }

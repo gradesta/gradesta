@@ -17,6 +17,7 @@ pkgs.mkShell {
     xorg.libXrandr
     xorg.libXrender
     vulkan-loader
+    openssl
   ];
 
   LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (with pkgs; [
