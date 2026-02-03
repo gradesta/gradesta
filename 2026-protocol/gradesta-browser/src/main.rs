@@ -67,7 +67,13 @@ struct AppState {
     base_ws_url: Option<String>,
     requested_landmarks: HashSet<String>, // Track which landmarks we've already requested
     following_portal: Option<String>, // If set, we're waiting to jump to this landmark's first vertex
+    // Key repeat state
+    key_repeat_last_move: Option<Instant>,
+    key_repeat_started: bool,
 }
+
+const KEY_REPEAT_DELAY: Duration = Duration::from_millis(400); // Initial delay before repeat starts
+const KEY_REPEAT_RATE: Duration = Duration::from_millis(50);   // Rate of repeat once started
 
 impl Default for AppState {
     fn default() -> Self {
@@ -80,6 +86,8 @@ impl Default for AppState {
             base_ws_url: None,
             requested_landmarks: HashSet::new(),
             following_portal: None,
+            key_repeat_last_move: None,
+            key_repeat_started: false,
         }
     }
 }
@@ -368,20 +376,27 @@ fn ui_system(
         };
 
         let grid = build_grid_view(&graph, current_id);
-        
+
         let cell_width = 160.0f32;
         let cell_height = 45.0f32;
         let padding = 4.0f32;
-        
-        let grid_width = (grid.max_x - grid.min_x + 1) as f32 * (cell_width + padding);
-        let grid_height = (grid.max_y - grid.min_y + 1) as f32 * (cell_height + padding);
-        
+
         let available = ui.available_size();
-        let offset_x = (available.x - grid_width) / 2.0;
-        let offset_y = 20.0;
-        
+        let panel_min = ui.min_rect().min;
+
+        // Find the position of the current vertex in the grid
+        let current_pos = grid.positions.get(&current_id).copied().unwrap_or((0, 0));
+
+        // Calculate where the current cell would be in grid-local coordinates
+        let current_cell_x = (current_pos.0 - grid.min_x) as f32 * (cell_width + padding) + cell_width / 2.0;
+        let current_cell_y = (current_pos.1 - grid.min_y) as f32 * (cell_height + padding) + cell_height / 2.0;
+
+        // Calculate offset to center the current cell in the available space
+        let offset_x = available.x / 2.0 - current_cell_x;
+        let offset_y = available.y / 2.0 - current_cell_y;
+
         let painter = ui.painter();
-        let base_pos = ui.min_rect().min + egui::vec2(offset_x.max(10.0), offset_y);
+        let base_pos = panel_min + egui::vec2(offset_x, offset_y);
         
         // Draw edge lines first (behind cells)
         for ((x, y), &vertex_id) in &grid.cells {
@@ -732,21 +747,39 @@ fn handle_navigation(
     let Some(current_id) = app_state.current_vertex else { return };
     let Some(vertex) = graph.vertices.get(&current_id) else { return };
 
-    let mut target_edge: Option<usize> = None;
+    // Check which navigation key is held (if any)
+    let held_edge: Option<usize> = if keys.pressed(KeyCode::ArrowUp) || keys.pressed(KeyCode::KeyW) {
+        Some(EDGE_NORTH)
+    } else if keys.pressed(KeyCode::ArrowDown) || keys.pressed(KeyCode::KeyS) {
+        Some(EDGE_SOUTH)
+    } else if keys.pressed(KeyCode::ArrowLeft) || keys.pressed(KeyCode::KeyA) {
+        Some(EDGE_WEST)
+    } else if keys.pressed(KeyCode::ArrowRight) || keys.pressed(KeyCode::KeyD) {
+        Some(EDGE_EAST)
+    } else if keys.pressed(KeyCode::PageUp) {
+        Some(EDGE_UP)
+    } else if keys.pressed(KeyCode::PageDown) {
+        Some(EDGE_DOWN)
+    } else {
+        None
+    };
 
-    if keys.just_pressed(KeyCode::ArrowUp) || keys.just_pressed(KeyCode::KeyW) {
-        target_edge = Some(EDGE_NORTH);
+    // Check for just pressed (initial press)
+    let just_pressed_edge: Option<usize> = if keys.just_pressed(KeyCode::ArrowUp) || keys.just_pressed(KeyCode::KeyW) {
+        Some(EDGE_NORTH)
     } else if keys.just_pressed(KeyCode::ArrowDown) || keys.just_pressed(KeyCode::KeyS) {
-        target_edge = Some(EDGE_SOUTH);
+        Some(EDGE_SOUTH)
     } else if keys.just_pressed(KeyCode::ArrowLeft) || keys.just_pressed(KeyCode::KeyA) {
-        target_edge = Some(EDGE_WEST);
+        Some(EDGE_WEST)
     } else if keys.just_pressed(KeyCode::ArrowRight) || keys.just_pressed(KeyCode::KeyD) {
-        target_edge = Some(EDGE_EAST);
+        Some(EDGE_EAST)
     } else if keys.just_pressed(KeyCode::PageUp) {
-        target_edge = Some(EDGE_UP);
+        Some(EDGE_UP)
     } else if keys.just_pressed(KeyCode::PageDown) {
-        target_edge = Some(EDGE_DOWN);
-    }
+        Some(EDGE_DOWN)
+    } else {
+        None
+    };
 
     if keys.just_pressed(KeyCode::Backspace) {
         if let Some(prev_id) = app_state.history.pop() {
@@ -755,12 +788,54 @@ fn handle_navigation(
         return;
     }
 
-    if let Some(edge_idx) = target_edge {
-        let target_id = vertex.edges[edge_idx];
-        if target_id != 0 {
-            // Move cursor to target (even if it's a portal - auto_expand will handle following it)
-            app_state.history.push(current_id);
-            app_state.current_vertex = Some(target_id);
+    // Determine if we should move
+    let should_move = if just_pressed_edge.is_some() {
+        // Initial key press - always move
+        app_state.key_repeat_last_move = Some(Instant::now());
+        app_state.key_repeat_started = false;
+        true
+    } else if let Some(_edge) = held_edge {
+        // Key is held - check repeat timing
+        if let Some(last_move) = app_state.key_repeat_last_move {
+            let elapsed = last_move.elapsed();
+            if !app_state.key_repeat_started {
+                // Haven't started repeating yet - check initial delay
+                if elapsed >= KEY_REPEAT_DELAY {
+                    app_state.key_repeat_started = true;
+                    app_state.key_repeat_last_move = Some(Instant::now());
+                    true
+                } else {
+                    false
+                }
+            } else {
+                // Already repeating - check repeat rate
+                if elapsed >= KEY_REPEAT_RATE {
+                    app_state.key_repeat_last_move = Some(Instant::now());
+                    true
+                } else {
+                    false
+                }
+            }
+        } else {
+            false
+        }
+    } else {
+        // No key held - reset state
+        app_state.key_repeat_last_move = None;
+        app_state.key_repeat_started = false;
+        false
+    };
+
+    let target_edge = just_pressed_edge.or(held_edge);
+
+    if should_move {
+        if let Some(edge_idx) = target_edge {
+            let target_id = vertex.edges[edge_idx];
+            if target_id != 0 {
+                // Move cursor to target (even if it's a portal - auto_expand will handle following it)
+                app_state.history.push(current_id);
+                app_state.current_vertex = Some(target_id);
+            }
         }
     }
 }
