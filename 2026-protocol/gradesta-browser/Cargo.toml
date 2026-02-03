@@ -1,0 +1,26 @@
+[package]
+name = "gradesta-browser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+bevy = { version = "0.13", default-features = false, features = [
+    "bevy_asset",
+    "bevy_core_pipeline",
+    "bevy_render",
+    "bevy_sprite",
+    "bevy_text",
+    "bevy_ui",
+    "bevy_winit",
+    "x11",
+    "wayland",
+    "png",
+    "jpeg",
+] }
+bevy_egui = "0.25"
+crossbeam-channel = "0.5"
+gif = "0.12"
+image = { version = "0.24", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+tungstenite = "0.21"
+url = "2.5"

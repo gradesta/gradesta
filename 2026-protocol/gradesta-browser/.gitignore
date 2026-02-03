@@ -1,0 +1,5 @@
+# Rust build artifacts
+/target/
+
+# Nix build result symlink
+result
