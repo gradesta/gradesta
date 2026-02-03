@@ -727,10 +727,16 @@ fn ui_system(
 
                     if app_state.identity_config.identities.is_empty() {
                         ui.label("No identities configured.");
-                        ui.label("Add a Nextcloud account in Identity Management first.");
-                        if ui.button("Refuse").clicked() {
-                            id_action = Some(IdentificationAction::Refuse);
-                        }
+                        ui.label("You need to connect a Nextcloud account to identify yourself.");
+                        ui.add_space(8.0);
+                        ui.horizontal(|ui| {
+                            if ui.button("🔑 Connect Nextcloud Account").clicked() {
+                                app_state.show_identity_panel = true;
+                            }
+                            if ui.button("Refuse").clicked() {
+                                id_action = Some(IdentificationAction::Refuse);
+                            }
+                        });
                     } else {
                         ui.label("Identify as:");
                         // Collect display names first to avoid borrow conflict
@@ -1695,43 +1701,35 @@ fn ingest_server_events(
                 app_state.status = format!("Server: {message}");
             }
             ServerEvent::RequestIdentification { action_id, nonce, timestamp, reason } => {
-                // Check if we have any identities configured
-                if app_state.identity_config.identities.is_empty() {
-                    app_state.status = "Server requests identification, but no identities configured".to_string();
-                    // Auto-refuse if no identities
-                    // (We'd need WsCommandTx here to send the refusal - will handle in UI)
+                // Get server URL from current connection
+                let server_url = app_state.base_ws_url.clone().unwrap_or_default();
+
+                // Check if this server is remembered for any identity
+                let remembered_identity = app_state.identity_config.identities.iter()
+                    .position(|id| id.remembered_servers.contains(&server_url));
+
+                if let Some(idx) = remembered_identity {
+                    // Auto-identify with remembered identity
+                    app_state.selected_identity_index = idx;
+                    app_state.pending_identification = Some(PendingIdentification {
+                        action_id,
+                        nonce,
+                        timestamp,
+                        reason: reason.clone(),
+                        server_url,
+                    });
+                    app_state.status = format!("Auto-identifying as {}...",
+                        app_state.identity_config.identities[idx].display_name);
                 } else {
-                    // Get server URL from current connection
-                    let server_url = app_state.base_ws_url.clone().unwrap_or_default();
-
-                    // Check if this server is remembered for any identity
-                    let remembered_identity = app_state.identity_config.identities.iter()
-                        .position(|id| id.remembered_servers.contains(&server_url));
-
-                    if let Some(idx) = remembered_identity {
-                        // Auto-identify with remembered identity
-                        app_state.selected_identity_index = idx;
-                        // Set pending so UI can handle it
-                        app_state.pending_identification = Some(PendingIdentification {
-                            action_id,
-                            nonce,
-                            timestamp,
-                            reason: reason.clone(),
-                            server_url,
-                        });
-                        app_state.status = format!("Auto-identifying as {}...",
-                            app_state.identity_config.identities[idx].display_name);
-                    } else {
-                        // Show consent dialog
-                        app_state.pending_identification = Some(PendingIdentification {
-                            action_id,
-                            nonce,
-                            timestamp,
-                            reason,
-                            server_url,
-                        });
-                        app_state.status = "Server requests identification".to_string();
-                    }
+                    // Show consent dialog (works even with no identities - dialog handles that case)
+                    app_state.pending_identification = Some(PendingIdentification {
+                        action_id,
+                        nonce,
+                        timestamp,
+                        reason,
+                        server_url,
+                    });
+                    app_state.status = "Server requests identification".to_string();
                 }
             }
         }

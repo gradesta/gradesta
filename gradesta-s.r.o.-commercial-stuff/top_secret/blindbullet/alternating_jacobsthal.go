@@ -221,32 +221,8 @@ func (a *AlternatingJacobsthalChapter) WasEscConsumed() bool {
 func (a *AlternatingJacobsthalChapter) Update() error {
 	a.escConsumed = false
 	
-	// Handle 'h' key to toggle help dialog
-	if inpututil.IsKeyJustPressed(ebiten.KeyH) {
-		a.showHelp = !a.showHelp
-		if a.showHelp {
-			a.helpScrollOffset = 0
-		}
-		return nil
-	}
-	
-	// Handle help dialog scrolling
-	if a.showHelp {
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
-			a.helpScrollOffset += 15
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
-			a.helpScrollOffset -= 15
-			if a.helpScrollOffset < 0 {
-				a.helpScrollOffset = 0
-			}
-		}
-		// Close help with Escape or 'h' again
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyH) {
-			a.showHelp = false
-			a.escConsumed = true
-		}
-		// Don't process other keys when help is open
+	// Handle help dialog input (must be first to consume input when open)
+	if HandleHelpInput(&a.helpState, &a.escConsumed) {
 		return nil
 	}
 	

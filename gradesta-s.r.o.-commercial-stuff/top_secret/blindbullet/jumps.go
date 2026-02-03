@@ -36,6 +36,9 @@ type JumpsChapter struct {
 
 	// Tracks: store cell positions that have been visited (col, row pairs)
 	tracks map[string]bool // Key format: "col,row" e.g. "5,3"
+
+	// Help dialog state
+	helpState HelpDialogState
 }
 
 // NewJumpsChapter creates a new Jumps chapter
@@ -301,6 +304,11 @@ func (j *JumpsChapter) getDestinationIndexDifference(kValue int) (int, bool) {
 func (j *JumpsChapter) Update() error {
 	j.escConsumed = false
 	j.keyRepeatFrame++
+
+	// Handle help dialog input (must be first to consume input when open)
+	if HandleHelpInput(&j.helpState, &j.escConsumed) {
+		return nil
+	}
 
 	// Handle 'M' key to cycle through modes forward
 	if inpututil.IsKeyJustPressed(ebiten.KeyM) && !ebiten.IsKeyPressed(ebiten.KeyShift) {
@@ -730,6 +738,12 @@ func (j *JumpsChapter) Draw(screen *ebiten.Image) {
 		text.Draw(screen, valueText, basicfont.Face7x13, valueX, valueY, color.RGBA{200, 150, 255, 255}) // Purple text
 	}
 
+	// Draw help dialog if open
+	if j.helpState.ShowHelp {
+		helpLines := j.getHelpLines()
+		DrawHelpDialog(screen, helpLines, j.helpState.HelpScrollOffset)
+	}
+
 	// Draw instructions
 	modeText := "Normal"
 	switch j.displayMode {
@@ -744,11 +758,54 @@ func (j *JumpsChapter) Draw(screen *ebiten.Image) {
 	case 4:
 		modeText = "SourceK"
 	}
-	instructions := "Arrow Keys: Navigate | M: Cycle mode (" + modeText + ") | Enter: Jump | T: Clear all tracks | U: Remove track | R: Reset to 1 | ESC: Return"
+	instructions := "Arrow Keys: Navigate | M: Cycle mode (" + modeText + ") | Enter: Jump | T: Clear all tracks | U: Remove track | R: Reset to 1 | H: Help | ESC: Return"
 	instBounds := text.BoundString(basicfont.Face7x13, instructions)
 	instX := (screenWidth - instBounds.Dx()) / 2
 	instY := screenHeight - 30
 	text.Draw(screen, instructions, basicfont.Face7x13, instX, instY, color.Gray{Y: 150})
+}
+
+// getHelpLines returns the help text lines for the Jumps chapter
+func (j *JumpsChapter) getHelpLines() []string {
+	return []string{
+		"",
+		"NAVIGATION:",
+		"  Arrow Keys            - Navigate cells in the table",
+		"",
+		"DISPLAY MODES:",
+		"  M                     - Cycle forward through modes",
+		"  Shift+M               - Cycle backward through modes",
+		"  Normal                - Shows k value in matching row",
+		"  Jump                  - Shows difference between current and next Collatz index",
+		"  Index                 - Shows destination index of jump",
+		"  Incoming              - Shows source index that jumps to destination with given k",
+		"  SourceK               - Shows source k value (first k of incoming source)",
+		"",
+		"JUMPING:",
+		"  Enter                 - Jump to incoming source index (Incoming/SourceK modes)",
+		"                       - Adds track at current cell before jumping",
+		"",
+		"TRACKING:",
+		"  T                     - Clear all tracks",
+		"  U                     - Remove track from currently selected cell",
+		"",
+		"RESET:",
+		"  R                     - Reset to column 1 (index 1)",
+		"",
+		"COLOR CODING (Incoming/SourceK modes):",
+		"  Red                   - 0 mod 3",
+		"  Green                 - 1 mod 3",
+		"  Blue                  - 2 mod 3",
+		"  Index labels          - Color coded by odd number mod 3",
+		"  Incoming cells        - Color coded by incoming source index mod 3",
+		"",
+		"HELP:",
+		"  H                     - Show/hide this help dialog",
+		"  UP/DOWN or W/S        - Scroll help (when open)",
+		"",
+		"",
+		"Press H or ESC to close",
+	}
 }
 
 // WasEscConsumed returns whether ESC was consumed by a dialog this frame
