@@ -371,6 +371,14 @@ fn ui_system(
     let ctx = contexts.ctx_mut();
 
     // Handle modal keyboard shortcuts and zoom
+    let url_bar_id = egui::Id::new("url_bar");
+
+    // Check for Ctrl+L outside the input closure to avoid deadlock
+    let focus_url_bar = ctx.input(|i| i.key_pressed(egui::Key::L) && i.modifiers.ctrl);
+    if focus_url_bar {
+        ctx.memory_mut(|mem| mem.request_focus(url_bar_id));
+    }
+
     ctx.input(|i| {
         // Escape to close modals
         if i.key_pressed(egui::Key::Escape) {
@@ -431,13 +439,15 @@ fn ui_system(
         ui.horizontal(|ui| {
             ui.label("URL:");
             let text_edit = egui::TextEdit::singleline(&mut app_state.url_input)
+                .id(url_bar_id)
                 .desired_width(600.0)
                 .hint_text("ws://localhost:8080/ws?landmark=/home/");
             let response = ui.add(text_edit);
-            
+
             let connect_clicked = ui.button("Connect").clicked();
+            // lost_focus() is true when Enter is pressed in a text field
             let enter_pressed = response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            
+
             if (connect_clicked || enter_pressed) && !app_state.connected {
                 let url = app_state.url_input.trim().to_string();
                 if url.is_empty() {
@@ -740,6 +750,27 @@ fn ui_system(
         if is_remembered {
             id_action = Some(IdentificationAction::Identify { remember: false });
         } else {
+            // Handle keyboard shortcuts for identification dialog
+            let id_enter_pressed = ctx.input(|i| i.key_pressed(egui::Key::Enter));
+            let id_tab_pressed = ctx.input(|i| i.key_pressed(egui::Key::Tab));
+            let id_escape_pressed = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+
+            // Tab cycles through identities
+            if id_tab_pressed && !app_state.identity_config.identities.is_empty() {
+                let num_identities = app_state.identity_config.identities.len();
+                app_state.selected_identity_index = (app_state.selected_identity_index + 1) % num_identities;
+            }
+
+            // Enter confirms identification
+            if id_enter_pressed && !app_state.identity_config.identities.is_empty() {
+                id_action = Some(IdentificationAction::Identify { remember: false });
+            }
+
+            // Escape refuses
+            if id_escape_pressed {
+                id_action = Some(IdentificationAction::Refuse);
+            }
+
             // Show consent dialog
             egui::Window::new("🔐 Identification Request")
                 .collapsible(false)
@@ -761,12 +792,12 @@ fn ui_system(
                             if ui.button("🔑 Connect Nextcloud Account").clicked() {
                                 app_state.show_identity_panel = true;
                             }
-                            if ui.button("Refuse").clicked() {
+                            if ui.button("Refuse (Esc)").clicked() {
                                 id_action = Some(IdentificationAction::Refuse);
                             }
                         });
                     } else {
-                        ui.label("Identify as:");
+                        ui.label("Identify as (Tab to cycle):");
                         // Collect display names first to avoid borrow conflict
                         let display_names: Vec<String> = app_state.identity_config.identities
                             .iter()
@@ -778,13 +809,13 @@ fn ui_system(
 
                         ui.separator();
                         ui.horizontal(|ui| {
-                            if ui.button("Identify").clicked() {
+                            if ui.button("Identify (Enter)").clicked() {
                                 id_action = Some(IdentificationAction::Identify { remember: false });
                             }
                             if ui.button("Identify + Remember").clicked() {
                                 id_action = Some(IdentificationAction::Identify { remember: true });
                             }
-                            if ui.button("Refuse").clicked() {
+                            if ui.button("Refuse (Esc)").clicked() {
                                 id_action = Some(IdentificationAction::Refuse);
                             }
                         });
