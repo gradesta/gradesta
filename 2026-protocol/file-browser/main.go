@@ -348,16 +348,103 @@ func normalizeDirURI(dirPath string) string {
 }
 
 func detectMimeType(path string) string {
+	// First try the file command
 	cmd := exec.Command("file", "--mime-type", "-b", path)
 	output, err := cmd.Output()
-	if err != nil {
+	if err == nil {
+		mime := strings.TrimSpace(string(output))
+		if mime != "" && mime != "application/octet-stream" {
+			return mime
+		}
+	}
+
+	// Fallback to extension-based detection
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	// Images
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".bmp":
+		return "image/bmp"
+	case ".svg":
+		return "image/svg+xml"
+	case ".ico":
+		return "image/x-icon"
+	// Text
+	case ".txt":
+		return "text/plain"
+	case ".html", ".htm":
+		return "text/html"
+	case ".css":
+		return "text/css"
+	case ".js":
+		return "text/javascript"
+	case ".json":
+		return "application/json"
+	case ".xml":
+		return "text/xml"
+	case ".md":
+		return "text/markdown"
+	case ".csv":
+		return "text/csv"
+	// Code
+	case ".go":
+		return "text/x-go"
+	case ".rs":
+		return "text/x-rust"
+	case ".py":
+		return "text/x-python"
+	case ".rb":
+		return "text/x-ruby"
+	case ".java":
+		return "text/x-java"
+	case ".c", ".h":
+		return "text/x-c"
+	case ".cpp", ".hpp", ".cc":
+		return "text/x-c++"
+	case ".sh":
+		return "text/x-shellscript"
+	case ".yaml", ".yml":
+		return "text/yaml"
+	case ".toml":
+		return "text/toml"
+	// Documents
+	case ".pdf":
+		return "application/pdf"
+	// Audio
+	case ".mp3":
+		return "audio/mpeg"
+	case ".wav":
+		return "audio/wav"
+	case ".ogg":
+		return "audio/ogg"
+	case ".flac":
+		return "audio/flac"
+	// Video
+	case ".mp4":
+		return "video/mp4"
+	case ".webm":
+		return "video/webm"
+	case ".mkv":
+		return "video/x-matroska"
+	case ".avi":
+		return "video/x-msvideo"
+	// Archives
+	case ".zip":
+		return "application/zip"
+	case ".tar":
+		return "application/x-tar"
+	case ".gz":
+		return "application/gzip"
+	default:
 		return "application/octet-stream"
 	}
-	mime := strings.TrimSpace(string(output))
-	if mime == "" {
-		return "application/octet-stream"
-	}
-	return mime
 }
 
 func hash64(parts ...string) uint64 {

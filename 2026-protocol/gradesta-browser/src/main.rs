@@ -70,6 +70,11 @@ struct AppState {
     // Key repeat state
     key_repeat_last_move: Option<Instant>,
     key_repeat_started: bool,
+    // Content modal state
+    show_text_modal: bool,
+    text_modal_content: String,
+    show_image_modal: bool,
+    image_modal_vertex_id: Option<u64>,
 }
 
 const KEY_REPEAT_DELAY: Duration = Duration::from_millis(400); // Initial delay before repeat starts
@@ -88,6 +93,10 @@ impl Default for AppState {
             following_portal: None,
             key_repeat_last_move: None,
             key_repeat_started: false,
+            show_text_modal: false,
+            text_modal_content: String::new(),
+            show_image_modal: false,
+            image_modal_vertex_id: None,
         }
     }
 }
@@ -291,6 +300,37 @@ fn ui_system(
 ) {
     let ctx = contexts.ctx_mut();
 
+    // Handle modal keyboard shortcuts
+    ctx.input(|i| {
+        // Escape to close modals
+        if i.key_pressed(egui::Key::Escape) {
+            if app_state.show_text_modal {
+                app_state.show_text_modal = false;
+            }
+            if app_state.show_image_modal {
+                app_state.show_image_modal = false;
+            }
+        }
+        // Ctrl+Enter to open modal with current content
+        if i.key_pressed(egui::Key::Enter) && i.modifiers.ctrl {
+            if let Some(current_id) = app_state.current_vertex {
+                if let Some(vertex) = graph.vertices.get(&current_id) {
+                    let mime = vertex.mime.as_deref().unwrap_or("");
+                    let is_image = mime.starts_with("image/") || is_image_data(&vertex.label);
+                    let is_text = mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url";
+
+                    if is_text {
+                        app_state.text_modal_content = String::from_utf8_lossy(&vertex.label).to_string();
+                        app_state.show_text_modal = true;
+                    } else if is_image {
+                        app_state.image_modal_vertex_id = Some(current_id);
+                        app_state.show_image_modal = true;
+                    }
+                }
+            }
+        }
+    });
+
     // Top panel with URL bar
     egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
         ui.add_space(8.0);
@@ -340,7 +380,7 @@ fn ui_system(
     egui::TopBottomPanel::bottom("help_panel").show(ctx, |ui| {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.label("Navigation: ↑↓←→ or WASD | PageUp/Down = Up/Down | Backspace = Back | Enter = Follow link");
+            ui.label("Navigation: ↑↓←→ or WASD | PageUp/Down = Up/Down | Backspace = Back | Ctrl+Enter = View content | Esc = Close");
         });
         ui.add_space(4.0);
     });
@@ -349,15 +389,91 @@ fn ui_system(
     egui::SidePanel::right("preview_panel").min_width(400.0).show(ctx, |ui| {
         ui.heading("Content Preview");
         ui.separator();
-        
+
         if let Some(current_id) = app_state.current_vertex {
             if let Some(vertex) = graph.vertices.get(&current_id) {
-                render_vertex_content(ui, vertex, current_id, &mut media_cache, ctx);
+                render_vertex_content(ui, vertex, current_id, &mut media_cache, ctx, &mut app_state);
             }
         } else {
             ui.label("No vertex selected");
         }
     });
+
+    // Text modal window (Ctrl+Enter to open, Escape to close)
+    if app_state.show_text_modal {
+        egui::Window::new("Text Viewer")
+            .collapsible(false)
+            .resizable(true)
+            .default_size([800.0, 600.0])
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button("Close (Esc)").clicked() {
+                        app_state.show_text_modal = false;
+                    }
+                });
+                ui.separator();
+
+                egui::ScrollArea::both()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.add(
+                            egui::TextEdit::multiline(&mut app_state.text_modal_content.clone())
+                                .desired_width(f32::INFINITY)
+                                .font(egui::TextStyle::Monospace)
+                                .interactive(false)
+                        );
+                    });
+            });
+    }
+
+    // Image modal window (Ctrl+Enter to open, Escape to close)
+    if app_state.show_image_modal {
+        if let Some(vertex_id) = app_state.image_modal_vertex_id {
+            if let Some(vertex) = graph.vertices.get(&vertex_id) {
+                let mime = vertex.mime.as_deref().unwrap_or("");
+                egui::Window::new("Image Viewer")
+                    .collapsible(false)
+                    .resizable(true)
+                    .default_size([800.0, 600.0])
+                    .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            if ui.button("Close (Esc)").clicked() {
+                                app_state.show_image_modal = false;
+                            }
+                        });
+                        ui.separator();
+
+                        egui::ScrollArea::both()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                if mime == "image/gif" {
+                                    if let Some(animated) = get_or_load_animated_gif(vertex_id, &vertex.label, &mut media_cache, ctx) {
+                                        let now = Instant::now();
+                                        if now.duration_since(animated.last_switch) >= animated.delays[animated.current_frame] {
+                                            let next_frame = (animated.current_frame + 1) % animated.frames.len();
+                                            if let Some(anim) = media_cache.animated_gifs.get_mut(&vertex_id) {
+                                                anim.current_frame = next_frame;
+                                                anim.last_switch = now;
+                                            }
+                                        }
+                                        let tex = &animated.frames[animated.current_frame];
+                                        let size = tex.size_vec2();
+                                        ui.image((tex.id(), size));
+                                        ctx.request_repaint();
+                                    }
+                                } else {
+                                    if let Some(tex) = get_or_load_texture(vertex_id, &vertex.label, mime, &mut media_cache, ctx) {
+                                        let size = tex.size_vec2();
+                                        ui.image((tex.id(), size));
+                                    }
+                                }
+                            });
+                    });
+            }
+        }
+    }
 
     // Central panel showing grid view
     egui::CentralPanel::default().show(ctx, |ui| {
@@ -431,72 +547,85 @@ fn ui_system(
                 if let Some(&vertex_id) = grid.cells.get(&(x, y)) {
                     let cell_x = (x - grid.min_x) as f32 * (cell_width + padding);
                     let cell_y = (y - grid.min_y) as f32 * (cell_height + padding);
-                    
+
                     let rect = egui::Rect::from_min_size(
                         base_pos + egui::vec2(cell_x, cell_y),
                         egui::vec2(cell_width, cell_height),
                     );
-                    
+
                     let is_current = vertex_id == current_id;
-                    
-                    // Different colors based on content type
-                    let (bg_color, border_color) = if let Some(vertex) = graph.vertices.get(&vertex_id) {
+
+                    if let Some(vertex) = graph.vertices.get(&vertex_id) {
                         let mime = vertex.mime.as_deref().unwrap_or("");
-                        if is_current {
+                        let is_image = mime.starts_with("image/") || is_image_data(&vertex.label);
+
+                        // Different colors based on content type
+                        let (bg_color, border_color) = if is_current {
                             (egui::Color32::from_rgb(50, 100, 70), egui::Color32::from_rgb(100, 200, 120))
                         } else if mime == "text/gradesta-url" {
                             (egui::Color32::from_rgb(60, 60, 90), egui::Color32::from_rgb(100, 100, 150))
-                        } else if mime.starts_with("image/") {
-                            (egui::Color32::from_rgb(70, 50, 70), egui::Color32::from_rgb(140, 100, 140))
+                        } else if is_image {
+                            (egui::Color32::from_rgb(40, 40, 45), egui::Color32::from_rgb(140, 100, 140))
                         } else if mime.starts_with("text/") {
                             (egui::Color32::from_rgb(50, 60, 70), egui::Color32::from_rgb(100, 120, 140))
                         } else if mime.starts_with("video/") || mime.starts_with("audio/") {
                             (egui::Color32::from_rgb(70, 60, 50), egui::Color32::from_rgb(140, 120, 100))
                         } else {
                             (egui::Color32::from_rgb(50, 50, 55), egui::Color32::from_rgb(80, 80, 90))
+                        };
+
+                        painter.rect_filled(rect, 4.0, bg_color);
+                        painter.rect_stroke(rect, 4.0, egui::Stroke::new(if is_current { 3.0 } else { 2.0 }, border_color));
+
+                        // For images, render the image in the cell
+                        if is_image {
+                            if let Some(tex) = get_or_load_texture(vertex_id, &vertex.label, mime, &mut media_cache, ctx) {
+                                let tex_size = tex.size_vec2();
+                                // Scale to fit in cell with some padding
+                                let inner_rect = rect.shrink(4.0);
+                                let scale = (inner_rect.width() / tex_size.x).min(inner_rect.height() / tex_size.y);
+                                let scaled_size = tex_size * scale;
+                                let img_rect = egui::Rect::from_center_size(rect.center(), scaled_size);
+                                painter.image(tex.id(), img_rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE);
+                            }
+                        } else {
+                            // For non-images, show icon and label
+                            let label = String::from_utf8_lossy(&vertex.label);
+                            let display_label: String = label.chars().take(18).collect();
+                            let display_label = if label.len() > 18 {
+                                format!("{}…", display_label)
+                            } else {
+                                display_label
+                            };
+
+                            let icon = if mime == "text/gradesta-url" {
+                                "🌀 "
+                            } else if mime == "text/x-url" {
+                                "📎 "
+                            } else if mime.starts_with("video/") {
+                                "🎬 "
+                            } else if mime.starts_with("audio/") {
+                                "🔊 "
+                            } else if mime.starts_with("text/") {
+                                "📄 "
+                            } else if !mime.is_empty() {
+                                "📦 "
+                            } else {
+                                ""
+                            };
+
+                            painter.text(
+                                rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                format!("{}{}", icon, display_label),
+                                egui::FontId::proportional(13.0),
+                                egui::Color32::WHITE,
+                            );
                         }
                     } else {
-                        (egui::Color32::from_rgb(50, 50, 55), egui::Color32::from_rgb(80, 80, 90))
-                    };
-                    
-                    painter.rect_filled(rect, 4.0, bg_color);
-                    painter.rect_stroke(rect, 4.0, egui::Stroke::new(2.0, border_color));
-                    
-                    if let Some(vertex) = graph.vertices.get(&vertex_id) {
-                        let label = String::from_utf8_lossy(&vertex.label);
-                        let display_label: String = label.chars().take(18).collect();
-                        let display_label = if label.len() > 18 {
-                            format!("{}…", display_label)
-                        } else {
-                            display_label
-                        };
-                        
-                        let mime = vertex.mime.as_deref().unwrap_or("");
-                        let icon = if mime == "text/gradesta-url" {
-                            "🌀 "
-                        } else if mime == "text/x-url" {
-                            "📎 "
-                        } else if mime.starts_with("image/") {
-                            "🖼 "
-                        } else if mime.starts_with("video/") {
-                            "🎬 "
-                        } else if mime.starts_with("audio/") {
-                            "🔊 "
-                        } else if mime.starts_with("text/") {
-                            "📄 "
-                        } else if !mime.is_empty() {
-                            "📦 "
-                        } else {
-                            ""
-                        };
-                        
-                        painter.text(
-                            rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            format!("{}{}", icon, display_label),
-                            egui::FontId::proportional(13.0),
-                            egui::Color32::WHITE,
-                        );
+                        // No vertex data - just draw empty cell
+                        painter.rect_filled(rect, 4.0, egui::Color32::from_rgb(50, 50, 55));
+                        painter.rect_stroke(rect, 4.0, egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 80, 90)));
                     }
                 }
             }
@@ -510,15 +639,12 @@ fn render_vertex_content(
     vertex_id: u64,
     media_cache: &mut MediaCache,
     ctx: &egui::Context,
+    _app_state: &mut AppState,
 ) {
     let label = String::from_utf8_lossy(&vertex.label);
-    
-    ui.horizontal(|ui| {
-        ui.label("Name:");
-        ui.monospace(&*label);
-    });
-    
+
     if let Some(mime) = &vertex.mime {
+        // Show type and size for all content
         ui.horizontal(|ui| {
             ui.label("Type:");
             ui.monospace(mime);
@@ -527,17 +653,18 @@ fn render_vertex_content(
             ui.label("Size:");
             ui.label(format!("{} bytes", vertex.label.len()));
         });
-        
+
         ui.separator();
-        
+
         if mime == "text/gradesta-url" {
             // Portal to another landmark - should be auto-loading
             ui.heading("🌀 Loading...");
             let url = String::from_utf8_lossy(&vertex.label);
             ui.spinner();
             ui.add_space(8.0);
-            ui.label(format!("Loading: {}", url));
-            
+            let url_display: String = url.chars().take(60).collect();
+            ui.label(format!("Loading: {}", url_display));
+
         } else if mime == "text/x-url" {
             // External URL - file too large to inline, open externally
             ui.heading("📎 External Content");
@@ -554,25 +681,40 @@ fn render_vertex_content(
                     .arg(&url_str)
                     .spawn();
             }
-            
-        } else if mime.starts_with("text/") {
-            // Text content
+
+        } else if mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url" {
+            // Text content - show in constrained scroll area
             ui.heading("📄 Text Content");
-            ui.add_space(8.0);
+            ui.add_space(4.0);
+            ui.label("Ctrl+Enter to open in modal");
+            ui.add_space(4.0);
+
             let text = String::from_utf8_lossy(&vertex.label);
-            egui::ScrollArea::vertical().max_height(500.0).show(ui, |ui| {
-                ui.add(egui::TextEdit::multiline(&mut text.to_string())
-                    .desired_width(f32::INFINITY)
-                    .font(egui::TextStyle::Monospace)
-                    .interactive(false));
-            });
-            
-        } else if mime.starts_with("image/") {
+            let available_height = ui.available_height().min(400.0).max(100.0);
+
+            egui::ScrollArea::vertical()
+                .max_height(available_height)
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(&mut text.to_string())
+                            .desired_width(ui.available_width())
+                            .desired_rows(10)
+                            .font(egui::TextStyle::Monospace)
+                            .interactive(false)
+                    );
+                });
+
+        } else if mime.starts_with("image/") || is_image_data(&vertex.label) {
             // Image content
             ui.heading("🖼 Image");
-            ui.add_space(8.0);
-            
-            if mime == "image/gif" {
+            ui.add_space(4.0);
+            ui.label("Ctrl+Enter to view full size");
+            ui.add_space(4.0);
+
+            let is_gif = mime == "image/gif" || (vertex.label.len() >= 6 && &vertex.label[0..6] == b"GIF89a" || vertex.label.len() >= 6 && &vertex.label[0..6] == b"GIF87a");
+
+            if is_gif {
                 // Animated GIF
                 if let Some(animated) = get_or_load_animated_gif(vertex_id, &vertex.label, media_cache, ctx) {
                     // Update animation
@@ -596,12 +738,17 @@ fn render_vertex_content(
                 }
             } else {
                 // Static image
-                if let Some(tex) = get_or_load_texture(vertex_id, &vertex.label, mime, media_cache, ctx) {
-                    let size = tex.size_vec2();
-                    let max_size = egui::vec2(380.0, 400.0);
-                    let scale = (max_size.x / size.x).min(max_size.y / size.y).min(1.0);
-                    ui.image((tex.id(), size * scale));
-                    ui.label(format!("{}x{}", size.x as u32, size.y as u32));
+                match get_or_load_texture(vertex_id, &vertex.label, mime, media_cache, ctx) {
+                    Some(tex) => {
+                        let size = tex.size_vec2();
+                        let max_size = egui::vec2(380.0, 400.0);
+                        let scale = (max_size.x / size.x).min(max_size.y / size.y).min(1.0);
+                        ui.image((tex.id(), size * scale));
+                        ui.label(format!("{}x{}", size.x as u32, size.y as u32));
+                    }
+                    None => {
+                        ui.label("Failed to decode image");
+                    }
                 }
             }
             
@@ -677,6 +824,34 @@ fn open_with_external(data: &[u8], mime: &str) {
                 .spawn();
         }
     }
+}
+
+/// Check if data looks like an image based on magic bytes
+fn is_image_data(data: &[u8]) -> bool {
+    if data.len() < 8 {
+        return false;
+    }
+    // PNG
+    if data.starts_with(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) {
+        return true;
+    }
+    // JPEG
+    if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return true;
+    }
+    // GIF
+    if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
+        return true;
+    }
+    // WebP
+    if data.len() >= 12 && &data[0..4] == b"RIFF" && &data[8..12] == b"WEBP" {
+        return true;
+    }
+    // BMP
+    if data.starts_with(b"BM") {
+        return true;
+    }
+    false
 }
 
 fn get_or_load_texture(
