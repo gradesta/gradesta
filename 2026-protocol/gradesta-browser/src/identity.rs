@@ -2,7 +2,6 @@ use anyhow::{anyhow, Context, Result};
 use p256::ecdsa::{signature::Signer, SigningKey, VerifyingKey};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -134,11 +133,19 @@ pub fn generate_keypair() -> (SigningKey, VerifyingKey) {
     (signing_key, verifying_key)
 }
 
-/// Serialize public key to uncompressed point format (65 bytes: 0x04 || X || Y)
-pub fn serialize_public_key(key: &VerifyingKey) -> Vec<u8> {
+/// Serialize public key with identity metadata
+/// Format: identity_string (null-terminated) + public key (65 bytes: 0x04 || X || Y)
+pub fn serialize_public_key_with_identity(key: &VerifyingKey, username: &str, server: &str) -> Vec<u8> {
     use p256::EncodedPoint;
     let point: EncodedPoint = key.to_encoded_point(false);
-    point.as_bytes().to_vec()
+
+    // Format: username@server\0 + 65-byte public key
+    let identity = format!("{}@{}", username, server.replace("https://", "").replace("http://", ""));
+    let mut data = Vec::with_capacity(identity.len() + 1 + 65);
+    data.extend_from_slice(identity.as_bytes());
+    data.push(0); // null terminator
+    data.extend_from_slice(point.as_bytes());
+    data
 }
 
 /// Upload a file to Nextcloud via WebDAV
@@ -276,9 +283,8 @@ pub fn sign_challenge(signing_key: &SigningKey, nonce: &[u8], timestamp: u64) ->
     data.extend_from_slice(nonce);
     data.extend_from_slice(&timestamp.to_be_bytes());
 
-    // Hash and sign
-    let hash = Sha256::digest(&data);
-    let signature: p256::ecdsa::Signature = signing_key.sign(&hash);
+    // Sign the data (Signer::sign will hash it with SHA256 internally)
+    let signature: p256::ecdsa::Signature = signing_key.sign(&data);
     signature.to_bytes().to_vec()
 }
 
@@ -291,8 +297,8 @@ pub fn setup_identity(
     // Generate keypair
     let (signing_key, verifying_key) = generate_keypair();
 
-    // Serialize public key
-    let pub_key_bytes = serialize_public_key(&verifying_key);
+    // Serialize public key with identity metadata
+    let pub_key_bytes = serialize_public_key_with_identity(&verifying_key, username, nextcloud_url);
 
     // Upload public key
     webdav_upload(

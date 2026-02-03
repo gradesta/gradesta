@@ -1,12 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -197,10 +197,37 @@ func handleIdentificationResponse(conn *websocket.Conn, msg []byte) {
 		return
 	}
 
+	// Parse the identity URL to get the hosting server
+	parsedURL, err := url.Parse(identityURL)
+	if err != nil {
+		log.Printf("Failed to parse identity URL: %v", err)
+		return
+	}
+	hostingServer := parsedURL.Host
+
 	// Fetch public key from identity URL
-	pubKey, err := fetchPublicKey(identityURL)
+	pubKeyData, err := fetchPublicKey(identityURL)
 	if err != nil {
 		log.Printf("Failed to fetch public key: %v", err)
+		return
+	}
+
+	log.Printf("Fetched public key with identity: %s", pubKeyData.Identity)
+
+	// Parse identity from public key file (format: username@server)
+	identity := pubKeyData.Identity
+	parts := strings.SplitN(identity, "@", 2)
+	if len(parts) != 2 {
+		log.Printf("Invalid identity format: %s", identity)
+		return
+	}
+	claimedUsername := parts[0]
+	claimedServer := parts[1]
+
+	// Verify that the claimed server matches the hosting server
+	// This prevents someone from hosting a key on evil.com claiming to be user@trusted.com
+	if !strings.EqualFold(claimedServer, hostingServer) {
+		log.Printf("Identity server mismatch: claimed %s but hosted on %s", claimedServer, hostingServer)
 		return
 	}
 
@@ -215,27 +242,23 @@ func handleIdentificationResponse(conn *websocket.Conn, msg []byte) {
 	r := new(big.Int).SetBytes(signature[:32])
 	s := new(big.Int).SetBytes(signature[32:64])
 
-	if !ecdsa.Verify(pubKey, hash[:], r, s) {
+	if !ecdsa.Verify(pubKeyData.Key, hash[:], r, s) {
 		log.Printf("Signature verification failed")
 		return
 	}
 
 	log.Printf("Signature verified successfully!")
-
-	// Resolve username from Nextcloud
-	username, server, err := resolveIdentity(identityURL)
-	if err != nil {
-		log.Printf("Failed to resolve identity: %v", err)
-		// Use URL as fallback
-		sendGreeting(conn, identityURL, "")
-		return
-	}
-
-	log.Printf("Identified user: %s@%s", username, server)
-	sendGreeting(conn, username, server)
+	log.Printf("Identified user: %s@%s", claimedUsername, claimedServer)
+	sendGreeting(conn, claimedUsername, claimedServer)
 }
 
-func fetchPublicKey(identityURL string) (*ecdsa.PublicKey, error) {
+// PublicKeyData contains the public key and embedded identity
+type PublicKeyData struct {
+	Identity string
+	Key      *ecdsa.PublicKey
+}
+
+func fetchPublicKey(identityURL string) (*PublicKeyData, error) {
 	// Add /download to get the raw file
 	downloadURL := identityURL + "/download"
 
@@ -249,19 +272,29 @@ func fetchPublicKey(identityURL string) (*ecdsa.PublicKey, error) {
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	// Read public key (expected: 65 bytes uncompressed P-256 point)
+	// Read public key file
+	// Format: identity_string (null-terminated) + public key (65 bytes: 0x04 || X || Y)
 	keyData, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read body: %w", err)
 	}
 
-	// Parse uncompressed point format (0x04 || X || Y)
-	if len(keyData) != 65 || keyData[0] != 0x04 {
-		return nil, fmt.Errorf("invalid public key format (len=%d)", len(keyData))
+	// Find null terminator to split identity from key
+	nullIdx := bytes.IndexByte(keyData, 0)
+	if nullIdx == -1 {
+		return nil, fmt.Errorf("no identity found in public key file")
 	}
 
-	x := new(big.Int).SetBytes(keyData[1:33])
-	y := new(big.Int).SetBytes(keyData[33:65])
+	identity := string(keyData[:nullIdx])
+	keyBytes := keyData[nullIdx+1:]
+
+	// Parse uncompressed point format (0x04 || X || Y)
+	if len(keyBytes) != 65 || keyBytes[0] != 0x04 {
+		return nil, fmt.Errorf("invalid public key format (len=%d)", len(keyBytes))
+	}
+
+	x := new(big.Int).SetBytes(keyBytes[1:33])
+	y := new(big.Int).SetBytes(keyBytes[33:65])
 
 	pubKey := &ecdsa.PublicKey{
 		Curve: elliptic.P256(),
@@ -269,68 +302,10 @@ func fetchPublicKey(identityURL string) (*ecdsa.PublicKey, error) {
 		Y:     y,
 	}
 
-	return pubKey, nil
-}
-
-func resolveIdentity(identityURL string) (username string, server string, err error) {
-	// Parse the share URL to extract server and share token
-	// Format: https://nextcloud.example.com/s/{share-token}
-	parsed, err := url.Parse(identityURL)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to parse URL: %w", err)
-	}
-
-	server = parsed.Host
-
-	// Extract share token from path
-	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
-	if len(parts) < 2 || parts[0] != "s" {
-		return "", "", fmt.Errorf("invalid share URL format")
-	}
-	shareToken := parts[1]
-
-	// Query Nextcloud OCS API for share info
-	// GET /ocs/v2.php/apps/files_sharing/api/v1/shares/{token}
-	ocsURL := fmt.Sprintf("%s://%s/ocs/v2.php/apps/files_sharing/api/v1/shares/%s",
-		parsed.Scheme, parsed.Host, shareToken)
-
-	req, err := http.NewRequest("GET", ocsURL, nil)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("OCS-APIRequest", "true")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", "", fmt.Errorf("OCS request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return "", "", fmt.Errorf("OCS HTTP %d", resp.StatusCode)
-	}
-
-	// Parse OCS response
-	var ocsResp struct {
-		OCS struct {
-			Data []struct {
-				UIDOwner         string `json:"uid_owner"`
-				DisplaynameOwner string `json:"displayname_owner"`
-			} `json:"data"`
-		} `json:"ocs"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&ocsResp); err != nil {
-		return "", "", fmt.Errorf("failed to decode OCS response: %w", err)
-	}
-
-	if len(ocsResp.OCS.Data) == 0 {
-		return "", "", fmt.Errorf("no share data returned")
-	}
-
-	username = ocsResp.OCS.Data[0].UIDOwner
-	return username, server, nil
+	return &PublicKeyData{
+		Identity: identity,
+		Key:      pubKey,
+	}, nil
 }
 
 func sendGreeting(conn *websocket.Conn, username, server string) {
