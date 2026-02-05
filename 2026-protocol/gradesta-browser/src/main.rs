@@ -324,6 +324,46 @@ struct GridView {
     max_y: i32,
 }
 
+/// Sync all identities bidirectionally with Nextcloud on startup
+fn sync_all_identities(app_state: &mut AppState) {
+    eprintln!("Syncing identities with Nextcloud...");
+
+    for identity in &mut app_state.identity_config.identities {
+        let local_metadata = identity::IdentityMetadata {
+            display_name: identity.display_name.clone(),
+            share_url: identity.share_url.clone(),
+            remembered_servers: identity.remembered_servers.clone(),
+        };
+
+        match identity::sync_identity_bidirectional(
+            &identity.nextcloud_url,
+            &identity.username,
+            &identity.app_password,
+            &local_metadata,
+        ) {
+            Ok(merged) => {
+                // Update local identity with merged data
+                if identity.remembered_servers != merged.remembered_servers {
+                    eprintln!("  {} - synced {} remembered servers",
+                        identity.display_name,
+                        merged.remembered_servers.len());
+                    identity.remembered_servers = merged.remembered_servers;
+                } else {
+                    eprintln!("  {} - up to date", identity.display_name);
+                }
+            }
+            Err(e) => {
+                eprintln!("  {} - sync failed: {}", identity.display_name, e);
+            }
+        }
+    }
+
+    // Save any changes
+    if let Err(e) = app_state.identity_config.save() {
+        eprintln!("Failed to save identity config after sync: {}", e);
+    }
+}
+
 fn main() {
     // Check if Whisper model needs to be downloaded
     if !whisper::is_model_available() {
@@ -333,6 +373,10 @@ fn main() {
     // Preload Whisper model in background so it's ready when needed
     whisper::preload_model();
 
+    // Sync identities from Nextcloud on startup
+    let mut app_state = AppState::default();
+    sync_all_identities(&mut app_state);
+
     let (net_tx, net_rx) = unbounded::<ServerEvent>();
 
     App::new()
@@ -340,7 +384,7 @@ fn main() {
         .insert_resource(NetEventsTx(net_tx))
         .insert_resource(WsCommandTx(None))
         .insert_resource(GraphState::default())
-        .insert_resource(AppState::default())
+        .insert_resource(app_state)
         .insert_resource(MediaCache::default())
         .insert_resource(AudioRecordingSignal::default())
         .insert_resource(AudioPlaybackState::default())

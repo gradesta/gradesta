@@ -451,3 +451,46 @@ pub fn sync_identity_from_nextcloud(
 
     Ok(Some((signing_key, metadata)))
 }
+
+/// Bidirectional sync of identity metadata
+/// Merges local and remote remembered_servers, uploads merged result
+/// Returns the merged metadata
+pub fn sync_identity_bidirectional(
+    nextcloud_url: &str,
+    username: &str,
+    app_password: &str,
+    local: &IdentityMetadata,
+) -> Result<IdentityMetadata> {
+    // Download remote metadata
+    let remote = download_identity_metadata(nextcloud_url, username, app_password)?
+        .unwrap_or_default();
+
+    // Merge remembered_servers (union of both lists)
+    let mut merged_servers: Vec<String> = local.remembered_servers.clone();
+    for server in &remote.remembered_servers {
+        if !merged_servers.contains(server) {
+            merged_servers.push(server.clone());
+        }
+    }
+
+    // Use local display_name and share_url (they shouldn't change)
+    // But if local is empty and remote has values, use remote
+    let merged = IdentityMetadata {
+        display_name: if local.display_name.is_empty() {
+            remote.display_name
+        } else {
+            local.display_name.clone()
+        },
+        share_url: if local.share_url.is_empty() {
+            remote.share_url
+        } else {
+            local.share_url.clone()
+        },
+        remembered_servers: merged_servers,
+    };
+
+    // Upload merged metadata back to Nextcloud
+    upload_identity_metadata(nextcloud_url, username, app_password, &merged)?;
+
+    Ok(merged)
+}
