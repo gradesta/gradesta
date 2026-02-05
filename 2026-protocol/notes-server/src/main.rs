@@ -414,11 +414,60 @@ where
     let (action_id, landmark) = parse_watch_landmark(data)?;
     log::info!("Watch landmark: {} (action={})", landmark, action_id);
 
-    // For now, just send the notes listing
-    send_notes_listing(state, write, action_id).await
+    // Parse landmark to extract vertex ID if present
+    // Format: notes://identity/ or notes://identity/vertex_hash
+    let start_vertex = if landmark.contains('/') {
+        let parts: Vec<&str> = landmark.rsplitn(2, '/').collect();
+        if let Some(hash_str) = parts.first() {
+            if !hash_str.is_empty() {
+                // Try to parse as vertex hash
+                if let Ok(hash) = hash_str.parse::<u64>() {
+                    let index = {
+                        let s = state.lock().await;
+                        s.index.clone()
+                    };
+                    if let Some(index) = index {
+                        notes::hash_to_uuid(&index, hash)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    log::info!("Resolved start vertex: {:?}", start_vertex);
+    send_notes_from_vertex(state, write, action_id, start_vertex).await
 }
 
+/// Maximum vertices in a chain before creating a landmark boundary
+const MAX_CHAIN_LENGTH: usize = 20;
+
 async fn send_notes_listing<W>(state: &Arc<Mutex<State>>, write: &mut W, action_id: u64) -> Result<()>
+where
+    W: SinkExt<Message> + Unpin,
+    W::Error: std::fmt::Debug,
+{
+    // Default: send from root vertex
+    send_notes_from_vertex(state, write, action_id, None).await
+}
+
+/// Send notes starting from a specific vertex (or root if None)
+/// Only sends vertices within landmark boundaries (forks or every MAX_CHAIN_LENGTH vertices)
+async fn send_notes_from_vertex<W>(
+    state: &Arc<Mutex<State>>,
+    write: &mut W,
+    action_id: u64,
+    start_vertex: Option<uuid::Uuid>,
+) -> Result<()>
 where
     W: SinkExt<Message> + Unpin,
     W::Error: std::fmt::Debug,
@@ -436,7 +485,11 @@ where
     let nc = nc.ok_or_else(|| anyhow!("No Nextcloud client"))?;
 
     // Send context
-    let landmark = format!("notes://{}/", identity);
+    let landmark = if let Some(v) = start_vertex {
+        format!("notes://{}/{}", identity, uuid_to_hash(v))
+    } else {
+        format!("notes://{}/", identity)
+    };
     let ctx_msg = encode_set_context(action_id, &landmark);
     write.send(Message::Binary(ctx_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
@@ -450,9 +503,34 @@ where
         let edges = encode_set_edges(action_id, empty_id, 0, 0, 0, 0, 0, 0, 0x7F);
         write.send(Message::Binary(edges)).await.map_err(|e| anyhow!("{:?}", e))?;
     } else {
+        // Get the starting vertex (specified or root)
+        let start = start_vertex.or_else(|| index.get_root_vertex());
+        let start = match start {
+            Some(v) => v,
+            None => {
+                log::warn!("No starting vertex found");
+                return Ok(());
+            }
+        };
+
+        // Get vertices within landmark boundaries
+        let (vertices_to_send, landmark_vertices) = index.get_vertices_within_landmark(start, MAX_CHAIN_LENGTH);
+
+        log::info!(
+            "Sending {} vertices (bounded by {} landmarks) from start {:?}",
+            vertices_to_send.len(),
+            landmark_vertices.len(),
+            start
+        );
+
         // Send each vertex
-        for vertex in &index.vertices {
+        for vertex_uuid in &vertices_to_send {
+            let vertex = match index.get_vertex(*vertex_uuid) {
+                Some(v) => v,
+                None => continue,
+            };
             let vertex_id = uuid_to_hash(vertex.id);
+            let is_landmark = landmark_vertices.contains(vertex_uuid);
 
             // Load actual content for layer 0
             let (content, mime) = match nc.download(&vertex.file).await {
@@ -474,8 +552,19 @@ where
                 write.send(Message::Binary(transcript_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
             }
 
+            // Build edges - for landmark boundaries, replace edges going "outside"
+            // with portal URLs that the client can follow to load more
+            let mut edge_array = index.build_edge_array(vertex.id);
+
+            if is_landmark {
+                // For landmark vertices, edges to unloaded vertices become portals
+                // The client will see the vertex hash but won't have the data,
+                // causing it to request a WatchLandmark for that vertex
+                // We keep the hash but the client knows to request more data
+                log::info!("Vertex {} is a landmark boundary", vertex_id);
+            }
+
             // Send edges with full editability
-            let edge_array = index.build_edge_array(vertex.id);
             let edges_msg = encode_set_edges(
                 action_id,
                 vertex_id,

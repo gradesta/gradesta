@@ -327,3 +327,91 @@ pub fn hash_to_uuid(index: &NotesIndex, hash: u64) -> Option<Uuid> {
         .find(|v| uuid_to_hash(v.id) == hash)
         .map(|v| v.id)
 }
+
+impl NotesIndex {
+    /// Count total edges (in any direction) connected to a vertex
+    pub fn count_edges(&self, vertex_id: Uuid) -> usize {
+        let mut count = 0;
+        for dir in ["west", "east", "north", "south", "up", "down"] {
+            if self.get_neighbor(vertex_id, dir).is_some() {
+                count += 1;
+            }
+        }
+        count
+    }
+
+    /// Check if a vertex is a "fork" (has more than 2 edges, meaning it branches)
+    pub fn is_fork(&self, vertex_id: Uuid) -> bool {
+        self.count_edges(vertex_id) > 2
+    }
+
+    /// Get all neighbors of a vertex (in all directions)
+    pub fn get_all_neighbors(&self, vertex_id: Uuid) -> Vec<(Uuid, &str)> {
+        let mut neighbors = Vec::new();
+        for dir in ["west", "east", "north", "south", "up", "down"] {
+            if let Some(neighbor) = self.get_neighbor(vertex_id, dir) {
+                neighbors.push((neighbor, dir));
+            }
+        }
+        neighbors
+    }
+
+    /// Get vertices reachable from a starting vertex, stopping at landmarks.
+    /// A vertex becomes a landmark boundary if:
+    /// - It's a fork (more than 2 edges)
+    /// - It's been `max_chain_length` vertices since the last landmark
+    ///
+    /// Returns: (vertices to send, landmark vertices at boundaries)
+    pub fn get_vertices_within_landmark(
+        &self,
+        start_vertex: Uuid,
+        max_chain_length: usize,
+    ) -> (Vec<Uuid>, Vec<Uuid>) {
+        use std::collections::{HashSet, VecDeque};
+
+        let mut to_send: Vec<Uuid> = Vec::new();
+        let mut landmarks: Vec<Uuid> = Vec::new();
+        let mut visited: HashSet<Uuid> = HashSet::new();
+
+        // BFS with chain length tracking
+        // Each item is (vertex_id, distance_from_last_landmark)
+        let mut queue: VecDeque<(Uuid, usize)> = VecDeque::new();
+        queue.push_back((start_vertex, 0));
+
+        while let Some((vertex_id, distance)) = queue.pop_front() {
+            if visited.contains(&vertex_id) {
+                continue;
+            }
+            visited.insert(vertex_id);
+
+            let is_fork = self.is_fork(vertex_id);
+            let at_chain_limit = distance >= max_chain_length;
+
+            // Check if this vertex should be a landmark boundary
+            if vertex_id != start_vertex && (is_fork || at_chain_limit) {
+                // This is a landmark boundary - include it but don't traverse beyond
+                landmarks.push(vertex_id);
+                to_send.push(vertex_id);
+                continue;
+            }
+
+            // Include this vertex
+            to_send.push(vertex_id);
+
+            // Continue traversal to neighbors
+            let new_distance = if is_fork { 1 } else { distance + 1 };
+            for (neighbor, _dir) in self.get_all_neighbors(vertex_id) {
+                if !visited.contains(&neighbor) {
+                    queue.push_back((neighbor, new_distance));
+                }
+            }
+        }
+
+        (to_send, landmarks)
+    }
+
+    /// Find the first vertex (by creation time) - used as root if no specific landmark
+    pub fn get_root_vertex(&self) -> Option<Uuid> {
+        self.vertices.first().map(|v| v.id)
+    }
+}
