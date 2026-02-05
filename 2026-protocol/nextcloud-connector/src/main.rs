@@ -218,6 +218,9 @@ where
         MSG_CLIENT_CREATE_VERTEX => {
             handle_create_vertex(data, state, write).await
         }
+        MSG_CLIENT_CLICK_VERTEX => {
+            handle_click_vertex(data, state, write).await
+        }
         _ => {
             log::warn!("Unknown message type: 0x{:02x}", msg_type);
             Ok(())
@@ -1073,6 +1076,27 @@ where
     write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
     log::info!("Created vertex {} at {}", new_id, file_path);
+    Ok(())
+}
+
+/// Handle click on a vertex (toggle, action, etc.)
+async fn handle_click_vertex<W>(
+    data: &[u8],
+    state: &Arc<Mutex<State>>,
+    write: &mut W,
+) -> Result<()>
+where
+    W: SinkExt<Message> + Unpin,
+    W::Error: std::fmt::Debug,
+{
+    let (action_id, vertex_id) = parse_click_vertex(data)?;
+    log::info!("ClickVertex: action={}, vertex={}", action_id, vertex_id);
+
+    // For now, just acknowledge the click
+    // TODO: Implement calendar toggle when clicking on calendar cells
+    let msg = encode_log_message(action_id, 200, vertex_id, "Clicked");
+    write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
     Ok(())
 }
 

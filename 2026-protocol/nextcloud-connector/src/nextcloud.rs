@@ -171,6 +171,7 @@ impl NextcloudClient {
     /// List all calendars for the user
     pub async fn list_calendars(&self) -> Result<Vec<CalendarInfo>> {
         let url = self.caldav_url();
+        log::info!("CalDAV: Listing calendars from {}", url);
 
         let propfind_body = r#"<?xml version="1.0" encoding="UTF-8"?>
 <d:propfind xmlns:d="DAV:" xmlns:cs="http://calendarserver.org/ns/" xmlns:c="urn:ietf:params:xml:ns:caldav">
@@ -193,12 +194,17 @@ impl NextcloudClient {
             .await
             .context("CalDAV PROPFIND failed")?;
 
+        log::info!("CalDAV: PROPFIND response status: {}", response.status());
+
         if !response.status().is_success() && response.status().as_u16() != 207 {
             return Err(anyhow!("CalDAV list calendars failed: {}", response.status()));
         }
 
         let body = response.text().await?;
-        parse_calendar_list(&body, &self.caldav_url())
+        log::debug!("CalDAV: PROPFIND response body:\n{}", body);
+        let calendars = parse_calendar_list(&body, &self.caldav_url())?;
+        log::info!("CalDAV: Found {} calendars: {:?}", calendars.len(), calendars.iter().map(|c| &c.name).collect::<Vec<_>>());
+        Ok(calendars)
     }
 
     /// Fetch events from a calendar within a date range
@@ -209,6 +215,7 @@ impl NextcloudClient {
         end: NaiveDate,
     ) -> Result<Vec<CalendarEvent>> {
         let url = format!("{}{}", self.caldav_url(), calendar_path.trim_matches('/'));
+        log::info!("CalDAV: Fetching events from {} for {} to {}", url, start, end);
 
         // Format dates for CalDAV query (YYYYMMDD format)
         let start_str = start.format("%Y%m%dT000000Z").to_string();
@@ -229,6 +236,8 @@ impl NextcloudClient {
   </c:filter>
 </c:calendar-query>"#, start_str, end_str);
 
+        log::debug!("CalDAV: REPORT request body:\n{}", report_body);
+
         let response = self
             .client
             .request(reqwest::Method::from_bytes(b"REPORT").unwrap(), &url)
@@ -240,12 +249,17 @@ impl NextcloudClient {
             .await
             .context("CalDAV REPORT failed")?;
 
+        log::info!("CalDAV: REPORT response status: {}", response.status());
+
         if !response.status().is_success() && response.status().as_u16() != 207 {
             return Err(anyhow!("CalDAV fetch events failed: {}", response.status()));
         }
 
         let body = response.text().await?;
-        parse_events_response(&body)
+        log::debug!("CalDAV: REPORT response body:\n{}", body);
+        let events = parse_events_response(&body)?;
+        log::info!("CalDAV: Parsed {} events from calendar {}", events.len(), calendar_path);
+        Ok(events)
     }
 
     /// Fetch all events for a specific day
@@ -260,13 +274,18 @@ impl NextcloudClient {
 
     /// Fetch events for a day from all calendars
     pub async fn fetch_all_events_for_day(&self, date: NaiveDate) -> Result<Vec<CalendarEvent>> {
+        log::info!("CalDAV: Fetching all events for day {}", date);
         let calendars = self.list_calendars().await?;
         let mut all_events = Vec::new();
 
-        for cal in calendars {
+        for cal in &calendars {
+            log::info!("CalDAV: Calendar '{}' path='{}' supports_events={}", cal.name, cal.path, cal.supports_events);
             if cal.supports_events {
                 match self.fetch_events_for_day(&cal.path, date).await {
-                    Ok(events) => all_events.extend(events),
+                    Ok(events) => {
+                        log::info!("CalDAV: Got {} events from calendar '{}'", events.len(), cal.name);
+                        all_events.extend(events);
+                    }
                     Err(e) => log::warn!("Failed to fetch events from {}: {}", cal.name, e),
                 }
             }
@@ -274,6 +293,7 @@ impl NextcloudClient {
 
         // Sort events by start time
         all_events.sort_by(|a, b| a.start.cmp(&b.start));
+        log::info!("CalDAV: Total {} events for day {}", all_events.len(), date);
         Ok(all_events)
     }
 }
@@ -305,19 +325,29 @@ fn parse_calendar_list(xml: &str, base_url: &str) -> Result<Vec<CalendarInfo>> {
     let mut calendars = Vec::new();
 
     // Simple XML parsing - look for response elements
-    for response_block in xml.split("<d:response>").skip(1) {
+    // Handle both <d:response> and <D:response> prefixes
+    let response_splits: Vec<&str> = if xml.contains("<d:response>") {
+        xml.split("<d:response>").skip(1).collect()
+    } else {
+        xml.split("<D:response>").skip(1).collect()
+    };
+
+    for response_block in response_splits {
         let href = extract_tag_content(response_block, "d:href")
             .or_else(|| extract_tag_content(response_block, "D:href"));
 
         let displayname = extract_tag_content(response_block, "d:displayname")
             .or_else(|| extract_tag_content(response_block, "D:displayname"));
 
-        // Check if it's a calendar (has calendar resourcetype)
-        let is_calendar = response_block.contains("calendar") &&
-            (response_block.contains("<d:resourcetype>") || response_block.contains("<D:resourcetype>"));
+        // Check if it's a calendar (has calendar in resourcetype)
+        let block_lower = response_block.to_lowercase();
+        let is_calendar = block_lower.contains("calendar") && block_lower.contains("resourcetype");
 
-        // Check if it supports VEVENT
-        let supports_events = response_block.contains("VEVENT");
+        // Check if it supports VEVENT (case insensitive)
+        let supports_events = block_lower.contains("vevent");
+
+        log::debug!("CalDAV parse: href={:?} name={:?} is_calendar={} supports_events={}",
+                   href, displayname, is_calendar, supports_events);
 
         if let (Some(href), Some(name)) = (href, displayname) {
             // Skip the base calendar collection itself
@@ -326,10 +356,19 @@ fn parse_calendar_list(xml: &str, base_url: &str) -> Result<Vec<CalendarInfo>> {
 
             // Extract just the calendar name part
             let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+            log::debug!("CalDAV parse: path parts={:?}", parts);
+
             if parts.len() >= 2 && is_calendar {
                 calendars.push(CalendarInfo {
                     name: name.to_string(),
                     path: parts[1].to_string(),
+                    supports_events,
+                });
+            } else if parts.len() == 1 && is_calendar && !parts[0].is_empty() {
+                // Some setups might have simpler path structure
+                calendars.push(CalendarInfo {
+                    name: name.to_string(),
+                    path: parts[0].to_string(),
                     supports_events,
                 });
             }

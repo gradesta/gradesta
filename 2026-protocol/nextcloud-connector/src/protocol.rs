@@ -12,6 +12,7 @@ pub const MSG_SERVER_REQUEST_IDENTIFICATION: u8 = 0x10;
 // Client to server message types
 pub const MSG_CLIENT_WATCH_LANDMARK: u8 = 0x81;
 pub const MSG_CLIENT_SET_EDGES: u8 = 0x83;
+pub const MSG_CLIENT_CLICK_VERTEX: u8 = 0x84;
 pub const MSG_CLIENT_SET_VERTEX_LABEL: u8 = 0x85;
 pub const MSG_CLIENT_CREATE_VERTEX: u8 = 0x86;
 pub const MSG_CLIENT_IDENTIFICATION_RESPONSE: u8 = 0x90;
@@ -190,6 +191,17 @@ pub fn parse_client_create_vertex(msg: &[u8]) -> Result<(u64, u64, Direction, u3
     let content = msg[22 + mime_end + 1..].to_vec();
 
     Ok((action_id, from_vertex, direction, layer, mime_type, content))
+}
+
+/// Parse ClickVertex message from client
+/// Returns: (action_id, vertex_id)
+pub fn parse_click_vertex(msg: &[u8]) -> Result<(u64, u64)> {
+    if msg.len() < 1 + 8 + 8 {
+        return Err(anyhow!("ClickVertex message too short"));
+    }
+    let action_id = u64::from_be_bytes(msg[1..9].try_into()?);
+    let vertex_id = u64::from_be_bytes(msg[9..17].try_into()?);
+    Ok((action_id, vertex_id))
 }
 
 /// Parse IdentificationResponse message

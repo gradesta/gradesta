@@ -19,6 +19,7 @@ mod whisper;
 use identity::{Identity, IdentityConfig};
 
 const MSG_CLIENT_WATCH_LANDMARK: u8 = 0x81;
+const MSG_CLIENT_CLICK_VERTEX: u8 = 0x84;
 const MSG_CLIENT_IDENTIFICATION_RESPONSE: u8 = 0x90;
 const MSG_CLIENT_IDENTIFICATION_REFUSED: u8 = 0x91;
 const MSG_SERVER_SET_CONTEXT: u8 = 0x01;
@@ -147,6 +148,7 @@ struct NetEventsTx(Sender<ServerEvent>);
 #[derive(Clone, Debug)]
 enum WsCommand {
     WatchLandmark { action_id: u64, landmark: String },
+    ClickVertex { action_id: u64, vertex_id: u64 },
     IdentificationResponse {
         action_id: u64,
         identity_url: String,
@@ -800,6 +802,17 @@ fn ui_system(
                         app_state.image_modal_vertex_id = Some(current_id);
                         app_state.show_image_modal = true;
                     }
+                }
+            }
+        }
+        // Plain Enter to "click" the current vertex (send click message to server)
+        if i.key_pressed(egui::Key::Enter) && !i.modifiers.ctrl && !i.modifiers.shift && !i.modifiers.alt && matches!(app_state.input_mode, InputMode::Normal) {
+            if let Some(current_id) = app_state.current_vertex {
+                if let Some(ref tx) = ws_cmd_tx.0 {
+                    let action_id = app_state.next_action_id;
+                    app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                    let _ = tx.send(WsCommand::ClickVertex { action_id, vertex_id: current_id });
+                    app_state.status = format!("Clicked vertex {}", current_id);
                 }
             }
         }
@@ -2404,6 +2417,18 @@ fn ui_system(
                         painter.rect_filled(rect, corner_radius, egui::Color32::from_rgb(50, 50, 55));
                         painter.rect_stroke(rect, corner_radius, egui::Stroke::new(2.0 * zoom, egui::Color32::from_rgb(80, 80, 90)));
                     }
+
+                    // Detect clicks on cells (for toggle/click actions)
+                    let response = ui.interact(rect, egui::Id::new(("cell", vertex_id)), egui::Sense::click());
+                    if response.clicked() && !is_current {
+                        // Send click message to server
+                        if let Some(ref tx) = ws_cmd_tx.0 {
+                            let action_id = app_state.next_action_id;
+                            app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                            let _ = tx.send(WsCommand::ClickVertex { action_id, vertex_id });
+                            app_state.status = format!("Clicked vertex {}", vertex_id);
+                        }
+                    }
                 }
             }
         }
@@ -3491,6 +3516,15 @@ fn run_ws(uri: String, net_tx: Sender<ServerEvent>, cmd_rx: Receiver<WsCommand>)
                     buf.push(MSG_CLIENT_WATCH_LANDMARK);
                     buf.extend_from_slice(&action_id.to_be_bytes());
                     buf.extend_from_slice(landmark.as_bytes());
+                    socket.send(Message::Binary(buf))?;
+                }
+                WsCommand::ClickVertex { action_id, vertex_id } => {
+                    eprintln!("SEND ClickVertex action={} vertex={}", action_id, vertex_id);
+                    // 0x84: Type (1) + Action ID (8) + Vertex ID (8)
+                    let mut buf = Vec::with_capacity(1 + 8 + 8);
+                    buf.push(MSG_CLIENT_CLICK_VERTEX);
+                    buf.extend_from_slice(&action_id.to_be_bytes());
+                    buf.extend_from_slice(&vertex_id.to_be_bytes());
                     socket.send(Message::Binary(buf))?;
                 }
                 WsCommand::IdentificationResponse { action_id, identity_url, signature } => {

@@ -121,6 +121,7 @@ pub trait HasIdentity {
 }
 
 /// Send calendar root with year listing
+/// Only sends years and months - days are fetched on demand when navigating to a month
 async fn send_years_listing<W>(
     identity: &str,
     write: &mut W,
@@ -154,7 +155,7 @@ where
     let root_edges = encode_set_edges(action_id, root_id, 0, 0, 0, current_year_id, 0, 0, 0);
     write.send(Message::Binary(root_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-    // Send year vertices and their months
+    // Send year vertices and their months (but NOT days - those are loaded on demand)
     for (i, &year) in years.iter().enumerate() {
         let year_id = year_hash(identity, year);
         let label = format!("{}", year);
@@ -170,49 +171,30 @@ where
         let year_edges = encode_set_edges(action_id, year_id, west, east, north, south, 0, 0, 0);
         write.send(Message::Binary(year_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-        // Also send month vertices and day vertices for this year so navigation works
+        // Send month vertices (but NOT days)
         for month in 1u32..=12 {
             let month_id = month_hash(identity, year, month);
             let month_label = month_names[(month - 1) as usize];
             let month_msg = encode_set_vertex_label(action_id, month_id, "text/plain", month_label.as_bytes());
             write.send(Message::Binary(month_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-            // Month edges: west/east to neighboring months, north to year, south to day 1
+            // Month edges: west/east to neighboring months, north to year, south points to day 1 (but day not loaded yet)
             let m_west = if month > 1 { month_hash(identity, year, month - 1) } else { 0 };
             let m_east = if month < 12 { month_hash(identity, year, month + 1) } else { 0 };
             let m_north = if month == 1 { year_id } else { 0 };
-            let m_south = day_hash(identity, year, month, 1);
+            let m_south = day_hash(identity, year, month, 1); // Day will be loaded when user navigates to it
 
             let month_edges = encode_set_edges(action_id, month_id, m_west, m_east, m_north, m_south, 0, 0, 0);
             write.send(Message::Binary(month_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
-
-            // Also send day vertices for this month
-            let num_days = days_in_month(year, month);
-            for day in 1u32..=num_days {
-                let day_id = day_hash(identity, year, month, day);
-                let date = NaiveDate::from_ymd_opt(year, month, day);
-                let weekday = date.map(|d| d.weekday().to_string()).unwrap_or_default();
-                let day_label = format!("{} {}", weekday, day);
-
-                let day_msg = encode_set_vertex_label(action_id, day_id, "text/plain", day_label.as_bytes());
-                write.send(Message::Binary(day_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
-
-                // Day edges: west/east to neighboring days, north to month
-                let d_west = if day > 1 { day_hash(identity, year, month, day - 1) } else { 0 };
-                let d_east = if day < num_days { day_hash(identity, year, month, day + 1) } else { 0 };
-                let d_north = if day == 1 { month_id } else { 0 };
-
-                let day_edges = encode_set_edges(action_id, day_id, d_west, d_east, d_north, 0, 0, 0, 0);
-                write.send(Message::Binary(day_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
-            }
         }
     }
 
-    log::info!("Sent calendar years listing with months and days (action={})", action_id);
+    log::info!("Sent calendar years listing with months (action={})", action_id);
     Ok(())
 }
 
-/// Send months for a year (also includes days for each month)
+/// Send months for a year
+/// Days are sent when navigating to a specific month (with events)
 async fn send_months_listing<W>(
     identity: &str,
     write: &mut W,
@@ -245,7 +227,7 @@ where
     let year_edges = encode_set_edges(action_id, year_id, prev_year_id, next_year_id, 0, jan_id, 0, 0, 0);
     write.send(Message::Binary(year_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-    // Send month vertices and their days
+    // Send month vertices (days loaded on demand when navigating to a month)
     for month in 1u32..=12 {
         let month_id = month_hash(identity, year, month);
         let label = month_names[(month - 1) as usize];
@@ -256,34 +238,13 @@ where
         let west = if month > 1 { month_hash(identity, year, month - 1) } else { 0 };
         let east = if month < 12 { month_hash(identity, year, month + 1) } else { 0 };
         let north = if month == 1 { year_id } else { 0 };
-        let south = day_hash(identity, year, month, 1);
+        let south = day_hash(identity, year, month, 1); // Day will be loaded when needed
 
         let month_edges = encode_set_edges(action_id, month_id, west, east, north, south, 0, 0, 0);
         write.send(Message::Binary(month_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
-
-        // Also send day vertices for this month
-        let num_days = days_in_month(year, month);
-        for day in 1u32..=num_days {
-            let day_id = day_hash(identity, year, month, day);
-            let date = NaiveDate::from_ymd_opt(year, month, day);
-            let weekday = date.map(|d| d.weekday().to_string()).unwrap_or_default();
-            let day_label = format!("{} {}", weekday, day);
-
-            let day_msg = encode_set_vertex_label(action_id, day_id, "text/plain", day_label.as_bytes());
-            write.send(Message::Binary(day_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
-
-            // Day edges: west/east to neighboring days, north to month
-            let d_west = if day > 1 { day_hash(identity, year, month, day - 1) } else { 0 };
-            let d_east = if day < num_days { day_hash(identity, year, month, day + 1) } else { 0 };
-            let d_north = if day == 1 { month_id } else { 0 };
-
-            // No events in this listing (they'll be fetched when day is specifically requested)
-            let day_edges = encode_set_edges(action_id, day_id, d_west, d_east, d_north, 0, 0, 0, 0);
-            write.send(Message::Binary(day_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
-        }
     }
 
-    log::info!("Sent calendar months listing with days for {} (action={})", year, action_id);
+    log::info!("Sent calendar months listing for {} (action={})", year, action_id);
     Ok(())
 }
 
