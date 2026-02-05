@@ -326,6 +326,9 @@ fn main() {
         run_startup_download();
     }
 
+    // Preload Whisper model in background so it's ready when needed
+    whisper::preload_model();
+
     let (net_tx, net_rx) = unbounded::<ServerEvent>();
 
     App::new()
