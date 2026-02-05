@@ -736,12 +736,21 @@ fn ui_system(
             // I: Insert text at current vertex (edit)
             if i.key_pressed(egui::Key::I) && !i.modifiers.ctrl && !i.modifiers.shift {
                 if let Some(current_id) = app_state.current_vertex {
-                    // Pre-fill with current content if it's text
+                    // Pre-fill with current content - check layer 1 first (transcript), then layer 0
                     if let Some(vertex) = graph.vertices.get(&current_id) {
                         let mime = vertex.mime.as_deref().unwrap_or("");
-                        if mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url" {
+                        // Check for layer 1 text (transcript)
+                        if let Some(layer1) = vertex.layers.get(&1) {
+                            if layer1.mime.starts_with("text/") {
+                                app_state.text_input_buffer = String::from_utf8_lossy(&layer1.data).to_string();
+                            } else {
+                                app_state.text_input_buffer.clear();
+                            }
+                        } else if mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url" {
+                            // Layer 0 is text
                             app_state.text_input_buffer = String::from_utf8_lossy(&vertex.label).to_string();
                         } else {
+                            // No text content - start fresh (will add as layer 1)
                             app_state.text_input_buffer.clear();
                         }
                     }
@@ -1532,14 +1541,36 @@ fn ui_system(
                             app_state.status = "Creating new note...".to_string();
                         } else {
                             // Update existing vertex
+                            // Determine which layer to save to:
+                            // - If primary is text, save to layer 0
+                            // - If primary is not text (e.g., audio), save to layer 1 (transcript/annotation)
+                            let layer = if let Some(vertex) = graph.vertices.get(&current_id) {
+                                let mime = vertex.mime.as_deref().unwrap_or("");
+                                if mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url" {
+                                    0 // Primary is text, update layer 0
+                                } else {
+                                    1 // Primary is not text, add/update as layer 1
+                                }
+                            } else {
+                                0 // Fallback to layer 0
+                            };
+
                             let action_id = app_state.next_action_id;
                             app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                            let text_bytes = text.into_bytes();
                             let _ = tx.send(WsCommand::SetVertexLabel {
                                 action_id,
                                 vertex_id: current_id,
-                                layer: 0,
+                                layer,
                                 mime: "text/plain".to_string(),
-                                data: text.into_bytes(),
+                                data: text_bytes.clone(),
+                            });
+                            // Optimistically update local graph immediately
+                            let _ = net_events.0.send(ServerEvent::SetVertexLabel {
+                                vertex_id: current_id,
+                                layer,
+                                mime: "text/plain".to_string(),
+                                data: text_bytes,
                             });
                             app_state.status = "Saving changes...".to_string();
                         }
