@@ -2667,6 +2667,37 @@ fn auto_expand_nearby_links(
 ) {
     let Some(current_id) = app_state.current_vertex else { return };
     let Some(cmd_tx) = &ws_cmd_tx.0 else { return };
+
+    // FIRST: Check if current vertex doesn't exist locally - request it via WatchLandmark
+    if !graph.vertices.contains_key(&current_id) {
+        // We navigated to a vertex that doesn't exist in our local graph
+        // This happens at landmark boundaries - request the data
+        let landmark_url = if let Some(ref base_url) = app_state.base_ws_url {
+            // Extract the base landmark and append vertex ID
+            // The base_ws_url looks like "ws://localhost:8083/ws?landmark=notes://identity/"
+            if let Some(landmark_start) = base_url.find("landmark=") {
+                let landmark_base = &base_url[landmark_start + 9..];
+                // Remove trailing parts after the landmark
+                let landmark_base = landmark_base.split('&').next().unwrap_or(landmark_base);
+                // Append vertex ID to landmark
+                format!("{}{}", landmark_base.trim_end_matches('/'), current_id)
+            } else {
+                format!("vertex/{}", current_id)
+            }
+        } else {
+            format!("vertex/{}", current_id)
+        };
+
+        if !app_state.requested_landmarks.contains(&landmark_url) {
+            eprintln!("Requesting landmark for unknown vertex {}: {}", current_id, landmark_url);
+            app_state.requested_landmarks.insert(landmark_url.clone());
+            let action_id = app_state.next_action_id;
+            app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+            let _ = cmd_tx.send(WsCommand::WatchLandmark { action_id, landmark: landmark_url });
+        }
+        return;
+    }
+
     let Some(current) = graph.vertices.get(&current_id) else { return };
 
     // FIRST: If we're sitting on a portal, auto-follow it immediately
