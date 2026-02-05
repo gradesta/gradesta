@@ -1062,17 +1062,56 @@ fn ui_system(
         if login_state.started.elapsed() > Duration::from_millis(500) {
             match identity::poll_login_completion(&login_state.poll_endpoint, &login_state.poll_token) {
                 Ok(Some((server, username, app_password))) => {
-                    app_state.status = format!("Logged in as {}. Please choose a display name.", username);
                     eprintln!("Login successful: {}@{}", username, server);
 
-                    // Show display name prompt instead of auto-creating identity
-                    app_state.pending_identity_setup = Some(PendingIdentitySetup {
-                        nextcloud_url: server,
-                        username: username.clone(),
-                        app_password,
-                        display_name_input: username, // Default to username
-                    });
-                    app_state.nextcloud_login_state = None;
+                    // Check if identity already exists on this Nextcloud account
+                    match identity::sync_identity_from_nextcloud(&server, &username, &app_password) {
+                        Ok(Some((signing_key, metadata))) => {
+                            // Existing identity found - sync it
+                            eprintln!("Found existing identity on Nextcloud: {}", metadata.display_name);
+                            let new_identity = Identity {
+                                display_name: metadata.display_name.clone(),
+                                nextcloud_url: server,
+                                username,
+                                app_password,
+                                share_url: metadata.share_url,
+                                remembered_servers: metadata.remembered_servers,
+                                signing_key: Some(signing_key),
+                            };
+                            // Check if we already have this identity locally (by share_url)
+                            let exists = app_state.identity_config.identities.iter()
+                                .any(|id| id.share_url == new_identity.share_url);
+                            if !exists {
+                                app_state.identity_config.identities.push(new_identity.clone());
+                                let _ = app_state.identity_config.save();
+                            }
+                            app_state.status = format!("Identity '{}' synced from Nextcloud!", metadata.display_name);
+                            app_state.nextcloud_login_state = None;
+                        }
+                        Ok(None) => {
+                            // No existing identity - show display name prompt for new identity
+                            app_state.status = format!("Logged in as {}. Please choose a display name.", username);
+                            app_state.pending_identity_setup = Some(PendingIdentitySetup {
+                                nextcloud_url: server,
+                                username: username.clone(),
+                                app_password,
+                                display_name_input: username, // Default to username
+                            });
+                            app_state.nextcloud_login_state = None;
+                        }
+                        Err(e) => {
+                            // Error checking - could be network issue, proceed with new identity flow
+                            eprintln!("Error checking for existing identity: {}", e);
+                            app_state.status = format!("Logged in as {}. Please choose a display name.", username);
+                            app_state.pending_identity_setup = Some(PendingIdentitySetup {
+                                nextcloud_url: server,
+                                username: username.clone(),
+                                app_password,
+                                display_name_input: username,
+                            });
+                            app_state.nextcloud_login_state = None;
+                        }
+                    }
                 }
                 Ok(None) => {
                     // Still waiting - update the started time to throttle polling
@@ -1151,14 +1190,14 @@ fn ui_system(
         if create {
             if let Some(pending_setup) = app_state.pending_identity_setup.take() {
                 // Setup identity (generate keys, upload, create share)
-                match identity::setup_identity(&pending_setup.nextcloud_url, &pending_setup.username, &pending_setup.app_password) {
+                let display_name = pending_setup.display_name_input.trim().to_string();
+                let display_name = if display_name.is_empty() {
+                    pending_setup.username.clone()
+                } else {
+                    display_name
+                };
+                match identity::setup_identity(&pending_setup.nextcloud_url, &pending_setup.username, &pending_setup.app_password, &display_name) {
                     Ok((signing_key, share_url)) => {
-                        let display_name = pending_setup.display_name_input.trim().to_string();
-                        let display_name = if display_name.is_empty() {
-                            pending_setup.username.clone()
-                        } else {
-                            display_name
-                        };
                         eprintln!("Identity created with display name: {}", display_name);
                         eprintln!("Identity URL (real identity): {}", share_url);
                         let new_identity = Identity {
@@ -1673,10 +1712,33 @@ fn ui_system(
 
                     if success {
                         if remember {
+                            // Clone what we need for Nextcloud sync before mutable borrow
+                            let sync_info = app_state.identity_config.identities.get(idx).map(|id| {
+                                (
+                                    id.nextcloud_url.clone(),
+                                    id.username.clone(),
+                                    id.app_password.clone(),
+                                    id.display_name.clone(),
+                                    id.share_url.clone(),
+                                )
+                            });
+
                             if let Some(identity) = app_state.identity_config.identities.get_mut(idx) {
                                 if !identity.remembered_servers.contains(&pending.server_url) {
                                     identity.remembered_servers.push(pending.server_url.clone());
-                                    let _ = app_state.identity_config.save();
+                                }
+                            }
+
+                            // Save and sync after mutable borrow is done
+                            let _ = app_state.identity_config.save();
+                            if let Some((nc_url, nc_user, nc_pass, disp_name, share_url)) = sync_info {
+                                if let Some(identity) = app_state.identity_config.identities.get(idx) {
+                                    let metadata = identity::IdentityMetadata {
+                                        display_name: disp_name,
+                                        share_url,
+                                        remembered_servers: identity.remembered_servers.clone(),
+                                    };
+                                    let _ = identity::upload_identity_metadata(&nc_url, &nc_user, &nc_pass, &metadata);
                                 }
                             }
                             app_state.status = format!("Identified as {} (remembered)", display_name);

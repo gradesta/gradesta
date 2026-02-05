@@ -7,17 +7,28 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 /// Stored identity for a Nextcloud account
+///
+/// The real identity is the `share_url` - the public URL where the public key is stored.
+/// This proves control of that URL. The `display_name` is an unverified user-chosen label.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Identity {
-    pub display_name: String,     // user@server
-    pub nextcloud_url: String,    // https://nextcloud.example.com
+    /// User-chosen display name (unverified claim, can be anything)
+    pub display_name: String,
+    /// The Nextcloud server URL (for WebDAV access)
+    pub nextcloud_url: String,
+    /// Username on the Nextcloud server
     pub username: String,
+    /// App password for authentication
     pub app_password: String,
-    pub share_url: String,        // Public share URL for identity.pub
+    /// Public share URL for identity.pub - THIS IS THE REAL IDENTITY
+    /// Proves control of this URL
+    pub share_url: String,
+    /// Server URLs that user has chosen to remember for auto-identification
     #[serde(default)]
-    pub remembered_servers: Vec<String>, // Server URLs that user has chosen to remember
+    pub remembered_servers: Vec<String>,
+    /// Signing key loaded at runtime
     #[serde(skip)]
-    pub signing_key: Option<SigningKey>, // Loaded at runtime
+    pub signing_key: Option<SigningKey>,
 }
 
 /// Configuration file structure
@@ -289,10 +300,12 @@ pub fn sign_challenge(signing_key: &SigningKey, nonce: &[u8], timestamp: u64) ->
 }
 
 /// Complete identity setup: generate keys, upload to Nextcloud, create share
+/// Also saves initial metadata with display_name
 pub fn setup_identity(
     nextcloud_url: &str,
     username: &str,
     app_password: &str,
+    display_name: &str,
 ) -> Result<(SigningKey, String)> {
     // Generate keypair
     let (signing_key, verifying_key) = generate_keypair();
@@ -328,6 +341,14 @@ pub fn setup_identity(
         "/.gradesta/identity.pub",
     )?;
 
+    // Save identity metadata to Nextcloud
+    let metadata = IdentityMetadata {
+        display_name: display_name.to_string(),
+        share_url: share_url.clone(),
+        remembered_servers: Vec::new(),
+    };
+    upload_identity_metadata(nextcloud_url, username, app_password, &metadata)?;
+
     Ok((signing_key, share_url))
 }
 
@@ -349,4 +370,84 @@ pub fn load_signing_key(
         .map_err(|_| anyhow!("Invalid key length"))?;
 
     SigningKey::from_bytes(&key_array.into()).map_err(|e| anyhow!("Invalid key: {}", e))
+}
+
+/// Identity metadata stored on Nextcloud (synced across devices)
+/// Stored at .gradesta/identity.toml
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct IdentityMetadata {
+    /// User-chosen display name
+    pub display_name: String,
+    /// The public share URL for identity.pub
+    pub share_url: String,
+    /// Server URLs that user has chosen to remember for auto-identification
+    #[serde(default)]
+    pub remembered_servers: Vec<String>,
+}
+
+/// Upload identity metadata to Nextcloud
+pub fn upload_identity_metadata(
+    nextcloud_url: &str,
+    username: &str,
+    app_password: &str,
+    metadata: &IdentityMetadata,
+) -> Result<()> {
+    let content = toml::to_string_pretty(metadata).context("Failed to serialize metadata")?;
+    webdav_upload(
+        nextcloud_url,
+        username,
+        app_password,
+        ".gradesta/identity.toml",
+        content.as_bytes(),
+    )
+}
+
+/// Download identity metadata from Nextcloud (returns None if not found)
+pub fn download_identity_metadata(
+    nextcloud_url: &str,
+    username: &str,
+    app_password: &str,
+) -> Result<Option<IdentityMetadata>> {
+    match webdav_download(nextcloud_url, username, app_password, ".gradesta/identity.toml") {
+        Ok(data) => {
+            let content = String::from_utf8(data).context("Invalid UTF-8 in metadata")?;
+            let metadata: IdentityMetadata = toml::from_str(&content).context("Failed to parse metadata")?;
+            Ok(Some(metadata))
+        }
+        Err(e) => {
+            // Check if it's a 404 (file not found)
+            let err_str = e.to_string();
+            if err_str.contains("404") || err_str.contains("Not Found") {
+                Ok(None)
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+/// Sync identity from Nextcloud - loads key and metadata
+/// Returns (signing_key, metadata) if identity exists, or None if no identity on server
+pub fn sync_identity_from_nextcloud(
+    nextcloud_url: &str,
+    username: &str,
+    app_password: &str,
+) -> Result<Option<(SigningKey, IdentityMetadata)>> {
+    // Try to load signing key
+    let signing_key = match load_signing_key(nextcloud_url, username, app_password) {
+        Ok(key) => key,
+        Err(e) => {
+            let err_str = e.to_string();
+            if err_str.contains("404") || err_str.contains("Not Found") {
+                return Ok(None);
+            }
+            return Err(e);
+        }
+    };
+
+    // Try to load metadata
+    let metadata = download_identity_metadata(nextcloud_url, username, app_password)?
+        .unwrap_or_default();
+
+    Ok(Some((signing_key, metadata)))
 }
