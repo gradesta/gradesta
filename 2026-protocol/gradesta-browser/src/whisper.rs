@@ -170,11 +170,18 @@ pub fn transcribe(samples: &[f32], sample_rate: u32) -> Result<String> {
         .ok_or_else(|| anyhow!("Whisper model not loaded"))?;
 
     // Whisper expects 16kHz mono audio
-    let samples_16k = if sample_rate != 16000 {
+    let mut samples_16k = if sample_rate != 16000 {
         resample(samples, sample_rate, 16000)
     } else {
         samples.to_vec()
     };
+
+    // Whisper requires at least 1 second of audio (16000 samples at 16kHz)
+    // Pad with silence if too short
+    let min_samples = 16000;
+    if samples_16k.len() < min_samples {
+        samples_16k.resize(min_samples, 0.0);
+    }
 
     // Create a new state for this transcription
     let mut state = ctx.create_state()
