@@ -160,6 +160,8 @@ struct AppState {
     pending_transcriptions: HashMap<u64, PendingTranscription>,
     // Skip auto-play for this vertex (set after recording to avoid immediate playback)
     skip_autoplay_vertex: Option<u64>,
+    // Last navigation direction (used to determine where new vertices are created)
+    last_nav_direction: usize,
 }
 
 /// Pending vertex creation data - waiting for server acknowledgment
@@ -248,6 +250,7 @@ impl Default for AppState {
             next_action_id: u64::MAX,
             pending_transcriptions: HashMap::new(),
             skip_autoplay_vertex: None,
+            last_nav_direction: EDGE_SOUTH, // Default to south
         }
     }
 }
@@ -735,10 +738,10 @@ fn ui_system(
             }
             // Space bar: Push-to-talk recording
             // Hold space to record, release to stop and save
-            // Records to South direction by default (creates note below current)
+            // Records in the last navigation direction (creates note in same direction you were moving)
             if i.key_pressed(egui::Key::Space) && !i.modifiers.ctrl && !i.modifiers.shift {
                 // Start recording when space is pressed
-                let direction = EDGE_SOUTH; // Default to south (below current note)
+                let direction = app_state.last_nav_direction;
 
                 // Clear samples and reset stop signal
                 if let Ok(mut samples) = app_state.audio_samples.lock() {
@@ -1816,6 +1819,75 @@ fn ui_system(
                         painter.rect_filled(rect, corner_radius, bg_color);
                         painter.rect_stroke(rect, corner_radius, egui::Stroke::new(if is_current { 3.0 * zoom } else { 2.0 * zoom }, border_color));
 
+                        // Draw direction arrow indicator on current cell
+                        if is_current {
+                            let arrow_color = egui::Color32::from_rgba_unmultiplied(100, 255, 150, 200);
+                            let arrow_size = 12.0 * zoom;
+                            let arrow_thickness = 3.0 * zoom;
+                            let gap = 4.0 * zoom;
+
+                            let (arrow_start, arrow_end) = match app_state.last_nav_direction {
+                                EDGE_EAST => {
+                                    let mid_y = rect.center().y;
+                                    let start = egui::pos2(rect.right() + gap, mid_y);
+                                    let end = egui::pos2(rect.right() + gap + arrow_size, mid_y);
+                                    (start, end)
+                                }
+                                EDGE_WEST => {
+                                    let mid_y = rect.center().y;
+                                    let start = egui::pos2(rect.left() - gap, mid_y);
+                                    let end = egui::pos2(rect.left() - gap - arrow_size, mid_y);
+                                    (start, end)
+                                }
+                                EDGE_NORTH => {
+                                    let mid_x = rect.center().x;
+                                    let start = egui::pos2(mid_x, rect.top() - gap);
+                                    let end = egui::pos2(mid_x, rect.top() - gap - arrow_size);
+                                    (start, end)
+                                }
+                                EDGE_SOUTH => {
+                                    let mid_x = rect.center().x;
+                                    let start = egui::pos2(mid_x, rect.bottom() + gap);
+                                    let end = egui::pos2(mid_x, rect.bottom() + gap + arrow_size);
+                                    (start, end)
+                                }
+                                EDGE_UP => {
+                                    // Draw up arrow at top-right corner
+                                    let start = egui::pos2(rect.right() - 8.0 * zoom, rect.top() - gap);
+                                    let end = egui::pos2(rect.right() - 8.0 * zoom, rect.top() - gap - arrow_size);
+                                    (start, end)
+                                }
+                                EDGE_DOWN => {
+                                    // Draw down arrow at bottom-right corner
+                                    let start = egui::pos2(rect.right() - 8.0 * zoom, rect.bottom() + gap);
+                                    let end = egui::pos2(rect.right() - 8.0 * zoom, rect.bottom() + gap + arrow_size);
+                                    (start, end)
+                                }
+                                _ => {
+                                    let mid_x = rect.center().x;
+                                    let start = egui::pos2(mid_x, rect.bottom() + gap);
+                                    let end = egui::pos2(mid_x, rect.bottom() + gap + arrow_size);
+                                    (start, end)
+                                }
+                            };
+
+                            // Draw arrow line
+                            painter.line_segment([arrow_start, arrow_end], egui::Stroke::new(arrow_thickness, arrow_color));
+
+                            // Draw arrowhead
+                            let dir = (arrow_end - arrow_start).normalized();
+                            let perp = egui::vec2(-dir.y, dir.x);
+                            let head_size = 6.0 * zoom;
+                            let head_base = arrow_end - dir * head_size;
+                            let head_left = head_base + perp * head_size * 0.5;
+                            let head_right = head_base - perp * head_size * 0.5;
+                            painter.add(egui::Shape::convex_polygon(
+                                vec![arrow_end, head_left, head_right],
+                                arrow_color,
+                                egui::Stroke::NONE,
+                            ));
+                        }
+
                         // Calculate layout sections based on what content we have
                         let inner_rect = rect.shrink(4.0 * zoom);
                         let num_sections = (has_image as usize) + (has_audio as usize) + (has_text as usize);
@@ -2367,6 +2439,11 @@ fn handle_navigation(
     };
 
     let target_edge = just_pressed_edge.or(held_edge);
+
+    // Update direction on any key press, even if we can't move
+    if let Some(edge_idx) = just_pressed_edge {
+        app_state.last_nav_direction = edge_idx;
+    }
 
     if should_move {
         if let Some(edge_idx) = target_edge {
