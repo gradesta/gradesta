@@ -613,8 +613,8 @@ fn ui_system(
                 app_state.show_image_modal = false;
             }
         }
-        // Ctrl+Enter to open modal with current content
-        if i.key_pressed(egui::Key::Enter) && i.modifiers.ctrl {
+        // Ctrl+Enter to open modal with current content (but not when in text input mode - that's for submitting)
+        if i.key_pressed(egui::Key::Enter) && i.modifiers.ctrl && !matches!(app_state.input_mode, InputMode::TextInput { .. }) {
             if let Some(current_id) = app_state.current_vertex {
                 if let Some(vertex) = graph.vertices.get(&current_id) {
                     let mime = vertex.mime.as_deref().unwrap_or("");
