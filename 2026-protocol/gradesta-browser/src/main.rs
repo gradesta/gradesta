@@ -380,6 +380,8 @@ enum ServerEvent {
 struct GridView {
     cells: HashMap<(i32, i32), u64>,
     positions: HashMap<u64, (i32, i32)>,
+    /// Distance from current vertex for each cell (used to resolve overlapping branches)
+    distances: HashMap<(i32, i32), u32>,
     min_x: i32,
     max_x: i32,
     min_y: i32,
@@ -569,55 +571,85 @@ fn setup(mut commands: Commands) {
 fn build_grid_view(graph: &GraphState, current_id: u64) -> GridView {
     let mut grid = GridView::default();
     let mut visited = HashSet::new();
-    
+
+    // Find the current vertex's position in its column (distance from top)
     let mut top_id = current_id;
+    let mut current_offset = 0u32;
     while let Some(v) = graph.vertices.get(&top_id) {
         if v.edges[EDGE_NORTH] != 0 && graph.vertices.contains_key(&v.edges[EDGE_NORTH]) {
             top_id = v.edges[EDGE_NORTH];
+            current_offset += 1;
         } else {
             break;
         }
     }
-    
-    build_column(&mut grid, graph, top_id, 0, &mut visited);
-    
-    let center_vertices: Vec<(i32, u64)> = grid.cells.iter()
+
+    // Build center column starting from top, tracking distance from current
+    build_column_with_distance(&mut grid, graph, top_id, 0, current_offset, &mut visited);
+
+    let center_vertices: Vec<(i32, u64, u32)> = grid.cells.iter()
         .filter(|((x, _), _)| *x == 0)
-        .map(|((_, y), id)| (*y, *id))
+        .map(|((_, y), id)| (*y, *id, *grid.distances.get(&(0, *y)).unwrap_or(&u32::MAX)))
         .collect();
-    
-    for (y, id) in center_vertices {
+
+    for (y, id, base_dist) in center_vertices {
         if let Some(v) = graph.vertices.get(&id) {
             if v.edges[EDGE_WEST] != 0 && !visited.contains(&v.edges[EDGE_WEST]) {
-                expand_column_recursive(&mut grid, graph, v.edges[EDGE_WEST], -1, y, &mut visited);
+                expand_column_recursive_with_distance(&mut grid, graph, v.edges[EDGE_WEST], -1, y, base_dist + 1, &mut visited);
             }
             if v.edges[EDGE_EAST] != 0 && !visited.contains(&v.edges[EDGE_EAST]) {
-                expand_column_recursive(&mut grid, graph, v.edges[EDGE_EAST], 1, y, &mut visited);
+                expand_column_recursive_with_distance(&mut grid, graph, v.edges[EDGE_EAST], 1, y, base_dist + 1, &mut visited);
             }
         }
     }
-    
+
     grid
 }
 
-fn build_column(grid: &mut GridView, graph: &GraphState, top_id: u64, x: i32, visited: &mut HashSet<u64>) {
+/// Build a column tracking distance from the current vertex
+/// current_offset is the distance from top to the current vertex (0 = current is at top)
+fn build_column_with_distance(grid: &mut GridView, graph: &GraphState, top_id: u64, x: i32, current_offset: u32, visited: &mut HashSet<u64>) {
     let mut y = 0i32;
     let mut current = top_id;
-    
+    let mut index = 0u32;
+
     while graph.vertices.contains_key(&current) && !visited.contains(&current) {
-        visited.insert(current);
-        grid.cells.insert((x, y), current);
-        grid.positions.insert(current, (x, y));
-        
-        grid.min_x = grid.min_x.min(x);
-        grid.max_x = grid.max_x.max(x);
-        grid.min_y = grid.min_y.min(y);
-        grid.max_y = grid.max_y.max(y);
-        
+        // Distance from current vertex (absolute difference)
+        let distance = if index >= current_offset {
+            index - current_offset
+        } else {
+            current_offset - index
+        };
+
+        // Only insert if this cell is empty or we're closer
+        let pos = (x, y);
+        let should_insert = match grid.distances.get(&pos) {
+            None => true,
+            Some(&existing_dist) => distance < existing_dist,
+        };
+
+        if should_insert {
+            // Remove old vertex from positions if we're replacing
+            if let Some(&old_vertex) = grid.cells.get(&pos) {
+                grid.positions.remove(&old_vertex);
+            }
+
+            visited.insert(current);
+            grid.cells.insert(pos, current);
+            grid.positions.insert(current, pos);
+            grid.distances.insert(pos, distance);
+
+            grid.min_x = grid.min_x.min(x);
+            grid.max_x = grid.max_x.max(x);
+            grid.min_y = grid.min_y.min(y);
+            grid.max_y = grid.max_y.max(y);
+        }
+
         if let Some(v) = graph.vertices.get(&current) {
             if v.edges[EDGE_SOUTH] != 0 {
                 current = v.edges[EDGE_SOUTH];
                 y += 1;
+                index += 1;
             } else {
                 break;
             }
@@ -627,18 +659,19 @@ fn build_column(grid: &mut GridView, graph: &GraphState, top_id: u64, x: i32, vi
     }
 }
 
-fn expand_column_recursive(
+fn expand_column_recursive_with_distance(
     grid: &mut GridView,
     graph: &GraphState,
     start_id: u64,
     x: i32,
     start_y: i32,
+    base_distance: u32,
     visited: &mut HashSet<u64>,
 ) {
     if visited.contains(&start_id) || !graph.vertices.contains_key(&start_id) {
         return;
     }
-    
+
     let mut top_id = start_id;
     let mut offset_from_start = 0i32;
     while let Some(v) = graph.vertices.get(&top_id) {
@@ -649,36 +682,62 @@ fn expand_column_recursive(
             break;
         }
     }
-    
+
     let top_y = start_y + offset_from_start;
     let mut y = top_y;
     let mut current = top_id;
-    
+    let mut index = 0u32;
+
     while graph.vertices.contains_key(&current) && !visited.contains(&current) {
-        if grid.cells.contains_key(&(x, y)) {
+        // Distance increases as we move away from start position
+        let distance = base_distance + (y - start_y).unsigned_abs() + index;
+
+        let pos = (x, y);
+        let should_insert = match grid.distances.get(&pos) {
+            None => true,
+            Some(&existing_dist) => distance < existing_dist,
+        };
+
+        if !should_insert {
+            // Cell exists with closer distance, skip but continue to check children
+            if let Some(v) = graph.vertices.get(&current) {
+                if v.edges[EDGE_SOUTH] != 0 {
+                    current = v.edges[EDGE_SOUTH];
+                    y += 1;
+                    index += 1;
+                    continue;
+                }
+            }
             break;
         }
-        
+
+        // Remove old vertex from positions if we're replacing
+        if let Some(&old_vertex) = grid.cells.get(&pos) {
+            grid.positions.remove(&old_vertex);
+        }
+
         visited.insert(current);
-        grid.cells.insert((x, y), current);
-        grid.positions.insert(current, (x, y));
-        
+        grid.cells.insert(pos, current);
+        grid.positions.insert(current, pos);
+        grid.distances.insert(pos, distance);
+
         grid.min_x = grid.min_x.min(x);
         grid.max_x = grid.max_x.max(x);
         grid.min_y = grid.min_y.min(y);
         grid.max_y = grid.max_y.max(y);
-        
+
         if let Some(v) = graph.vertices.get(&current) {
             if x < 0 && v.edges[EDGE_WEST] != 0 && !visited.contains(&v.edges[EDGE_WEST]) {
-                expand_column_recursive(grid, graph, v.edges[EDGE_WEST], x - 1, y, visited);
+                expand_column_recursive_with_distance(grid, graph, v.edges[EDGE_WEST], x - 1, y, distance + 1, visited);
             }
             if x > 0 && v.edges[EDGE_EAST] != 0 && !visited.contains(&v.edges[EDGE_EAST]) {
-                expand_column_recursive(grid, graph, v.edges[EDGE_EAST], x + 1, y, visited);
+                expand_column_recursive_with_distance(grid, graph, v.edges[EDGE_EAST], x + 1, y, distance + 1, visited);
             }
-            
+
             if v.edges[EDGE_SOUTH] != 0 {
                 current = v.edges[EDGE_SOUTH];
                 y += 1;
+                index += 1;
             } else {
                 break;
             }
@@ -1943,29 +2002,44 @@ fn ui_system(
 
         let painter = ui.painter();
         let base_pos = panel_min + egui::vec2(offset_x, offset_y);
-        
+
         // Draw edge lines first (behind cells)
+        // Use different colors for different connection types
+        let line_color_ns = egui::Color32::from_rgb(80, 120, 100); // North-South (vertical)
+        let line_color_ew = egui::Color32::from_rgb(100, 80, 120); // East-West (horizontal)
+        let line_thickness = 2.5 * zoom;
+
         for ((x, y), &vertex_id) in &grid.cells {
             if let Some(vertex) = graph.vertices.get(&vertex_id) {
-                let from_x = (*x - grid.min_x) as f32 * (cell_width + padding) + cell_width / 2.0;
-                let from_y = (*y - grid.min_y) as f32 * (cell_height + padding) + cell_height / 2.0;
-                let from = base_pos + egui::vec2(from_x, from_y);
-                
+                // Calculate cell position
+                let from_cell_x = (*x - grid.min_x) as f32 * (cell_width + padding);
+                let from_cell_y = (*y - grid.min_y) as f32 * (cell_height + padding);
+
+                // Draw line to south neighbor
                 if vertex.edges[EDGE_SOUTH] != 0 {
                     if let Some(&(tx, ty)) = grid.positions.get(&vertex.edges[EDGE_SOUTH]) {
-                        let to_x = (tx - grid.min_x) as f32 * (cell_width + padding) + cell_width / 2.0;
-                        let to_y = (ty - grid.min_y) as f32 * (cell_height + padding) + cell_height / 2.0;
-                        let to = base_pos + egui::vec2(to_x, to_y);
-                        painter.line_segment([from, to], egui::Stroke::new(1.5 * zoom, egui::Color32::from_rgb(70, 70, 80)));
+                        let to_cell_x = (tx - grid.min_x) as f32 * (cell_width + padding);
+                        let to_cell_y = (ty - grid.min_y) as f32 * (cell_height + padding);
+
+                        // Draw from bottom edge of source cell to top edge of target cell
+                        let from_edge = base_pos + egui::vec2(from_cell_x + cell_width / 2.0, from_cell_y + cell_height);
+                        let to_edge = base_pos + egui::vec2(to_cell_x + cell_width / 2.0, to_cell_y);
+
+                        painter.line_segment([from_edge, to_edge], egui::Stroke::new(line_thickness, line_color_ns));
                     }
                 }
 
+                // Draw line to east neighbor
                 if vertex.edges[EDGE_EAST] != 0 {
                     if let Some(&(tx, ty)) = grid.positions.get(&vertex.edges[EDGE_EAST]) {
-                        let to_x = (tx - grid.min_x) as f32 * (cell_width + padding) + cell_width / 2.0;
-                        let to_y = (ty - grid.min_y) as f32 * (cell_height + padding) + cell_height / 2.0;
-                        let to = base_pos + egui::vec2(to_x, to_y);
-                        painter.line_segment([from, to], egui::Stroke::new(1.5 * zoom, egui::Color32::from_rgb(70, 70, 80)));
+                        let to_cell_x = (tx - grid.min_x) as f32 * (cell_width + padding);
+                        let to_cell_y = (ty - grid.min_y) as f32 * (cell_height + padding);
+
+                        // Draw from right edge of source cell to left edge of target cell
+                        let from_edge = base_pos + egui::vec2(from_cell_x + cell_width, from_cell_y + cell_height / 2.0);
+                        let to_edge = base_pos + egui::vec2(to_cell_x, to_cell_y + cell_height / 2.0);
+
+                        painter.line_segment([from_edge, to_edge], egui::Stroke::new(line_thickness, line_color_ew));
                     }
                 }
             }
