@@ -2700,6 +2700,18 @@ fn auto_expand_nearby_links(
 
     let Some(current) = graph.vertices.get(&current_id) else { return };
 
+    // Helper to build landmark URL for a vertex ID
+    let build_landmark_url = |vertex_id: u64, base_url: &Option<String>| -> String {
+        if let Some(ref base_url) = base_url {
+            if let Some(landmark_start) = base_url.find("landmark=") {
+                let landmark_base = &base_url[landmark_start + 9..];
+                let landmark_base = landmark_base.split('&').next().unwrap_or(landmark_base);
+                return format!("{}{}", landmark_base.trim_end_matches('/'), vertex_id);
+            }
+        }
+        format!("vertex/{}", vertex_id)
+    };
+
     // FIRST: If we're sitting on a portal, auto-follow it immediately
     if current.mime.as_deref() == Some("text/gradesta-url") {
         let landmark_url = String::from_utf8_lossy(&current.label).to_string();
@@ -2734,10 +2746,29 @@ fn auto_expand_nearby_links(
         }
         return;
     }
-    
-    // Collect vertices that are exactly 2 steps away
+
+    // SECOND: Preload immediate neighbors (1 step away) that we don't have
+    for edge in current.edges {
+        if edge == 0 {
+            continue;
+        }
+        if !graph.vertices.contains_key(&edge) {
+            // This edge points to a vertex we don't have - request it
+            let landmark_url = build_landmark_url(edge, &app_state.base_ws_url);
+            if !app_state.requested_landmarks.contains(&landmark_url) {
+                eprintln!("Preloading nearby unknown vertex {}: {}", edge, landmark_url);
+                app_state.requested_landmarks.insert(landmark_url.clone());
+                let action_id = app_state.next_action_id;
+                app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                let _ = cmd_tx.send(WsCommand::WatchLandmark { action_id, landmark: landmark_url });
+                return; // Only one per frame
+            }
+        }
+    }
+
+    // THIRD: Collect vertices that are exactly 2 steps away
     let mut two_steps_away: Vec<u64> = Vec::new();
-    
+
     // For each immediate neighbor (1 step)
     for edge1 in current.edges {
         if edge1 == 0 {
@@ -2752,18 +2783,33 @@ fn auto_expand_nearby_links(
             }
         }
     }
-    
-    // Only request ONE new landmark per frame to avoid flooding
+
+    // Request unknown vertices that are 2 steps away
+    for vid in &two_steps_away {
+        if !graph.vertices.contains_key(vid) {
+            let landmark_url = build_landmark_url(*vid, &app_state.base_ws_url);
+            if !app_state.requested_landmarks.contains(&landmark_url) {
+                eprintln!("Preloading 2-step unknown vertex {}: {}", vid, landmark_url);
+                app_state.requested_landmarks.insert(landmark_url.clone());
+                let action_id = app_state.next_action_id;
+                app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                let _ = cmd_tx.send(WsCommand::WatchLandmark { action_id, landmark: landmark_url });
+                return; // Only one per frame
+            }
+        }
+    }
+
+    // Also check for portal vertices 2 steps away
     for vid in two_steps_away {
         if let Some(vertex) = graph.vertices.get(&vid) {
             if vertex.mime.as_deref() == Some("text/gradesta-url") {
                 let landmark_url = String::from_utf8_lossy(&vertex.label).to_string();
-                
+
                 // Skip if already requested
                 if app_state.requested_landmarks.contains(&landmark_url) {
                     continue;
                 }
-                
+
                 // Mark as requested and send - only one per frame
                 app_state.requested_landmarks.insert(landmark_url.clone());
                 let action_id = app_state.next_action_id;
