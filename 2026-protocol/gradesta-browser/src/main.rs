@@ -1979,22 +1979,66 @@ fn ui_system(
                             );
 
                             if let Some(ref text) = text_content {
-                                let char_width = font_size * 0.5;
-                                let max_chars = ((section_rect.width() / char_width) as usize).max(5);
-                                let display_text: String = text.chars().take(max_chars).collect();
-                                let display_text = if text.chars().count() > max_chars {
-                                    format!("{}…", display_text)
-                                } else {
-                                    display_text
-                                };
+                                let text_font_size = font_size * 0.9;
+                                let char_width = text_font_size * 0.5;
+                                let line_height = text_font_size * 1.2;
+                                let chars_per_line = ((section_rect.width() - 4.0 * zoom) / char_width) as usize;
+                                let chars_per_line = chars_per_line.max(5);
+                                let max_lines = ((section_rect.height() - 4.0 * zoom) / line_height) as usize;
+                                let max_lines = max_lines.max(1);
 
-                                painter.text(
-                                    section_rect.center(),
-                                    egui::Align2::CENTER_CENTER,
-                                    display_text,
-                                    egui::FontId::proportional(font_size * 0.9),
-                                    egui::Color32::WHITE,
-                                );
+                                // Word wrap the text, up to tweet length (280 chars) before truncating
+                                let max_chars = 280.min(chars_per_line * max_lines);
+                                let text_to_wrap: String = text.chars().take(max_chars).collect();
+                                let needs_ellipsis = text.chars().count() > max_chars;
+
+                                // Simple word wrap
+                                let mut lines: Vec<String> = Vec::new();
+                                let mut current_line = String::new();
+
+                                for word in text_to_wrap.split_whitespace() {
+                                    if current_line.is_empty() {
+                                        current_line = word.to_string();
+                                    } else if current_line.chars().count() + 1 + word.chars().count() <= chars_per_line {
+                                        current_line.push(' ');
+                                        current_line.push_str(word);
+                                    } else {
+                                        lines.push(current_line);
+                                        current_line = word.to_string();
+                                        if lines.len() >= max_lines {
+                                            break;
+                                        }
+                                    }
+                                }
+                                if !current_line.is_empty() && lines.len() < max_lines {
+                                    lines.push(current_line);
+                                }
+
+                                // Add ellipsis to last line if truncated
+                                if needs_ellipsis && !lines.is_empty() {
+                                    let last = lines.last_mut().unwrap();
+                                    if last.chars().count() + 1 <= chars_per_line {
+                                        last.push('…');
+                                    } else {
+                                        // Truncate last word to make room
+                                        let truncated: String = last.chars().take(chars_per_line - 1).collect();
+                                        *last = format!("{}…", truncated);
+                                    }
+                                }
+
+                                // Draw each line
+                                let total_text_height = lines.len() as f32 * line_height;
+                                let start_y = section_rect.center().y - total_text_height / 2.0 + line_height / 2.0;
+
+                                for (i, line) in lines.iter().enumerate() {
+                                    painter.text(
+                                        egui::pos2(section_rect.center().x, start_y + i as f32 * line_height),
+                                        egui::Align2::CENTER_CENTER,
+                                        line,
+                                        egui::FontId::proportional(text_font_size),
+                                        egui::Color32::WHITE,
+                                    );
+                                }
                             }
                         }
 
