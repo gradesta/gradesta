@@ -3306,21 +3306,23 @@ fn ingest_server_events(
                 // Handle edit acknowledgments
                 if status == 200 {
                     eprintln!("Edit acknowledged: action={} vertex={} status={}", action_id, vertex_id, status);
-                    // If a vertex was created/modified and it exists in our graph, navigate to it
-                    if vertex_id != 0 && graph.vertices.contains_key(&vertex_id) {
-                        if let Some(current) = app_state.current_vertex {
-                            if current != vertex_id {
-                                app_state.history.push(current);
-                                app_state.current_vertex = Some(vertex_id);
-                                eprintln!("Navigating to newly created vertex {}", vertex_id);
-                            }
-                        } else {
-                            app_state.current_vertex = Some(vertex_id);
-                        }
-                    }
 
                     // Check for pending vertex creation for this action_id
+                    // Only navigate to the vertex if this was a CREATE (not an update like transcription)
                     if let Some(pending) = app_state.pending_creations.remove(&action_id) {
+                        // Navigate to newly created vertex
+                        if vertex_id != 0 {
+                            if let Some(current) = app_state.current_vertex {
+                                if current != vertex_id {
+                                    app_state.history.push(current);
+                                    app_state.current_vertex = Some(vertex_id);
+                                    eprintln!("Navigating to newly created vertex {}", vertex_id);
+                                }
+                            } else {
+                                app_state.current_vertex = Some(vertex_id);
+                            }
+                        }
+
                         // Populate the vertex with the data we sent (server doesn't echo it back)
                         let entry = graph.vertices.entry(vertex_id).or_default();
                         entry.id = vertex_id;
