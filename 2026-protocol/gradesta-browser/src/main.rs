@@ -34,6 +34,68 @@ const EDGE_SOUTH: usize = 3;
 const EDGE_UP: usize = 4;
 const EDGE_DOWN: usize = 5;
 
+/// Information about a stack of vertices connected via up/down edges
+struct StackInfo {
+    /// All vertices in the stack (top to bottom)
+    vertices: Vec<u64>,
+    /// Current position in the stack (0-indexed)
+    current_index: usize,
+    /// Total number of vertices in the stack
+    total: usize,
+}
+
+/// Compute the stack of vertices connected via up/down edges
+fn compute_stack(graph: &GraphState, vertex_id: u64) -> StackInfo {
+    let mut stack = Vec::new();
+    let mut visited = HashSet::new();
+
+    // Find the top of the stack
+    let mut top_id = vertex_id;
+    while let Some(v) = graph.vertices.get(&top_id) {
+        if v.edges[EDGE_UP] != 0 && !visited.contains(&v.edges[EDGE_UP]) {
+            visited.insert(top_id);
+            top_id = v.edges[EDGE_UP];
+        } else {
+            break;
+        }
+    }
+
+    // Now traverse down from top, collecting all vertices
+    visited.clear();
+    let mut current = top_id;
+    let mut current_index = 0;
+    let mut found_index = false;
+
+    while let Some(v) = graph.vertices.get(&current) {
+        if visited.contains(&current) {
+            break;
+        }
+        visited.insert(current);
+        stack.push(current);
+
+        if current == vertex_id {
+            current_index = stack.len() - 1;
+            found_index = true;
+        }
+
+        if v.edges[EDGE_DOWN] != 0 {
+            current = v.edges[EDGE_DOWN];
+        } else {
+            break;
+        }
+    }
+
+    if !found_index && !stack.is_empty() {
+        current_index = 0;
+    }
+
+    StackInfo {
+        total: stack.len(),
+        vertices: stack,
+        current_index,
+    }
+}
+
 // Client -> Server messages for editing
 const MSG_CLIENT_SET_VERTEX_LABEL: u8 = 0x85;
 const MSG_CLIENT_CREATE_VERTEX: u8 = 0x86;
@@ -645,6 +707,13 @@ fn ui_system(
     let focus_url_bar = ctx.input(|i| i.key_pressed(egui::Key::L) && i.modifiers.ctrl);
     if focus_url_bar {
         ctx.memory_mut(|mem| mem.request_focus(url_bar_id));
+    }
+
+    // Check for Ctrl+C to copy URL to clipboard
+    let copy_url = ctx.input(|i| i.key_pressed(egui::Key::C) && i.modifiers.ctrl);
+    if copy_url {
+        ctx.copy_text(app_state.url_input.clone());
+        app_state.status = "Copied URL to clipboard".to_string();
     }
 
     ctx.input(|i| {
@@ -1962,8 +2031,53 @@ fn ui_system(
                         };
 
                         let corner_radius = 4.0 * zoom;
+
+                        // Check for stacked cards (up/down connections)
+                        let stack = compute_stack(&graph, vertex_id);
+                        let has_stack = stack.total > 1;
+
+                        // Draw stacked card shadows behind the main card
+                        if has_stack {
+                            let shadow_color = egui::Color32::from_rgba_unmultiplied(30, 30, 35, 180);
+                            let cards_to_show = (stack.total - stack.current_index - 1).min(3); // Cards below current
+                            for i in (1..=cards_to_show).rev() {
+                                let offset = i as f32 * 4.0 * zoom;
+                                let shadow_rect = rect.translate(egui::vec2(offset, offset));
+                                painter.rect_filled(shadow_rect, corner_radius, shadow_color);
+                                painter.rect_stroke(shadow_rect, corner_radius, egui::Stroke::new(1.0 * zoom, egui::Color32::from_rgb(60, 60, 65)));
+                            }
+                            // Also draw cards above (offset in opposite direction)
+                            let cards_above = stack.current_index.min(3);
+                            for i in (1..=cards_above).rev() {
+                                let offset = i as f32 * 4.0 * zoom;
+                                let shadow_rect = rect.translate(egui::vec2(-offset, -offset));
+                                painter.rect_filled(shadow_rect, corner_radius, shadow_color);
+                                painter.rect_stroke(shadow_rect, corner_radius, egui::Stroke::new(1.0 * zoom, egui::Color32::from_rgb(60, 60, 65)));
+                            }
+                        }
+
                         painter.rect_filled(rect, corner_radius, bg_color);
                         painter.rect_stroke(rect, corner_radius, egui::Stroke::new(if is_current { 3.0 * zoom } else { 2.0 * zoom }, border_color));
+
+                        // Draw stack position badge if this vertex is part of a stack
+                        if has_stack {
+                            let badge_text = format!("{}/{}", stack.current_index + 1, stack.total);
+                            let badge_font = egui::FontId::proportional(font_size * 0.6);
+                            let badge_pos = egui::pos2(rect.right() - 4.0 * zoom, rect.top() + 4.0 * zoom);
+                            // Draw badge background
+                            let badge_rect = egui::Rect::from_center_size(
+                                badge_pos + egui::vec2(-12.0 * zoom, 6.0 * zoom),
+                                egui::vec2(28.0 * zoom, 14.0 * zoom),
+                            );
+                            painter.rect_filled(badge_rect, 3.0 * zoom, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 180));
+                            painter.text(
+                                badge_pos,
+                                egui::Align2::RIGHT_TOP,
+                                badge_text,
+                                badge_font,
+                                egui::Color32::from_rgb(200, 200, 255),
+                            );
+                        }
 
                         // Draw direction arrow indicator on current cell
                         if is_current {
@@ -2647,6 +2761,13 @@ fn handle_navigation(
                 // Move cursor to target (even if it's a portal - auto_expand will handle following it)
                 app_state.history.push(current_id);
                 app_state.current_vertex = Some(target_id);
+            } else {
+                // Provide feedback for up/down navigation at stack edges
+                if edge_idx == EDGE_UP {
+                    app_state.status = "Top of stack".to_string();
+                } else if edge_idx == EDGE_DOWN {
+                    app_state.status = "Bottom of stack".to_string();
+                }
             }
         }
     }

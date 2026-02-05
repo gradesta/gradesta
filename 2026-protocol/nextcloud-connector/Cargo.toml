@@ -1,0 +1,54 @@
+[package]
+name = "nextcloud-connector"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# iCalendar parsing
+icalendar = { version = "0.16", features = ["parser"] }
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# WebSocket
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
+
+# HTTP client for Nextcloud
+reqwest = { version = "0.11", features = ["json"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# UUID for note IDs
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Cryptography
+p256 = { version = "0.13", features = ["ecdsa"] }
+aes-gcm = "0.10"
+sha2 = "0.10"
+rand = "0.8"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Directories
+dirs = "5.0"
+
+# Logging
+log = "0.4"
+env_logger = "0.10"
+
+# URL parsing
+url = "2.5"
+
+# XML parsing for WebDAV
+quick-xml = { version = "0.31", features = ["serialize"] }
+
+# CLI argument parsing
+clap = { version = "4", features = ["derive"] }

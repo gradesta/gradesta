@@ -1,9 +1,11 @@
-//! Notes server - stores notes on Nextcloud via WebDAV
+//! Nextcloud Connector - stores notes and calendar on Nextcloud via WebDAV/CalDAV
 
+mod calendar;
 mod identity;
 mod nextcloud;
 mod notes;
 mod protocol;
+mod router;
 mod storage;
 
 use anyhow::{anyhow, Result};
@@ -21,9 +23,9 @@ use crate::notes::{mime_to_extension, uuid_to_hash, NotesIndex};
 use crate::protocol::*;
 use crate::storage::{Credential, CredentialStore};
 
-/// Gradesta Notes Server - stores notes on Nextcloud via WebDAV
+/// Gradesta Nextcloud Connector - stores notes and calendar on Nextcloud via WebDAV/CalDAV
 #[derive(Parser, Debug)]
-#[command(name = "notes-server")]
+#[command(name = "nextcloud-connector")]
 #[command(version, about, long_about = None)]
 struct Args {
     /// Port to listen on
@@ -80,6 +82,16 @@ impl State {
     }
 }
 
+impl calendar::HasIdentity for State {
+    fn get_identity(&self) -> String {
+        self.identity.clone().unwrap_or_default()
+    }
+
+    fn get_nextcloud(&self) -> Option<NextcloudClient> {
+        self.nextcloud.clone()
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
@@ -89,7 +101,7 @@ async fn main() -> Result<()> {
     let addr = format!("{}:{}", args.bind, args.port);
     let listener = TcpListener::bind(&addr).await?;
 
-    println!("Gradesta Notes Server v{}", env!("CARGO_PKG_VERSION"));
+    println!("Gradesta Nextcloud Connector v{}", env!("CARGO_PKG_VERSION"));
     println!("Listening on {}", addr);
     println!("Connect with: ws://localhost:{}/ws", args.port);
     println!();
@@ -128,7 +140,7 @@ async fn handle_connection(
         s.get_next_action_id()
     };
     let pending = PendingAuth::new(action_id);
-    let msg = pending.encode_request("Notes server needs to verify your identity");
+    let msg = pending.encode_request("Nextcloud connector needs to verify your identity");
     write.send(Message::Binary(msg)).await?;
 
     {
@@ -254,7 +266,7 @@ where
         // Load notes index
         let index = NotesIndex::load(&nc).await?;
 
-        // Get a server-generated action_id for this unsolicited listing
+        // Get a server-generated action_id for the router
         let action_id = {
             let mut s = state.lock().await;
             s.identity = Some(identity.clone());
@@ -264,8 +276,8 @@ where
             s.get_next_action_id()
         };
 
-        // Send notes listing
-        send_notes_listing(state, write, action_id).await?;
+        // Send router (entry point with notes and calendar branches)
+        router::send_router(&identity, write, action_id).await?;
     } else {
         log::info!("No credentials for {}, starting auth flow", identity);
 
@@ -289,7 +301,7 @@ where
         }
 
         // Send auth context
-        let landmark = format!("notes://{}/auth", identity);
+        let landmark = format!("nextcloud://{}/auth", identity);
         let ctx_msg = encode_set_context(0, &landmark);
         write.send(Message::Binary(ctx_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
@@ -414,26 +426,133 @@ where
     let (action_id, landmark) = parse_watch_landmark(data)?;
     log::info!("Watch landmark: {} (action={})", landmark, action_id);
 
-    // Parse landmark to extract vertex ID if present
-    // Format: notes://identity/ or notes://identity/vertex_hash
-    let start_vertex = if landmark.contains('/') {
-        let parts: Vec<&str> = landmark.rsplitn(2, '/').collect();
-        if let Some(hash_str) = parts.first() {
-            if !hash_str.is_empty() {
-                // Try to parse as vertex hash
-                if let Ok(hash) = hash_str.parse::<u64>() {
-                    let index = {
-                        let s = state.lock().await;
-                        s.index.clone()
-                    };
-                    if let Some(index) = index {
-                        notes::hash_to_uuid(&index, hash)
-                    } else {
-                        None
-                    }
+    let identity = {
+        let s = state.lock().await;
+        s.identity.clone().unwrap_or_default()
+    };
+
+    // Parse landmark URL to route to appropriate handler
+    // Format: nextcloud://{identity}/ - router
+    // Format: nextcloud://{identity}/notes/ - notes root
+    // Format: nextcloud://{identity}/notes/{hash} - specific note
+    // Format: nextcloud://{identity}/calendar/ - calendar root
+    // Format: nextcloud://{identity}/calendar/{year}/ - year
+    // Format: nextcloud://{identity}/calendar/{year}/{month}/ - month
+    // Format: nextcloud://{identity}/calendar/{year}/{month}/{day}/ - day
+
+    // Extract path after identity
+    // The identity itself may contain slashes (e.g., https://server/s/token)
+    // So we need to match against the known identity to find where it ends
+    let path = if let Some(stripped) = landmark.strip_prefix("nextcloud://") {
+        // Try to strip the identity prefix to get the path
+        if let Some(after_identity) = stripped.strip_prefix(&identity) {
+            after_identity.trim_start_matches('/')
+        } else {
+            // Identity doesn't match - this shouldn't happen but handle gracefully
+            // Try to find common path segments
+            if stripped.ends_with("/notes/") || stripped.contains("/notes/") {
+                if let Some(idx) = stripped.rfind("/notes/") {
+                    &stripped[idx + 1..]
                 } else {
-                    None
+                    "notes/"
                 }
+            } else if stripped.ends_with("/calendar/") || stripped.contains("/calendar/") {
+                if let Some(idx) = stripped.rfind("/calendar/") {
+                    &stripped[idx + 1..]
+                } else {
+                    "calendar/"
+                }
+            } else if stripped.ends_with("/") {
+                "" // Router root
+            } else {
+                stripped
+            }
+        }
+    } else if let Some(stripped) = landmark.strip_prefix("notes://") {
+        // Legacy notes:// URLs - treat as notes
+        if let Some(idx) = stripped.find('/') {
+            let rest = &stripped[idx + 1..];
+            if rest.is_empty() {
+                "notes/"
+            } else {
+                // Wrap in notes/ prefix for legacy support
+                return handle_notes_landmark(state, write, action_id, rest).await;
+            }
+        } else {
+            "notes/"
+        }
+    } else if let Some(vertex_hash) = landmark.strip_prefix("vertex/") {
+        // Direct vertex request - try to find and load it
+        // This is used by the browser when preloading unknown vertices
+        log::info!("Direct vertex request: {}", vertex_hash);
+        if let Ok(hash) = vertex_hash.parse::<u64>() {
+            // Try to find this vertex - could be a note or a calendar vertex
+            // First check if it's a note
+            let index = {
+                let s = state.lock().await;
+                s.index.clone()
+            };
+            if let Some(index) = &index {
+                if notes::hash_to_uuid(index, hash).is_some() {
+                    // It's a note vertex
+                    return handle_notes_landmark(state, write, action_id, vertex_hash).await;
+                }
+            }
+            // If not found in notes, it might be a calendar vertex
+            // Calendar vertices are dynamically generated, so we need to figure out what it is
+            // For now, just return an empty response - the calendar doesn't support direct vertex loading yet
+            log::info!("Vertex {} not found in notes, checking if calendar vertex", hash);
+            // Return the calendar root as a fallback so at least something loads
+            return calendar::handle_landmark(state, write, action_id, "").await;
+        }
+        "" // Will fall through to router
+    } else {
+        ""
+    };
+
+    log::info!("Routing path: '{}'", path);
+
+    match path {
+        "" => {
+            // Router root
+            router::send_router(&identity, write, action_id).await
+        }
+        p if p.starts_with("notes/") || p.starts_with("notes") => {
+            let notes_path = p.strip_prefix("notes/").or_else(|| p.strip_prefix("notes")).unwrap_or("");
+            handle_notes_landmark(state, write, action_id, notes_path).await
+        }
+        p if p.starts_with("calendar/") || p.starts_with("calendar") => {
+            let calendar_path = p.strip_prefix("calendar/").or_else(|| p.strip_prefix("calendar")).unwrap_or("");
+            calendar::handle_landmark(state, write, action_id, calendar_path).await
+        }
+        _ => {
+            log::warn!("Unknown landmark path: {}", path);
+            Err(anyhow!("Unknown landmark path: {}", path))
+        }
+    }
+}
+
+/// Handle notes-specific landmarks
+async fn handle_notes_landmark<W>(
+    state: &Arc<Mutex<State>>,
+    write: &mut W,
+    action_id: u64,
+    notes_path: &str,
+) -> Result<()>
+where
+    W: SinkExt<Message> + Unpin,
+    W::Error: std::fmt::Debug,
+{
+    // Parse vertex hash from path if present
+    let start_vertex = if !notes_path.is_empty() {
+        // Try to parse as vertex hash
+        if let Ok(hash) = notes_path.parse::<u64>() {
+            let index = {
+                let s = state.lock().await;
+                s.index.clone()
+            };
+            if let Some(index) = index {
+                notes::hash_to_uuid(&index, hash)
             } else {
                 None
             }
@@ -444,7 +563,7 @@ where
         None
     };
 
-    log::info!("Resolved start vertex: {:?}", start_vertex);
+    log::info!("Notes landmark - start vertex: {:?}", start_vertex);
     send_notes_from_vertex(state, write, action_id, start_vertex).await
 }
 
@@ -486,9 +605,9 @@ where
 
     // Send context
     let landmark = if let Some(v) = start_vertex {
-        format!("notes://{}/{}", identity, uuid_to_hash(v))
+        format!("nextcloud://{}/notes/{}", identity, uuid_to_hash(v))
     } else {
-        format!("notes://{}/", identity)
+        format!("nextcloud://{}/notes/", identity)
     };
     let ctx_msg = encode_set_context(action_id, &landmark);
     write.send(Message::Binary(ctx_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
