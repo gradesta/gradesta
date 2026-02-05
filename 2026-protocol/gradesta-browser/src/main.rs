@@ -156,8 +156,8 @@ struct AppState {
     recording_start: Option<Instant>,
     // Action ID counter (counts down from MAX to avoid collision with server IDs)
     next_action_id: u64,
-    // Pending transcriptions: maps action_id -> (samples, sample_rate) for async transcription
-    pending_transcriptions: HashMap<u64, PendingTranscription>,
+    // Pending vertex creations: maps action_id -> data for populating vertex locally on ack
+    pending_creations: HashMap<u64, PendingVertexCreation>,
     // Skip auto-play for this vertex (set after recording to avoid immediate playback)
     skip_autoplay_vertex: Option<u64>,
     // Last navigation direction (used to determine where new vertices are created)
@@ -165,12 +165,13 @@ struct AppState {
 }
 
 /// Pending vertex creation data - waiting for server acknowledgment
-struct PendingTranscription {
+struct PendingVertexCreation {
+    /// Audio samples for transcription (empty for text)
     samples: Vec<f32>,
     sample_rate: u32,
-    /// The encoded data that was sent to the server (to populate vertex locally)
-    encoded_data: Vec<u8>,
-    /// MIME type of the encoded data
+    /// The data that was sent to the server (to populate vertex locally)
+    data: Vec<u8>,
+    /// MIME type of the data
     mime: String,
 }
 
@@ -248,7 +249,7 @@ impl Default for AppState {
             audio_sample_rate: 44100,
             recording_start: None,
             next_action_id: u64::MAX,
-            pending_transcriptions: HashMap::new(),
+            pending_creations: HashMap::new(),
             skip_autoplay_vertex: None,
             last_nav_direction: EDGE_SOUTH, // Default to south
         }
@@ -841,10 +842,10 @@ fn ui_system(
                             });
 
                             // Store samples and encoded data - will be processed when we get the 200 response
-                            app_state.pending_transcriptions.insert(action_id, PendingTranscription {
+                            app_state.pending_creations.insert(action_id, PendingVertexCreation {
                                 samples: samples.clone(),
                                 sample_rate,
-                                encoded_data: audio_data,
+                                data: audio_data,
                                 mime: "audio/ogg".to_string(),
                             });
                         }
@@ -1429,13 +1430,21 @@ fn ui_system(
                             };
                             let action_id = app_state.next_action_id;
                             app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                            let text_bytes = text.into_bytes();
                             let _ = tx.send(WsCommand::CreateVertex {
                                 action_id,
                                 from_vertex: current_id,
                                 direction: dir_byte,
                                 layer: 0,
                                 mime: "text/plain".to_string(),
-                                data: text.into_bytes(),
+                                data: text_bytes.clone(),
+                            });
+                            // Store data for populating vertex locally on ack
+                            app_state.pending_creations.insert(action_id, PendingVertexCreation {
+                                samples: Vec::new(), // No audio samples for text
+                                sample_rate: 0,
+                                data: text_bytes,
+                                mime: "text/plain".to_string(),
                             });
                             app_state.status = "Creating new note...".to_string();
                         } else {
@@ -2356,6 +2365,11 @@ fn handle_navigation(
     graph: Res<GraphState>,
     keys: Res<ButtonInput<KeyCode>>,
 ) {
+    // Don't handle navigation when in text input mode
+    if matches!(app_state.input_mode, InputMode::TextInput { .. }) {
+        return;
+    }
+
     let Some(current_id) = app_state.current_vertex else { return };
     let Some(vertex) = graph.vertices.get(&current_id) else { return };
 
@@ -3306,51 +3320,54 @@ fn ingest_server_events(
                     }
 
                     // Check for pending vertex creation for this action_id
-                    if let Some(pending) = app_state.pending_transcriptions.remove(&action_id) {
+                    if let Some(pending) = app_state.pending_creations.remove(&action_id) {
                         // Populate the vertex with the data we sent (server doesn't echo it back)
                         let entry = graph.vertices.entry(vertex_id).or_default();
                         entry.id = vertex_id;
-                        entry.label = pending.encoded_data.clone();
+                        entry.label = pending.data.clone();
                         entry.mime = Some(pending.mime.clone());
 
-                        // Don't auto-play the audio we just recorded
-                        app_state.skip_autoplay_vertex = Some(vertex_id);
+                        // For audio, start transcription and skip auto-play
+                        if pending.mime.starts_with("audio/") {
+                            // Don't auto-play the audio we just recorded
+                            app_state.skip_autoplay_vertex = Some(vertex_id);
 
-                        eprintln!("Starting async transcription for vertex {} (action={})", vertex_id, action_id);
-                        let event_tx = net_tx.0.clone();
-                        let target_vertex = vertex_id;
-                        // Allocate a new action_id for the SetVertexLabel
-                        let transcript_action_id = app_state.next_action_id;
-                        app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                            eprintln!("Starting async transcription for vertex {} (action={})", vertex_id, action_id);
+                            let event_tx = net_tx.0.clone();
+                            let target_vertex = vertex_id;
+                            // Allocate a new action_id for the SetVertexLabel
+                            let transcript_action_id = app_state.next_action_id;
+                            app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
 
-                        // Spawn transcription in background
-                        thread::spawn(move || {
-                            if whisper::is_model_available() {
-                                match whisper::transcribe(&pending.samples, pending.sample_rate) {
-                                    Ok(text) => {
-                                        eprintln!("Transcription complete: {}", text);
-                                        // Send transcript back to main thread to store locally and send to server
-                                        let _ = event_tx.send(ServerEvent::LocalSetVertexLabel {
-                                            action_id: transcript_action_id,
-                                            vertex_id: target_vertex,
-                                            layer: 1, // Convention: layer 1 for transcript
-                                            mime: "text/plain".to_string(),
-                                            data: text.into_bytes(),
-                                        });
+                            // Spawn transcription in background
+                            thread::spawn(move || {
+                                if whisper::is_model_available() {
+                                    match whisper::transcribe(&pending.samples, pending.sample_rate) {
+                                        Ok(text) => {
+                                            eprintln!("Transcription complete: {}", text);
+                                            // Send transcript back to main thread to store locally and send to server
+                                            let _ = event_tx.send(ServerEvent::LocalSetVertexLabel {
+                                                action_id: transcript_action_id,
+                                                vertex_id: target_vertex,
+                                                layer: 1, // Convention: layer 1 for transcript
+                                                mime: "text/plain".to_string(),
+                                                data: text.into_bytes(),
+                                            });
+                                        }
+                                        Err(e) => {
+                                            eprintln!("Transcription failed: {}", e);
+                                        }
                                     }
-                                    Err(e) => {
-                                        eprintln!("Transcription failed: {}", e);
-                                    }
+                                } else {
+                                    eprintln!("Whisper model not available, skipping transcription");
                                 }
-                            } else {
-                                eprintln!("Whisper model not available, skipping transcription");
-                            }
-                        });
+                            });
+                        }
                     }
                 } else {
                     eprintln!("Edit failed: action={} vertex={} status={} msg={}", action_id, vertex_id, status, message);
-                    // Remove any pending transcription for failed actions
-                    app_state.pending_transcriptions.remove(&action_id);
+                    // Remove any pending creation for failed actions
+                    app_state.pending_creations.remove(&action_id);
                 }
             }
             ServerEvent::LocalSetVertexLabel { action_id, vertex_id, layer, mime, data } => {
