@@ -574,21 +574,55 @@ fn build_grid_view(graph: &GraphState, current_id: u64) -> GridView {
     let mut grid = GridView::default();
     let mut visited = HashSet::new();
 
-    // Find the current vertex's position in its column (distance from top)
-    let mut top_id = current_id;
-    let mut current_offset = 0u32;
-    while let Some(v) = graph.vertices.get(&top_id) {
-        if v.edges[EDGE_NORTH] != 0 && graph.vertices.contains_key(&v.edges[EDGE_NORTH]) {
-            top_id = v.edges[EDGE_NORTH];
-            current_offset += 1;
-        } else {
-            break;
+    // Always ensure the current vertex is in the grid at (0, 0) with distance 0
+    // This guarantees centering works correctly
+    grid.cells.insert((0, 0), current_id);
+    grid.positions.insert(current_id, (0, 0));
+    grid.distances.insert((0, 0), 0);
+    visited.insert(current_id);
+
+    // If the current vertex exists in the graph, expand from it
+    if let Some(current_vertex) = graph.vertices.get(&current_id) {
+        // Expand north from current vertex
+        let mut y = -1i32;
+        let mut north_id = current_vertex.edges[EDGE_NORTH];
+        while north_id != 0 && graph.vertices.contains_key(&north_id) && !visited.contains(&north_id) {
+            let distance = (-y) as u32;
+            grid.cells.insert((0, y), north_id);
+            grid.positions.insert(north_id, (0, y));
+            grid.distances.insert((0, y), distance);
+            visited.insert(north_id);
+            grid.min_y = grid.min_y.min(y);
+
+            if let Some(v) = graph.vertices.get(&north_id) {
+                north_id = v.edges[EDGE_NORTH];
+            } else {
+                break;
+            }
+            y -= 1;
+        }
+
+        // Expand south from current vertex
+        let mut y = 1i32;
+        let mut south_id = current_vertex.edges[EDGE_SOUTH];
+        while south_id != 0 && graph.vertices.contains_key(&south_id) && !visited.contains(&south_id) {
+            let distance = y as u32;
+            grid.cells.insert((0, y), south_id);
+            grid.positions.insert(south_id, (0, y));
+            grid.distances.insert((0, y), distance);
+            visited.insert(south_id);
+            grid.max_y = grid.max_y.max(y);
+
+            if let Some(v) = graph.vertices.get(&south_id) {
+                south_id = v.edges[EDGE_SOUTH];
+            } else {
+                break;
+            }
+            y += 1;
         }
     }
 
-    // Build center column starting from top, tracking distance from current
-    build_column_with_distance(&mut grid, graph, top_id, 0, current_offset, &mut visited);
-
+    // Now expand west/east from all vertices in the center column
     let center_vertices: Vec<(i32, u64, u32)> = grid.cells.iter()
         .filter(|((x, _), _)| *x == 0)
         .map(|((_, y), id)| (*y, *id, *grid.distances.get(&(0, *y)).unwrap_or(&u32::MAX)))
@@ -608,59 +642,6 @@ fn build_grid_view(graph: &GraphState, current_id: u64) -> GridView {
     grid
 }
 
-/// Build a column tracking distance from the current vertex
-/// current_offset is the distance from top to the current vertex (0 = current is at top)
-fn build_column_with_distance(grid: &mut GridView, graph: &GraphState, top_id: u64, x: i32, current_offset: u32, visited: &mut HashSet<u64>) {
-    let mut y = 0i32;
-    let mut current = top_id;
-    let mut index = 0u32;
-
-    while graph.vertices.contains_key(&current) && !visited.contains(&current) {
-        // Distance from current vertex (absolute difference)
-        let distance = if index >= current_offset {
-            index - current_offset
-        } else {
-            current_offset - index
-        };
-
-        // Only insert if this cell is empty or we're closer
-        let pos = (x, y);
-        let should_insert = match grid.distances.get(&pos) {
-            None => true,
-            Some(&existing_dist) => distance < existing_dist,
-        };
-
-        if should_insert {
-            // Remove old vertex from positions if we're replacing
-            if let Some(&old_vertex) = grid.cells.get(&pos) {
-                grid.positions.remove(&old_vertex);
-            }
-
-            visited.insert(current);
-            grid.cells.insert(pos, current);
-            grid.positions.insert(current, pos);
-            grid.distances.insert(pos, distance);
-
-            grid.min_x = grid.min_x.min(x);
-            grid.max_x = grid.max_x.max(x);
-            grid.min_y = grid.min_y.min(y);
-            grid.max_y = grid.max_y.max(y);
-        }
-
-        if let Some(v) = graph.vertices.get(&current) {
-            if v.edges[EDGE_SOUTH] != 0 {
-                current = v.edges[EDGE_SOUTH];
-                y += 1;
-                index += 1;
-            } else {
-                break;
-            }
-        } else {
-            break;
-        }
-    }
-}
-
 fn expand_column_recursive_with_distance(
     grid: &mut GridView,
     graph: &GraphState,
@@ -674,77 +655,40 @@ fn expand_column_recursive_with_distance(
         return;
     }
 
-    let mut top_id = start_id;
-    let mut offset_from_start = 0i32;
-    while let Some(v) = graph.vertices.get(&top_id) {
-        if v.edges[EDGE_NORTH] != 0 && graph.vertices.contains_key(&v.edges[EDGE_NORTH]) && !visited.contains(&v.edges[EDGE_NORTH]) {
-            top_id = v.edges[EDGE_NORTH];
-            offset_from_start -= 1;
-        } else {
-            break;
-        }
-    }
+    // Simple approach: only place the single vertex at start_y, don't expand north/south.
+    // This prevents unrelated graphs from expanding into each other while still allowing
+    // navigation. The grid shows cells that are directly horizontally connected to the
+    // center column.
 
-    let top_y = start_y + offset_from_start;
-    let mut y = top_y;
-    let mut current = top_id;
-    let mut index = 0u32;
+    let pos = (x, start_y);
+    let should_insert = match grid.distances.get(&pos) {
+        None => true,
+        Some(&existing_dist) => base_distance < existing_dist,
+    };
 
-    while graph.vertices.contains_key(&current) && !visited.contains(&current) {
-        // Distance increases as we move away from start position
-        let distance = base_distance + (y - start_y).unsigned_abs() + index;
-
-        let pos = (x, y);
-        let should_insert = match grid.distances.get(&pos) {
-            None => true,
-            Some(&existing_dist) => distance < existing_dist,
-        };
-
-        if !should_insert {
-            // Cell exists with closer distance, skip but continue to check children
-            if let Some(v) = graph.vertices.get(&current) {
-                if v.edges[EDGE_SOUTH] != 0 {
-                    current = v.edges[EDGE_SOUTH];
-                    y += 1;
-                    index += 1;
-                    continue;
-                }
-            }
-            break;
-        }
-
-        // Remove old vertex from positions if we're replacing
+    if should_insert {
         if let Some(&old_vertex) = grid.cells.get(&pos) {
             grid.positions.remove(&old_vertex);
         }
 
-        visited.insert(current);
-        grid.cells.insert(pos, current);
-        grid.positions.insert(current, pos);
-        grid.distances.insert(pos, distance);
+        visited.insert(start_id);
+        grid.cells.insert(pos, start_id);
+        grid.positions.insert(start_id, pos);
+        grid.distances.insert(pos, base_distance);
 
         grid.min_x = grid.min_x.min(x);
         grid.max_x = grid.max_x.max(x);
-        grid.min_y = grid.min_y.min(y);
-        grid.max_y = grid.max_y.max(y);
+        grid.min_y = grid.min_y.min(start_y);
+        grid.max_y = grid.max_y.max(start_y);
+    }
 
-        if let Some(v) = graph.vertices.get(&current) {
-            if x < 0 && v.edges[EDGE_WEST] != 0 && !visited.contains(&v.edges[EDGE_WEST]) {
-                expand_column_recursive_with_distance(grid, graph, v.edges[EDGE_WEST], x - 1, y, distance + 1, visited);
-            }
-            if x > 0 && v.edges[EDGE_EAST] != 0 && !visited.contains(&v.edges[EDGE_EAST]) {
-                expand_column_recursive_with_distance(grid, graph, v.edges[EDGE_EAST], x + 1, y, distance + 1, visited);
-            }
-
-            if v.edges[EDGE_SOUTH] != 0 {
-                current = v.edges[EDGE_SOUTH];
-                y += 1;
-                index += 1;
-            } else {
-                break;
-            }
-        } else {
-            break;
+    // Continue expanding horizontally (but not vertically)
+    if let Some(v) = graph.vertices.get(&start_id) {
+        if x < 0 && v.edges[EDGE_WEST] != 0 && !visited.contains(&v.edges[EDGE_WEST]) {
+            expand_column_recursive_with_distance(grid, graph, v.edges[EDGE_WEST], x - 1, start_y, base_distance + 1, visited);
+        }
+        if x > 0 && v.edges[EDGE_EAST] != 0 && !visited.contains(&v.edges[EDGE_EAST]) {
+            expand_column_recursive_with_distance(grid, graph, v.edges[EDGE_EAST], x + 1, start_y, base_distance + 1, visited);
         }
     }
 }

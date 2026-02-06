@@ -1,11 +1,13 @@
 //! Calendar module - CalDAV integration with grid-based calendar layout
 //!
 //! Calendar structure:
-//! - Root → Years (west/east)
-//! - Year → Months (south, west/east between months)
-//! - Month → Days in grid (west/east = days in week, north/south = weeks)
+//! - Root → Current Year (south)
+//! - Years: north/south to neighboring years, east to January
+//! - Months: north/south to neighboring months, west to year (for Jan), east to 1st of month
+//! - Days in grid: west/east = days in week, north/south = same weekday in adjacent weeks
+//!   - First day of month connects west back to month
 //!
-//! The grid uses Monday as the first day of the week.
+//! The grid uses Monday as the first day of the week (leftmost column).
 
 use anyhow::Result;
 use chrono::{Datelike, Local, NaiveDate, Weekday};
@@ -223,28 +225,36 @@ where
     let root_msg = encode_set_vertex_label(action_id, root_id, "text/plain", b"Calendar");
     write.send(Message::Binary(root_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-    // Root edges: south to current year
+    // Root edges: south to current year (years are vertical: north/south)
     let current_year_id = year_hash(identity, current_year);
     let root_edges = encode_set_edges(action_id, root_id, 0, 0, 0, current_year_id, 0, 0, 0);
     write.send(Message::Binary(root_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
     // Send year, month, and day vertices
+    // Years are arranged vertically: north = previous year, south = next year
     for (i, &year) in years.iter().enumerate() {
         let year_id = year_hash(identity, year);
         let label = format!("{}", year);
         let year_msg = encode_set_vertex_label(action_id, year_id, "text/plain", label.as_bytes());
         write.send(Message::Binary(year_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-        // Year edges: west/east to neighboring years, north to root, south to January
-        let west = if i > 0 { year_hash(identity, years[i - 1]) } else { 0 };
-        let east = if i < years.len() - 1 { year_hash(identity, years[i + 1]) } else { 0 };
-        let north = if year == current_year { root_id } else { 0 };
-        let south = month_hash(identity, year, 1); // January
+        // Year edges: north/south to neighboring years, east to January
+        // North = previous year (or root for current year), South = next year
+        let north = if i > 0 {
+            year_hash(identity, years[i - 1])
+        } else if year == current_year {
+            root_id
+        } else {
+            0
+        };
+        let south = if i < years.len() - 1 { year_hash(identity, years[i + 1]) } else { 0 };
+        let east = month_hash(identity, year, 1); // January is east of year
 
-        let year_edges = encode_set_edges(action_id, year_id, west, east, north, south, 0, 0, 0);
+        let year_edges = encode_set_edges(action_id, year_id, 0, east, north, south, 0, 0, 0);
         write.send(Message::Binary(year_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
         // Send month vertices with days in grid layout
+        // Months are arranged vertically: north = previous month (or year), south = next month
         for month in 1u32..=12 {
             let month_id = month_hash(identity, year, month);
             let month_label = month_names[(month - 1) as usize];
@@ -255,18 +265,18 @@ where
             let first_day = NaiveDate::from_ymd_opt(year, month, 1).unwrap();
             let first_dow = weekday_index(first_day);
 
-            // Month connects south to the Monday of the first week
+            // Calculate the Monday of the first week (for grid start)
             let first_monday = if first_dow == 0 {
                 first_day
             } else {
                 first_day.checked_sub_signed(chrono::Duration::days(first_dow as i64)).unwrap()
             };
 
-            // Month edges: west/east to neighboring months, north to year, south to first Monday
-            let m_west = if month > 1 { month_hash(identity, year, month - 1) } else { 0 };
-            let m_east = if month < 12 { month_hash(identity, year, month + 1) } else { 0 };
-            let m_north = if month == 1 { year_id } else { 0 };
-            let m_south = day_hash(identity, first_monday.year(), first_monday.month(), first_monday.day());
+            // Month edges: north/south to neighboring months, west to year (for Jan), east to FIRST DAY of month
+            let m_north = if month > 1 { month_hash(identity, year, month - 1) } else { 0 };
+            let m_south = if month < 12 { month_hash(identity, year, month + 1) } else { 0 };
+            let m_west = if month == 1 { year_id } else { 0 }; // January connects west to year
+            let m_east = day_hash(identity, year, month, 1); // Connect to first day of month
 
             let month_edges = encode_set_edges(action_id, month_id, m_west, m_east, m_north, m_south, 0, 0, 0);
             write.send(Message::Binary(month_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
@@ -309,11 +319,11 @@ where
                 // Calculate grid edges
                 let (d_west, d_east, d_north, d_south) = calc_day_grid_edges(identity, current);
 
-                // Special case: first Monday connects north to month
-                let d_north = if current == first_monday {
+                // Special case: first day of month connects west to month
+                let d_west = if current == first_day {
                     month_id
                 } else {
-                    d_north
+                    d_west
                 };
 
                 let day_edges = encode_set_edges(action_id, day_id, d_west, d_east, d_north, d_south, 0, 0, 0);
@@ -364,14 +374,15 @@ where
     let year_msg = encode_set_vertex_label(action_id, year_id, "text/plain", format!("{}", year).as_bytes());
     write.send(Message::Binary(year_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-    // Year edges
+    // Year edges: north/south to neighboring years, east to January
     let prev_year_id = year_hash(identity, year - 1);
     let next_year_id = year_hash(identity, year + 1);
     let jan_id = month_hash(identity, year, 1);
-    let year_edges = encode_set_edges(action_id, year_id, prev_year_id, next_year_id, 0, jan_id, 0, 0, 0);
+    let year_edges = encode_set_edges(action_id, year_id, 0, jan_id, prev_year_id, next_year_id, 0, 0, 0);
     write.send(Message::Binary(year_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
     // Send month vertices with days in grid layout
+    // Months are arranged vertically: north = previous month, south = next month
     for month in 1u32..=12 {
         let month_id = month_hash(identity, year, month);
         let label = month_names[(month - 1) as usize];
@@ -382,8 +393,7 @@ where
         let first_day = NaiveDate::from_ymd_opt(year, month, 1).unwrap();
         let first_dow = weekday_index(first_day); // 0=Mon, 6=Sun
 
-        // Month connects south to the Monday of the first week
-        // If the month doesn't start on Monday, we need to find that Monday
+        // Calculate the Monday of the first week (for grid start)
         let first_monday = if first_dow == 0 {
             first_day
         } else {
@@ -391,13 +401,13 @@ where
             first_day.checked_sub_signed(chrono::Duration::days(first_dow as i64)).unwrap()
         };
 
-        // Month edges: west/east to neighboring months, north to year, south to first Monday
-        let west = if month > 1 { month_hash(identity, year, month - 1) } else { 0 };
-        let east = if month < 12 { month_hash(identity, year, month + 1) } else { 0 };
-        let north = if month == 1 { year_id } else { 0 };
-        let south = day_hash(identity, first_monday.year(), first_monday.month(), first_monday.day());
+        // Month edges: north/south to neighboring months, west to year (for Jan), east to FIRST DAY of month
+        let m_north = if month > 1 { month_hash(identity, year, month - 1) } else { 0 };
+        let m_south = if month < 12 { month_hash(identity, year, month + 1) } else { 0 };
+        let m_west = if month == 1 { year_id } else { 0 }; // January connects west to year
+        let m_east = day_hash(identity, year, month, 1); // Connect to first day of month
 
-        let month_edges = encode_set_edges(action_id, month_id, west, east, north, south, 0, 0, 0);
+        let month_edges = encode_set_edges(action_id, month_id, m_west, m_east, m_north, m_south, 0, 0, 0);
         write.send(Message::Binary(month_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
         // Send day vertices for this month in grid layout
@@ -443,11 +453,11 @@ where
             // Calculate grid edges
             let (d_west, d_east, d_north, d_south) = calc_day_grid_edges(identity, current);
 
-            // Special case: first Monday connects north to month
-            let d_north = if current == first_monday {
+            // Special case: first day of month connects west to month
+            let d_west = if current == first_day {
                 month_id
             } else {
-                d_north
+                d_west
             };
 
             let day_edges = encode_set_edges(action_id, day_id, d_west, d_east, d_north, d_south, 0, 0, 0);
