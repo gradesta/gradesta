@@ -107,8 +107,8 @@ where
     log::info!("Parsed calendar path: {:?}", parsed);
 
     match parsed {
-        CalendarPath::Root => send_years_listing(&identity, write, action_id).await,
-        CalendarPath::Year(year) => send_months_listing(&identity, write, action_id, year).await,
+        CalendarPath::Root => send_years_listing(&identity, write, action_id, nc.as_ref()).await,
+        CalendarPath::Year(year) => send_months_listing(&identity, write, action_id, year, nc.as_ref()).await,
         CalendarPath::Month(year, month) => send_days_listing(&identity, write, action_id, year, month, nc.as_ref()).await,
         CalendarPath::Day(year, month, day) => send_day_with_events(&identity, write, action_id, year, month, day, nc.as_ref()).await,
     }
@@ -121,11 +121,12 @@ pub trait HasIdentity {
 }
 
 /// Send calendar root with year listing
-/// Only sends years and months - days are fetched on demand when navigating to a month
+/// Includes years, months, and days (without events - events loaded when navigating to specific month)
 async fn send_years_listing<W>(
     identity: &str,
     write: &mut W,
     action_id: u64,
+    nc: Option<&NextcloudClient>,
 ) -> Result<()>
 where
     W: SinkExt<Message> + Unpin,
@@ -155,7 +156,7 @@ where
     let root_edges = encode_set_edges(action_id, root_id, 0, 0, 0, current_year_id, 0, 0, 0);
     write.send(Message::Binary(root_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-    // Send year vertices and their months (but NOT days - those are loaded on demand)
+    // Send year, month, and day vertices
     for (i, &year) in years.iter().enumerate() {
         let year_id = year_hash(identity, year);
         let label = format!("{}", year);
@@ -171,35 +172,65 @@ where
         let year_edges = encode_set_edges(action_id, year_id, west, east, north, south, 0, 0, 0);
         write.send(Message::Binary(year_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-        // Send month vertices (but NOT days)
+        // Send month vertices with days
         for month in 1u32..=12 {
             let month_id = month_hash(identity, year, month);
             let month_label = month_names[(month - 1) as usize];
             let month_msg = encode_set_vertex_label(action_id, month_id, "text/plain", month_label.as_bytes());
             write.send(Message::Binary(month_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-            // Month edges: west/east to neighboring months, north to year, south points to day 1 (but day not loaded yet)
+            // Month edges: west/east to neighboring months, north to year, south to day 1
             let m_west = if month > 1 { month_hash(identity, year, month - 1) } else { 0 };
             let m_east = if month < 12 { month_hash(identity, year, month + 1) } else { 0 };
             let m_north = if month == 1 { year_id } else { 0 };
-            let m_south = day_hash(identity, year, month, 1); // Day will be loaded when user navigates to it
+            let m_south = day_hash(identity, year, month, 1);
 
             let month_edges = encode_set_edges(action_id, month_id, m_west, m_east, m_north, m_south, 0, 0, 0);
             write.send(Message::Binary(month_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+
+            // Send day vertices for this month
+            let num_days = days_in_month(year, month);
+            for day in 1u32..=num_days {
+                let day_id = day_hash(identity, year, month, day);
+                let date = NaiveDate::from_ymd_opt(year, month, day);
+                let weekday = date.map(|d| d.weekday().to_string()).unwrap_or_default();
+                let day_label = format!("{} {}", weekday, day);
+
+                let day_msg = encode_set_vertex_label(action_id, day_id, "text/plain", day_label.as_bytes());
+                write.send(Message::Binary(day_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+
+                // Day edges: west/east to neighboring days, north to month
+                let d_west = if day > 1 { day_hash(identity, year, month, day - 1) } else { 0 };
+                let d_east = if day < num_days { day_hash(identity, year, month, day + 1) } else { 0 };
+                let d_north = if day == 1 { month_id } else { 0 };
+
+                // No events in initial load (they'll be fetched when navigating to specific day/month)
+                let day_edges = encode_set_edges(action_id, day_id, d_west, d_east, d_north, 0, 0, 0, 0);
+                write.send(Message::Binary(day_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            }
         }
     }
 
-    log::info!("Sent calendar years listing with months (action={})", action_id);
+    // If we have a nextcloud client, fetch events for current month and add them
+    if let Some(nc) = nc {
+        let current_month = Local::now().month();
+        log::info!("Fetching events for current month {}-{:02}", current_year, current_month);
+        if let Ok(events) = fetch_month_events(nc, current_year, current_month).await {
+            send_events_for_month(identity, write, action_id, current_year, current_month, &events).await?;
+        }
+    }
+
+    log::info!("Sent calendar years listing with months and days (action={})", action_id);
     Ok(())
 }
 
-/// Send months for a year
-/// Days are sent when navigating to a specific month (with events)
+/// Send months for a year (includes days)
 async fn send_months_listing<W>(
     identity: &str,
     write: &mut W,
     action_id: u64,
     year: i32,
+    nc: Option<&NextcloudClient>,
 ) -> Result<()>
 where
     W: SinkExt<Message> + Unpin,
@@ -227,7 +258,7 @@ where
     let year_edges = encode_set_edges(action_id, year_id, prev_year_id, next_year_id, 0, jan_id, 0, 0, 0);
     write.send(Message::Binary(year_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-    // Send month vertices (days loaded on demand when navigating to a month)
+    // Send month vertices with days
     for month in 1u32..=12 {
         let month_id = month_hash(identity, year, month);
         let label = month_names[(month - 1) as usize];
@@ -238,13 +269,41 @@ where
         let west = if month > 1 { month_hash(identity, year, month - 1) } else { 0 };
         let east = if month < 12 { month_hash(identity, year, month + 1) } else { 0 };
         let north = if month == 1 { year_id } else { 0 };
-        let south = day_hash(identity, year, month, 1); // Day will be loaded when needed
+        let south = day_hash(identity, year, month, 1);
 
         let month_edges = encode_set_edges(action_id, month_id, west, east, north, south, 0, 0, 0);
         write.send(Message::Binary(month_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+
+        // Send day vertices for this month
+        let num_days = days_in_month(year, month);
+        for day in 1u32..=num_days {
+            let day_id = day_hash(identity, year, month, day);
+            let date = NaiveDate::from_ymd_opt(year, month, day);
+            let weekday = date.map(|d| d.weekday().to_string()).unwrap_or_default();
+            let day_label = format!("{} {}", weekday, day);
+
+            let day_msg = encode_set_vertex_label(action_id, day_id, "text/plain", day_label.as_bytes());
+            write.send(Message::Binary(day_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+
+            // Day edges: west/east to neighboring days, north to month
+            let d_west = if day > 1 { day_hash(identity, year, month, day - 1) } else { 0 };
+            let d_east = if day < num_days { day_hash(identity, year, month, day + 1) } else { 0 };
+            let d_north = if day == 1 { month_id } else { 0 };
+
+            let day_edges = encode_set_edges(action_id, day_id, d_west, d_east, d_north, 0, 0, 0, 0);
+            write.send(Message::Binary(day_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+        }
     }
 
-    log::info!("Sent calendar months listing for {} (action={})", year, action_id);
+    // Fetch and send events for current month if we have nextcloud client
+    if let Some(nc) = nc {
+        let current_month = Local::now().month();
+        if let Ok(events) = fetch_month_events(nc, year, current_month).await {
+            send_events_for_month(identity, write, action_id, year, current_month, &events).await?;
+        }
+    }
+
+    log::info!("Sent calendar months listing for {} with days (action={})", year, action_id);
     Ok(())
 }
 
@@ -523,6 +582,132 @@ fn month_name(month: u32) -> &'static str {
         12 => "December",
         _ => "Unknown",
     }
+}
+
+/// Fetch events for a month from Nextcloud CalDAV
+async fn fetch_month_events(
+    nc: &NextcloudClient,
+    year: i32,
+    month: u32,
+) -> Result<Vec<crate::nextcloud::CalendarEvent>> {
+    let start = NaiveDate::from_ymd_opt(year, month, 1)
+        .ok_or_else(|| anyhow::anyhow!("Invalid date"))?;
+    let end_day = days_in_month(year, month);
+    let end = NaiveDate::from_ymd_opt(year, month, end_day)
+        .ok_or_else(|| anyhow::anyhow!("Invalid date"))?;
+
+    log::info!("Fetching events for {}-{:02} (days {} to {})", year, month, 1, end_day);
+
+    // Get all calendars and fetch events from each
+    let calendars = nc.list_calendars().await?;
+    let mut all_events = Vec::new();
+
+    for cal in calendars {
+        if cal.supports_events {
+            match nc.fetch_events(&cal.path, start, end).await {
+                Ok(events) => {
+                    log::info!("Got {} events from calendar '{}'", events.len(), cal.name);
+                    all_events.extend(events);
+                }
+                Err(e) => log::warn!("Failed to fetch events from {}: {}", cal.name, e),
+            }
+        }
+    }
+
+    // Sort by start time
+    all_events.sort_by(|a, b| a.start.cmp(&b.start));
+    Ok(all_events)
+}
+
+/// Send events for a month, updating day vertices to show event counts
+async fn send_events_for_month<W>(
+    identity: &str,
+    write: &mut W,
+    action_id: u64,
+    year: i32,
+    month: u32,
+    events: &[crate::nextcloud::CalendarEvent],
+) -> Result<()>
+where
+    W: SinkExt<Message> + Unpin,
+    W::Error: std::fmt::Debug,
+{
+    use std::collections::HashMap;
+
+    // Group events by day
+    let mut events_by_day: HashMap<u32, Vec<&crate::nextcloud::CalendarEvent>> = HashMap::new();
+    for event in events {
+        let event_day = event.start.day();
+        // Only include if the event is in this month
+        if event.start.month() == month {
+            events_by_day.entry(event_day).or_default().push(event);
+        }
+    }
+
+    log::info!("Found events on {} days for {}-{:02}", events_by_day.len(), year, month);
+
+    // Update day vertices that have events
+    let month_id = month_hash(identity, year, month);
+    let num_days = days_in_month(year, month);
+
+    for (&day, day_events) in &events_by_day {
+        let day_id = day_hash(identity, year, month, day);
+        let date = NaiveDate::from_ymd_opt(year, month, day);
+        let weekday = date.map(|d| d.weekday().to_string()).unwrap_or_default();
+
+        let label = format!("{} {} ({} events)", weekday, day, day_events.len());
+        let day_msg = encode_set_vertex_label(action_id, day_id, "text/plain", label.as_bytes());
+        write.send(Message::Binary(day_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+
+        // Day edges: west/east to neighboring days, north to month, down to first event
+        let west = if day > 1 { day_hash(identity, year, month, day - 1) } else { 0 };
+        let east = if day < num_days { day_hash(identity, year, month, day + 1) } else { 0 };
+        let north = if day == 1 { month_id } else { 0 };
+        let down = event_hash(&day_events[0].uid);
+
+        let day_edges = encode_set_edges(action_id, day_id, west, east, north, 0, 0, down, 0);
+        write.send(Message::Binary(day_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+
+        // Send event vertices
+        for (i, event) in day_events.iter().enumerate() {
+            let event_id = event_hash(&event.uid);
+
+            // Format event
+            let time_str = if event.all_day {
+                "All day".to_string()
+            } else {
+                let end_str = event.end.map(|e| format!("-{}", e.format("%H:%M"))).unwrap_or_default();
+                format!("{}{}", event.start.format("%H:%M"), end_str)
+            };
+
+            let mut event_label = format!("{}: {}", time_str, event.summary);
+            if let Some(ref location) = event.location {
+                if !location.is_empty() {
+                    event_label.push_str(&format!("\n📍 {}", location));
+                }
+            }
+
+            let event_msg = encode_set_vertex_label(action_id, event_id, "text/plain", event_label.as_bytes());
+            write.send(Message::Binary(event_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+
+            // Event edges: up to day (or previous event), down to next event
+            let up = if i == 0 {
+                day_id
+            } else {
+                event_hash(&day_events[i - 1].uid)
+            };
+            let down = if i + 1 < day_events.len() {
+                event_hash(&day_events[i + 1].uid)
+            } else {
+                0
+            };
+
+            let event_edges = encode_set_edges(action_id, event_id, 0, 0, 0, 0, up, down, 0);
+            write.send(Message::Binary(event_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+        }
+    }
+
+    Ok(())
 }
 
 fn days_in_month(year: i32, month: u32) -> u32 {
