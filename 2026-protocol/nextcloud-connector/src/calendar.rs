@@ -1,7 +1,14 @@
-//! Calendar module - CalDAV integration with year/month/day hierarchy
+//! Calendar module - CalDAV integration with grid-based calendar layout
+//!
+//! Calendar structure:
+//! - Root → Years (west/east)
+//! - Year → Months (south, west/east between months)
+//! - Month → Days in grid (west/east = days in week, north/south = weeks)
+//!
+//! The grid uses Monday as the first day of the week.
 
 use anyhow::Result;
-use chrono::{Datelike, Local, NaiveDate};
+use chrono::{Datelike, Local, NaiveDate, Weekday};
 use futures_util::SinkExt;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -35,6 +42,71 @@ fn event_hash(event_uid: &str) -> u64 {
     let mut hasher = DefaultHasher::new();
     format!("event:{}", event_uid).hash(&mut hasher);
     hasher.finish()
+}
+
+/// Get the weekday index (0=Monday, 6=Sunday)
+fn weekday_index(date: NaiveDate) -> u32 {
+    date.weekday().num_days_from_monday()
+}
+
+/// Calculate grid edges for a day in the calendar grid
+/// Returns (west, east, north, south) vertex IDs
+/// Grid layout: Monday=leftmost, Sunday=rightmost, weeks go north to south
+fn calc_day_grid_edges(identity: &str, date: NaiveDate) -> (u64, u64, u64, u64) {
+    let year = date.year();
+    let month = date.month();
+    let day = date.day();
+    let dow = weekday_index(date); // 0=Mon, 6=Sun
+
+    // West: previous day if not Monday, else 0
+    let west = if dow > 0 {
+        // Previous day (might be in previous month)
+        if let Some(prev) = date.pred_opt() {
+            day_hash(identity, prev.year(), prev.month(), prev.day())
+        } else {
+            0
+        }
+    } else {
+        0 // Monday has no west neighbor
+    };
+
+    // East: next day if not Sunday, else 0
+    let east = if dow < 6 {
+        // Next day (might be in next month)
+        if let Some(next) = date.succ_opt() {
+            day_hash(identity, next.year(), next.month(), next.day())
+        } else {
+            0
+        }
+    } else {
+        0 // Sunday has no east neighbor
+    };
+
+    // North: same weekday in previous week (7 days earlier)
+    let north = if let Some(prev_week) = date.checked_sub_signed(chrono::Duration::days(7)) {
+        // Only connect if still in the same month or it's the first week
+        if prev_week.month() == month || day <= 7 {
+            day_hash(identity, prev_week.year(), prev_week.month(), prev_week.day())
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    // South: same weekday in next week (7 days later)
+    let south = if let Some(next_week) = date.checked_add_signed(chrono::Duration::days(7)) {
+        // Only connect if still in the same month
+        if next_week.month() == month {
+            day_hash(identity, next_week.year(), next_week.month(), next_week.day())
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    (west, east, north, south)
 }
 
 /// Parse calendar path to determine what to show
@@ -172,41 +244,82 @@ where
         let year_edges = encode_set_edges(action_id, year_id, west, east, north, south, 0, 0, 0);
         write.send(Message::Binary(year_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-        // Send month vertices with days
+        // Send month vertices with days in grid layout
         for month in 1u32..=12 {
             let month_id = month_hash(identity, year, month);
             let month_label = month_names[(month - 1) as usize];
             let month_msg = encode_set_vertex_label(action_id, month_id, "text/plain", month_label.as_bytes());
             write.send(Message::Binary(month_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-            // Month edges: west/east to neighboring months, north to year, south to day 1
+            // Find the first day of the month and which Monday starts that week
+            let first_day = NaiveDate::from_ymd_opt(year, month, 1).unwrap();
+            let first_dow = weekday_index(first_day);
+
+            // Month connects south to the Monday of the first week
+            let first_monday = if first_dow == 0 {
+                first_day
+            } else {
+                first_day.checked_sub_signed(chrono::Duration::days(first_dow as i64)).unwrap()
+            };
+
+            // Month edges: west/east to neighboring months, north to year, south to first Monday
             let m_west = if month > 1 { month_hash(identity, year, month - 1) } else { 0 };
             let m_east = if month < 12 { month_hash(identity, year, month + 1) } else { 0 };
             let m_north = if month == 1 { year_id } else { 0 };
-            let m_south = day_hash(identity, year, month, 1);
+            let m_south = day_hash(identity, first_monday.year(), first_monday.month(), first_monday.day());
 
             let month_edges = encode_set_edges(action_id, month_id, m_west, m_east, m_north, m_south, 0, 0, 0);
             write.send(Message::Binary(month_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-            // Send day vertices for this month
+            // Send day vertices for this month in grid layout
             let num_days = days_in_month(year, month);
-            for day in 1u32..=num_days {
-                let day_id = day_hash(identity, year, month, day);
-                let date = NaiveDate::from_ymd_opt(year, month, day);
-                let weekday = date.map(|d| d.weekday().to_string()).unwrap_or_default();
-                let day_label = format!("{} {}", weekday, day);
+            let last_day = NaiveDate::from_ymd_opt(year, month, num_days).unwrap();
+            let last_dow = weekday_index(last_day);
+
+            let grid_start = first_monday;
+            let grid_end = if last_dow == 6 {
+                last_day
+            } else {
+                last_day.checked_add_signed(chrono::Duration::days((6 - last_dow) as i64)).unwrap()
+            };
+
+            let mut current = grid_start;
+            while current <= grid_end {
+                let day_id = day_hash(identity, current.year(), current.month(), current.day());
+                let is_current_month = current.month() == month && current.year() == year;
+
+                let weekday_short = match current.weekday() {
+                    Weekday::Mon => "Mon",
+                    Weekday::Tue => "Tue",
+                    Weekday::Wed => "Wed",
+                    Weekday::Thu => "Thu",
+                    Weekday::Fri => "Fri",
+                    Weekday::Sat => "Sat",
+                    Weekday::Sun => "Sun",
+                };
+                let day_label = if is_current_month {
+                    format!("{} {}", weekday_short, current.day())
+                } else {
+                    format!("({} {})", weekday_short, current.day())
+                };
 
                 let day_msg = encode_set_vertex_label(action_id, day_id, "text/plain", day_label.as_bytes());
                 write.send(Message::Binary(day_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-                // Day edges: west/east to neighboring days, north to month
-                let d_west = if day > 1 { day_hash(identity, year, month, day - 1) } else { 0 };
-                let d_east = if day < num_days { day_hash(identity, year, month, day + 1) } else { 0 };
-                let d_north = if day == 1 { month_id } else { 0 };
+                // Calculate grid edges
+                let (d_west, d_east, d_north, d_south) = calc_day_grid_edges(identity, current);
 
-                // No events in initial load (they'll be fetched when navigating to specific day/month)
-                let day_edges = encode_set_edges(action_id, day_id, d_west, d_east, d_north, 0, 0, 0, 0);
+                // Special case: first Monday connects north to month
+                let d_north = if current == first_monday {
+                    month_id
+                } else {
+                    d_north
+                };
+
+                let day_edges = encode_set_edges(action_id, day_id, d_west, d_east, d_north, d_south, 0, 0, 0);
                 write.send(Message::Binary(day_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+
+                current = current.succ_opt().unwrap();
             }
         }
     }
@@ -258,40 +371,89 @@ where
     let year_edges = encode_set_edges(action_id, year_id, prev_year_id, next_year_id, 0, jan_id, 0, 0, 0);
     write.send(Message::Binary(year_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-    // Send month vertices with days
+    // Send month vertices with days in grid layout
     for month in 1u32..=12 {
         let month_id = month_hash(identity, year, month);
         let label = month_names[(month - 1) as usize];
         let month_msg = encode_set_vertex_label(action_id, month_id, "text/plain", label.as_bytes());
         write.send(Message::Binary(month_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-        // Month edges: west/east to neighboring months, north to year, south to day 1
+        // Find the first day of the month and which Monday starts that week
+        let first_day = NaiveDate::from_ymd_opt(year, month, 1).unwrap();
+        let first_dow = weekday_index(first_day); // 0=Mon, 6=Sun
+
+        // Month connects south to the Monday of the first week
+        // If the month doesn't start on Monday, we need to find that Monday
+        let first_monday = if first_dow == 0 {
+            first_day
+        } else {
+            // Go back to Monday of this week
+            first_day.checked_sub_signed(chrono::Duration::days(first_dow as i64)).unwrap()
+        };
+
+        // Month edges: west/east to neighboring months, north to year, south to first Monday
         let west = if month > 1 { month_hash(identity, year, month - 1) } else { 0 };
         let east = if month < 12 { month_hash(identity, year, month + 1) } else { 0 };
         let north = if month == 1 { year_id } else { 0 };
-        let south = day_hash(identity, year, month, 1);
+        let south = day_hash(identity, first_monday.year(), first_monday.month(), first_monday.day());
 
         let month_edges = encode_set_edges(action_id, month_id, west, east, north, south, 0, 0, 0);
         write.send(Message::Binary(month_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-        // Send day vertices for this month
+        // Send day vertices for this month in grid layout
+        // Also include padding days from adjacent months to complete the weeks
         let num_days = days_in_month(year, month);
-        for day in 1u32..=num_days {
-            let day_id = day_hash(identity, year, month, day);
-            let date = NaiveDate::from_ymd_opt(year, month, day);
-            let weekday = date.map(|d| d.weekday().to_string()).unwrap_or_default();
-            let day_label = format!("{} {}", weekday, day);
+        let last_day = NaiveDate::from_ymd_opt(year, month, num_days).unwrap();
+        let last_dow = weekday_index(last_day);
+
+        // Calculate the range of days to send (including padding)
+        let grid_start = first_monday;
+        let grid_end = if last_dow == 6 {
+            last_day // Already ends on Sunday
+        } else {
+            // Extend to Sunday
+            last_day.checked_add_signed(chrono::Duration::days((6 - last_dow) as i64)).unwrap()
+        };
+
+        // Send all days in the grid
+        let mut current = grid_start;
+        while current <= grid_end {
+            let day_id = day_hash(identity, current.year(), current.month(), current.day());
+            let is_current_month = current.month() == month && current.year() == year;
+
+            // Format: "Mon 5" or "(Mon 5)" for days outside current month
+            let weekday_short = match current.weekday() {
+                Weekday::Mon => "Mon",
+                Weekday::Tue => "Tue",
+                Weekday::Wed => "Wed",
+                Weekday::Thu => "Thu",
+                Weekday::Fri => "Fri",
+                Weekday::Sat => "Sat",
+                Weekday::Sun => "Sun",
+            };
+            let day_label = if is_current_month {
+                format!("{} {}", weekday_short, current.day())
+            } else {
+                format!("({} {})", weekday_short, current.day())
+            };
 
             let day_msg = encode_set_vertex_label(action_id, day_id, "text/plain", day_label.as_bytes());
             write.send(Message::Binary(day_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-            // Day edges: west/east to neighboring days, north to month
-            let d_west = if day > 1 { day_hash(identity, year, month, day - 1) } else { 0 };
-            let d_east = if day < num_days { day_hash(identity, year, month, day + 1) } else { 0 };
-            let d_north = if day == 1 { month_id } else { 0 };
+            // Calculate grid edges
+            let (d_west, d_east, d_north, d_south) = calc_day_grid_edges(identity, current);
 
-            let day_edges = encode_set_edges(action_id, day_id, d_west, d_east, d_north, 0, 0, 0, 0);
+            // Special case: first Monday connects north to month
+            let d_north = if current == first_monday {
+                month_id
+            } else {
+                d_north
+            };
+
+            let day_edges = encode_set_edges(action_id, day_id, d_west, d_east, d_north, d_south, 0, 0, 0);
             write.send(Message::Binary(day_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+
+            current = current.succ_opt().unwrap();
         }
     }
 
@@ -489,28 +651,34 @@ where
 
     // Send day vertex
     let day_id = day_hash(identity, year, month, day);
-    let date = NaiveDate::from_ymd_opt(year, month, day);
-    let weekday = date.map(|d| d.weekday().to_string()).unwrap_or_default();
+    let date = NaiveDate::from_ymd_opt(year, month, day).unwrap();
+
+    let weekday_short = match date.weekday() {
+        Weekday::Mon => "Mon",
+        Weekday::Tue => "Tue",
+        Weekday::Wed => "Wed",
+        Weekday::Thu => "Thu",
+        Weekday::Fri => "Fri",
+        Weekday::Sat => "Sat",
+        Weekday::Sun => "Sun",
+    };
 
     let label = if events.is_empty() {
-        format!("{} {} {}, {}", weekday, month_name(month), day, year)
+        format!("{} {} {}, {}", weekday_short, month_name(month), day, year)
     } else {
-        format!("{} {} {}, {} ({} events)", weekday, month_name(month), day, year, events.len())
+        format!("{} {} {}, {} ({} events)", weekday_short, month_name(month), day, year, events.len())
     };
 
     let day_msg = encode_set_vertex_label(action_id, day_id, "text/plain", label.as_bytes());
     write.send(Message::Binary(day_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-    // Day edges
-    let num_days = days_in_month(year, month);
-    let west = if day > 1 { day_hash(identity, year, month, day - 1) } else { 0 };
-    let east = if day < num_days { day_hash(identity, year, month, day + 1) } else { 0 };
-    let north = month_hash(identity, year, month);
+    // Day edges using grid layout
+    let (west, east, north, south) = calc_day_grid_edges(identity, date);
 
     // Connect first event via down edge
     let down = events.first().map(|e| event_hash(&e.uid)).unwrap_or(0);
 
-    let day_edges = encode_set_edges(action_id, day_id, west, east, north, 0, 0, down, 0);
+    let day_edges = encode_set_edges(action_id, day_id, west, east, north, south, 0, down, 0);
     write.send(Message::Binary(day_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
     // Send event vertices
@@ -647,25 +815,31 @@ where
     log::info!("Found events on {} days for {}-{:02}", events_by_day.len(), year, month);
 
     // Update day vertices that have events
-    let month_id = month_hash(identity, year, month);
-    let num_days = days_in_month(year, month);
-
     for (&day, day_events) in &events_by_day {
         let day_id = day_hash(identity, year, month, day);
-        let date = NaiveDate::from_ymd_opt(year, month, day);
-        let weekday = date.map(|d| d.weekday().to_string()).unwrap_or_default();
+        let date = NaiveDate::from_ymd_opt(year, month, day).unwrap();
 
-        let label = format!("{} {} ({} events)", weekday, day, day_events.len());
+        let weekday_short = match date.weekday() {
+            Weekday::Mon => "Mon",
+            Weekday::Tue => "Tue",
+            Weekday::Wed => "Wed",
+            Weekday::Thu => "Thu",
+            Weekday::Fri => "Fri",
+            Weekday::Sat => "Sat",
+            Weekday::Sun => "Sun",
+        };
+
+        let label = format!("{} {} ({} events)", weekday_short, day, day_events.len());
         let day_msg = encode_set_vertex_label(action_id, day_id, "text/plain", label.as_bytes());
         write.send(Message::Binary(day_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-        // Day edges: west/east to neighboring days, north to month, down to first event
-        let west = if day > 1 { day_hash(identity, year, month, day - 1) } else { 0 };
-        let east = if day < num_days { day_hash(identity, year, month, day + 1) } else { 0 };
-        let north = if day == 1 { month_id } else { 0 };
+        // Use grid edges for this day
+        let (west, east, north, south) = calc_day_grid_edges(identity, date);
+
+        // Connect down to first event
         let down = event_hash(&day_events[0].uid);
 
-        let day_edges = encode_set_edges(action_id, day_id, west, east, north, 0, 0, down, 0);
+        let day_edges = encode_set_edges(action_id, day_id, west, east, north, south, 0, down, 0);
         write.send(Message::Binary(day_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
         // Send event vertices
