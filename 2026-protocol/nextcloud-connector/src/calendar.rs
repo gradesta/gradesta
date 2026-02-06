@@ -2,10 +2,10 @@
 //!
 //! Calendar structure:
 //! - Root → Current Year (south)
-//! - Years: north/south to neighboring years, east to January
-//! - Months: north/south to neighboring months, west to year (for Jan), east to 1st of month
-//! - Days in grid: west/east = days in week, north/south = same weekday in adjacent weeks
-//!   - First day of month connects west back to month
+//! - Years: west to home portal, north/south to neighboring years, east to January
+//! - Months: north/south to neighboring months, west to year (for Jan), east to first Monday
+//! - Days in grid: west/east = days in week, north/south = same weekday (across months)
+//!   - First Monday of month's week connects west back to month
 //!
 //! The grid uses Monday as the first day of the week (leftmost column).
 
@@ -25,6 +25,20 @@ use crate::protocol::*;
 fn calendar_hash(identity: &str, name: &str) -> u64 {
     let mut hasher = DefaultHasher::new();
     format!("calendar:{}:{}", identity, name).hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Generate hash for router portal (matches router.rs)
+fn router_portal_hash(identity: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    format!("router:{}:calendar-portal", identity).hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Generate hash for main router (matches router.rs)
+fn router_main_hash(identity: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    format!("router:{}:main", identity).hash(&mut hasher);
     hasher.finish()
 }
 
@@ -54,10 +68,10 @@ fn weekday_index(date: NaiveDate) -> u32 {
 /// Calculate grid edges for a day in the calendar grid
 /// Returns (west, east, north, south) vertex IDs
 /// Grid layout: Monday=leftmost, Sunday=rightmost, weeks go north to south
+/// Vertical connections span across month boundaries for continuity
 fn calc_day_grid_edges(identity: &str, date: NaiveDate) -> (u64, u64, u64, u64) {
-    let year = date.year();
-    let month = date.month();
-    let day = date.day();
+    let _year = date.year();
+    let _month = date.month();
     let dow = weekday_index(date); // 0=Mon, 6=Sun
 
     // West: previous day if not Monday, else 0
@@ -85,25 +99,17 @@ fn calc_day_grid_edges(identity: &str, date: NaiveDate) -> (u64, u64, u64, u64) 
     };
 
     // North: same weekday in previous week (7 days earlier)
+    // Always connect across month boundaries for vertical continuity
     let north = if let Some(prev_week) = date.checked_sub_signed(chrono::Duration::days(7)) {
-        // Only connect if still in the same month or it's the first week
-        if prev_week.month() == month || day <= 7 {
-            day_hash(identity, prev_week.year(), prev_week.month(), prev_week.day())
-        } else {
-            0
-        }
+        day_hash(identity, prev_week.year(), prev_week.month(), prev_week.day())
     } else {
         0
     };
 
     // South: same weekday in next week (7 days later)
+    // Always connect across month boundaries for vertical continuity
     let south = if let Some(next_week) = date.checked_add_signed(chrono::Duration::days(7)) {
-        // Only connect if still in the same month
-        if next_week.month() == month {
-            day_hash(identity, next_week.year(), next_week.month(), next_week.day())
-        } else {
-            0
-        }
+        day_hash(identity, next_week.year(), next_week.month(), next_week.day())
     } else {
         0
     };
@@ -230,6 +236,18 @@ where
     let root_edges = encode_set_edges(action_id, root_id, 0, 0, 0, current_year_id, 0, 0, 0);
     write.send(Message::Binary(root_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
+    // Router portal vertex - allows navigation back to home screen
+    // This portal is shared with router.rs, so we need to send its label and edges
+    let portal_id = router_portal_hash(identity);
+    let router_id = router_main_hash(identity);
+    let portal_msg = encode_set_vertex_label(action_id, portal_id, "text/plain", b"Calendar");
+    write.send(Message::Binary(portal_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+
+    // Portal edges: north to main router, south to first (earliest) year (vertical layout)
+    let first_year_id = year_hash(identity, years[0]);
+    let portal_edges = encode_set_edges(action_id, portal_id, 0, 0, router_id, first_year_id, 0, 0, 0);
+    write.send(Message::Binary(portal_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+
     // Send year, month, and day vertices
     // Years are arranged vertically: north = previous year, south = next year
     for (i, &year) in years.iter().enumerate() {
@@ -238,14 +256,15 @@ where
         let year_msg = encode_set_vertex_label(action_id, year_id, "text/plain", label.as_bytes());
         write.send(Message::Binary(year_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-        // Year edges: north/south to neighboring years, east to January
-        // North = previous year (or root for current year), South = next year
+        // Year edges: north/south to neighboring years or portal, east to January
+        // North = previous year, or portal for topmost year
+        // South = next year
+        let portal_id = router_portal_hash(identity);
         let north = if i > 0 {
             year_hash(identity, years[i - 1])
-        } else if year == current_year {
-            root_id
         } else {
-            0
+            // Topmost year connects north to portal
+            portal_id
         };
         let south = if i < years.len() - 1 { year_hash(identity, years[i + 1]) } else { 0 };
         let east = month_hash(identity, year, 1); // January is east of year
@@ -272,11 +291,11 @@ where
                 first_day.checked_sub_signed(chrono::Duration::days(first_dow as i64)).unwrap()
             };
 
-            // Month edges: north/south to neighboring months, west to year (for Jan), east to FIRST DAY of month
+            // Month edges: north/south to neighboring months, west to year (for Jan), east to first Monday
             let m_north = if month > 1 { month_hash(identity, year, month - 1) } else { 0 };
             let m_south = if month < 12 { month_hash(identity, year, month + 1) } else { 0 };
             let m_west = if month == 1 { year_id } else { 0 }; // January connects west to year
-            let m_east = day_hash(identity, year, month, 1); // Connect to first day of month
+            let m_east = day_hash(identity, first_monday.year(), first_monday.month(), first_monday.day());
 
             let month_edges = encode_set_edges(action_id, month_id, m_west, m_east, m_north, m_south, 0, 0, 0);
             write.send(Message::Binary(month_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
@@ -319,8 +338,8 @@ where
                 // Calculate grid edges
                 let (d_west, d_east, d_north, d_south) = calc_day_grid_edges(identity, current);
 
-                // Special case: first day of month connects west to month
-                let d_west = if current == first_day {
+                // Special case: first Monday connects west to month
+                let d_west = if current == first_monday {
                     month_id
                 } else {
                     d_west
@@ -401,11 +420,11 @@ where
             first_day.checked_sub_signed(chrono::Duration::days(first_dow as i64)).unwrap()
         };
 
-        // Month edges: north/south to neighboring months, west to year (for Jan), east to FIRST DAY of month
+        // Month edges: north/south to neighboring months, west to year (for Jan), east to first Monday
         let m_north = if month > 1 { month_hash(identity, year, month - 1) } else { 0 };
         let m_south = if month < 12 { month_hash(identity, year, month + 1) } else { 0 };
         let m_west = if month == 1 { year_id } else { 0 }; // January connects west to year
-        let m_east = day_hash(identity, year, month, 1); // Connect to first day of month
+        let m_east = day_hash(identity, first_monday.year(), first_monday.month(), first_monday.day());
 
         let month_edges = encode_set_edges(action_id, month_id, m_west, m_east, m_north, m_south, 0, 0, 0);
         write.send(Message::Binary(month_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
@@ -453,8 +472,8 @@ where
             // Calculate grid edges
             let (d_west, d_east, d_north, d_south) = calc_day_grid_edges(identity, current);
 
-            // Special case: first day of month connects west to month
-            let d_west = if current == first_day {
+            // Special case: first Monday connects west to month
+            let d_west = if current == first_monday {
                 month_id
             } else {
                 d_west
@@ -797,7 +816,7 @@ async fn fetch_month_events(
     Ok(all_events)
 }
 
-/// Send events for a month, updating day vertices to show event counts
+/// Send events for a month, updating day vertices to show event summaries
 async fn send_events_for_month<W>(
     identity: &str,
     write: &mut W,
@@ -839,7 +858,31 @@ where
             Weekday::Sun => "Sun",
         };
 
-        let label = format!("{} {} ({} events)", weekday_short, day, day_events.len());
+        // Build label with day info and first 2 event summaries
+        let mut label = format!("{} {}", weekday_short, day);
+
+        // Add first 2 events as summary
+        for event in day_events.iter().take(2) {
+            let time_str = if event.all_day {
+                "".to_string()
+            } else {
+                format!("{} ", event.start.format("%H:%M"))
+            };
+            // Truncate summary if too long
+            let summary: String = event.summary.chars().take(20).collect();
+            let summary = if event.summary.len() > 20 {
+                format!("{}...", summary)
+            } else {
+                summary
+            };
+            label.push_str(&format!("\n{}{}", time_str, summary));
+        }
+
+        // If there are more events, indicate how many more
+        if day_events.len() > 2 {
+            label.push_str(&format!("\n+{} more", day_events.len() - 2));
+        }
+
         let day_msg = encode_set_vertex_label(action_id, day_id, "text/plain", label.as_bytes());
         write.send(Message::Binary(day_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 

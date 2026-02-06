@@ -40,8 +40,8 @@ where
     let router_msg = encode_set_vertex_label(action_id, router_id, "text/plain", router_label.as_bytes());
     write.send(Message::Binary(router_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-    // Router edges: west → notes portal, east → calendar portal
-    let router_edges = encode_set_edges(action_id, router_id, notes_portal_id, calendar_portal_id, 0, 0, 0, 0, 0);
+    // Router edges: north → notes portal, south → calendar portal (vertical layout)
+    let router_edges = encode_set_edges(action_id, router_id, 0, 0, notes_portal_id, calendar_portal_id, 0, 0, 0);
     write.send(Message::Binary(router_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
     // Notes portal - a link to the notes landmark
@@ -49,8 +49,8 @@ where
     let notes_msg = encode_set_vertex_label(action_id, notes_portal_id, "text/gradesta-url", notes_url.as_bytes());
     write.send(Message::Binary(notes_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-    // Notes portal edges: east → router
-    let notes_edges = encode_set_edges(action_id, notes_portal_id, 0, router_id, 0, 0, 0, 0, 0);
+    // Notes portal edges: south → router
+    let notes_edges = encode_set_edges(action_id, notes_portal_id, 0, 0, 0, router_id, 0, 0, 0);
     write.send(Message::Binary(notes_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
     // Calendar portal - a link to the calendar landmark
@@ -58,8 +58,8 @@ where
     let calendar_msg = encode_set_vertex_label(action_id, calendar_portal_id, "text/gradesta-url", calendar_url.as_bytes());
     write.send(Message::Binary(calendar_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-    // Calendar portal edges: west → router
-    let calendar_edges = encode_set_edges(action_id, calendar_portal_id, router_id, 0, 0, 0, 0, 0, 0);
+    // Calendar portal edges: north → router
+    let calendar_edges = encode_set_edges(action_id, calendar_portal_id, 0, 0, router_id, 0, 0, 0, 0);
     write.send(Message::Binary(calendar_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
     log::info!("Sent router with notes and calendar portals (action={})", action_id);
