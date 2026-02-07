@@ -12,6 +12,7 @@ mod storage;
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
@@ -57,6 +58,10 @@ struct State {
     index: Option<NotesIndex>,
     /// Server-generated action IDs (count UP from 1)
     next_action_id: u64,
+    /// Mapping from file entry vertex IDs to file paths (for click handling)
+    file_entries: HashMap<u64, String>,
+    /// Thumbnail cache: path -> (data, mime_type)
+    thumbnail_cache: HashMap<String, (Vec<u8>, String)>,
 }
 
 impl Default for State {
@@ -70,6 +75,8 @@ impl Default for State {
             poll_token: None,
             index: None,
             next_action_id: 1,
+            file_entries: HashMap::new(),
+            thumbnail_cache: HashMap::new(),
         }
     }
 }
@@ -1117,6 +1124,9 @@ where
     Ok(())
 }
 
+/// Max file size to fetch content (10 MB)
+const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
+
 /// Handle click on a vertex (toggle, action, etc.)
 async fn handle_click_vertex<W>(
     data: &[u8],
@@ -1130,10 +1140,39 @@ where
     let (action_id, vertex_id) = parse_click_vertex(data)?;
     log::info!("ClickVertex: action={}, vertex={}", action_id, vertex_id);
 
-    // For now, just acknowledge the click
-    // TODO: Implement calendar toggle when clicking on calendar cells
-    let msg = encode_log_message(action_id, 200, vertex_id, "Clicked");
-    write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+    // Check if this is a file entry click
+    let (file_path, nc) = {
+        let s = state.lock().await;
+        (
+            s.file_entries.get(&vertex_id).cloned(),
+            s.nextcloud.clone(),
+        )
+    };
+
+    if let Some(path) = file_path {
+        let nc = nc.ok_or_else(|| anyhow!("No Nextcloud client"))?;
+
+        log::info!("Loading full content for file: {}", path);
+
+        // Fetch full file content
+        match nc.download_with_type(&path, MAX_FILE_SIZE).await {
+            Ok((content, mime_type)) => {
+                log::info!("Loaded full content for {} ({} bytes, {})", path, content.len(), mime_type);
+                // Send full content on layer 2, replacing thumbnail
+                let msg = encode_set_vertex_label_layer(action_id, vertex_id, 2, &mime_type, &content);
+                write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            }
+            Err(err) => {
+                log::error!("Failed to load {}: {}", path, err);
+                let msg = encode_log_message(action_id, 500, vertex_id, &format!("Failed to load: {}", err));
+                write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            }
+        }
+    } else {
+        // Not a file entry - just acknowledge
+        let msg = encode_log_message(action_id, 200, vertex_id, "Clicked");
+        write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+    }
 
     Ok(())
 }

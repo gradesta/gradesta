@@ -184,6 +184,52 @@ where
         let url_msg = encode_set_vertex_label_layer(action_id, e.entry_id, 1, "text/gradesta-url", e.content_url.as_bytes());
         write.send(Message::Binary(url_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
+        // For files, fetch and send thumbnail on layer 2
+        if !e.is_dir {
+            // Track file entry for click handling
+            {
+                let mut s = state.lock().await;
+                s.file_entries.insert(e.entry_id, e.path.clone());
+            }
+
+            // Check thumbnail cache first
+            let cached = {
+                let s = state.lock().await;
+                s.thumbnail_cache.get(&e.path).cloned()
+            };
+
+            let thumb_result = if let Some((data, mime)) = cached {
+                log::debug!("Using cached thumbnail for {}", e.name);
+                Some((data, mime))
+            } else {
+                // Fetch thumbnail (256x256 is a good size for previews)
+                match nc.get_thumbnail(&e.path, 256, 256).await {
+                    Ok(Some((thumb_data, thumb_mime))) => {
+                        log::debug!("Got thumbnail for {} ({} bytes)", e.name, thumb_data.len());
+                        // Cache it
+                        {
+                            let mut s = state.lock().await;
+                            s.thumbnail_cache.insert(e.path.clone(), (thumb_data.clone(), thumb_mime.clone()));
+                        }
+                        Some((thumb_data, thumb_mime))
+                    }
+                    Ok(None) => {
+                        log::debug!("No thumbnail available for {}", e.name);
+                        None
+                    }
+                    Err(err) => {
+                        log::debug!("Failed to get thumbnail for {}: {}", e.name, err);
+                        None
+                    }
+                }
+            };
+
+            if let Some((thumb_data, thumb_mime)) = thumb_result {
+                let thumb_msg = encode_set_vertex_label_layer(action_id, e.entry_id, 2, &thumb_mime, &thumb_data);
+                write.send(Message::Binary(thumb_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            }
+        }
+
         // Entry edges
         // First entry: west goes back to parent (files portal or parent entry)
         let west = if i == 0 {

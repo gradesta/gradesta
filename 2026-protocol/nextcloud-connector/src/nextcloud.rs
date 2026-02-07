@@ -137,6 +137,40 @@ impl NextcloudClient {
         Ok((content, content_type))
     }
 
+    /// Fetch thumbnail for a file from Nextcloud preview API
+    /// Returns None if no preview is available (404)
+    pub async fn get_thumbnail(&self, path: &str, width: u32, height: u32) -> Result<Option<(Vec<u8>, String)>> {
+        let url = format!(
+            "{}/index.php/apps/files/api/v1/thumbnail/{}/{}/{}",
+            self.url, width, height, path.trim_start_matches('/')
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .basic_auth(&self.username, Some(&self.password))
+            .send()
+            .await
+            .context("Thumbnail fetch failed")?;
+
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None); // No preview available
+        }
+
+        if !response.status().is_success() {
+            return Err(anyhow!("Thumbnail fetch failed: {}", response.status()));
+        }
+
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("image/png")
+            .to_string();
+
+        Ok(Some((response.bytes().await?.to_vec(), content_type)))
+    }
+
     /// Create a directory via WebDAV MKCOL
     pub async fn mkdir(&self, path: &str) -> Result<()> {
         let url = self.webdav_url(path);

@@ -3724,6 +3724,7 @@ fn ingest_server_events(
     rx: Res<NetRx>,
     net_tx: Res<NetEventsTx>,
     mut ws_cmd_tx: ResMut<WsCommandTx>,
+    mut media_cache: ResMut<MediaCache>,
 ) {
     while let Ok(event) = rx.0.try_recv() {
         match event {
@@ -3769,6 +3770,13 @@ fn ingest_server_events(
             ServerEvent::SetVertexLabel { vertex_id, layer, mime, data } => {
                 let entry = graph.vertices.entry(vertex_id).or_default();
                 entry.id = vertex_id;
+
+                // Invalidate cached texture/media when content changes
+                // This ensures updated images (e.g., full content replacing thumbnail) are re-loaded
+                if mime.starts_with("image/") || crate::is_image_data(&data) {
+                    media_cache.textures.remove(&vertex_id);
+                    media_cache.animated_gifs.remove(&vertex_id);
+                }
 
                 // Store in appropriate layer
                 if layer == 0 {
