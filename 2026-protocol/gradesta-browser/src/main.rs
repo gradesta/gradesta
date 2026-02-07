@@ -226,6 +226,8 @@ struct AppState {
     skip_autoplay_vertex: Option<u64>,
     // Last navigation direction (used to determine where new vertices are created)
     last_nav_direction: usize,
+    // Focus URL bar on next frame (to avoid 'l' being typed when pressing Ctrl+L)
+    focus_url_bar_next_frame: bool,
 }
 
 /// Pending vertex creation data - waiting for server acknowledgment
@@ -316,6 +318,7 @@ impl Default for AppState {
             pending_creations: HashMap::new(),
             skip_autoplay_vertex: None,
             last_nav_direction: EDGE_SOUTH, // Default to south
+            focus_url_bar_next_frame: false,
         }
     }
 }
@@ -733,10 +736,16 @@ fn ui_system(
     // Handle modal keyboard shortcuts and zoom
     let url_bar_id = egui::Id::new("url_bar");
 
-    // Check for Ctrl+L outside the input closure to avoid deadlock
-    // Use consume_key to prevent the 'l' from being typed into the URL bar
-    let focus_url_bar = ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::L));
-    if focus_url_bar {
+    // Track Ctrl+L state - focus URL bar when Ctrl+L is released
+    let ctrl_held = ctx.input(|i| i.modifiers.ctrl);
+    let l_held = ctx.input(|i| i.key_down(egui::Key::L));
+
+    if ctrl_held && l_held {
+        // Ctrl+L is being held - mark that we want to focus
+        app_state.focus_url_bar_next_frame = true;
+    } else if app_state.focus_url_bar_next_frame && !l_held {
+        // L was released - now focus the URL bar
+        app_state.focus_url_bar_next_frame = false;
         ctx.memory_mut(|mem| mem.request_focus(url_bar_id));
     }
 
@@ -1040,9 +1049,12 @@ fn ui_system(
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             ui.label("URL:");
+            // Lock keyboard input while Ctrl+L is being pressed to prevent 'l' from being typed
+            let lock_input = app_state.focus_url_bar_next_frame;
             let text_edit = egui::TextEdit::singleline(&mut app_state.url_input)
                 .id(url_bar_id)
                 .desired_width(600.0)
+                .lock_focus(lock_input)
                 .hint_text("ws://localhost:8080/ws?landmark=/home/");
             let response = ui.add(text_edit);
 
