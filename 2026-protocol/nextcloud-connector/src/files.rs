@@ -94,8 +94,8 @@ where
 
     let mut entries: Vec<Entry> = Vec::new();
 
-    // Add ".." entry for non-root directories
-    if !is_root {
+    // Add folder name entry for non-root directories (acts as header with west link to parent)
+    let parent_portal_id = if !is_root {
         let parent_path = {
             let trimmed = dir_path.trim_end_matches('/');
             match trimmed.rsplit_once('/') {
@@ -105,16 +105,21 @@ where
             }
         };
         let parent_url = format!("nextcloud://{}/files{}", identity, parent_path);
+        let folder_name = dir_path.rsplit('/').next().unwrap_or(&dir_path);
+        let portal_id = hash64(&["dirurl", &parent_url]);
         entries.push(Entry {
-            name: "..".to_string(),
-            path: parent_path,
+            name: format!("📁 {}", folder_name),
+            path: dir_path.clone(),
             size: 0,
             is_dir: true,
-            entry_id: hash64(&["entry", &identity, &dir_path, ".."]),
-            content_id: hash64(&["dirurl", &parent_url]),
+            entry_id: hash64(&["entry", &identity, &dir_path, "header"]),
+            content_id: portal_id,
             content_url: parent_url,
         });
-    }
+        Some(portal_id)
+    } else {
+        None
+    };
 
     // Add file/directory entries
     for file in &files {
@@ -188,9 +193,8 @@ where
                 // First entry of root directory: west goes to files portal (back to menu)
                 files_portal_hash(&identity)
             } else {
-                // First entry of subdirectory (which is ".."): west goes to its content portal
-                // This creates the navigation: .. → parent portal → parent entry
-                e.content_id
+                // First entry of subdirectory (folder header): west goes to parent portal
+                parent_portal_id.unwrap_or(0)
             }
         } else {
             0
