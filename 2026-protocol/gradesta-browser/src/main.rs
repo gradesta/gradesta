@@ -2946,8 +2946,20 @@ fn auto_expand_nearby_links(
     };
 
     // FIRST: If we're sitting on a portal, auto-follow it immediately
-    if current.mime.as_deref() == Some("text/gradesta-url") {
-        let landmark_url = String::from_utf8_lossy(&current.label).to_string();
+    // Check both layer 0 and layer 1 for gradesta-url (layer 1 allows showing text label while still being a portal)
+    let portal_url = if current.mime.as_deref() == Some("text/gradesta-url") {
+        Some(String::from_utf8_lossy(&current.label).to_string())
+    } else if let Some(layer1) = current.layers.get(&1) {
+        if layer1.mime == "text/gradesta-url" {
+            Some(String::from_utf8_lossy(&layer1.data).to_string())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if let Some(landmark_url) = portal_url {
 
         // Check if this landmark was already loaded by looking up vertices associated with it
         if let Some(vertices) = graph.landmark_vertices.get(&landmark_url) {
@@ -3049,9 +3061,20 @@ fn auto_expand_nearby_links(
     // Also check for portal vertices 2 steps away
     for vid in two_steps_away {
         if let Some(vertex) = graph.vertices.get(&vid) {
-            if vertex.mime.as_deref() == Some("text/gradesta-url") {
-                let landmark_url = String::from_utf8_lossy(&vertex.label).to_string();
+            // Check both layer 0 and layer 1 for gradesta-url
+            let landmark_url = if vertex.mime.as_deref() == Some("text/gradesta-url") {
+                Some(String::from_utf8_lossy(&vertex.label).to_string())
+            } else if let Some(layer1) = vertex.layers.get(&1) {
+                if layer1.mime == "text/gradesta-url" {
+                    Some(String::from_utf8_lossy(&layer1.data).to_string())
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
 
+            if let Some(landmark_url) = landmark_url {
                 // Skip if already requested
                 if app_state.requested_landmarks.contains(&landmark_url) {
                     continue;
