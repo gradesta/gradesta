@@ -94,8 +94,9 @@ where
 
     let mut entries: Vec<Entry> = Vec::new();
 
-    // Add folder name entry for non-root directories (acts as header with west link to parent)
-    let parent_portal_id = if !is_root {
+    // Calculate the "self entry" ID - this is the entry in the parent directory that points here
+    let self_entry_id = if !is_root {
+        let folder_name = dir_path.rsplit('/').next().unwrap_or(&dir_path);
         let parent_path = {
             let trimmed = dir_path.trim_end_matches('/');
             match trimmed.rsplit_once('/') {
@@ -104,33 +105,19 @@ where
                 None => "/".to_string(),
             }
         };
-        let parent_url = format!("nextcloud://{}/files{}", identity, parent_path);
-        let folder_name = dir_path.rsplit('/').next().unwrap_or(&dir_path);
-        let portal_id = hash64(&["dirurl", &parent_url]);
-        entries.push(Entry {
-            name: format!("📁 {}", folder_name),
-            path: dir_path.clone(),
-            size: 0,
-            is_dir: true,
-            entry_id: hash64(&["entry", &identity, &dir_path, "header"]),
-            content_id: portal_id,
-            content_url: parent_url,
-        });
-        Some(portal_id)
+        Some(hash64(&["entry", &identity, &parent_path, folder_name]))
     } else {
         None
     };
 
-    // Add file/directory entries
+    // Add file/directory entries (no header needed - parent entry serves as the landmark)
     for file in &files {
         let entry_id = hash64(&["entry", &identity, &dir_path, &file.name]);
 
-        let (content_id, content_url) = if file.is_directory {
-            let url = format!("nextcloud://{}/files/{}", identity, file.path.trim_matches('/'));
-            (hash64(&["dirurl", &url]), url)
+        let content_url = if file.is_directory {
+            format!("nextcloud://{}/files/{}", identity, file.path.trim_matches('/'))
         } else {
-            let url = format!("nextcloud://{}/file/{}", identity, file.path.trim_matches('/'));
-            (hash64(&["fileurl", &url]), url)
+            format!("nextcloud://{}/file/{}", identity, file.path.trim_matches('/'))
         };
 
         entries.push(Entry {
@@ -139,7 +126,7 @@ where
             size: file.size,
             is_dir: file.is_directory,
             entry_id,
-            content_id,
+            content_id: 0, // Not used anymore
             content_url,
         });
     }
@@ -150,42 +137,42 @@ where
         let msg = encode_set_vertex_label(action_id, empty_id, "text/plain", b"(empty)");
         write.send(Message::Binary(msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-        // West edge to files portal
-        let west = files_portal_hash(&identity);
+        // West edge back to parent
+        let west = if is_root {
+            files_portal_hash(&identity)
+        } else {
+            self_entry_id.unwrap_or(0)
+        };
         let edges = encode_set_edges(action_id, empty_id, west, 0, 0, 0, 0, 0, 0);
         write.send(Message::Binary(edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-        // Set files portal east edge to empty placeholder (only for root directory)
+        // Set parent's east edge to empty placeholder
         if is_root {
             let portal_edges = encode_set_edges(action_id, files_portal_id, EDGE_UNCHANGED, empty_id, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, 0);
             write.send(Message::Binary(portal_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+        } else if let Some(parent_id) = self_entry_id {
+            let parent_edges = encode_set_edges(action_id, parent_id, EDGE_UNCHANGED, empty_id, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, 0);
+            write.send(Message::Binary(parent_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
         }
         return Ok(());
     }
 
-    // Set portal east edge to first entry
+    // Set parent's east edge to first entry
     let first_entry_id = entries[0].entry_id;
     if is_root {
         // Root: set files portal east edge
         let portal_edges = encode_set_edges(action_id, files_portal_id, EDGE_UNCHANGED, first_entry_id, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, 0);
         write.send(Message::Binary(portal_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
-    } else {
-        // Subdirectory: set THIS directory's content portal east edge to our first entry
-        // This portal was created by the parent directory listing
-        let self_url = format!("nextcloud://{}/files{}", identity, dir_path);
-        let self_portal_id = hash64(&["dirurl", &self_url]);
-        let portal_edges = encode_set_edges(action_id, self_portal_id, EDGE_UNCHANGED, first_entry_id, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, 0);
-        write.send(Message::Binary(portal_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+    } else if let Some(parent_id) = self_entry_id {
+        // Subdirectory: set parent entry's east edge to our first entry
+        let parent_edges = encode_set_edges(action_id, parent_id, EDGE_UNCHANGED, first_entry_id, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, 0);
+        write.send(Message::Binary(parent_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
     }
 
     // Send entries
-    let is_header = |i: usize| -> bool { i == 0 && !is_root };
-
     for (i, e) in entries.iter().enumerate() {
-        // Entry label (header already has folder icon in name)
-        let label = if is_header(i) {
-            e.name.clone() // Already formatted as "📁 foldername"
-        } else if e.is_dir {
+        // Entry label on layer 0
+        let label = if e.is_dir {
             format!("📁 {}", e.name)
         } else {
             format!("📄 {} ({})", e.name, format_size(e.size))
@@ -193,37 +180,28 @@ where
         let label_msg = encode_set_vertex_label(action_id, e.entry_id, "text/plain", label.as_bytes());
         write.send(Message::Binary(label_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-        // Content portal (gradesta-url for lazy loading) - skip for header
-        if !is_header(i) {
-            let content_msg = encode_set_vertex_label(action_id, e.content_id, "text/gradesta-url", e.content_url.as_bytes());
-            write.send(Message::Binary(content_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
-        }
+        // For directories/files, add gradesta-url on layer 1 for navigation
+        let url_msg = encode_set_vertex_label_layer(action_id, e.entry_id, 1, "text/gradesta-url", e.content_url.as_bytes());
+        write.send(Message::Binary(url_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
         // Entry edges
+        // First entry: west goes back to parent (files portal or parent entry)
         let west = if i == 0 {
             if is_root {
-                // First entry of root directory: west goes to files portal (back to menu)
                 files_portal_hash(&identity)
             } else {
-                // Header entry: west goes to parent portal
-                parent_portal_id.unwrap_or(0)
+                self_entry_id.unwrap_or(0)
             }
         } else {
             0
         };
-        // Header has no east edge (it's just a label)
-        let east = if is_header(i) { 0 } else { e.content_id };
+        // East edge will be set when subdirectory loads (no east edge initially)
+        let east = 0;
         let north = if i > 0 { entries[i - 1].entry_id } else { 0 };
         let south = if i < entries.len() - 1 { entries[i + 1].entry_id } else { 0 };
 
         let edges = encode_set_edges(action_id, e.entry_id, west, east, north, south, 0, 0, 0);
         write.send(Message::Binary(edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
-
-        // Content portal edges: west back to entry - skip for header
-        if !is_header(i) {
-            let content_edges = encode_set_edges(action_id, e.content_id, e.entry_id, 0, 0, 0, 0, 0, 0);
-            write.send(Message::Binary(content_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
-        }
     }
 
     log::info!("Sent {} entries for {}", entries.len(), dir_path);
