@@ -183,9 +183,15 @@ where
         write.send(Message::Binary(content_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
         // Entry edges
-        let west = if i == 0 && is_root {
-            // First entry of root directory: west goes to files portal (back to menu)
-            files_portal_hash(&identity)
+        let west = if i == 0 {
+            if is_root {
+                // First entry of root directory: west goes to files portal (back to menu)
+                files_portal_hash(&identity)
+            } else {
+                // First entry of subdirectory (which is ".."): west goes to its content portal
+                // This creates the navigation: .. → parent portal → parent entry
+                e.content_id
+            }
         } else {
             0
         };
