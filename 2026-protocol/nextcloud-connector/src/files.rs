@@ -183,8 +183,8 @@ where
         write.send(Message::Binary(content_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
         // Entry edges
-        let west = if i == 0 {
-            // First entry: west goes to files portal (back to menu)
+        let west = if i == 0 && is_root {
+            // First entry of root directory: west goes to files portal (back to menu)
             files_portal_hash(&identity)
         } else {
             0
