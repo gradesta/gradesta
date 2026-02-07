@@ -25,6 +25,8 @@ pkgs.mkShell {
     alsa-lib
     # For whisper-rs-sys bindgen
     llvmPackages.libclang
+    # External video player for video content
+    mpv
   ];
 
   LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (with pkgs; [

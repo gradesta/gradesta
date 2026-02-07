@@ -46,3 +46,8 @@ whisper-rs = "0.14"
 hound = "3.5"
 # Standalone egui window for startup dialog
 eframe = "0.27"
+# Temp files for external video playback
+tempfile = "3.10"
+# Video playback (native in-browser)
+mp4 = "0.14"
+openh264 = "0.6"

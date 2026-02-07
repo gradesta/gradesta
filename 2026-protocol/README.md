@@ -78,6 +78,39 @@ Editability bitmask (server Set edges)
 - Bit 0 (LSB): vertex label editable
 - Bits 1-6: edge editable in order west, east, north, south, up, down
 
+Layers
+------
+Vertices can have multiple layers of content. Each layer is identified by a 32-bit unsigned integer in the Set vertex label message. When no layer is specified, layer 0 is assumed.
+
+Layer conventions:
+- Layer 0: Primary content (text, images, audio, video, portals)
+- Layer 1: Metadata/annotations (transcripts for audio/video, gradesta-url for labeled navigation portals)
+- Layer 2: Full/high-resolution content (full images when layer 0 contains a thumbnail)
+- Layer 3: HTTP streaming URL (for large media that should be fetched out-of-band via HTTP)
+
+Special MIME types
+------------------
+text/gradesta-url
+  In layer 0: Auto-navigate portal (browser follows immediately, replacing vertex with landmark content)
+  In layer 1: Preload portal (browser preloads but displays the layer 0 label, user navigates manually)
+  Content: gradesta:// or application-specific URI (e.g., nextcloud://)
+
+text/x-http-stream-url
+  Used in layer 3 for out-of-band HTTP streaming of large files (videos, large images, etc.)
+  Format: Two lines separated by newline:
+    Line 1: Expected MIME type of the HTTP response (e.g., video/mp4)
+    Line 2: HTTP URL with one-time security token
+  Example:
+    video/mp4
+    http://server:8083/stream/abc123def456789
+
+  Security model:
+  - URLs include cryptographically random one-time tokens (256-bit)
+  - Tokens are single-use: consumed on first request, streaming continues after consumption
+  - Tokens expire after 1 hour if unused
+  - Tokens are tied to the WebSocket session that issued them
+  - All tokens for a session are revoked when the WebSocket disconnects
+
 Notes
 - A vertex with mime-type text/gradesta-url should be replaced by the landmark vertex that the contained URI points to, allowing patches to stitch into an ongoing graph.
 

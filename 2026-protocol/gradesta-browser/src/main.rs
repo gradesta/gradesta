@@ -15,8 +15,10 @@ use tungstenite::{client, Message};
 use url::Url;
 
 mod identity;
+mod video_player;
 mod whisper;
 use identity::{Identity, IdentityConfig};
+use video_player::VideoPlayer;
 
 const MSG_CLIENT_WATCH_LANDMARK: u8 = 0x81;
 const MSG_CLIENT_CLICK_VERTEX: u8 = 0x84;
@@ -228,6 +230,9 @@ struct AppState {
     last_nav_direction: usize,
     // Focus URL bar on next frame (to avoid 'l' being typed when pressing Ctrl+L)
     focus_url_bar_next_frame: bool,
+    // Video player state
+    show_video_modal: bool,
+    video_modal_vertex_id: Option<u64>,
 }
 
 /// Pending vertex creation data - waiting for server acknowledgment
@@ -319,6 +324,8 @@ impl Default for AppState {
             skip_autoplay_vertex: None,
             last_nav_direction: EDGE_SOUTH, // Default to south
             focus_url_bar_next_frame: false,
+            show_video_modal: false,
+            video_modal_vertex_id: None,
         }
     }
 }
@@ -346,6 +353,10 @@ struct MediaCache {
     decoded_tx: Sender<DecodedImage>,
     /// Set of vertex IDs currently being decoded (to avoid duplicate work)
     pending_decodes: HashSet<u64>,
+    /// Active video players (vertex_id -> player)
+    video_players: HashMap<u64, VideoPlayer>,
+    /// Current video frame textures
+    video_textures: HashMap<u64, egui::TextureHandle>,
 }
 
 impl Default for MediaCache {
@@ -358,6 +369,8 @@ impl Default for MediaCache {
             decoded_rx,
             decoded_tx,
             pending_decodes: HashSet::new(),
+            video_players: HashMap::new(),
+            video_textures: HashMap::new(),
         }
     }
 }
@@ -404,6 +417,12 @@ enum ServerEvent {
         action_id: u64,
         vertex_id: u64,
         layer: u32,
+        mime: String,
+        data: Vec<u8>,
+    },
+    /// HTTP stream content fetched (layer 3 -> layer 2)
+    HttpStreamContentFetched {
+        vertex_id: u64,
         mime: String,
         data: Vec<u8>,
     },
@@ -833,6 +852,15 @@ fn ui_system(
             }
             if app_state.show_image_modal {
                 app_state.show_image_modal = false;
+            }
+            if app_state.show_video_modal {
+                // Stop video player when closing
+                if let Some(vertex_id) = app_state.video_modal_vertex_id {
+                    if let Some(player) = media_cache.video_players.get(&vertex_id) {
+                        player.stop();
+                    }
+                }
+                app_state.show_video_modal = false;
             }
         }
         // Ctrl+Enter to open modal with current content (but not when in text input mode - that's for submitting)
@@ -1308,6 +1336,102 @@ fn ui_system(
                             });
                     });
             }
+        }
+    }
+
+    // Video modal window (opens when video loads, Escape to close)
+    if app_state.show_video_modal {
+        if let Some(vertex_id) = app_state.video_modal_vertex_id {
+            // Update video texture from decoded frames
+            // First, collect frame data without holding player borrow
+            let (latest_frame, is_playing) = {
+                if let Some(player) = media_cache.video_players.get(&vertex_id) {
+                    let mut latest = None;
+                    while let Ok(frame) = player.frame_rx.try_recv() {
+                        latest = Some(frame);
+                    }
+                    (latest, player.is_playing())
+                } else {
+                    (None, false)
+                }
+            };
+
+            // Now update texture without borrow conflict
+            if let Some(frame) = latest_frame {
+                let image = egui::ColorImage::from_rgba_unmultiplied(
+                    [frame.width as usize, frame.height as usize],
+                    &frame.rgba,
+                );
+                let handle = ctx.load_texture(
+                    format!("video_{}", vertex_id),
+                    image,
+                    egui::TextureOptions::default(),
+                );
+                media_cache.video_textures.insert(vertex_id, handle);
+            }
+
+            // Request continuous repaints while video is playing
+            if is_playing {
+                ctx.request_repaint();
+            }
+
+            egui::Window::new("Video Player")
+                .collapsible(false)
+                .resizable(true)
+                .default_size([800.0, 600.0])
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        // Play/Pause button
+                        if let Some(player) = media_cache.video_players.get(&vertex_id) {
+                            if player.is_playing() {
+                                if ui.button("⏸ Pause").clicked() {
+                                    player.pause();
+                                }
+                            } else {
+                                if ui.button("▶ Play").clicked() {
+                                    player.play();
+                                }
+                            }
+                            // Show position / duration
+                            let pos = player.get_position();
+                            let dur = player.duration;
+                            ui.label(format!(
+                                "{:02}:{:02} / {:02}:{:02}",
+                                pos.as_secs() / 60,
+                                pos.as_secs() % 60,
+                                dur.as_secs() / 60,
+                                dur.as_secs() % 60
+                            ));
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("Close (Esc)").clicked() {
+                                // Stop player
+                                if let Some(player) = media_cache.video_players.get(&vertex_id) {
+                                    player.stop();
+                                }
+                                app_state.show_video_modal = false;
+                            }
+                        });
+                    });
+                    ui.separator();
+
+                    // Display video frame
+                    if let Some(tex) = media_cache.video_textures.get(&vertex_id) {
+                        let available = ui.available_size();
+                        let tex_size = tex.size_vec2();
+                        // Scale to fit available space while maintaining aspect ratio
+                        let scale = (available.x / tex_size.x).min(available.y / tex_size.y).min(1.0);
+                        let display_size = tex_size * scale;
+                        ui.centered_and_justified(|ui| {
+                            ui.image((tex.id(), display_size));
+                        });
+                    } else {
+                        ui.centered_and_justified(|ui| {
+                            ui.label("Loading video...");
+                        });
+                    }
+                });
         }
     }
 
@@ -3880,6 +4004,50 @@ fn ingest_server_events(
                 let entry = graph.vertices.entry(vertex_id).or_default();
                 entry.id = vertex_id;
 
+                // Special handling for layer 3 HTTP stream URLs
+                if layer == 3 && mime == "text/x-http-stream-url" {
+                    // Parse the content: expected-mime\nurl
+                    if let Ok(content) = String::from_utf8(data.clone()) {
+                        if let Some((expected_mime, url)) = content.split_once('\n') {
+                            let url = url.trim().to_string();
+                            let expected_mime = expected_mime.trim().to_string();
+                            let v_id = vertex_id;
+                            let events_tx = net_tx.0.clone();
+
+                            // Spawn background thread to fetch content via HTTP
+                            thread::spawn(move || {
+                                eprintln!("HTTP Fetch: Fetching {} from {}", expected_mime, url);
+                                match reqwest::blocking::get(&url) {
+                                    Ok(response) => {
+                                        if response.status().is_success() {
+                                            match response.bytes() {
+                                                Ok(bytes) => {
+                                                    eprintln!("HTTP Fetch: Got {} bytes for vertex {}", bytes.len(), v_id);
+                                                    let _ = events_tx.send(ServerEvent::HttpStreamContentFetched {
+                                                        vertex_id: v_id,
+                                                        mime: expected_mime,
+                                                        data: bytes.to_vec(),
+                                                    });
+                                                }
+                                                Err(e) => eprintln!("HTTP Fetch: Failed to read body: {}", e),
+                                            }
+                                        } else {
+                                            eprintln!("HTTP Fetch: HTTP error: {}", response.status());
+                                        }
+                                    }
+                                    Err(e) => eprintln!("HTTP Fetch: Failed to fetch: {}", e),
+                                }
+                            });
+                        }
+                    }
+                    // Still store the layer 3 content for reference
+                    entry.layers.insert(layer, LayerContent {
+                        mime: mime.clone(),
+                        data,
+                    });
+                    return;
+                }
+
                 // Invalidate cached texture/media when content changes
                 // This ensures updated images (e.g., full content replacing thumbnail) are re-loaded
                 if mime.starts_with("image/") || crate::is_image_data(&data) {
@@ -4030,6 +4198,93 @@ fn ingest_server_events(
                         data,
                     });
                 }
+            }
+            ServerEvent::HttpStreamContentFetched { vertex_id, mime, data } => {
+                // For MP4 videos, use native video player
+                if mime == "video/mp4" {
+                    eprintln!("HTTP Fetch: Got MP4 video ({} bytes), starting native player", data.len());
+
+                    match VideoPlayer::new(data.clone()) {
+                        Ok(player) => {
+                            media_cache.video_players.insert(vertex_id, player);
+                            app_state.video_modal_vertex_id = Some(vertex_id);
+                            app_state.show_video_modal = true;
+                            eprintln!("HTTP Fetch: Video player started for vertex {}", vertex_id);
+                        }
+                        Err(e) => {
+                            eprintln!("HTTP Fetch: Failed to create video player: {}", e);
+                            app_state.status = format!("Video error: {}", e);
+                        }
+                    }
+                    return;
+                }
+
+                // For other video formats, fall back to external player
+                if mime.starts_with("video/") {
+                    eprintln!("HTTP Fetch: Got video {} ({} bytes), launching external player", mime, data.len());
+
+                    // Determine file extension from mime type
+                    let ext = match mime.as_str() {
+                        "video/webm" => "webm",
+                        "video/quicktime" => "mov",
+                        "video/x-matroska" => "mkv",
+                        "video/ogg" => "ogv",
+                        _ => "mp4",
+                    };
+
+                    // Write to temp file and launch mpv
+                    match tempfile::Builder::new()
+                        .prefix("gradesta-video-")
+                        .suffix(&format!(".{}", ext))
+                        .tempfile()
+                    {
+                        Ok(mut temp) => {
+                            use std::io::Write;
+                            if let Err(e) = temp.write_all(&data) {
+                                eprintln!("HTTP Fetch: Failed to write temp file: {}", e);
+                            } else {
+                                let path = temp.path().to_owned();
+                                // Keep the temp file around while mpv plays
+                                let (file, file_path) = temp.keep().unwrap_or_else(|e| {
+                                    eprintln!("Failed to keep temp file: {}", e);
+                                    (std::fs::File::create(&path).unwrap(), path.clone())
+                                });
+                                drop(file); // Close file handle before opening
+
+                                eprintln!("HTTP Fetch: Launching mpv for {}", file_path.display());
+                                if let Err(e) = Command::new("mpv")
+                                    .arg(&file_path)
+                                    .spawn()
+                                {
+                                    eprintln!("HTTP Fetch: Failed to launch mpv: {}", e);
+                                    // Fall back to xdg-open
+                                    if let Err(e2) = open::that(&file_path) {
+                                        eprintln!("HTTP Fetch: Failed to open with xdg-open: {}", e2);
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => eprintln!("HTTP Fetch: Failed to create temp file: {}", e),
+                    }
+                    return;
+                }
+
+                // Store fetched content in layer 2 (where full content normally goes)
+                let entry = graph.vertices.entry(vertex_id).or_default();
+                entry.id = vertex_id;
+
+                // Invalidate cached texture/media when content changes
+                if mime.starts_with("image/") || crate::is_image_data(&data) {
+                    media_cache.textures.remove(&vertex_id);
+                    media_cache.animated_gifs.remove(&vertex_id);
+                }
+
+                entry.layers.insert(2, LayerContent {
+                    mime: mime.clone(),
+                    data,
+                });
+
+                eprintln!("HTTP Fetch: Stored {} content in layer 2 for vertex {}", mime, vertex_id);
             }
             ServerEvent::RequestIdentification { action_id, nonce, timestamp, reason } => {
                 // Get server URL from current connection

@@ -16,7 +16,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tokio_tungstenite::tungstenite::Message;
+use axum::extract::ws::Message;
 
 use crate::nextcloud::{CalendarEvent, NextcloudClient};
 use crate::protocol::*;

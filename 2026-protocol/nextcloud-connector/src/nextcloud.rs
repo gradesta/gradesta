@@ -32,6 +32,8 @@ pub struct LoginFlowResult {
 #[derive(Clone)]
 pub struct NextcloudClient {
     pub url: String,
+    /// Base URL for the Nextcloud server (same as url, exposed for http_stream)
+    pub base_url: String,
     pub username: String,
     pub password: String,
     client: Client,
@@ -39,8 +41,10 @@ pub struct NextcloudClient {
 
 impl NextcloudClient {
     pub fn new(url: &str, username: &str, password: &str) -> Self {
+        let base = url.trim_end_matches('/').to_string();
         Self {
-            url: url.trim_end_matches('/').to_string(),
+            url: base.clone(),
+            base_url: base,
             username: username.to_string(),
             password: password.to_string(),
             client: Client::builder()
@@ -399,6 +403,92 @@ impl NextcloudClient {
         all_events.sort_by(|a, b| a.start.cmp(&b.start));
         log::info!("CalDAV: Total {} events for day {}", all_events.len(), date);
         Ok(all_events)
+    }
+
+    // ========== HTTP Streaming Methods ==========
+
+    /// Get file size via WebDAV HEAD request
+    pub async fn get_file_size(&self, path: &str) -> Result<u64> {
+        let url = self.webdav_url(path);
+        let response = self
+            .client
+            .head(&url)
+            .basic_auth(&self.username, Some(&self.password))
+            .send()
+            .await
+            .context("WebDAV HEAD failed")?;
+
+        if !response.status().is_success() {
+            return Err(anyhow!("WebDAV HEAD failed: {}", response.status()));
+        }
+
+        let size = response
+            .headers()
+            .get("content-length")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+
+        Ok(size)
+    }
+
+    /// Stream file content with Range support
+    /// Returns a stream of bytes for the requested range
+    pub async fn stream_file(
+        &self,
+        path: &str,
+        start: u64,
+        end: u64,
+    ) -> Result<impl futures_util::Stream<Item = Result<bytes::Bytes, reqwest::Error>>> {
+        let url = self.webdav_url(path);
+        let range = format!("bytes={}-{}", start, end);
+
+        let response = self
+            .client
+            .get(&url)
+            .basic_auth(&self.username, Some(&self.password))
+            .header("Range", range)
+            .send()
+            .await
+            .context("WebDAV GET (streaming) failed")?;
+
+        if !response.status().is_success() && response.status().as_u16() != 206 {
+            return Err(anyhow!("WebDAV streaming failed: {}", response.status()));
+        }
+
+        Ok(response.bytes_stream())
+    }
+
+    /// Get file info (size and content type) via WebDAV HEAD request
+    pub async fn get_file_info(&self, path: &str) -> Result<(u64, String)> {
+        let url = self.webdav_url(path);
+        let response = self
+            .client
+            .head(&url)
+            .basic_auth(&self.username, Some(&self.password))
+            .send()
+            .await
+            .context("WebDAV HEAD failed")?;
+
+        if !response.status().is_success() {
+            return Err(anyhow!("WebDAV HEAD failed: {}", response.status()));
+        }
+
+        let size = response
+            .headers()
+            .get("content-length")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("application/octet-stream")
+            .to_string();
+
+        Ok((size, content_type))
     }
 }
 

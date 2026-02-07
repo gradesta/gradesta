@@ -2,6 +2,7 @@
 
 mod calendar;
 mod files;
+mod http_stream;
 mod identity;
 mod nextcloud;
 mod notes;
@@ -10,15 +11,23 @@ mod router;
 mod storage;
 
 use anyhow::{anyhow, Result};
+use axum::{
+    extract::{
+        ws::{Message as AxumWsMessage, WebSocket, WebSocketUpgrade},
+        State,
+    },
+    response::IntoResponse,
+    routing::get,
+    Router,
+};
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
-use tokio_tungstenite::{accept_async, tungstenite::Message};
 
+use crate::http_stream::{JwtSecret, StreamState};
 use crate::identity::PendingAuth;
 use crate::nextcloud::NextcloudClient;
 use crate::notes::{mime_to_extension, uuid_to_hash, NotesIndex};
@@ -48,10 +57,10 @@ enum ConnectionState {
 }
 
 /// Per-connection state
-struct State {
+struct ConnState {
     identity: Option<String>,
     nextcloud: Option<NextcloudClient>,
-    state: ConnectionState,
+    conn_state: ConnectionState,
     pending_auth: Option<PendingAuth>,
     poll_endpoint: Option<String>,
     poll_token: Option<String>,
@@ -62,14 +71,18 @@ struct State {
     file_entries: HashMap<u64, String>,
     /// Thumbnail cache: path -> (data, mime_type)
     thumbnail_cache: HashMap<String, (Vec<u8>, String)>,
+    /// JWT secret for generating streaming tokens
+    jwt_secret: Arc<JwtSecret>,
+    /// Server port for generating streaming URLs
+    server_port: u16,
 }
 
-impl Default for State {
+impl Default for ConnState {
     fn default() -> Self {
         Self {
             identity: None,
             nextcloud: None,
-            state: ConnectionState::AwaitingIdentity,
+            conn_state: ConnectionState::AwaitingIdentity,
             pending_auth: None,
             poll_endpoint: None,
             poll_token: None,
@@ -77,11 +90,13 @@ impl Default for State {
             next_action_id: 1,
             file_entries: HashMap::new(),
             thumbnail_cache: HashMap::new(),
+            jwt_secret: Arc::new(JwtSecret::default()),
+            server_port: 8083,
         }
     }
 }
 
-impl State {
+impl ConnState {
     /// Get the next server-generated action ID
     fn get_next_action_id(&mut self) -> u64 {
         let id = self.next_action_id;
@@ -90,13 +105,30 @@ impl State {
     }
 }
 
-impl calendar::HasIdentity for State {
+impl calendar::HasIdentity for ConnState {
     fn get_identity(&self) -> String {
         self.identity.clone().unwrap_or_default()
     }
 
     fn get_nextcloud(&self) -> Option<NextcloudClient> {
         self.nextcloud.clone()
+    }
+}
+
+/// Shared application state - contains both WebSocket and HTTP streaming state
+#[derive(Clone)]
+struct AppState {
+    cred_store: Arc<Mutex<CredentialStore>>,
+    jwt_secret: Arc<JwtSecret>,
+    port: u16,
+}
+
+// Allow extracting StreamState from AppState for the streaming endpoints
+impl axum::extract::FromRef<AppState> for StreamState {
+    fn from_ref(state: &AppState) -> Self {
+        StreamState {
+            jwt_secret: Arc::clone(&state.jwt_secret),
+        }
     }
 }
 
@@ -107,11 +139,11 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     let addr = format!("{}:{}", args.bind, args.port);
-    let listener = TcpListener::bind(&addr).await?;
 
     println!("Gradesta Nextcloud Connector v{}", env!("CARGO_PKG_VERSION"));
     println!("Listening on {}", addr);
     println!("Connect with: ws://localhost:{}/ws", args.port);
+    println!("HTTP streaming: http://localhost:{}/stream/<token>", args.port);
     println!();
     println!("Waiting for connections...");
 
@@ -120,27 +152,57 @@ async fn main() -> Result<()> {
         CredentialStore::load().unwrap_or_default(),
     ));
 
-    while let Ok((stream, addr)) = listener.accept().await {
-        log::info!("New connection from {}", addr);
-        let cred_store = Arc::clone(&cred_store);
-        tokio::spawn(async move {
-            if let Err(e) = handle_connection(stream, cred_store).await {
-                log::error!("Connection error: {}", e);
-            }
-        });
-    }
+    // Generate JWT secret for this server instance
+    let jwt_secret = Arc::new(JwtSecret::default());
+
+    let app_state = AppState {
+        cred_store,
+        jwt_secret,
+        port: args.port,
+    };
+
+    // Build router with both WebSocket and HTTP streaming endpoints
+    // StreamState is extracted from AppState via FromRef trait
+    let app = Router::new()
+        .route("/ws", get(ws_handler))
+        .route("/stream/:token", get(http_stream::handle_stream))
+        .with_state(app_state);
+
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    axum::serve(listener, app).await?;
 
     Ok(())
 }
 
-async fn handle_connection(
-    stream: TcpStream,
-    cred_store: Arc<Mutex<CredentialStore>>,
-) -> Result<()> {
-    let ws_stream = accept_async(stream).await?;
-    let (mut write, mut read) = ws_stream.split();
+/// WebSocket upgrade handler
+async fn ws_handler(
+    ws: WebSocketUpgrade,
+    State(app_state): State<AppState>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_socket(socket, app_state))
+}
 
-    let state = Arc::new(Mutex::new(State::default()));
+/// Handle WebSocket connection
+async fn handle_socket(socket: WebSocket, app_state: AppState) {
+    log::info!("New WebSocket connection");
+    if let Err(e) = handle_connection_axum(socket, app_state.cred_store, app_state.jwt_secret, app_state.port).await {
+        log::error!("Connection error: {}", e);
+    }
+}
+
+async fn handle_connection_axum(
+    socket: WebSocket,
+    cred_store: Arc<Mutex<CredentialStore>>,
+    jwt_secret: Arc<JwtSecret>,
+    port: u16,
+) -> Result<()> {
+    let (mut write, mut read) = socket.split();
+
+    let state = Arc::new(Mutex::new(ConnState {
+        jwt_secret,
+        server_port: port,
+        ..ConnState::default()
+    }));
 
     // Send identification request with server-generated action_id
     let action_id = {
@@ -149,7 +211,7 @@ async fn handle_connection(
     };
     let pending = PendingAuth::new(action_id);
     let msg = pending.encode_request("Nextcloud connector needs to verify your identity");
-    write.send(Message::Binary(msg)).await?;
+    write.send(AxumWsMessage::Binary(msg)).await?;
 
     {
         let mut s = state.lock().await;
@@ -161,7 +223,7 @@ async fn handle_connection(
     // Message handling loop
     while let Some(msg) = read.next().await {
         let msg = msg?;
-        if let Message::Binary(data) = msg {
+        if let AxumWsMessage::Binary(data) = msg {
             if data.is_empty() {
                 continue;
             }
@@ -179,7 +241,7 @@ async fn handle_connection(
             if let Err(e) = result {
                 log::error!("Error handling message: {}", e);
                 let log_msg = encode_log_message(0, 500, 0, &format!("Error: {}", e));
-                let _ = write.send(Message::Binary(log_msg)).await;
+                let _ = write.send(AxumWsMessage::Binary(log_msg)).await;
             }
         }
     }
@@ -190,12 +252,12 @@ async fn handle_connection(
 async fn handle_message<W>(
     msg_type: u8,
     data: &[u8],
-    state: &Arc<Mutex<State>>,
+    state: &Arc<Mutex<ConnState>>,
     cred_store: &Arc<Mutex<CredentialStore>>,
     write: &mut W,
 ) -> Result<()>
 where
-    W: SinkExt<Message> + Unpin,
+    W: SinkExt<AxumWsMessage> + Unpin,
     W::Error: std::fmt::Debug,
 {
     match msg_type {
@@ -205,12 +267,12 @@ where
         MSG_CLIENT_IDENTIFICATION_REFUSED => {
             log::info!("Client refused identification");
             let msg = encode_log_message(0, 403, 0, "Identification required");
-            write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
             Ok(())
         }
         MSG_CLIENT_WATCH_LANDMARK => {
             let s = state.lock().await;
-            if s.state != ConnectionState::Browsing {
+            if s.conn_state != ConnectionState::Browsing {
                 log::info!("Ignoring watch landmark (not authenticated)");
                 return Ok(());
             }
@@ -238,12 +300,12 @@ where
 
 async fn handle_identification_response<W>(
     data: &[u8],
-    state: &Arc<Mutex<State>>,
+    state: &Arc<Mutex<ConnState>>,
     cred_store: &Arc<Mutex<CredentialStore>>,
     write: &mut W,
 ) -> Result<()>
 where
-    W: SinkExt<Message> + Unpin,
+    W: SinkExt<AxumWsMessage> + Unpin,
     W::Error: std::fmt::Debug,
 {
     let (action_id, identity_url, signature) = parse_identification_response(data)?;
@@ -283,7 +345,7 @@ where
             s.identity = Some(identity.clone());
             s.nextcloud = Some(nc);
             s.index = Some(index);
-            s.state = ConnectionState::Browsing;
+            s.conn_state = ConnectionState::Browsing;
             s.get_next_action_id()
         };
 
@@ -306,7 +368,7 @@ where
         {
             let mut s = state.lock().await;
             s.identity = Some(identity.clone());
-            s.state = ConnectionState::AwaitingAuth;
+            s.conn_state = ConnectionState::AwaitingAuth;
             s.poll_endpoint = Some(login_flow.poll.endpoint);
             s.poll_token = Some(login_flow.poll.token);
         }
@@ -314,12 +376,12 @@ where
         // Send auth context
         let landmark = format!("nextcloud://{}/auth", identity);
         let ctx_msg = encode_set_context(0, &landmark);
-        write.send(Message::Binary(ctx_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+        write.send(AxumWsMessage::Binary(ctx_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
         // Send login URL
         let url_vertex_id = hash_string(&format!("auth:{}", identity));
         let label_msg = encode_set_vertex_label(0, url_vertex_id, "text/x-url", login_flow.login.as_bytes());
-        write.send(Message::Binary(label_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+        write.send(AxumWsMessage::Binary(label_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
         // Send instruction
         let instr_id = hash_string(&format!("instr:{}", identity));
@@ -328,13 +390,13 @@ where
             identity
         );
         let instr_msg = encode_set_vertex_label(0, instr_id, "text/plain", instruction.as_bytes());
-        write.send(Message::Binary(instr_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+        write.send(AxumWsMessage::Binary(instr_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
         // Send edges
         let edges1 = encode_set_edges(0, instr_id, 0, 0, 0, url_vertex_id, 0, 0, 0);
         let edges2 = encode_set_edges(0, url_vertex_id, 0, 0, instr_id, 0, 0, 0, 0);
-        write.send(Message::Binary(edges1)).await.map_err(|e| anyhow!("{:?}", e))?;
-        write.send(Message::Binary(edges2)).await.map_err(|e| anyhow!("{:?}", e))?;
+        write.send(AxumWsMessage::Binary(edges1)).await.map_err(|e| anyhow!("{:?}", e))?;
+        write.send(AxumWsMessage::Binary(edges2)).await.map_err(|e| anyhow!("{:?}", e))?;
 
         // Start polling in background
         let state_clone = Arc::clone(state);
@@ -347,7 +409,7 @@ where
     Ok(())
 }
 
-async fn poll_for_auth(state: Arc<Mutex<State>>, cred_store: Arc<Mutex<CredentialStore>>) {
+async fn poll_for_auth(state: Arc<Mutex<ConnState>>, cred_store: Arc<Mutex<CredentialStore>>) {
     let mut ticker = interval(Duration::from_secs(2));
 
     loop {
@@ -355,7 +417,7 @@ async fn poll_for_auth(state: Arc<Mutex<State>>, cred_store: Arc<Mutex<Credentia
 
         let (endpoint, token, identity) = {
             let s = state.lock().await;
-            if s.state != ConnectionState::AwaitingAuth {
+            if s.conn_state != ConnectionState::AwaitingAuth {
                 return;
             }
             (
@@ -405,7 +467,7 @@ async fn poll_for_auth(state: Arc<Mutex<State>>, cred_store: Arc<Mutex<Credentia
                     let mut s = state.lock().await;
                     s.nextcloud = Some(nc);
                     s.index = Some(index);
-                    s.state = ConnectionState::Browsing;
+                    s.conn_state = ConnectionState::Browsing;
                     s.poll_endpoint = None;
                     s.poll_token = None;
                 }
@@ -427,11 +489,11 @@ async fn poll_for_auth(state: Arc<Mutex<State>>, cred_store: Arc<Mutex<Credentia
 
 async fn handle_watch_landmark<W>(
     data: &[u8],
-    state: &Arc<Mutex<State>>,
+    state: &Arc<Mutex<ConnState>>,
     write: &mut W,
 ) -> Result<()>
 where
-    W: SinkExt<Message> + Unpin,
+    W: SinkExt<AxumWsMessage> + Unpin,
     W::Error: std::fmt::Debug,
 {
     let (action_id, landmark) = parse_watch_landmark(data)?;
@@ -567,13 +629,13 @@ where
 
 /// Handle notes-specific landmarks
 async fn handle_notes_landmark<W>(
-    state: &Arc<Mutex<State>>,
+    state: &Arc<Mutex<ConnState>>,
     write: &mut W,
     action_id: u64,
     notes_path: &str,
 ) -> Result<()>
 where
-    W: SinkExt<Message> + Unpin,
+    W: SinkExt<AxumWsMessage> + Unpin,
     W::Error: std::fmt::Debug,
 {
     // Parse vertex hash from path if present
@@ -603,9 +665,9 @@ where
 /// Maximum vertices in a chain before creating a landmark boundary
 const MAX_CHAIN_LENGTH: usize = 20;
 
-async fn send_notes_listing<W>(state: &Arc<Mutex<State>>, write: &mut W, action_id: u64) -> Result<()>
+async fn send_notes_listing<W>(state: &Arc<Mutex<ConnState>>, write: &mut W, action_id: u64) -> Result<()>
 where
-    W: SinkExt<Message> + Unpin,
+    W: SinkExt<AxumWsMessage> + Unpin,
     W::Error: std::fmt::Debug,
 {
     // Default: send from root vertex
@@ -615,13 +677,13 @@ where
 /// Send notes starting from a specific vertex (or root if None)
 /// Only sends vertices within landmark boundaries (forks or every MAX_CHAIN_LENGTH vertices)
 async fn send_notes_from_vertex<W>(
-    state: &Arc<Mutex<State>>,
+    state: &Arc<Mutex<ConnState>>,
     write: &mut W,
     action_id: u64,
     start_vertex: Option<uuid::Uuid>,
 ) -> Result<()>
 where
-    W: SinkExt<Message> + Unpin,
+    W: SinkExt<AxumWsMessage> + Unpin,
     W::Error: std::fmt::Debug,
 {
     let (identity, index, nc) = {
@@ -643,14 +705,14 @@ where
         format!("nextcloud://{}/notes/", identity)
     };
     let ctx_msg = encode_set_context(action_id, &landmark);
-    write.send(Message::Binary(ctx_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+    write.send(AxumWsMessage::Binary(ctx_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
     // Send notes portal vertex - allows navigation back to home screen
     let portal_id = router_hash(&identity, "notes-portal");
     let router_id = router_hash(&identity, "main");
     let calendar_portal_id = router_hash(&identity, "calendar-portal");
     let portal_msg = encode_set_vertex_label(action_id, portal_id, "text/plain", b"Notes");
-    write.send(Message::Binary(portal_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+    write.send(AxumWsMessage::Binary(portal_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
     // Get root vertex ID for portal's east edge
     let root_vertex_id = if index.vertices.is_empty() {
@@ -661,17 +723,17 @@ where
 
     // Portal edges: north to router, south to calendar portal (vertical menu), east to root note
     let portal_edges = encode_set_edges(action_id, portal_id, 0, root_vertex_id, router_id, calendar_portal_id, 0, 0, 0);
-    write.send(Message::Binary(portal_edges)).await.map_err(|e| anyhow!("{:?}", e))?;
+    write.send(AxumWsMessage::Binary(portal_edges)).await.map_err(|e| anyhow!("{:?}", e))?;
 
     if index.vertices.is_empty() {
         // Send empty placeholder
         let empty_id = hash_string(&format!("empty:{}", identity));
         let msg = encode_set_vertex_label(action_id, empty_id, "text/plain", b"(no notes yet - press 'i' to create one)");
-        write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+        write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
         // Edges: west to portal, full editability
         let edges = encode_set_edges(action_id, empty_id, portal_id, 0, 0, 0, 0, 0, 0x7F);
-        write.send(Message::Binary(edges)).await.map_err(|e| anyhow!("{:?}", e))?;
+        write.send(AxumWsMessage::Binary(edges)).await.map_err(|e| anyhow!("{:?}", e))?;
     } else {
         // Get the starting vertex (specified or root)
         let start = start_vertex.or_else(|| index.get_root_vertex());
@@ -717,13 +779,13 @@ where
 
             // Send vertex label (layer 0 - actual content)
             let label_msg = encode_set_vertex_label(action_id, vertex_id, &mime, &content);
-            write.send(Message::Binary(label_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            write.send(AxumWsMessage::Binary(label_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
             // Send transcript as layer 1 if available
             if let Some(ref transcript) = vertex.transcript {
                 let transcript_msg = encode_set_vertex_label_layer(
                     action_id, vertex_id, 1, "text/plain", transcript.as_bytes());
-                write.send(Message::Binary(transcript_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                write.send(AxumWsMessage::Binary(transcript_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
             }
 
             // Build edges - for landmark boundaries, replace edges going "outside"
@@ -755,7 +817,7 @@ where
                 edge_array[5],
                 0x7F, // All edges and label editable
             );
-            write.send(Message::Binary(edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            write.send(AxumWsMessage::Binary(edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
         }
     }
 
@@ -765,11 +827,11 @@ where
 
 async fn handle_set_vertex_label<W>(
     data: &[u8],
-    state: &Arc<Mutex<State>>,
+    state: &Arc<Mutex<ConnState>>,
     write: &mut W,
 ) -> Result<()>
 where
-    W: SinkExt<Message> + Unpin,
+    W: SinkExt<AxumWsMessage> + Unpin,
     W::Error: std::fmt::Debug,
 {
     let (action_id, vertex_id, layer, mime, content) = parse_client_set_vertex_label(data)?;
@@ -784,7 +846,7 @@ where
         Some(nc) => nc,
         None => {
             let msg = encode_log_message(action_id, 401, vertex_id, "Not authenticated");
-            write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
             return Ok(());
         }
     };
@@ -792,7 +854,7 @@ where
         Some(idx) => idx,
         None => {
             let msg = encode_log_message(action_id, 500, vertex_id, "No index loaded");
-            write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
             return Ok(());
         }
     };
@@ -805,7 +867,7 @@ where
                 Some(v) => v,
                 None => {
                     let msg = encode_log_message(action_id, 404, vertex_id, "Vertex not found");
-                    write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                    write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
                     return Ok(());
                 }
             };
@@ -813,7 +875,7 @@ where
             // Upload new content
             if let Err(e) = nc.upload(&vertex.file, &content).await {
                 let msg = encode_log_message(action_id, 500, vertex_id, &format!("Upload failed: {}", e));
-                write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
                 return Ok(());
             }
         } else if layer == 1 {
@@ -837,7 +899,7 @@ where
                 notes::mime_to_extension(&mime));
             if let Err(e) = nc.upload(&layer_file, &content).await {
                 let msg = encode_log_message(action_id, 500, vertex_id, &format!("Upload failed: {}", e));
-                write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
                 return Ok(());
             }
             if let Err(e) = index.set_vertex_layer(uuid, layer, &mime, &layer_file) {
@@ -848,7 +910,7 @@ where
         // Save index
         if let Err(e) = index.save(&nc).await {
             let msg = encode_log_message(action_id, 500, vertex_id, &format!("Save failed: {}", e));
-            write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
             return Ok(());
         }
 
@@ -862,11 +924,11 @@ where
 
         // Send success acknowledgment
         let msg = encode_log_message(action_id, 200, vertex_id, "OK");
-        write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+        write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
     } else {
         log::warn!("Vertex not found: {}", vertex_id);
         let msg = encode_log_message(action_id, 404, vertex_id, "Vertex not found");
-        write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+        write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
     }
 
     Ok(())
@@ -874,11 +936,11 @@ where
 
 async fn handle_set_edges<W>(
     data: &[u8],
-    state: &Arc<Mutex<State>>,
+    state: &Arc<Mutex<ConnState>>,
     write: &mut W,
 ) -> Result<()>
 where
-    W: SinkExt<Message> + Unpin,
+    W: SinkExt<AxumWsMessage> + Unpin,
     W::Error: std::fmt::Debug,
 {
     let (action_id, vertex_id, edges) = parse_client_set_edges(data)?;
@@ -893,7 +955,7 @@ where
         Some(nc) => nc,
         None => {
             let msg = encode_log_message(action_id, 401, vertex_id, "Not authenticated");
-            write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
             return Ok(());
         }
     };
@@ -901,7 +963,7 @@ where
         Some(idx) => idx,
         None => {
             let msg = encode_log_message(action_id, 500, vertex_id, "No index loaded");
-            write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
             return Ok(());
         }
     };
@@ -911,7 +973,7 @@ where
         Some(uuid) => uuid,
         None => {
             let msg = encode_log_message(action_id, 404, vertex_id, "Source vertex not found");
-            write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
             return Ok(());
         }
     };
@@ -937,7 +999,7 @@ where
     // Save index
     if let Err(e) = index.save(&nc).await {
         let msg = encode_log_message(action_id, 500, vertex_id, &format!("Save failed: {}", e));
-        write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+        write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
         return Ok(());
     }
 
@@ -951,18 +1013,18 @@ where
 
     // Send success acknowledgment
     let msg = encode_log_message(action_id, 200, vertex_id, "OK");
-    write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+    write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
     Ok(())
 }
 
 async fn handle_create_vertex<W>(
     data: &[u8],
-    state: &Arc<Mutex<State>>,
+    state: &Arc<Mutex<ConnState>>,
     write: &mut W,
 ) -> Result<()>
 where
-    W: SinkExt<Message> + Unpin,
+    W: SinkExt<AxumWsMessage> + Unpin,
     W::Error: std::fmt::Debug,
 {
     let (action_id, from_vertex, direction, layer, mime, content) = parse_client_create_vertex(data)?;
@@ -984,7 +1046,7 @@ where
         Some(nc) => nc,
         None => {
             let msg = encode_log_message(action_id, 401, 0, "Not authenticated");
-            write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
             return Ok(());
         }
     };
@@ -992,7 +1054,7 @@ where
         Some(idx) => idx,
         None => {
             let msg = encode_log_message(action_id, 500, 0, "No index loaded");
-            write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
             return Ok(());
         }
     };
@@ -1006,7 +1068,7 @@ where
     // Upload content
     if let Err(e) = nc.upload(&file_path, &content).await {
         let msg = encode_log_message(action_id, 500, 0, &format!("Upload failed: {}", e));
-        write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+        write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
         return Ok(());
     }
 
@@ -1037,7 +1099,7 @@ where
     // Save index
     if let Err(e) = index.save(&nc).await {
         let msg = encode_log_message(action_id, 500, 0, &format!("Save failed: {}", e));
-        write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+        write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
         return Ok(());
     }
 
@@ -1064,7 +1126,7 @@ where
         edge_array[5],
         0x7F,
     );
-    write.send(Message::Binary(edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+    write.send(AxumWsMessage::Binary(edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
     // Also send updated edges for source vertex (it now points to new vertex)
     log::info!("CreateVertex: from_vertex={}, direction={:?}, new_vertex_hash={}", from_vertex, direction, vertex_hash);
@@ -1084,7 +1146,7 @@ where
                 from_edge_array[5],
                 0x7F,
             );
-            write.send(Message::Binary(from_edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            write.send(AxumWsMessage::Binary(from_edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
         } else {
             // Source vertex not in index (e.g., the "empty placeholder")
             // Send synthetic edges update so browser can navigate to new vertex
@@ -1105,7 +1167,7 @@ where
                 edges[0], edges[1], edges[2], edges[3], edges[4], edges[5],
                 0x7F,
             );
-            write.send(Message::Binary(from_edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            write.send(AxumWsMessage::Binary(from_edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
         }
     }
 
@@ -1125,39 +1187,50 @@ where
             displaced_edge_array[5],
             0x7F,
         );
-        write.send(Message::Binary(displaced_edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+        write.send(AxumWsMessage::Binary(displaced_edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
     }
 
     // Send success acknowledgment
     let msg = encode_log_message(action_id, 200, vertex_hash, "Created");
-    write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+    write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
     log::info!("Created vertex {} at {}", new_id, file_path);
     Ok(())
 }
 
-/// Max file size to fetch content (10 MB)
-const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
+/// Max file size to send via WebSocket (10 MB) - larger files use HTTP streaming
+const MAX_WS_FILE_SIZE: u64 = 10 * 1024 * 1024;
+
+/// MIME types that should always use HTTP streaming (videos)
+const STREAMING_MIME_TYPES: &[&str] = &[
+    "video/mp4",
+    "video/webm",
+    "video/quicktime",
+    "video/x-matroska",
+    "video/ogg",
+];
 
 /// Handle click on a vertex (toggle, action, etc.)
 async fn handle_click_vertex<W>(
     data: &[u8],
-    state: &Arc<Mutex<State>>,
+    state: &Arc<Mutex<ConnState>>,
     write: &mut W,
 ) -> Result<()>
 where
-    W: SinkExt<Message> + Unpin,
+    W: SinkExt<AxumWsMessage> + Unpin,
     W::Error: std::fmt::Debug,
 {
     let (action_id, vertex_id) = parse_click_vertex(data)?;
     log::info!("ClickVertex: action={}, vertex={}", action_id, vertex_id);
 
     // Check if this is a file entry click
-    let (file_path, nc) = {
+    let (file_path, nc, jwt_secret, server_port) = {
         let s = state.lock().await;
         (
             s.file_entries.get(&vertex_id).cloned(),
             s.nextcloud.clone(),
+            Arc::clone(&s.jwt_secret),
+            s.server_port,
         )
     };
 
@@ -1166,24 +1239,50 @@ where
 
         log::info!("Loading full content for file: {}", path);
 
-        // Fetch full file content
-        match nc.download_with_type(&path, MAX_FILE_SIZE).await {
-            Ok((content, mime_type)) => {
-                log::info!("Loaded full content for {} ({} bytes, {})", path, content.len(), mime_type);
-                // Send full content on layer 2, replacing thumbnail
-                let msg = encode_set_vertex_label_layer(action_id, vertex_id, 2, &mime_type, &content);
-                write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-            }
-            Err(err) => {
-                log::error!("Failed to load {}: {}", path, err);
-                let msg = encode_log_message(action_id, 500, vertex_id, &format!("Failed to load: {}", err));
-                write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+        // Get file info to decide whether to use WebSocket or HTTP streaming
+        let (file_size, mime_type) = nc.get_file_info(&path).await?;
+        let is_video = STREAMING_MIME_TYPES.iter().any(|&m| mime_type.starts_with(m));
+        let use_http_streaming = file_size > MAX_WS_FILE_SIZE || is_video;
+
+        if use_http_streaming {
+            // Generate JWT token and send HTTP streaming URL on layer 3
+            log::info!("Using HTTP streaming for {} ({} bytes, {})", path, file_size, mime_type);
+
+            let token = http_stream::generate_token(&jwt_secret, &path, &mime_type, &nc)?;
+            let stream_url = format!("http://localhost:{}/stream/{}", server_port, token);
+
+            // Format: expected-mime\nurl
+            let layer3_content = format!("{}\n{}", mime_type, stream_url);
+            let msg = encode_set_vertex_label_layer(
+                action_id,
+                vertex_id,
+                3,
+                "text/x-http-stream-url",
+                layer3_content.as_bytes(),
+            );
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+            log::info!("Sent HTTP streaming URL for {} on layer 3", path);
+        } else {
+            // Small file - fetch full content via WebSocket
+            match nc.download_with_type(&path, MAX_WS_FILE_SIZE).await {
+                Ok((content, mime_type)) => {
+                    log::info!("Loaded full content for {} ({} bytes, {})", path, content.len(), mime_type);
+                    // Send full content on layer 2, replacing thumbnail
+                    let msg = encode_set_vertex_label_layer(action_id, vertex_id, 2, &mime_type, &content);
+                    write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                }
+                Err(err) => {
+                    log::error!("Failed to load {}: {}", path, err);
+                    let msg = encode_log_message(action_id, 500, vertex_id, &format!("Failed to load: {}", err));
+                    write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                }
             }
         }
     } else {
         // Not a file entry - just acknowledge
         let msg = encode_log_message(action_id, 200, vertex_id, "Clicked");
-        write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+        write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
     }
 
     Ok(())

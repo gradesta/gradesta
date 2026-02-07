@@ -13,10 +13,10 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tokio_tungstenite::tungstenite::Message;
+use axum::extract::ws::Message;
 
 use crate::protocol::*;
-use crate::State;
+use crate::ConnState;
 
 /// Max file size to fetch content (10 MB)
 const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
@@ -40,7 +40,7 @@ fn files_portal_hash(identity: &str) -> u64 {
 
 /// Handle files landmark requests (directory listing)
 pub async fn handle_landmark<W>(
-    state: &Arc<Mutex<State>>,
+    state: &Arc<Mutex<ConnState>>,
     write: &mut W,
     action_id: u64,
     path: &str,
@@ -218,7 +218,7 @@ where
 /// Handle file view landmark - fetches thumbnail and prepares file for viewing
 /// This is called when the browser preloads a file landmark (navigating near a file entry)
 pub async fn handle_file_view<W>(
-    state: &Arc<Mutex<State>>,
+    state: &Arc<Mutex<ConnState>>,
     write: &mut W,
     action_id: u64,
     path: &str,
