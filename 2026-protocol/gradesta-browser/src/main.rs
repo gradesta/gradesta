@@ -771,13 +771,17 @@ fn ui_system(
             if let Some(current_id) = app_state.current_vertex {
                 if let Some(vertex) = graph.vertices.get(&current_id) {
                     let mime = vertex.mime.as_deref().unwrap_or("");
-                    let is_image = mime.starts_with("image/") || is_image_data(&vertex.label);
-                    let is_text = mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url";
+                    let primary_is_image = mime.starts_with("image/") || is_image_data(&vertex.label);
+                    let primary_is_text = mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url";
 
-                    if is_text {
+                    // Also check additional layers for images
+                    let has_layer_image = vertex.layers.values()
+                        .any(|l| l.mime.starts_with("image/") || is_image_data(&l.data));
+
+                    if primary_is_text && !has_layer_image {
                         app_state.text_modal_content = String::from_utf8_lossy(&vertex.label).to_string();
                         app_state.show_text_modal = true;
-                    } else if is_image {
+                    } else if primary_is_image || has_layer_image {
                         app_state.image_modal_vertex_id = Some(current_id);
                         app_state.show_image_modal = true;
                     }
@@ -1118,7 +1122,7 @@ fn ui_system(
     egui::TopBottomPanel::bottom("help_panel").show(ctx, |ui| {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.label("↑↓←→ Nav | Space=Record | I=Edit | Shift+Dir=Text | Y=Yank | G=Bag | F5=Refresh");
+            ui.label("↑↓←→ Nav | Enter=Click | Ctrl+Enter=View | Space=Record | I=Edit | Y=Yank | G=Bag | F5=Refresh");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("🔑 Identities").clicked() {
                     app_state.show_identity_panel = !app_state.show_identity_panel;
