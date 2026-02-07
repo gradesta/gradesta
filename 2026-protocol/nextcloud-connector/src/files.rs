@@ -171,10 +171,12 @@ where
     }
 
     // Send entries
+    let is_header = |i: usize| -> bool { i == 0 && !is_root };
+
     for (i, e) in entries.iter().enumerate() {
-        // Entry label
-        let label = if e.name == ".." {
-            "..".to_string()
+        // Entry label (header already has folder icon in name)
+        let label = if is_header(i) {
+            e.name.clone() // Already formatted as "📁 foldername"
         } else if e.is_dir {
             format!("📁 {}", e.name)
         } else {
@@ -183,9 +185,11 @@ where
         let label_msg = encode_set_vertex_label(action_id, e.entry_id, "text/plain", label.as_bytes());
         write.send(Message::Binary(label_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-        // Content portal (gradesta-url for lazy loading)
-        let content_msg = encode_set_vertex_label(action_id, e.content_id, "text/gradesta-url", e.content_url.as_bytes());
-        write.send(Message::Binary(content_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+        // Content portal (gradesta-url for lazy loading) - skip for header
+        if !is_header(i) {
+            let content_msg = encode_set_vertex_label(action_id, e.content_id, "text/gradesta-url", e.content_url.as_bytes());
+            write.send(Message::Binary(content_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+        }
 
         // Entry edges
         let west = if i == 0 {
@@ -193,22 +197,25 @@ where
                 // First entry of root directory: west goes to files portal (back to menu)
                 files_portal_hash(&identity)
             } else {
-                // First entry of subdirectory (folder header): west goes to parent portal
+                // Header entry: west goes to parent portal
                 parent_portal_id.unwrap_or(0)
             }
         } else {
             0
         };
-        let east = e.content_id;
+        // Header has no east edge (it's just a label)
+        let east = if is_header(i) { 0 } else { e.content_id };
         let north = if i > 0 { entries[i - 1].entry_id } else { 0 };
         let south = if i < entries.len() - 1 { entries[i + 1].entry_id } else { 0 };
 
         let edges = encode_set_edges(action_id, e.entry_id, west, east, north, south, 0, 0, 0);
         write.send(Message::Binary(edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-        // Content portal edges: west back to entry
-        let content_edges = encode_set_edges(action_id, e.content_id, e.entry_id, 0, 0, 0, 0, 0, 0);
-        write.send(Message::Binary(content_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+        // Content portal edges: west back to entry - skip for header
+        if !is_header(i) {
+            let content_edges = encode_set_edges(action_id, e.content_id, e.entry_id, 0, 0, 0, 0, 0, 0);
+            write.send(Message::Binary(content_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+        }
     }
 
     log::info!("Sent {} entries for {}", entries.len(), dir_path);
