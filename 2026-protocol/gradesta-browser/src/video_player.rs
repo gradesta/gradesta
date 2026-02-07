@@ -91,7 +91,8 @@ impl VideoPlayer {
         );
 
         // Create channels
-        let (frame_tx, frame_rx) = crossbeam_channel::bounded(5); // Buffer a few frames
+        // Use bounded channel with enough capacity to smooth playback
+        let (frame_tx, frame_rx) = crossbeam_channel::bounded(30); // ~1 second at 30fps
         let (command_tx, command_rx) = crossbeam_channel::unbounded();
 
         let state = Arc::new(Mutex::new(VideoPlayerState::Playing));
@@ -200,9 +201,11 @@ fn decode_video(
 
     let mut playing = true;
     let mut sample_id = 1u32;
+    // Start the playback clock AFTER setup is complete
     let playback_start = Instant::now();
     let mut paused_at: Option<Instant> = None;
     let mut pause_duration = Duration::ZERO;
+    let mut frames_sent = 0u32;
 
     while sample_id <= sample_count {
         // Check for commands
@@ -256,14 +259,19 @@ fn decode_video(
             *pos = pts;
         }
 
-        // Wait for the right time to present this frame
+        // Calculate how far ahead/behind we are
         let elapsed = playback_start.elapsed() - pause_duration;
+
+        // Wait for the right time to present this frame
+        // Only wait if we're ahead of schedule
         if pts > elapsed {
             let wait_time = pts - elapsed;
-            if wait_time > Duration::from_millis(1) {
+            // Sleep if we need to wait more than 5ms
+            if wait_time > Duration::from_millis(5) {
                 thread::sleep(wait_time);
             }
         }
+        // If we're behind, just keep decoding as fast as possible (no skip)
 
         // Parse NAL units from sample (AVCC format -> Annex B)
         let sample_data = &sample.bytes;
@@ -303,18 +311,26 @@ fn decode_video(
                 use openh264::formats::YUVSource;
                 let (w, h) = yuv.dimensions();
 
-                // Send frame
-                if frame_tx
-                    .send(VideoFrame {
-                        width: w as u32,
-                        height: h as u32,
-                        rgba,
-                        pts,
-                    })
-                    .is_err()
-                {
-                    // Receiver dropped, stop decoding
-                    return Ok(());
+                // Try to send frame, but don't block - drop frames if buffer is full
+                match frame_tx.try_send(VideoFrame {
+                    width: w as u32,
+                    height: h as u32,
+                    rgba,
+                    pts,
+                }) {
+                    Ok(()) => {
+                        frames_sent += 1;
+                        if frames_sent % 30 == 0 {
+                            eprintln!("VideoPlayer: sent {} frames, sample {}/{}", frames_sent, sample_id, sample_count);
+                        }
+                    }
+                    Err(crossbeam_channel::TrySendError::Full(_)) => {
+                        eprintln!("VideoPlayer: buffer full at frame {}", frames_sent);
+                    }
+                    Err(crossbeam_channel::TrySendError::Disconnected(_)) => {
+                        eprintln!("VideoPlayer: receiver disconnected");
+                        return Ok(());
+                    }
                 }
             }
         }
