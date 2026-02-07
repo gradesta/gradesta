@@ -163,10 +163,18 @@ where
         return Ok(());
     }
 
-    // Set files portal east edge to first entry (only for root directory)
+    // Set portal east edge to first entry
+    let first_entry_id = entries[0].entry_id;
     if is_root {
-        let first_entry_id = entries[0].entry_id;
+        // Root: set files portal east edge
         let portal_edges = encode_set_edges(action_id, files_portal_id, EDGE_UNCHANGED, first_entry_id, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, 0);
+        write.send(Message::Binary(portal_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+    } else {
+        // Subdirectory: set THIS directory's content portal east edge to our first entry
+        // This portal was created by the parent directory listing
+        let self_url = format!("nextcloud://{}/files{}", identity, dir_path);
+        let self_portal_id = hash64(&["dirurl", &self_url]);
+        let portal_edges = encode_set_edges(action_id, self_portal_id, EDGE_UNCHANGED, first_entry_id, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, 0);
         write.send(Message::Binary(portal_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
     }
 
