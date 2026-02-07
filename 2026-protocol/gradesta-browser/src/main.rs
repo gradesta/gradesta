@@ -327,11 +327,39 @@ const ZOOM_MIN: f32 = 0.25;
 const ZOOM_MAX: f32 = 4.0;
 const ZOOM_STEP: f32 = 0.1;
 
-#[derive(Resource, Default)]
+/// Decoded image ready to be uploaded to GPU
+struct DecodedImage {
+    id: u64,
+    width: u32,
+    height: u32,
+    rgba: Vec<u8>,
+}
+
+#[derive(Resource)]
 struct MediaCache {
     textures: HashMap<u64, egui::TextureHandle>,
     animated_gifs: HashMap<u64, AnimatedGif>,
     waveforms: HashMap<u64, Vec<f32>>, // Pre-computed waveform samples (0.0-1.0)
+    /// Receiver for images decoded in background threads
+    decoded_rx: Receiver<DecodedImage>,
+    /// Sender for decoded images (cloned to background threads)
+    decoded_tx: Sender<DecodedImage>,
+    /// Set of vertex IDs currently being decoded (to avoid duplicate work)
+    pending_decodes: HashSet<u64>,
+}
+
+impl Default for MediaCache {
+    fn default() -> Self {
+        let (decoded_tx, decoded_rx) = crossbeam_channel::unbounded();
+        Self {
+            textures: HashMap::new(),
+            animated_gifs: HashMap::new(),
+            waveforms: HashMap::new(),
+            decoded_rx,
+            decoded_tx,
+            pending_decodes: HashSet::new(),
+        }
+    }
 }
 
 /// Signal to stop audio recording and communicate sample rate
@@ -732,6 +760,47 @@ fn ui_system(
     playback_state: Res<AudioPlaybackState>,
 ) {
     let ctx = contexts.ctx_mut();
+
+    // Process at most ONE decoded image per frame to avoid GPU upload stalls
+    if let Ok(decoded) = media_cache.decoded_rx.try_recv() {
+        // For very large images, downsample to avoid GPU memory issues and upload stalls
+        // Max dimension of 2048 is reasonable for most displays
+        const MAX_DIM: u32 = 2048;
+        let (final_width, final_height, final_rgba) = if decoded.width > MAX_DIM || decoded.height > MAX_DIM {
+            let scale = (MAX_DIM as f32 / decoded.width.max(decoded.height) as f32).min(1.0);
+            let new_width = (decoded.width as f32 * scale) as u32;
+            let new_height = (decoded.height as f32 * scale) as u32;
+
+            // Simple bilinear downsampling
+            let mut downsampled = vec![0u8; (new_width * new_height * 4) as usize];
+            for y in 0..new_height {
+                for x in 0..new_width {
+                    let src_x = (x as f32 / scale) as u32;
+                    let src_y = (y as f32 / scale) as u32;
+                    let src_idx = ((src_y * decoded.width + src_x) * 4) as usize;
+                    let dst_idx = ((y * new_width + x) * 4) as usize;
+                    if src_idx + 3 < decoded.rgba.len() {
+                        downsampled[dst_idx..dst_idx + 4].copy_from_slice(&decoded.rgba[src_idx..src_idx + 4]);
+                    }
+                }
+            }
+            (new_width, new_height, downsampled)
+        } else {
+            (decoded.width, decoded.height, decoded.rgba)
+        };
+
+        let image = egui::ColorImage::from_rgba_unmultiplied(
+            [final_width as usize, final_height as usize],
+            &final_rgba,
+        );
+        let handle = ctx.load_texture(
+            format!("vertex_{}", decoded.id),
+            image,
+            egui::TextureOptions::default(),
+        );
+        media_cache.textures.insert(decoded.id, handle);
+        media_cache.pending_decodes.remove(&decoded.id);
+    }
 
     // Handle modal keyboard shortcuts and zoom
     let url_bar_id = egui::Id::new("url_bar");
@@ -1193,7 +1262,12 @@ fn ui_system(
     if app_state.show_image_modal {
         if let Some(vertex_id) = app_state.image_modal_vertex_id {
             if let Some(vertex) = graph.vertices.get(&vertex_id) {
-                let mime = vertex.mime.as_deref().unwrap_or("");
+                // Prefer layer 2 content (full image) over layer 0 (thumbnail/label)
+                let (image_data, mime): (&[u8], &str) = if let Some(layer2) = vertex.layers.get(&2) {
+                    (&layer2.data, &layer2.mime)
+                } else {
+                    (&vertex.label, vertex.mime.as_deref().unwrap_or(""))
+                };
                 egui::Window::new("Image Viewer")
                     .collapsible(false)
                     .resizable(true)
@@ -1211,7 +1285,7 @@ fn ui_system(
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
                                 if mime == "image/gif" {
-                                    if let Some(animated) = get_or_load_animated_gif(vertex_id, &vertex.label, &mut media_cache, ctx) {
+                                    if let Some(animated) = get_or_load_animated_gif(vertex_id, image_data, &mut media_cache, ctx) {
                                         let now = Instant::now();
                                         if now.duration_since(animated.last_switch) >= animated.delays[animated.current_frame] {
                                             let next_frame = (animated.current_frame + 1) % animated.frames.len();
@@ -1226,7 +1300,7 @@ fn ui_system(
                                         ctx.request_repaint();
                                     }
                                 } else {
-                                    if let Some(tex) = get_or_load_texture(vertex_id, &vertex.label, mime, &mut media_cache, ctx) {
+                                    if let Some(tex) = get_or_load_texture(vertex_id, image_data, mime, &mut media_cache, ctx) {
                                         let size = tex.size_vec2();
                                         ui.image((tex.id(), size));
                                     }
@@ -2687,17 +2761,48 @@ fn get_or_load_texture(
     cache: &mut MediaCache,
     ctx: &egui::Context,
 ) -> Option<egui::TextureHandle> {
+    // Check if already loaded
     if let Some(handle) = cache.textures.get(&id) {
         return Some(handle.clone());
     }
 
-    let img = image::load_from_memory(data).ok()?;
-    let rgba = img.to_rgba8();
-    let (width, height) = rgba.dimensions();
-    let image = egui::ColorImage::from_rgba_unmultiplied([width as usize, height as usize], rgba.as_raw());
-    let handle = ctx.load_texture(format!("vertex_{}", id), image, egui::TextureOptions::default());
-    cache.textures.insert(id, handle.clone());
-    Some(handle)
+    // Check if decode is already in progress
+    if cache.pending_decodes.contains(&id) {
+        return None; // Still decoding
+    }
+
+    // For small images (< 100KB), decode synchronously to avoid flicker
+    if data.len() < 100_000 {
+        if let Ok(img) = image::load_from_memory(data) {
+            let rgba = img.to_rgba8();
+            let (width, height) = rgba.dimensions();
+            let image = egui::ColorImage::from_rgba_unmultiplied([width as usize, height as usize], rgba.as_raw());
+            let handle = ctx.load_texture(format!("vertex_{}", id), image, egui::TextureOptions::default());
+            cache.textures.insert(id, handle.clone());
+            return Some(handle);
+        }
+        return None;
+    }
+
+    // For larger images, decode in background thread
+    cache.pending_decodes.insert(id);
+    let data = data.to_vec();
+    let tx = cache.decoded_tx.clone();
+
+    std::thread::spawn(move || {
+        if let Ok(img) = image::load_from_memory(&data) {
+            let rgba = img.to_rgba8();
+            let (width, height) = rgba.dimensions();
+            let _ = tx.send(DecodedImage {
+                id,
+                width,
+                height,
+                rgba: rgba.into_raw(),
+            });
+        }
+    });
+
+    None // Not ready yet
 }
 
 fn get_or_load_animated_gif(

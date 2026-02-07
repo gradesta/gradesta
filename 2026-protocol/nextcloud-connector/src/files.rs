@@ -67,8 +67,8 @@ where
     };
     let is_root = dir_path == "/";
 
-    // Send context
-    let landmark = format!("nextcloud://{}/files{}", identity, dir_path);
+    // Send context - directory landmark ends with /
+    let landmark = format!("nextcloud://{}{}/", identity, dir_path);
     let ctx_msg = encode_set_context(action_id, &landmark);
     write.send(Message::Binary(ctx_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
@@ -114,10 +114,11 @@ where
     for file in &files {
         let entry_id = hash64(&["entry", &identity, &dir_path, &file.name]);
 
+        // New landmark scheme: directories end with /, files don't
         let content_url = if file.is_directory {
-            format!("nextcloud://{}/files/{}", identity, file.path.trim_matches('/'))
+            format!("nextcloud://{}/{}/", identity, file.path.trim_matches('/'))
         } else {
-            format!("nextcloud://{}/file/{}", identity, file.path.trim_matches('/'))
+            format!("nextcloud://{}/{}", identity, file.path.trim_matches('/'))
         };
 
         entries.push(Entry {
@@ -184,50 +185,10 @@ where
         let url_msg = encode_set_vertex_label_layer(action_id, e.entry_id, 1, "text/gradesta-url", e.content_url.as_bytes());
         write.send(Message::Binary(url_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-        // For files, fetch and send thumbnail on layer 2
+        // For files, track entry for click handling (full content loaded on click via layer 2)
         if !e.is_dir {
-            // Track file entry for click handling
-            {
-                let mut s = state.lock().await;
-                s.file_entries.insert(e.entry_id, e.path.clone());
-            }
-
-            // Check thumbnail cache first
-            let cached = {
-                let s = state.lock().await;
-                s.thumbnail_cache.get(&e.path).cloned()
-            };
-
-            let thumb_result = if let Some((data, mime)) = cached {
-                log::debug!("Using cached thumbnail for {}", e.name);
-                Some((data, mime))
-            } else {
-                // Fetch thumbnail (256x256 is a good size for previews)
-                match nc.get_thumbnail(&e.path, 256, 256).await {
-                    Ok(Some((thumb_data, thumb_mime))) => {
-                        log::debug!("Got thumbnail for {} ({} bytes)", e.name, thumb_data.len());
-                        // Cache it
-                        {
-                            let mut s = state.lock().await;
-                            s.thumbnail_cache.insert(e.path.clone(), (thumb_data.clone(), thumb_mime.clone()));
-                        }
-                        Some((thumb_data, thumb_mime))
-                    }
-                    Ok(None) => {
-                        log::debug!("No thumbnail available for {}", e.name);
-                        None
-                    }
-                    Err(err) => {
-                        log::debug!("Failed to get thumbnail for {}: {}", e.name, err);
-                        None
-                    }
-                }
-            };
-
-            if let Some((thumb_data, thumb_mime)) = thumb_result {
-                let thumb_msg = encode_set_vertex_label_layer(action_id, e.entry_id, 2, &thumb_mime, &thumb_data);
-                write.send(Message::Binary(thumb_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
-            }
+            let mut s = state.lock().await;
+            s.file_entries.insert(e.entry_id, e.path.clone());
         }
 
         // Entry edges
@@ -254,7 +215,8 @@ where
     Ok(())
 }
 
-/// Handle file view landmark - fetches and displays file content
+/// Handle file view landmark - fetches thumbnail and prepares file for viewing
+/// This is called when the browser preloads a file landmark (navigating near a file entry)
 pub async fn handle_file_view<W>(
     state: &Arc<Mutex<State>>,
     write: &mut W,
@@ -277,15 +239,13 @@ where
 
     let file_path = format!("/{}", path.trim_matches('/'));
 
-    // Send context
-    let landmark = format!("nextcloud://{}/file{}", identity, file_path);
+    // Send context - file landmark (no trailing /)
+    let landmark = format!("nextcloud://{}{}", identity, file_path);
     let ctx_msg = encode_set_context(action_id, &landmark);
     write.send(Message::Binary(ctx_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-    // File content vertex
-    let content_id = hash64(&["filecontent", &identity, &file_path]);
-
-    // Parent directory for back navigation
+    // Calculate the entry_id for this file (same as used in directory listing)
+    // This is the vertex that appears in the file browser
     let parent_dir = {
         let trimmed = file_path.trim_end_matches('/');
         match trimmed.rsplit_once('/') {
@@ -294,33 +254,47 @@ where
             None => "/".to_string(),
         }
     };
-    let parent_url = format!("nextcloud://{}/files{}", identity, parent_dir);
-    let parent_id = hash64(&["dirurl", &parent_url]);
+    let file_name = file_path.rsplit('/').next().unwrap_or(&file_path);
+    let entry_id = hash64(&["entry", &identity, &parent_dir, file_name]);
 
-    // Fetch file content
-    match nc.download_with_type(&file_path, MAX_FILE_SIZE).await {
-        Ok((content, mime_type)) => {
-            log::info!("Fetched file {} ({} bytes, {})", file_path, content.len(), mime_type);
-            let msg = encode_set_vertex_label(action_id, content_id, &mime_type, &content);
-            write.send(Message::Binary(msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+    // Fetch and send thumbnail to layer 2 of the entry vertex
+    // Check cache first
+    let cached = {
+        let s = state.lock().await;
+        s.thumbnail_cache.get(&file_path).cloned()
+    };
+
+    let thumb_result = if let Some((data, mime)) = cached {
+        log::debug!("Using cached thumbnail for {}", file_path);
+        Some((data, mime))
+    } else {
+        // Fetch thumbnail (256x256 is a good size for previews)
+        match nc.get_thumbnail(&file_path, 256, 256).await {
+            Ok(Some((thumb_data, thumb_mime))) => {
+                log::debug!("Got thumbnail for {} ({} bytes)", file_path, thumb_data.len());
+                // Cache it
+                {
+                    let mut s = state.lock().await;
+                    s.thumbnail_cache.insert(file_path.clone(), (thumb_data.clone(), thumb_mime.clone()));
+                }
+                Some((thumb_data, thumb_mime))
+            }
+            Ok(None) => {
+                log::debug!("No thumbnail available for {}", file_path);
+                None
+            }
+            Err(err) => {
+                log::debug!("Failed to get thumbnail for {}: {}", file_path, err);
+                None
+            }
         }
-        Err(err) => {
-            log::error!("Failed to fetch file {}: {}", file_path, err);
-            let msg = encode_set_vertex_label(action_id, content_id, "text/plain", format!("Error: {}", err).as_bytes());
-            write.send(Message::Binary(msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
-        }
+    };
+
+    if let Some((thumb_data, thumb_mime)) = thumb_result {
+        // Send thumbnail on layer 2 of the file entry (the vertex in the directory listing)
+        let thumb_msg = encode_set_vertex_label_layer(action_id, entry_id, 2, &thumb_mime, &thumb_data);
+        write.send(Message::Binary(thumb_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
     }
-
-    // Content edges: west to parent directory portal
-    let edges = encode_set_edges(action_id, content_id, parent_id, 0, 0, 0, 0, 0, 0);
-    write.send(Message::Binary(edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
-
-    // Parent directory portal
-    let parent_msg = encode_set_vertex_label(action_id, parent_id, "text/gradesta-url", parent_url.as_bytes());
-    write.send(Message::Binary(parent_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
-
-    let parent_edges = encode_set_edges(action_id, parent_id, 0, content_id, 0, 0, 0, 0, 0);
-    write.send(Message::Binary(parent_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
     Ok(())
 }

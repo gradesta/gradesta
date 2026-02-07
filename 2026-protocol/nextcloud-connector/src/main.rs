@@ -539,12 +539,24 @@ where
             calendar::handle_landmark(state, write, action_id, calendar_path).await
         }
         p if p.starts_with("files/") || p.starts_with("files") => {
+            // Legacy: files/ prefix routes to directory listing
             let files_path = p.strip_prefix("files/").or_else(|| p.strip_prefix("files")).unwrap_or("");
             files::handle_landmark(state, write, action_id, files_path).await
         }
         p if p.starts_with("file/") => {
+            // Legacy: file/ prefix routes to file view
             let file_path = p.strip_prefix("file/").unwrap_or("");
             files::handle_file_view(state, write, action_id, file_path).await
+        }
+        p if p.ends_with('/') => {
+            // New scheme: paths ending in / are directories
+            // Strip leading and trailing / to get the directory path
+            let dir_path = p.trim_matches('/');
+            files::handle_landmark(state, write, action_id, dir_path).await
+        }
+        p if !p.is_empty() => {
+            // New scheme: paths not ending in / are files (but must not be empty)
+            files::handle_file_view(state, write, action_id, p).await
         }
         _ => {
             log::warn!("Unknown landmark path: {}", path);
