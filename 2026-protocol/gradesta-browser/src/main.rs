@@ -2945,21 +2945,17 @@ fn auto_expand_nearby_links(
         format!("vertex/{}", vertex_id)
     };
 
-    // FIRST: If we're sitting on a portal, auto-follow it immediately
-    // Check both layer 0 and layer 1 for gradesta-url (layer 1 allows showing text label while still being a portal)
-    let portal_url = if current.mime.as_deref() == Some("text/gradesta-url") {
-        Some(String::from_utf8_lossy(&current.label).to_string())
-    } else if let Some(layer1) = current.layers.get(&1) {
-        if layer1.mime == "text/gradesta-url" {
-            Some(String::from_utf8_lossy(&layer1.data).to_string())
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    // FIRST: If we're sitting on a portal, handle it
+    // Layer 0 portals (text/gradesta-url as primary): auto-follow immediately (no visible label)
+    // Layer 1 portals (text/plain primary, gradesta-url on layer 1): just preload, don't auto-follow (has visible label)
+    let is_layer0_portal = current.mime.as_deref() == Some("text/gradesta-url");
+    let layer1_portal_url = current.layers.get(&1)
+        .filter(|l| l.mime == "text/gradesta-url")
+        .map(|l| String::from_utf8_lossy(&l.data).to_string());
 
-    if let Some(landmark_url) = portal_url {
+    if is_layer0_portal {
+        // Layer 0 portal - auto-follow
+        let landmark_url = String::from_utf8_lossy(&current.label).to_string();
 
         // Check if this landmark was already loaded by looking up vertices associated with it
         if let Some(vertices) = graph.landmark_vertices.get(&landmark_url) {
@@ -3004,6 +3000,16 @@ fn auto_expand_nearby_links(
             app_state.following_portal = Some(landmark_url);
         }
         return;
+    } else if let Some(landmark_url) = layer1_portal_url {
+        // Layer 1 portal - just preload the landmark, don't auto-follow
+        // This allows the user to see the text label and navigate east manually
+        if !app_state.requested_landmarks.contains(&landmark_url) {
+            app_state.requested_landmarks.insert(landmark_url.clone());
+            let action_id = app_state.next_action_id;
+            app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+            let _ = cmd_tx.send(WsCommand::WatchLandmark { action_id, landmark: landmark_url });
+        }
+        // Don't return - continue to preload neighbors
     }
 
     // SECOND: Preload immediate neighbors (1 step away) that we don't have
