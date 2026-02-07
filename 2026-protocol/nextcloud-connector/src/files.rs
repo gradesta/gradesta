@@ -150,16 +150,20 @@ where
         let edges = encode_set_edges(action_id, empty_id, west, 0, 0, 0, 0, 0, 0);
         write.send(Message::Binary(edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-        // Set files portal east edge to empty placeholder
-        let portal_edges = encode_set_edges(action_id, files_portal_id, EDGE_UNCHANGED, empty_id, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, 0);
-        write.send(Message::Binary(portal_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+        // Set files portal east edge to empty placeholder (only for root directory)
+        if is_root {
+            let portal_edges = encode_set_edges(action_id, files_portal_id, EDGE_UNCHANGED, empty_id, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, 0);
+            write.send(Message::Binary(portal_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+        }
         return Ok(());
     }
 
-    // Set files portal east edge to first entry
-    let first_entry_id = entries[0].entry_id;
-    let portal_edges = encode_set_edges(action_id, files_portal_id, EDGE_UNCHANGED, first_entry_id, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, 0);
-    write.send(Message::Binary(portal_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+    // Set files portal east edge to first entry (only for root directory)
+    if is_root {
+        let first_entry_id = entries[0].entry_id;
+        let portal_edges = encode_set_edges(action_id, files_portal_id, EDGE_UNCHANGED, first_entry_id, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, 0);
+        write.send(Message::Binary(portal_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+    }
 
     // Send entries
     for (i, e) in entries.iter().enumerate() {
