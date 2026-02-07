@@ -1,6 +1,7 @@
-//! Nextcloud Connector - stores notes and calendar on Nextcloud via WebDAV/CalDAV
+//! Nextcloud Connector - stores notes, calendar, and files on Nextcloud via WebDAV/CalDAV
 
 mod calendar;
+mod files;
 mod identity;
 mod nextcloud;
 mod notes;
@@ -442,6 +443,8 @@ where
     // Format: nextcloud://{identity}/calendar/{year}/ - year
     // Format: nextcloud://{identity}/calendar/{year}/{month}/ - month
     // Format: nextcloud://{identity}/calendar/{year}/{month}/{day}/ - day
+    // Format: nextcloud://{identity}/files/ - files root
+    // Format: nextcloud://{identity}/files/{path} - directory or file
 
     // Extract path after identity
     // The identity itself may contain slashes (e.g., https://server/s/token)
@@ -527,6 +530,14 @@ where
         p if p.starts_with("calendar/") || p.starts_with("calendar") => {
             let calendar_path = p.strip_prefix("calendar/").or_else(|| p.strip_prefix("calendar")).unwrap_or("");
             calendar::handle_landmark(state, write, action_id, calendar_path).await
+        }
+        p if p.starts_with("files/") || p.starts_with("files") => {
+            let files_path = p.strip_prefix("files/").or_else(|| p.strip_prefix("files")).unwrap_or("");
+            files::handle_landmark(state, write, action_id, files_path).await
+        }
+        p if p.starts_with("file/") => {
+            let file_path = p.strip_prefix("file/").unwrap_or("");
+            files::handle_file_view(state, write, action_id, file_path).await
         }
         _ => {
             log::warn!("Unknown landmark path: {}", path);

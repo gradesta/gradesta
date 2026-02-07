@@ -104,6 +104,39 @@ impl NextcloudClient {
         Ok(response.bytes().await?.to_vec())
     }
 
+    /// Download a file and return content with mime type
+    pub async fn download_with_type(&self, path: &str, max_size: u64) -> Result<(Vec<u8>, String)> {
+        let url = self.webdav_url(path);
+        let response = self
+            .client
+            .get(&url)
+            .basic_auth(&self.username, Some(&self.password))
+            .send()
+            .await
+            .context("WebDAV GET failed")?;
+
+        if !response.status().is_success() {
+            return Err(anyhow!("WebDAV download failed: {}", response.status()));
+        }
+
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("application/octet-stream")
+            .to_string();
+
+        // Read up to max_size bytes
+        let bytes = response.bytes().await?;
+        let content = if bytes.len() as u64 > max_size {
+            bytes[..max_size as usize].to_vec()
+        } else {
+            bytes.to_vec()
+        };
+
+        Ok((content, content_type))
+    }
+
     /// Create a directory via WebDAV MKCOL
     pub async fn mkdir(&self, path: &str) -> Result<()> {
         let url = self.webdav_url(path);
@@ -155,6 +188,43 @@ impl NextcloudClient {
         } else {
             false
         }
+    }
+
+    /// List directory contents via WebDAV PROPFIND
+    pub async fn list_directory(&self, path: &str) -> Result<Vec<FileInfo>> {
+        let url = self.webdav_url(path);
+        log::info!("WebDAV: Listing directory {}", url);
+
+        let propfind_body = r#"<?xml version="1.0" encoding="UTF-8"?>
+<d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns" xmlns:nc="http://nextcloud.org/ns">
+  <d:prop>
+    <d:displayname/>
+    <d:getcontenttype/>
+    <d:getcontentlength/>
+    <d:getlastmodified/>
+    <d:resourcetype/>
+    <oc:size/>
+  </d:prop>
+</d:propfind>"#;
+
+        let response = self
+            .client
+            .request(reqwest::Method::from_bytes(b"PROPFIND").unwrap(), &url)
+            .basic_auth(&self.username, Some(&self.password))
+            .header("Depth", "1")
+            .header("Content-Type", "application/xml; charset=utf-8")
+            .body(propfind_body)
+            .send()
+            .await
+            .context("WebDAV PROPFIND failed")?;
+
+        if !response.status().is_success() && response.status().as_u16() != 207 {
+            return Err(anyhow!("WebDAV list directory failed: {}", response.status()));
+        }
+
+        let body = response.text().await?;
+        log::debug!("WebDAV: PROPFIND response:\n{}", body);
+        parse_file_list(&body, path)
     }
 
     // ========== CalDAV Methods ==========
@@ -296,6 +366,16 @@ impl NextcloudClient {
         log::info!("CalDAV: Total {} events for day {}", all_events.len(), date);
         Ok(all_events)
     }
+}
+
+/// Information about a file or directory
+#[derive(Debug, Clone)]
+pub struct FileInfo {
+    pub name: String,
+    pub path: String,
+    pub is_directory: bool,
+    pub size: u64,
+    pub content_type: Option<String>,
 }
 
 /// Information about a calendar
@@ -560,4 +640,81 @@ pub async fn poll_login_completion(poll_endpoint: &str, poll_token: &str) -> Res
         Err(e) if e.is_timeout() => Ok(None),
         Err(e) => Err(e.into()),
     }
+}
+
+/// Parse file list from WebDAV PROPFIND response
+fn parse_file_list(xml: &str, base_path: &str) -> Result<Vec<FileInfo>> {
+    let mut files = Vec::new();
+    let base_path = base_path.trim_matches('/');
+
+    // Split by response elements (handle both d: and D: prefixes)
+    let response_splits: Vec<&str> = if xml.contains("<d:response>") {
+        xml.split("<d:response>").skip(1).collect()
+    } else {
+        xml.split("<D:response>").skip(1).collect()
+    };
+
+    for response_block in response_splits {
+        let href = extract_tag_content(response_block, "d:href")
+            .or_else(|| extract_tag_content(response_block, "D:href"));
+
+        let displayname = extract_tag_content(response_block, "d:displayname")
+            .or_else(|| extract_tag_content(response_block, "D:displayname"));
+
+        let content_type = extract_tag_content(response_block, "d:getcontenttype")
+            .or_else(|| extract_tag_content(response_block, "D:getcontenttype"));
+
+        let size_str = extract_tag_content(response_block, "oc:size")
+            .or_else(|| extract_tag_content(response_block, "d:getcontentlength"))
+            .or_else(|| extract_tag_content(response_block, "D:getcontentlength"));
+        let size = size_str.and_then(|s| s.parse().ok()).unwrap_or(0);
+
+        // Check if it's a directory (has collection in resourcetype)
+        let block_lower = response_block.to_lowercase();
+        let is_directory = block_lower.contains("<d:collection") || block_lower.contains("<collection");
+
+        if let Some(href) = href {
+            // Extract path from href
+            // href is like /remote.php/dav/files/username/path/to/file
+            let path = if let Some(pos) = href.find("/remote.php/dav/files/") {
+                let after_files = &href[pos + "/remote.php/dav/files/".len()..];
+                // Skip username
+                if let Some(slash_pos) = after_files.find('/') {
+                    after_files[slash_pos..].trim_matches('/').to_string()
+                } else {
+                    String::new()
+                }
+            } else {
+                href.trim_matches('/').to_string()
+            };
+
+            // Skip the directory itself (when path equals base_path)
+            if path == base_path || path.is_empty() {
+                continue;
+            }
+
+            let name = displayname.unwrap_or_else(|| {
+                path.rsplit('/').next().unwrap_or(&path).to_string()
+            });
+
+            files.push(FileInfo {
+                name,
+                path,
+                is_directory,
+                size,
+                content_type,
+            });
+        }
+    }
+
+    // Sort: directories first, then by name
+    files.sort_by(|a, b| {
+        match (a.is_directory, b.is_directory) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+        }
+    });
+
+    Ok(files)
 }
