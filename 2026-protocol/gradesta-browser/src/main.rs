@@ -2071,7 +2071,7 @@ fn ui_system(
                                 has_image = true;
                             } else if layer.mime.starts_with("audio/") {
                                 has_audio = true;
-                            } else if layer.mime.starts_with("text/") {
+                            } else if layer.mime.starts_with("text/") && !layer.mime.contains("gradesta-url") {
                                 has_text = true;
                                 if text_content.is_none() {
                                     text_content = String::from_utf8(layer.data.clone()).ok();
