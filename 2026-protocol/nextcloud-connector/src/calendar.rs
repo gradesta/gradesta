@@ -42,6 +42,13 @@ fn router_main_hash(identity: &str) -> u64 {
     hasher.finish()
 }
 
+/// Generate hash for notes portal (matches router.rs)
+fn notes_portal_hash(identity: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    format!("router:{}:notes-portal", identity).hash(&mut hasher);
+    hasher.finish()
+}
+
 fn year_hash(identity: &str, year: i32) -> u64 {
     calendar_hash(identity, &format!("year:{}", year))
 }
@@ -236,16 +243,16 @@ where
     let root_edges = encode_set_edges(action_id, root_id, 0, 0, 0, current_year_id, 0, 0, 0);
     write.send(Message::Binary(root_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-    // Router portal vertex - allows navigation back to home screen
+    // Calendar portal vertex - allows navigation back to home screen
     // This portal is shared with router.rs, so we need to send its label and edges
     let portal_id = router_portal_hash(identity);
-    let router_id = router_main_hash(identity);
+    let notes_portal_id = notes_portal_hash(identity);
     let portal_msg = encode_set_vertex_label(action_id, portal_id, "text/plain", b"Calendar");
     write.send(Message::Binary(portal_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-    // Portal edges: north to main router, south to first (earliest) year (vertical layout)
+    // Portal edges: north to notes portal (vertical menu), east to first year (content)
     let first_year_id = year_hash(identity, years[0]);
-    let portal_edges = encode_set_edges(action_id, portal_id, 0, 0, router_id, first_year_id, 0, 0, 0);
+    let portal_edges = encode_set_edges(action_id, portal_id, 0, first_year_id, notes_portal_id, 0, 0, 0, 0);
     write.send(Message::Binary(portal_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
     // Send year, month, and day vertices
@@ -256,20 +263,19 @@ where
         let year_msg = encode_set_vertex_label(action_id, year_id, "text/plain", label.as_bytes());
         write.send(Message::Binary(year_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-        // Year edges: north/south to neighboring years or portal, east to January
-        // North = previous year, or portal for topmost year
-        // South = next year
+        // Year edges: north/south to neighboring years, west to portal for first year, east to January
         let portal_id = router_portal_hash(identity);
-        let north = if i > 0 {
-            year_hash(identity, years[i - 1])
-        } else {
-            // Topmost year connects north to portal
+        let west = if i == 0 {
+            // First year connects west to portal
             portal_id
+        } else {
+            0
         };
+        let north = if i > 0 { year_hash(identity, years[i - 1]) } else { 0 };
         let south = if i < years.len() - 1 { year_hash(identity, years[i + 1]) } else { 0 };
         let east = month_hash(identity, year, 1); // January is east of year
 
-        let year_edges = encode_set_edges(action_id, year_id, 0, east, north, south, 0, 0, 0);
+        let year_edges = encode_set_edges(action_id, year_id, west, east, north, south, 0, 0, 0);
         write.send(Message::Binary(year_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
         // Send month vertices with days in grid layout

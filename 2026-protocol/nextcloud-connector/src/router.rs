@@ -1,6 +1,8 @@
 //! Router - Entry point that branches to Notes and Calendar
 
 use anyhow::Result;
+use chrono::Local;
+use chrono::Datelike;
 use futures_util::SinkExt;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -13,6 +15,22 @@ fn router_hash(identity: &str, name: &str) -> u64 {
     let mut hasher = DefaultHasher::new();
     format!("router:{}:{}", identity, name).hash(&mut hasher);
     hasher.finish()
+}
+
+/// Generate hash for calendar year (matches calendar.rs)
+fn calendar_year_hash(identity: &str, year: i32) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    format!("calendar:{}:year:{}", identity, year).hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Generate hash for notes root (matches main.rs notes logic)
+fn notes_root_hash(identity: &str) -> u64 {
+    // This matches the "empty" placeholder when no notes exist
+    // When notes exist, the actual root vertex ID comes from the index
+    // For now, we'll use the notes portal itself as placeholder
+    // The notes landmark will update the east edge when loaded
+    0 // Will be updated by notes landmark
 }
 
 /// Send the router vertex with Notes (west) and Calendar (east) portals
@@ -40,8 +58,8 @@ where
     let router_msg = encode_set_vertex_label(action_id, router_id, "text/plain", router_label.as_bytes());
     write.send(Message::Binary(router_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-    // Router edges: north → notes portal, south → calendar portal (vertical layout)
-    let router_edges = encode_set_edges(action_id, router_id, 0, 0, notes_portal_id, calendar_portal_id, 0, 0, 0);
+    // Router edges: south → notes portal (notes is the top of the vertical menu)
+    let router_edges = encode_set_edges(action_id, router_id, 0, 0, 0, notes_portal_id, 0, 0, 0);
     write.send(Message::Binary(router_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
     // Notes portal - a link to the notes landmark
@@ -49,8 +67,9 @@ where
     let notes_msg = encode_set_vertex_label(action_id, notes_portal_id, "text/gradesta-url", notes_url.as_bytes());
     write.send(Message::Binary(notes_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-    // Notes portal edges: south → router
-    let notes_edges = encode_set_edges(action_id, notes_portal_id, 0, 0, 0, router_id, 0, 0, 0);
+    // Notes portal edges: north → router, south → calendar portal
+    // East edge will be set by notes landmark when navigated to
+    let notes_edges = encode_set_edges(action_id, notes_portal_id, 0, 0, router_id, calendar_portal_id, 0, 0, 0);
     write.send(Message::Binary(notes_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
     // Calendar portal - a link to the calendar landmark
@@ -58,8 +77,11 @@ where
     let calendar_msg = encode_set_vertex_label(action_id, calendar_portal_id, "text/gradesta-url", calendar_url.as_bytes());
     write.send(Message::Binary(calendar_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-    // Calendar portal edges: north → router
-    let calendar_edges = encode_set_edges(action_id, calendar_portal_id, 0, 0, router_id, 0, 0, 0, 0);
+    // Calendar portal edges: north → notes portal, east → first year
+    let current_year = Local::now().year();
+    let first_year = current_year - 2; // Calendar shows ±2 years, first is current-2
+    let first_year_id = calendar_year_hash(identity, first_year);
+    let calendar_edges = encode_set_edges(action_id, calendar_portal_id, 0, first_year_id, notes_portal_id, 0, 0, 0, 0);
     write.send(Message::Binary(calendar_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
     log::info!("Sent router with notes and calendar portals (action={})", action_id);

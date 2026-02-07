@@ -615,14 +615,32 @@ where
     let ctx_msg = encode_set_context(action_id, &landmark);
     write.send(Message::Binary(ctx_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
+    // Send notes portal vertex - allows navigation back to home screen
+    let portal_id = router_hash(&identity, "notes-portal");
+    let router_id = router_hash(&identity, "main");
+    let calendar_portal_id = router_hash(&identity, "calendar-portal");
+    let portal_msg = encode_set_vertex_label(action_id, portal_id, "text/plain", b"Notes");
+    write.send(Message::Binary(portal_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+    // Get root vertex ID for portal's east edge
+    let root_vertex_id = if index.vertices.is_empty() {
+        hash_string(&format!("empty:{}", identity))
+    } else {
+        index.get_root_vertex().map(uuid_to_hash).unwrap_or(0)
+    };
+
+    // Portal edges: north to router, south to calendar portal (vertical menu), east to root note
+    let portal_edges = encode_set_edges(action_id, portal_id, 0, root_vertex_id, router_id, calendar_portal_id, 0, 0, 0);
+    write.send(Message::Binary(portal_edges)).await.map_err(|e| anyhow!("{:?}", e))?;
+
     if index.vertices.is_empty() {
         // Send empty placeholder
         let empty_id = hash_string(&format!("empty:{}", identity));
         let msg = encode_set_vertex_label(action_id, empty_id, "text/plain", b"(no notes yet - press 'i' to create one)");
         write.send(Message::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
-        // Edges with full editability
-        let edges = encode_set_edges(action_id, empty_id, 0, 0, 0, 0, 0, 0, 0x7F);
+        // Edges: west to portal, full editability
+        let edges = encode_set_edges(action_id, empty_id, portal_id, 0, 0, 0, 0, 0, 0x7F);
         write.send(Message::Binary(edges)).await.map_err(|e| anyhow!("{:?}", e))?;
     } else {
         // Get the starting vertex (specified or root)
@@ -634,6 +652,9 @@ where
                 return Ok(());
             }
         };
+
+        // Get the actual root vertex (first by creation time)
+        let root_uuid = index.get_root_vertex();
 
         // Get vertices within landmark boundaries
         let (vertices_to_send, landmark_vertices) = index.get_vertices_within_landmark(start, MAX_CHAIN_LENGTH);
@@ -653,6 +674,7 @@ where
             };
             let vertex_id = uuid_to_hash(vertex.id);
             let is_landmark = landmark_vertices.contains(vertex_uuid);
+            let is_root = root_uuid == Some(vertex.id);
 
             // Load actual content for layer 0
             let (content, mime) = match nc.download(&vertex.file).await {
@@ -677,6 +699,11 @@ where
             // Build edges - for landmark boundaries, replace edges going "outside"
             // with portal URLs that the client can follow to load more
             let mut edge_array = index.build_edge_array(vertex.id);
+
+            // Root vertex connects west to the notes portal
+            if is_root && edge_array[0] == 0 {
+                edge_array[0] = portal_id;
+            }
 
             if is_landmark {
                 // For landmark vertices, edges to unloaded vertices become portals
@@ -1107,4 +1134,9 @@ fn hash_string(s: &str) -> u64 {
     let mut hasher = DefaultHasher::new();
     s.hash(&mut hasher);
     hasher.finish()
+}
+
+/// Generate hash for router vertices (matches router.rs)
+fn router_hash(identity: &str, name: &str) -> u64 {
+    hash_string(&format!("router:{}:{}", identity, name))
 }

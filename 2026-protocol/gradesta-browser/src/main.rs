@@ -734,7 +734,8 @@ fn ui_system(
     let url_bar_id = egui::Id::new("url_bar");
 
     // Check for Ctrl+L outside the input closure to avoid deadlock
-    let focus_url_bar = ctx.input(|i| i.key_pressed(egui::Key::L) && i.modifiers.ctrl);
+    // Use consume_key to prevent the 'l' from being typed into the URL bar
+    let focus_url_bar = ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::L));
     if focus_url_bar {
         ctx.memory_mut(|mem| mem.request_focus(url_bar_id));
     }
@@ -2938,7 +2939,21 @@ fn auto_expand_nearby_links(
 
         // Check if this landmark was already loaded by looking up vertices associated with it
         if let Some(vertices) = graph.landmark_vertices.get(&landmark_url) {
-            // Find the first non-portal vertex in this landmark
+            // First, try to find the east neighbor of the portal (preferred direction for content)
+            let east_id = current.edges[EDGE_EAST];
+            if east_id != 0 {
+                if let Some(vertex) = graph.vertices.get(&east_id) {
+                    if vertex.mime.as_deref() != Some("text/gradesta-url") {
+                        // Found content vertex to the east - jump to it
+                        app_state.history.push(current_id);
+                        app_state.current_vertex = Some(east_id);
+                        app_state.following_portal = None;
+                        return;
+                    }
+                }
+            }
+
+            // Fallback: find the first non-portal vertex in this landmark
             for &vid in vertices {
                 if let Some(vertex) = graph.vertices.get(&vid) {
                     if vertex.mime.as_deref() != Some("text/gradesta-url") {
