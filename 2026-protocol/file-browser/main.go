@@ -31,6 +31,9 @@ const (
 	msgServerLogMessage     = 0x0F
 )
 
+// EdgeUnchanged is the sentinel value meaning "keep existing edge unchanged" when patching edges
+const EdgeUnchanged uint64 = 0xFFFFFFFFFFFFFFFF
+
 const editabilityMaskNone byte = 0x00
 
 type entry struct {
@@ -103,7 +106,7 @@ func handleClientMessage(conn *websocket.Conn, data []byte) error {
 	case msgClientWatchLandmark:
 		actionID, rest, err := readU64(payload)
 		if err != nil {
-			_ = sendLog(conn, 0, statusToByte(http.StatusBadRequest), 0, "invalid watch message: missing action id")
+			_ = sendLog(conn, 0, uint32(http.StatusBadRequest), 0, "invalid watch message: missing action id")
 			return err
 		}
 		uri := string(rest)
@@ -132,23 +135,23 @@ func handleClientMessage(conn *websocket.Conn, data []byte) error {
 func handleWatchLandmark(conn *websocket.Conn, actionID uint64, uri string) error {
 	dirPath, err := parseLandmarkURI(uri)
 	if err != nil {
-		_ = sendLog(conn, actionID, statusToByte(http.StatusBadRequest), 0, err.Error())
+		_ = sendLog(conn, actionID, uint32(http.StatusBadRequest), 0, err.Error())
 		return nil // Don't crash, just log
 	}
 
 	info, err := os.Stat(dirPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			_ = sendLog(conn, actionID, statusToByte(http.StatusNotFound), 0, fmt.Sprintf("not found: %s", dirPath))
+			_ = sendLog(conn, actionID, uint32(http.StatusNotFound), 0, fmt.Sprintf("not found: %s", dirPath))
 		} else if os.IsPermission(err) {
-			_ = sendLog(conn, actionID, statusToByte(http.StatusForbidden), 0, fmt.Sprintf("permission denied: %s", dirPath))
+			_ = sendLog(conn, actionID, uint32(http.StatusForbidden), 0, fmt.Sprintf("permission denied: %s", dirPath))
 		} else {
-			_ = sendLog(conn, actionID, statusToByte(http.StatusInternalServerError), 0, err.Error())
+			_ = sendLog(conn, actionID, uint32(http.StatusInternalServerError), 0, err.Error())
 		}
 		return nil // Don't crash, just log
 	}
 	if !info.IsDir() {
-		_ = sendLog(conn, actionID, statusToByte(http.StatusBadRequest), 0, fmt.Sprintf("not a directory: %s", dirPath))
+		_ = sendLog(conn, actionID, uint32(http.StatusBadRequest), 0, fmt.Sprintf("not a directory: %s", dirPath))
 		return nil // Don't crash, just log
 	}
 
@@ -160,9 +163,9 @@ func handleWatchLandmark(conn *websocket.Conn, actionID uint64, uri string) erro
 	entries, err := buildEntries(dirPath)
 	if err != nil {
 		if os.IsPermission(err) {
-			_ = sendLog(conn, actionID, statusToByte(http.StatusForbidden), 0, fmt.Sprintf("permission denied: %s", dirPath))
+			_ = sendLog(conn, actionID, uint32(http.StatusForbidden), 0, fmt.Sprintf("permission denied: %s", dirPath))
 		} else {
-			_ = sendLog(conn, actionID, statusToByte(http.StatusInternalServerError), 0, err.Error())
+			_ = sendLog(conn, actionID, uint32(http.StatusInternalServerError), 0, err.Error())
 		}
 		return nil // Don't crash, just log
 	}
@@ -469,6 +472,12 @@ func writeU64(buf *bytes.Buffer, value uint64) {
 	buf.Write(tmp[:])
 }
 
+func writeU32(buf *bytes.Buffer, value uint32) {
+	var tmp [4]byte
+	binary.BigEndian.PutUint32(tmp[:], value)
+	buf.Write(tmp[:])
+}
+
 func sendSetContext(conn *websocket.Conn, actionID uint64, uri string) error {
 	log.Printf("SEND SetContext action=%d uri=%q", actionID, uri)
 	var buf bytes.Buffer
@@ -521,23 +530,13 @@ func sendSetEdges(
 	return conn.WriteMessage(websocket.BinaryMessage, buf.Bytes())
 }
 
-func sendLog(conn *websocket.Conn, actionID uint64, status byte, vertexID uint64, message string) error {
+func sendLog(conn *websocket.Conn, actionID uint64, status uint32, vertexID uint64, message string) error {
 	log.Printf("SEND Log action=%d status=%d vertex=%d msg=%q", actionID, status, vertexID, message)
 	var buf bytes.Buffer
 	buf.WriteByte(msgServerLogMessage)
 	writeU64(&buf, actionID)
-	buf.WriteByte(status)
+	writeU32(&buf, status)
 	writeU64(&buf, vertexID)
 	buf.WriteString(message)
 	return conn.WriteMessage(websocket.BinaryMessage, buf.Bytes())
-}
-
-func statusToByte(status int) byte {
-	if status < 0 {
-		return 0
-	}
-	if status > 255 {
-		return 255
-	}
-	return byte(status)
 }

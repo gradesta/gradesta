@@ -18,6 +18,9 @@ pub const MSG_CLIENT_CREATE_VERTEX: u8 = 0x86;
 pub const MSG_CLIENT_IDENTIFICATION_RESPONSE: u8 = 0x90;
 pub const MSG_CLIENT_IDENTIFICATION_REFUSED: u8 = 0x91;
 
+/// Sentinel value meaning "keep existing edge unchanged" when patching edges
+pub const EDGE_UNCHANGED: u64 = u64::MAX;
+
 /// Direction for edges
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]

@@ -5,7 +5,10 @@ The 2026 gradesta protocol works over WebSockets and is binary. Each WebSocket m
 Common field definitions
 - Action id: 8 bytes.
 - Vertex id: 8 bytes.
-- Edge id: 8 bytes (0 means unset).
+- Edge id: 8 bytes.
+  - 0 = no edge (unset/cleared)
+  - 0xFFFFFFFFFFFFFFFF = unchanged (keep existing value when patching)
+  - Any other value = vertex ID of adjacent vertex
 - Edge order: west, east, north, south, up, down.
 - UTF-8 strings: raw bytes; for mime-type fields, the UTF-8 string is null-terminated and the label/media bytes continue to the end of the WebSocket message.
 
@@ -61,7 +64,7 @@ Server to client
 4. Log message to client
    - Type: 1 byte = 0b0000 1111
    - Action id: 8 bytes
-   - HTTP status: 1 byte
+   - HTTP status: 4 bytes (big-endian uint32)
    - Vertex id: 8 bytes
    - Log message: UTF-8 bytes to end of message
 5. Request identification

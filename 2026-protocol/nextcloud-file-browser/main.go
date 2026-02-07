@@ -25,6 +25,9 @@ const (
 	msgClientIdentificationRefused   = 0x91
 )
 
+// EdgeUnchanged is the sentinel value meaning "keep existing edge unchanged" when patching edges
+const EdgeUnchanged uint64 = 0xFFFFFFFFFFFFFFFF
+
 // Connection states
 const (
 	stateAwaitingIdentity = "awaiting_identity"

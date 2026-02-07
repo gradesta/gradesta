@@ -29,9 +29,9 @@ type PendingAuth struct {
 // ConnectionState tracks the state of a WebSocket connection
 type ConnectionState struct {
 	Conn         *websocket.Conn
-	Identity     string // "username@server"
-	NextcloudURL string // "https://server"
-	Username     string
+	Identity     string // The public key URL - this is the real identity
+	NextcloudURL string // "https://server" - derived from embedded claim for server access
+	Username     string // Username from embedded claim
 	AppPassword  string
 	State        string // awaiting_identity, awaiting_auth, browsing
 	PendingAuth  *PendingAuth
@@ -45,9 +45,9 @@ type LoginPollState struct {
 	StopChan     chan struct{}
 }
 
-// PublicKeyData contains the public key and embedded identity
+// PublicKeyData contains the public key and embedded identity claim
 type PublicKeyData struct {
-	Identity string
+	Identity string // Embedded claim (username@server) - unverified, only used for Nextcloud URL derivation
 	Key      *ecdsa.PublicKey
 }
 
@@ -146,21 +146,23 @@ func handleIdentificationResponse(state *ConnectionState, msg []byte) {
 		return
 	}
 
-	log.Printf("Fetched public key with identity: %s", pubKeyData.Identity)
+	log.Printf("Fetched public key with embedded claim: %s", pubKeyData.Identity)
 
-	// Parse identity from public key file (format: username@server)
-	identity := pubKeyData.Identity
-	parts := strings.SplitN(identity, "@", 2)
+	// Parse embedded identity claim from public key file (format: username@server)
+	// This is just a claim - the real identity is the URL where the key is hosted
+	embeddedClaim := pubKeyData.Identity
+	parts := strings.SplitN(embeddedClaim, "@", 2)
 	if len(parts) != 2 {
-		log.Printf("Invalid identity format: %s", identity)
+		log.Printf("Invalid embedded identity format: %s", embeddedClaim)
 		return
 	}
 	username := parts[0]
-	server := parts[1]
+	claimedServer := parts[1]
 
 	// Verify that the claimed server matches the hosting server
-	if !strings.EqualFold(server, hostingServer) {
-		log.Printf("Identity server mismatch: claimed %s but hosted on %s", server, hostingServer)
+	// This ensures someone can't claim to be user@example.com while hosting on evil.com
+	if !strings.EqualFold(claimedServer, hostingServer) {
+		log.Printf("Identity server mismatch: claimed %s but hosted on %s", claimedServer, hostingServer)
 		return
 	}
 
@@ -180,20 +182,21 @@ func handleIdentificationResponse(state *ConnectionState, msg []byte) {
 	}
 
 	log.Printf("Signature verified successfully!")
-	log.Printf("Identified user: %s@%s", username, server)
+	log.Printf("Identity URL (real identity): %s", identityURL)
+	log.Printf("Embedded claim (unverified): %s", embeddedClaim)
 
-	// Store identity info
-	state.Identity = identity
+	// Store identity info - the URL is the real identity
+	state.Identity = identityURL
 	state.Username = username
-	state.NextcloudURL = fmt.Sprintf("https://%s", server)
+	state.NextcloudURL = fmt.Sprintf("https://%s", claimedServer)
 
-	// Check if we have stored credentials for this identity
+	// Check if we have stored credentials for this identity (keyed by URL)
 	credStoreMu.Lock()
-	cred, exists := credStore.Get(identity)
+	cred, exists := credStore.Get(identityURL)
 	credStoreMu.Unlock()
 
 	if exists {
-		log.Printf("Found stored credentials for %s", identity)
+		log.Printf("Found stored credentials for %s", identityURL)
 		state.Username = cred.Username
 		state.AppPassword = cred.AppPassword
 		state.NextcloudURL = cred.NextcloudURL
@@ -201,7 +204,7 @@ func handleIdentificationResponse(state *ConnectionState, msg []byte) {
 		// Send root directory listing
 		sendDirectoryListing(state, "/")
 	} else {
-		log.Printf("No credentials for %s, starting Nextcloud auth flow", identity)
+		log.Printf("No credentials for %s, starting Nextcloud auth flow", identityURL)
 		startNextcloudAuth(state)
 	}
 }

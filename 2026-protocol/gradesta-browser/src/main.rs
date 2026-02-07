@@ -3778,7 +3778,12 @@ fn ingest_server_events(
             ServerEvent::SetEdges { vertex_id, edges } => {
                 let entry = graph.vertices.entry(vertex_id).or_default();
                 entry.id = vertex_id;
-                entry.edges = edges;
+                // Merge edges: u64::MAX means "unchanged", skip those
+                for (i, &new_edge) in edges.iter().enumerate() {
+                    if new_edge != u64::MAX {
+                        entry.edges[i] = new_edge;
+                    }
+                }
                 
                 if app_state.current_vertex.is_none() {
                     app_state.current_vertex = Some(vertex_id);

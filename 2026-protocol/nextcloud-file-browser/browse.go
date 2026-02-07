@@ -249,16 +249,21 @@ func sendSetContext(conn *websocket.Conn, actionID uint64, landmark string) erro
 }
 
 func sendSetVertexLabel(conn *websocket.Conn, actionID, vertexID uint64, mimeType string, label []byte) error {
-	msg := make([]byte, 1+8+8+len(mimeType)+1+len(label))
+	return sendSetVertexLabelLayer(conn, actionID, vertexID, 0, mimeType, label)
+}
+
+func sendSetVertexLabelLayer(conn *websocket.Conn, actionID, vertexID uint64, layer uint32, mimeType string, label []byte) error {
+	msg := make([]byte, 1+8+8+4+len(mimeType)+1+len(label))
 	msg[0] = msgServerSetVertexLabel
 	binary.BigEndian.PutUint64(msg[1:9], actionID)
 	binary.BigEndian.PutUint64(msg[9:17], vertexID)
-	copy(msg[17:17+len(mimeType)], mimeType)
-	msg[17+len(mimeType)] = 0 // null terminator
-	copy(msg[17+len(mimeType)+1:], label)
+	binary.BigEndian.PutUint32(msg[17:21], layer)
+	copy(msg[21:21+len(mimeType)], mimeType)
+	msg[21+len(mimeType)] = 0 // null terminator
+	copy(msg[21+len(mimeType)+1:], label)
 	err := conn.WriteMessage(websocket.BinaryMessage, msg)
 	if err != nil {
-		log.Printf("ERROR sending SetVertexLabel (vertex %d): %v", vertexID, err)
+		log.Printf("ERROR sending SetVertexLabel (vertex %d, layer %d): %v", vertexID, layer, err)
 	}
 	return err
 }
@@ -283,11 +288,11 @@ func sendSetEdges(conn *websocket.Conn, actionID, vertexID, west, east, north, s
 }
 
 func sendLog(conn *websocket.Conn, actionID uint64, status int, vertexID uint64, message string) error {
-	msg := make([]byte, 1+8+2+8+len(message))
+	msg := make([]byte, 1+8+4+8+len(message))
 	msg[0] = msgServerLogMessage
 	binary.BigEndian.PutUint64(msg[1:9], actionID)
-	binary.BigEndian.PutUint16(msg[9:11], uint16(status))
-	binary.BigEndian.PutUint64(msg[11:19], vertexID)
-	copy(msg[19:], message)
+	binary.BigEndian.PutUint32(msg[9:13], uint32(status))
+	binary.BigEndian.PutUint64(msg[13:21], vertexID)
+	copy(msg[21:], message)
 	return conn.WriteMessage(websocket.BinaryMessage, msg)
 }

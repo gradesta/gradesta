@@ -42,19 +42,6 @@ fn router_main_hash(identity: &str) -> u64 {
     hasher.finish()
 }
 
-/// Generate hash for notes portal (matches router.rs)
-fn notes_portal_hash(identity: &str) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    format!("router:{}:notes-portal", identity).hash(&mut hasher);
-    hasher.finish()
-}
-
-/// Generate hash for files portal (matches router.rs)
-fn files_portal_hash(identity: &str) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    format!("router:{}:files-portal", identity).hash(&mut hasher);
-    hasher.finish()
-}
 
 fn year_hash(identity: &str, year: i32) -> u64 {
     calendar_hash(identity, &format!("year:{}", year))
@@ -253,14 +240,12 @@ where
     // Calendar portal vertex - allows navigation back to home screen
     // This portal is shared with router.rs, so we need to send its label and edges
     let portal_id = router_portal_hash(identity);
-    let notes_portal_id = notes_portal_hash(identity);
-    let files_portal_id = files_portal_hash(identity);
     let portal_msg = encode_set_vertex_label(action_id, portal_id, "text/plain", b"Calendar");
     write.send(Message::Binary(portal_msg)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-    // Portal edges: north to notes portal, south to files portal (vertical menu), east to first year (content)
+    // Portal edges: only set east to first year (content); router.rs handles north/south menu edges
     let first_year_id = year_hash(identity, years[0]);
-    let portal_edges = encode_set_edges(action_id, portal_id, 0, first_year_id, notes_portal_id, files_portal_id, 0, 0, 0);
+    let portal_edges = encode_set_edges(action_id, portal_id, EDGE_UNCHANGED, first_year_id, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, EDGE_UNCHANGED, 0);
     write.send(Message::Binary(portal_edges)).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
     // Send year, month, and day vertices
