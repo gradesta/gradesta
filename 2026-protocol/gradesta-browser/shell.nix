@@ -29,6 +29,10 @@ pkgs.mkShell {
     mpv
     # Text-to-speech (Speech Dispatcher)
     speechd
+    # Vulkan SDK for GPU-accelerated whisper (optional: build with --features gpu-vulkan)
+    vulkan-headers
+    shaderc        # provides glslc shader compiler
+    vulkan-validation-layers
   ];
 
   LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (with pkgs; [
@@ -46,6 +50,10 @@ pkgs.mkShell {
 
   # For whisper-rs-sys build (bindgen needs libclang)
   LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+
+  # Help cmake find Vulkan SDK components
+  VULKAN_SDK = "${pkgs.vulkan-headers}";
+  VK_LAYER_PATH = "${pkgs.vulkan-validation-layers}/share/vulkan/explicit_layer.d";
 
   shellHook = ''
     echo "Gradesta Browser development shell"
