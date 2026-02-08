@@ -402,11 +402,15 @@ fn decode_video(
 }
 
 /// Decode and play audio using symphonia and rodio
+///
+/// This uses a different approach: we drop and recreate the sink on pause/seek
+/// to avoid buffering issues. The rodio sink buffers audio ahead of time,
+/// so we can't just pause it - we need to destroy and recreate it.
 fn decode_and_play_audio(
     data: Vec<u8>,
     command_rx: Receiver<VideoPlayerCommand>,
     position_ms: Arc<AtomicU64>,
-    is_playing: Arc<AtomicBool>,
+    _is_playing: Arc<AtomicBool>,
 ) -> Result<(), String> {
     use symphonia::core::audio::SampleBuffer;
     use symphonia::core::codecs::DecoderOptions;
@@ -458,74 +462,158 @@ fn decode_and_play_audio(
 
     eprintln!("VideoPlayer: Audio track: {} Hz, {} channels", sample_rate, channels);
 
-    // Create audio output
+    // Create audio output - we keep _stream alive for the whole function
     let (_stream, stream_handle) = OutputStream::try_default()
         .map_err(|e| format!("Failed to create audio output: {}", e))?;
-    let sink = Sink::try_new(&stream_handle)
-        .map_err(|e| format!("Failed to create audio sink: {}", e))?;
 
-    let mut seek_pending: Option<Duration> = None;
+    // We'll recreate the sink on seek/pause to clear buffers
+    let mut sink: Option<Sink> = Some(
+        Sink::try_new(&stream_handle)
+            .map_err(|e| format!("Failed to create audio sink: {}", e))?
+    );
+
+    let mut paused = false;
+    let mut current_position = Duration::ZERO;
 
     // Decode and play audio
     loop {
-        // Check for commands
+        // Check for commands - this is the main control point
         while let Ok(cmd) = command_rx.try_recv() {
             match cmd {
                 VideoPlayerCommand::Play => {
-                    sink.play();
+                    if paused {
+                        paused = false;
+                        // Recreate sink and seek to current position
+                        sink = Some(
+                            Sink::try_new(&stream_handle)
+                                .map_err(|e| format!("Failed to create audio sink: {}", e))?
+                        );
+                        // Recreate pipeline and seek to where we were
+                        let result = create_audio_pipeline(&data);
+                        if let Ok((new_format, new_decoder, _, _, _)) = result {
+                            format = new_format;
+                            audio_decoder = new_decoder;
+                            let seek_time = Time::from(current_position.as_secs_f64());
+                            let _ = format.seek(SeekMode::Coarse, SeekTo::Time { time: seek_time, track_id: Some(track_id) });
+                        }
+                        eprintln!("VideoPlayer: Audio resumed at {:?}", current_position);
+                    }
                 }
                 VideoPlayerCommand::Pause => {
-                    sink.pause();
+                    if !paused {
+                        paused = true;
+                        // Get approximate position from video
+                        current_position = Duration::from_millis(position_ms.load(Ordering::SeqCst));
+                        // Drop the sink to immediately stop audio
+                        sink = None;
+                        eprintln!("VideoPlayer: Audio paused at {:?}", current_position);
+                    }
                 }
                 VideoPlayerCommand::Stop => {
-                    sink.stop();
+                    sink = None;
                     return Ok(());
                 }
                 VideoPlayerCommand::Seek(target) => {
-                    seek_pending = Some(target);
+                    current_position = target;
+                    // Drop and recreate sink to clear buffer
+                    sink = Some(
+                        Sink::try_new(&stream_handle)
+                            .map_err(|e| format!("Failed to create audio sink: {}", e))?
+                    );
+                    // Recreate pipeline and seek
+                    let result = create_audio_pipeline(&data);
+                    if let Ok((new_format, new_decoder, _, _, _)) = result {
+                        format = new_format;
+                        audio_decoder = new_decoder;
+                        let seek_time = Time::from(target.as_secs_f64());
+                        if let Err(e) = format.seek(SeekMode::Coarse, SeekTo::Time { time: seek_time, track_id: Some(track_id) }) {
+                            eprintln!("VideoPlayer: Audio seek error: {}", e);
+                        } else {
+                            eprintln!("VideoPlayer: Audio seeked to {:?}", target);
+                        }
+                    }
+                    // If we were paused, stay paused
+                    if paused {
+                        sink = None;
+                    }
                 }
             }
         }
 
-        // Handle seeking
-        if let Some(target) = seek_pending.take() {
-            // Clear the current audio buffer
-            sink.clear();
-
-            // Re-create the audio pipeline to seek from the beginning
-            let result = create_audio_pipeline(&data);
-            if let Ok((new_format, new_decoder, _, _, _)) = result {
-                format = new_format;
-                audio_decoder = new_decoder;
-
-                // Try to seek in the format
-                let seek_time = Time::from(target.as_secs_f64());
-                if let Err(e) = format.seek(SeekMode::Coarse, SeekTo::Time { time: seek_time, track_id: Some(track_id) }) {
-                    eprintln!("VideoPlayer: Audio seek error: {}", e);
-                } else {
-                    eprintln!("VideoPlayer: Audio seeked to {:?}", target);
-                }
-            }
-        }
-
-        // Check if we should be paused
-        if !is_playing.load(Ordering::SeqCst) {
-            sink.pause();
+        // If paused, just wait for commands
+        if paused || sink.is_none() {
             thread::sleep(Duration::from_millis(10));
             continue;
-        } else {
-            sink.play();
         }
+
+        let active_sink = sink.as_ref().unwrap();
+
+        // Don't buffer too far ahead - wait if sink has enough data
+        // This ensures we can respond to pause/seek quickly
+        while active_sink.len() > 3 {
+            thread::sleep(Duration::from_millis(10));
+            // Check for commands while waiting
+            if let Ok(cmd) = command_rx.try_recv() {
+                // Put command back and break to handle it
+                match cmd {
+                    VideoPlayerCommand::Pause | VideoPlayerCommand::Stop | VideoPlayerCommand::Seek(_) => {
+                        // Handle these immediately by re-processing in main loop
+                        match cmd {
+                            VideoPlayerCommand::Pause => {
+                                paused = true;
+                                current_position = Duration::from_millis(position_ms.load(Ordering::SeqCst));
+                                sink = None;
+                                eprintln!("VideoPlayer: Audio paused at {:?}", current_position);
+                            }
+                            VideoPlayerCommand::Stop => {
+                                sink = None;
+                                return Ok(());
+                            }
+                            VideoPlayerCommand::Seek(target) => {
+                                current_position = target;
+                                sink = Some(
+                                    Sink::try_new(&stream_handle)
+                                        .map_err(|e| format!("Failed to create audio sink: {}", e))?
+                                );
+                                let result = create_audio_pipeline(&data);
+                                if let Ok((new_format, new_decoder, _, _, _)) = result {
+                                    format = new_format;
+                                    audio_decoder = new_decoder;
+                                    let seek_time = Time::from(target.as_secs_f64());
+                                    let _ = format.seek(SeekMode::Coarse, SeekTo::Time { time: seek_time, track_id: Some(track_id) });
+                                }
+                                eprintln!("VideoPlayer: Audio seeked to {:?}", target);
+                            }
+                            _ => {}
+                        }
+                        break;
+                    }
+                    VideoPlayerCommand::Play => {
+                        // Already playing, ignore
+                    }
+                }
+            }
+            if sink.is_none() {
+                break;
+            }
+        }
+
+        // Re-check sink after potential pause/seek
+        if sink.is_none() {
+            continue;
+        }
+        let active_sink = sink.as_ref().unwrap();
 
         // Read next packet
         let packet = match format.next_packet() {
             Ok(p) => p,
             Err(symphonia::core::errors::Error::IoError(e))
                 if e.kind() == std::io::ErrorKind::UnexpectedEof => {
-                break; // End of stream
+                // Wait for audio to finish playing
+                active_sink.sleep_until_end();
+                break;
             }
             Err(symphonia::core::errors::Error::ResetRequired) => {
-                // Reset required after seek
                 audio_decoder.reset();
                 continue;
             }
@@ -543,7 +631,6 @@ fn decode_and_play_audio(
         // Decode the packet
         match audio_decoder.decode(&packet) {
             Ok(decoded) => {
-                // Convert to samples
                 let spec = *decoded.spec();
                 let duration = decoded.capacity() as u64;
 
@@ -552,7 +639,6 @@ fn decode_and_play_audio(
 
                 let samples = sample_buf.samples().to_vec();
 
-                // Create a source from the samples
                 let source = SamplesSource {
                     samples,
                     position: 0,
@@ -560,10 +646,9 @@ fn decode_and_play_audio(
                     channels: channels as u16,
                 };
 
-                sink.append(source);
+                active_sink.append(source);
             }
             Err(symphonia::core::errors::Error::DecodeError(_)) => {
-                // Skip decode errors (can happen after seek)
                 continue;
             }
             Err(e) => {
@@ -572,8 +657,6 @@ fn decode_and_play_audio(
         }
     }
 
-    // Wait for audio to finish
-    sink.sleep_until_end();
     eprintln!("VideoPlayer: Audio finished");
     Ok(())
 }

@@ -1415,13 +1415,62 @@ fn ui_system(
                         let mut pos_secs = pos.as_secs_f32();
 
                         let slider_width = video_rect.map(|r| r.x).unwrap_or(ui.available_width());
-                        ui.vertical_centered(|ui| {
-                            ui.add_sized(
-                                [slider_width, 20.0],
-                                egui::Slider::new(&mut pos_secs, 0.0..=dur_secs)
-                                    .show_value(false)
-                                    .trailing_fill(true)
+
+                        // Center the seek bar under the video
+                        let available_width = ui.available_width();
+                        let left_padding = ((available_width - slider_width) / 2.0).max(0.0);
+
+                        ui.horizontal(|ui| {
+                            ui.add_space(left_padding);
+                            // Use a custom widget size to force the slider to be exactly the video width
+                            let (rect, response) = ui.allocate_exact_size(
+                                egui::vec2(slider_width, 20.0),
+                                egui::Sense::click_and_drag()
                             );
+
+                            if ui.is_rect_visible(rect) {
+                                // Draw custom progress bar / seek bar
+                                let progress = pos_secs / dur_secs;
+                                let filled_width = rect.width() * progress;
+
+                                // Background
+                                ui.painter().rect_filled(
+                                    rect,
+                                    4.0,
+                                    egui::Color32::from_gray(60)
+                                );
+
+                                // Filled portion
+                                let filled_rect = egui::Rect::from_min_size(
+                                    rect.min,
+                                    egui::vec2(filled_width, rect.height())
+                                );
+                                ui.painter().rect_filled(
+                                    filled_rect,
+                                    4.0,
+                                    egui::Color32::from_rgb(100, 150, 255)
+                                );
+
+                                // Handle dragging
+                                if response.dragged() || response.clicked() {
+                                    if let Some(pointer_pos) = response.interact_pointer_pos() {
+                                        let relative_x = (pointer_pos.x - rect.left()) / rect.width();
+                                        let new_pos = (relative_x.clamp(0.0, 1.0) * dur_secs) as f32;
+                                        if (new_pos - pos_secs).abs() > 0.1 {
+                                            pos_secs = new_pos;
+                                        }
+                                    }
+                                }
+
+                                // Draw position indicator (small circle)
+                                let indicator_x = rect.left() + filled_width;
+                                let indicator_center = egui::pos2(indicator_x, rect.center().y);
+                                ui.painter().circle_filled(
+                                    indicator_center,
+                                    8.0,
+                                    egui::Color32::WHITE
+                                );
+                            }
                         });
 
                         if pos_secs != pos.as_secs_f32() {
