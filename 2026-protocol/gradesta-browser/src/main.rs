@@ -2147,6 +2147,18 @@ fn ui_system(
                                     app_state.status = "TTS mode disabled".to_string();
                                 }
                             }
+                            Command::GlobalTTSSpeedUp => {
+                                let rate = tts::get_rate();
+                                let new_rate = (rate + 0.25).min(3.0);
+                                tts::set_rate(new_rate);
+                                app_state.status = format!("TTS speed: {:.2}x", new_rate);
+                            }
+                            Command::GlobalTTSSpeedDown => {
+                                let rate = tts::get_rate();
+                                let new_rate = (rate - 0.25).max(0.5);
+                                tts::set_rate(new_rate);
+                                app_state.status = format!("TTS speed: {:.2}x", new_rate);
+                            }
                             _ => {
                                 app_state.status = format!("Command not yet wired: {}", cmd.slug());
                             }
@@ -4777,6 +4789,11 @@ fn play_audio(data: &[u8], _mime: &str, vertex_id: u64, state: &AudioPlaybackSta
         *playing = Some(vertex_id);
     }
 
+    // Calculate RMS of audio for TTS volume calibration
+    if let Some(rms) = calculate_audio_rms(data) {
+        tts::set_reference_audio_level(rms);
+    }
+
     let data_vec = data.to_vec();
     let stop_signal = state.should_stop.clone();
     let playing_vertex = state.playing_vertex.clone();
@@ -4826,6 +4843,31 @@ fn stop_audio(state: &AudioPlaybackState) {
     if let Ok(mut stop) = state.should_stop.lock() {
         *stop = true;
     }
+}
+
+/// Calculate the RMS (Root Mean Square) amplitude of audio data
+/// Returns a value typically in the range 0.0-1.0 representing loudness
+fn calculate_audio_rms(data: &[u8]) -> Option<f32> {
+    use rodio::Decoder;
+    use std::io::Cursor;
+
+    let cursor = Cursor::new(data.to_vec());
+    let decoder = Decoder::new(cursor).ok()?;
+
+    // Collect samples and calculate RMS
+    let samples: Vec<f32> = decoder
+        .map(|s| s as f32 / i16::MAX as f32)
+        .collect();
+
+    if samples.is_empty() {
+        return None;
+    }
+
+    // Calculate RMS: sqrt(mean(samples^2))
+    let sum_squares: f32 = samples.iter().map(|s| s * s).sum();
+    let rms = (sum_squares / samples.len() as f32).sqrt();
+
+    Some(rms)
 }
 
 /// Generate waveform data from audio for visualization

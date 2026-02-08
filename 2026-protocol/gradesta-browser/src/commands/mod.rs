@@ -84,6 +84,10 @@ pub enum Command {
     GlobalOpenKeybindings,
     /// Toggle text-to-speech mode
     GlobalToggleTTS,
+    /// Increase TTS playback speed
+    GlobalTTSSpeedUp,
+    /// Decrease TTS playback speed
+    GlobalTTSSpeedDown,
 
     // === Graph Context Commands ===
     /// Navigate north in the graph
@@ -178,6 +182,8 @@ impl Command {
             Command::GlobalOpenCommandBar => "global.open_command_bar",
             Command::GlobalOpenKeybindings => "global.open_keybindings",
             Command::GlobalToggleTTS => "global.toggle_tts",
+            Command::GlobalTTSSpeedUp => "global.tts_speed_up",
+            Command::GlobalTTSSpeedDown => "global.tts_speed_down",
             // Graph
             Command::GraphNavigateNorth => "graph.navigate_north",
             Command::GraphNavigateSouth => "graph.navigate_south",
@@ -235,6 +241,8 @@ impl Command {
             "global.open_command_bar" => Some(Command::GlobalOpenCommandBar),
             "global.open_keybindings" => Some(Command::GlobalOpenKeybindings),
             "global.toggle_tts" => Some(Command::GlobalToggleTTS),
+            "global.tts_speed_up" => Some(Command::GlobalTTSSpeedUp),
+            "global.tts_speed_down" => Some(Command::GlobalTTSSpeedDown),
             // Graph
             "graph.navigate_north" => Some(Command::GraphNavigateNorth),
             "graph.navigate_south" => Some(Command::GraphNavigateSouth),
@@ -293,6 +301,8 @@ impl Command {
             Command::GlobalOpenCommandBar => "Open the command bar",
             Command::GlobalOpenKeybindings => "Open keybindings editor",
             Command::GlobalToggleTTS => "Toggle text-to-speech mode",
+            Command::GlobalTTSSpeedUp => "Increase TTS speed",
+            Command::GlobalTTSSpeedDown => "Decrease TTS speed",
             // Graph
             Command::GraphNavigateNorth => "Navigate north in the graph",
             Command::GraphNavigateSouth => "Navigate south in the graph",
@@ -348,7 +358,9 @@ impl Command {
             | Command::GlobalToggleFullscreen
             | Command::GlobalOpenCommandBar
             | Command::GlobalOpenKeybindings
-            | Command::GlobalToggleTTS => Context::Global,
+            | Command::GlobalToggleTTS
+            | Command::GlobalTTSSpeedUp
+            | Command::GlobalTTSSpeedDown => Context::Global,
 
             Command::GraphNavigateNorth
             | Command::GraphNavigateSouth
@@ -403,6 +415,8 @@ impl Command {
             Command::GlobalOpenCommandBar,
             Command::GlobalOpenKeybindings,
             Command::GlobalToggleTTS,
+            Command::GlobalTTSSpeedUp,
+            Command::GlobalTTSSpeedDown,
             // Graph
             Command::GraphNavigateNorth,
             Command::GraphNavigateSouth,
