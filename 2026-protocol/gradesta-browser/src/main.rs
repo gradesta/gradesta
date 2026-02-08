@@ -3938,6 +3938,12 @@ fn handle_navigation(
         return;
     }
 
+    // Don't move when shift is held - shift+arrow only changes direction (handled in ui_system)
+    let shift_held = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+    if shift_held {
+        return;
+    }
+
     let Some(current_id) = app_state.current_vertex else { return };
     let Some(vertex) = graph.vertices.get(&current_id) else { return };
 
