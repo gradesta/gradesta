@@ -963,7 +963,7 @@ fn ui_system(
         // Delete key: Delete current vertex (if editable)
         if i.key_pressed(egui::Key::Delete) && !i.modifiers.ctrl && app_state.input_mode == InputMode::Normal && app_state.connected {
             if let Some(current_id) = app_state.current_vertex {
-                if let Some(vertex) = graph.vertices.get(&current_id) {
+                if let Some(vertex) = graph.vertices.get(&current_id).cloned() {
                     // Check if vertex is editable (edit_mask != 0)
                     if vertex.edit_mask != 0 {
                         // Find a neighbor to navigate to after deletion
@@ -978,12 +978,22 @@ fn ui_system(
                             let _ = tx.send(WsCommand::DeleteVertex { action_id, vertex_id: current_id });
                             app_state.status = "Deleting vertex...".to_string();
 
+                            // Remove the vertex from local graph immediately (optimistic delete)
+                            graph.vertices.remove(&current_id);
+                            // Remove from landmark_vertices
+                            for vertices in graph.landmark_vertices.values_mut() {
+                                vertices.retain(|&id| id != current_id);
+                            }
+                            // Remove from history
+                            app_state.history.retain(|&id| id != current_id);
+
                             // Navigate to a neighbor (or go back in history)
                             if let Some(next) = next_vertex {
-                                app_state.history.push(current_id);
                                 app_state.current_vertex = Some(next);
                             } else if let Some(prev) = app_state.history.pop() {
                                 app_state.current_vertex = Some(prev);
+                            } else {
+                                app_state.current_vertex = None;
                             }
                         }
                     } else {
@@ -4223,14 +4233,24 @@ fn ingest_server_events(
             }
             ServerEvent::SetEdges { vertex_id, edges, edit_mask } => {
                 // Check if this is a deletion signal (all edges = 0, edit_mask = 0)
-                let is_deletion = edges.iter().all(|&e| e == 0) && edit_mask == 0;
+                // Only treat as deletion if the vertex already exists (to avoid false positives
+                // from read-only vertices like calendar entries that have no edges)
+                let vertex_exists = graph.vertices.contains_key(&vertex_id);
+                let is_deletion = vertex_exists && edges.iter().all(|&e| e == 0) && edit_mask == 0;
 
                 if is_deletion {
                     // Remove the vertex from the graph
                     graph.vertices.remove(&vertex_id);
                     // Remove from history
                     app_state.history.retain(|&id| id != vertex_id);
-                    // If we're currently on this vertex, we've already navigated away
+                    // Remove from landmark_vertices
+                    for vertices in graph.landmark_vertices.values_mut() {
+                        vertices.retain(|&id| id != vertex_id);
+                    }
+                    // If we're currently on this deleted vertex, navigate away
+                    if app_state.current_vertex == Some(vertex_id) {
+                        app_state.current_vertex = app_state.history.pop();
+                    }
                     eprintln!("Vertex {} deleted from local graph", vertex_id);
                 } else {
                     let entry = graph.vertices.entry(vertex_id).or_default();
