@@ -1380,8 +1380,8 @@ fn ui_system(
                     app_state.status = "Text input mode (editing current vertex)".to_string();
                 }
             }
-            // Shift+Direction: Create new text vertex in that direction
-            if i.modifiers.shift {
+            // Shift+Direction: Change last navigation direction without moving
+            if i.modifiers.shift && !i.modifiers.ctrl {
                 let dir = if i.key_pressed(egui::Key::ArrowUp) || i.key_pressed(egui::Key::W) {
                     Some(EDGE_NORTH)
                 } else if i.key_pressed(egui::Key::ArrowDown) || i.key_pressed(egui::Key::S) {
@@ -1398,8 +1398,7 @@ fn ui_system(
                     None
                 };
                 if let Some(direction) = dir {
-                    app_state.text_input_buffer.clear();
-                    app_state.input_mode = InputMode::TextInput { direction: Some(direction) };
+                    app_state.last_nav_direction = direction;
                     let dir_name = match direction {
                         EDGE_NORTH => "north",
                         EDGE_SOUTH => "south",
@@ -1409,8 +1408,24 @@ fn ui_system(
                         EDGE_DOWN => "down",
                         _ => "?",
                     };
-                    app_state.status = format!("Text input mode (new vertex {})", dir_name);
+                    app_state.status = format!("Direction set to {}", dir_name);
                 }
+            }
+            // N: Create new text vertex in last navigation direction
+            if i.key_pressed(egui::Key::N) && !i.modifiers.ctrl && !i.modifiers.shift {
+                let direction = app_state.last_nav_direction;
+                app_state.text_input_buffer.clear();
+                app_state.input_mode = InputMode::TextInput { direction: Some(direction) };
+                let dir_name = match direction {
+                    EDGE_NORTH => "north",
+                    EDGE_SOUTH => "south",
+                    EDGE_WEST => "west",
+                    EDGE_EAST => "east",
+                    EDGE_UP => "up",
+                    EDGE_DOWN => "down",
+                    _ => "?",
+                };
+                app_state.status = format!("Text input mode (new vertex {})", dir_name);
             }
             // Space bar: Push-to-talk recording
             // Hold space to record, release to stop and save
