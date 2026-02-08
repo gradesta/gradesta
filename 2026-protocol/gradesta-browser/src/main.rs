@@ -1139,6 +1139,87 @@ fn ui_system(
                 app_state.status = "Bag is empty".to_string();
             }
         }
+        // C: Cut connection in the current navigation direction
+        if i.key_pressed(egui::Key::C) && !i.modifiers.ctrl && app_state.input_mode == InputMode::Normal && app_state.connected {
+            if let Some(current_id) = app_state.current_vertex {
+                if let Some(ref tx) = ws_cmd_tx.0 {
+                    let direction = app_state.last_nav_direction;
+                    let opposite_direction = match direction {
+                        EDGE_WEST => EDGE_EAST,
+                        EDGE_EAST => EDGE_WEST,
+                        EDGE_NORTH => EDGE_SOUTH,
+                        EDGE_SOUTH => EDGE_NORTH,
+                        EDGE_UP => EDGE_DOWN,
+                        EDGE_DOWN => EDGE_UP,
+                        _ => EDGE_NORTH,
+                    };
+
+                    // Get the neighbor in that direction
+                    let neighbor_id = graph.vertices.get(&current_id)
+                        .map(|v| v.edges[direction])
+                        .unwrap_or(0);
+
+                    if neighbor_id != 0 {
+                        // Cut the edge: set current's edge to 0, and neighbor's opposite edge to 0
+                        // Use u64::MAX for unchanged edges, 0 to clear
+
+                        // Clear current vertex's edge in the direction
+                        let mut current_edges = [u64::MAX; 6];
+                        current_edges[direction] = 0;
+
+                        let action_id1 = app_state.next_action_id;
+                        app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                        let _ = tx.send(WsCommand::SetEdges {
+                            action_id: action_id1,
+                            vertex_id: current_id,
+                            edges: current_edges,
+                        });
+
+                        // Clear neighbor's edge back to current
+                        let mut neighbor_edges = [u64::MAX; 6];
+                        neighbor_edges[opposite_direction] = 0;
+
+                        let action_id2 = app_state.next_action_id;
+                        app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                        let _ = tx.send(WsCommand::SetEdges {
+                            action_id: action_id2,
+                            vertex_id: neighbor_id,
+                            edges: neighbor_edges,
+                        });
+
+                        // Optimistically update local graph
+                        if let Some(current_vertex) = graph.vertices.get_mut(&current_id) {
+                            current_vertex.edges[direction] = 0;
+                        }
+                        if let Some(neighbor_vertex) = graph.vertices.get_mut(&neighbor_id) {
+                            neighbor_vertex.edges[opposite_direction] = 0;
+                        }
+
+                        let dir_name = match direction {
+                            EDGE_NORTH => "north",
+                            EDGE_SOUTH => "south",
+                            EDGE_WEST => "west",
+                            EDGE_EAST => "east",
+                            EDGE_UP => "up",
+                            EDGE_DOWN => "down",
+                            _ => "?",
+                        };
+                        app_state.status = format!("Cut connection {}", dir_name);
+                    } else {
+                        let dir_name = match direction {
+                            EDGE_NORTH => "north",
+                            EDGE_SOUTH => "south",
+                            EDGE_WEST => "west",
+                            EDGE_EAST => "east",
+                            EDGE_UP => "up",
+                            EDGE_DOWN => "down",
+                            _ => "?",
+                        };
+                        app_state.status = format!("No connection {} to cut", dir_name);
+                    }
+                }
+            }
+        }
         // Delete key: Delete current vertex (if editable)
         if i.key_pressed(egui::Key::Delete) && !i.modifiers.ctrl && app_state.input_mode == InputMode::Normal && app_state.connected {
             if let Some(current_id) = app_state.current_vertex {
