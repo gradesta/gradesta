@@ -299,6 +299,11 @@ fn ui_system(
     let cmds = ui::capture_keyboard_commands(ctx, &app_state.keybindings, kb_context);
     let cmd_refresh = cmds.refresh;  // Used later for refresh logic
 
+    // IMPORTANT: Consume text edit events BEFORE any UI rendering
+    // This prevents egui's TextEdit from trying to use the broken system clipboard
+    // and inserting raw characters like 'v' when Ctrl+V is pressed
+    ui::consume_text_edit_events(ctx, &app_state);
+
     // Execute all keyboard commands using the ui module
     let cmd_results = ui::execute_commands(
         &cmds,
@@ -310,6 +315,9 @@ fn ui_system(
         &playback_state,
         ctx,
     );
+
+    // Process text editing commands (copy, cut, paste, undo, redo)
+    ui::process_text_edit_commands(&cmds, &mut app_state);
 
     // Finalize recording if needed
     if cmd_results.should_finalize_recording {

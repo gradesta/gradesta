@@ -146,6 +146,18 @@ pub enum Command {
     TextInputSubmit,
     /// Cancel text input
     TextInputCancel,
+    /// Copy selected text to clipboard
+    TextInputCopy,
+    /// Cut selected text to clipboard
+    TextInputCut,
+    /// Paste from clipboard
+    TextInputPaste,
+    /// Select all text
+    TextInputSelectAll,
+    /// Undo last text change
+    TextInputUndo,
+    /// Redo last undone change
+    TextInputRedo,
 
     // === Recording Context Commands ===
     /// Save recording (stop and save)
@@ -213,6 +225,12 @@ impl Command {
             // TextInput
             Command::TextInputSubmit => "text_input.submit",
             Command::TextInputCancel => "text_input.cancel",
+            Command::TextInputCopy => "text_input.copy",
+            Command::TextInputCut => "text_input.cut",
+            Command::TextInputPaste => "text_input.paste",
+            Command::TextInputSelectAll => "text_input.select_all",
+            Command::TextInputUndo => "text_input.undo",
+            Command::TextInputRedo => "text_input.redo",
             // Recording
             Command::RecordingSave => "recording.save",
             Command::RecordingCancel => "recording.cancel",
@@ -272,6 +290,12 @@ impl Command {
             // TextInput
             "text_input.submit" => Some(Command::TextInputSubmit),
             "text_input.cancel" => Some(Command::TextInputCancel),
+            "text_input.copy" => Some(Command::TextInputCopy),
+            "text_input.cut" => Some(Command::TextInputCut),
+            "text_input.paste" => Some(Command::TextInputPaste),
+            "text_input.select_all" => Some(Command::TextInputSelectAll),
+            "text_input.undo" => Some(Command::TextInputUndo),
+            "text_input.redo" => Some(Command::TextInputRedo),
             // Recording
             "recording.save" => Some(Command::RecordingSave),
             "recording.cancel" => Some(Command::RecordingCancel),
@@ -332,6 +356,12 @@ impl Command {
             // TextInput
             Command::TextInputSubmit => "Submit/save text input",
             Command::TextInputCancel => "Cancel text input",
+            Command::TextInputCopy => "Copy selected text",
+            Command::TextInputCut => "Cut selected text",
+            Command::TextInputPaste => "Paste from clipboard",
+            Command::TextInputSelectAll => "Select all text",
+            Command::TextInputUndo => "Undo last change",
+            Command::TextInputRedo => "Redo last change",
             // Recording
             Command::RecordingSave => "Save recording",
             Command::RecordingCancel => "Cancel recording",
@@ -387,7 +417,14 @@ impl Command {
 
             Command::BagPop | Command::BagClear => Context::Bag,
 
-            Command::TextInputSubmit | Command::TextInputCancel => Context::TextInput,
+            Command::TextInputSubmit
+            | Command::TextInputCancel
+            | Command::TextInputCopy
+            | Command::TextInputCut
+            | Command::TextInputPaste
+            | Command::TextInputSelectAll
+            | Command::TextInputUndo
+            | Command::TextInputRedo => Context::TextInput,
 
             Command::RecordingSave | Command::RecordingCancel => Context::Recording,
 
@@ -446,6 +483,12 @@ impl Command {
             // TextInput
             Command::TextInputSubmit,
             Command::TextInputCancel,
+            Command::TextInputCopy,
+            Command::TextInputCut,
+            Command::TextInputPaste,
+            Command::TextInputSelectAll,
+            Command::TextInputUndo,
+            Command::TextInputRedo,
             // Recording
             Command::RecordingSave,
             Command::RecordingCancel,

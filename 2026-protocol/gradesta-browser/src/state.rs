@@ -132,6 +132,16 @@ pub struct AppState {
     // Input mode state
     pub input_mode: InputMode,
     pub text_input_buffer: String,
+    /// Cursor position in text input (byte offset)
+    pub text_cursor_pos: usize,
+    /// Selection start in text input (byte offset, None if no selection)
+    pub text_selection_start: Option<usize>,
+    /// Internal clipboard for text editing
+    pub text_clipboard: String,
+    /// Undo stack for text input
+    pub text_undo_stack: Vec<String>,
+    /// Redo stack for text input
+    pub text_redo_stack: Vec<String>,
     // Audio recording state
     pub audio_samples: Arc<Mutex<Vec<f32>>>,
     pub audio_sample_rate: u32,
@@ -200,6 +210,11 @@ impl Default for AppState {
             max_landmark_history: 20,
             input_mode: InputMode::Normal,
             text_input_buffer: String::new(),
+            text_cursor_pos: 0,
+            text_selection_start: None,
+            text_clipboard: String::new(),
+            text_undo_stack: Vec::new(),
+            text_redo_stack: Vec::new(),
             audio_samples: Arc::new(Mutex::new(Vec::new())),
             audio_sample_rate: 44100,
             recording_start: None,

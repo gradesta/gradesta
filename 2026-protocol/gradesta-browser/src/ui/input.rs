@@ -41,6 +41,14 @@ pub struct CapturedCommands {
     // Recording commands
     pub recording_save: bool,
 
+    // Text input commands
+    pub text_copy: bool,
+    pub text_cut: bool,
+    pub text_paste: bool,
+    pub text_select_all: bool,
+    pub text_undo: bool,
+    pub text_redo: bool,
+
     // Direction setting commands
     pub set_dir_north: bool,
     pub set_dir_south: bool,
@@ -92,6 +100,14 @@ pub fn capture_keyboard_commands(
 
     // Recording commands
     cmds.recording_save = ctx.input(|i| keybindings.command_released(kb_context, &Command::RecordingSave, i));
+
+    // Text input commands
+    cmds.text_copy = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::TextInputCopy, i));
+    cmds.text_cut = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::TextInputCut, i));
+    cmds.text_paste = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::TextInputPaste, i));
+    cmds.text_select_all = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::TextInputSelectAll, i));
+    cmds.text_undo = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::TextInputUndo, i));
+    cmds.text_redo = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::TextInputRedo, i));
 
     // Direction setting commands
     cmds.set_dir_north = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GraphSetDirectionNorth, i));

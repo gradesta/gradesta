@@ -499,13 +499,32 @@ fn render_text_input_mode(ui: &mut egui::Ui, app_state: &mut AppState, direction
     egui::ScrollArea::vertical()
         .max_height(ui.available_height() - 20.0)
         .show(ui, |ui| {
-            let response = ui.add(
-                egui::TextEdit::multiline(&mut app_state.text_input_buffer)
-                    .desired_width(f32::INFINITY)
-                    .desired_rows(10)
-                    .font(egui::TextStyle::Monospace)
-            );
-            response.request_focus();
+            // Use .show() to get cursor/selection info for our clipboard
+            let output = egui::TextEdit::multiline(&mut app_state.text_input_buffer)
+                .desired_width(f32::INFINITY)
+                .desired_rows(10)
+                .font(egui::TextStyle::Monospace)
+                .show(ui);
+
+            output.response.request_focus();
+
+            // Update our selection state from egui's cursor state
+            if let Some(cursor_range) = output.cursor_range {
+                use egui::text::CursorRange;
+                let range: CursorRange = cursor_range;
+                let primary = range.primary.ccursor.index;
+                let secondary = range.secondary.ccursor.index;
+
+                if primary != secondary {
+                    // There's a selection
+                    app_state.text_selection_start = Some(secondary.min(primary));
+                    app_state.text_cursor_pos = secondary.max(primary);
+                } else {
+                    // Just cursor, no selection
+                    app_state.text_cursor_pos = primary;
+                    app_state.text_selection_start = None;
+                }
+            }
         });
 
     action

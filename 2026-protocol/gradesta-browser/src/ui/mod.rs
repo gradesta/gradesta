@@ -11,6 +11,7 @@ mod input;
 mod panels;
 mod processing;
 mod sidebar_content;
+mod text_edit;
 
 pub use command_bar::{execute_command_bar_command, render_command_bar, CommandBarAction};
 pub use commands::{execute_commands, finalize_recording};
@@ -19,6 +20,7 @@ pub use grid::render_grid_view;
 pub use input::capture_keyboard_commands;
 pub use processing::{process_identification, process_recording_cancel, process_text_input};
 pub use sidebar_content::{render_sidebar_content, SidebarContentAction};
+pub use text_edit::{consume_text_edit_events, process_text_edit_commands};
 
 /// Result of a zoom operation
 #[derive(Clone, Debug, Default)]

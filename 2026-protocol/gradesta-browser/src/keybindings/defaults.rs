@@ -260,6 +260,36 @@ static DEFAULTS: &[DefaultBinding] = &[
         context: Context::TextInput,
         bindings: &[(KeyCode::Escape, NONE)],
     },
+    DefaultBinding {
+        command: Command::TextInputCopy,
+        context: Context::TextInput,
+        bindings: &[(KeyCode::C, CTRL)],
+    },
+    DefaultBinding {
+        command: Command::TextInputCut,
+        context: Context::TextInput,
+        bindings: &[(KeyCode::X, CTRL)],
+    },
+    DefaultBinding {
+        command: Command::TextInputPaste,
+        context: Context::TextInput,
+        bindings: &[(KeyCode::V, CTRL)],
+    },
+    DefaultBinding {
+        command: Command::TextInputSelectAll,
+        context: Context::TextInput,
+        bindings: &[(KeyCode::A, CTRL)],
+    },
+    DefaultBinding {
+        command: Command::TextInputUndo,
+        context: Context::TextInput,
+        bindings: &[(KeyCode::Z, CTRL)],
+    },
+    DefaultBinding {
+        command: Command::TextInputRedo,
+        context: Context::TextInput,
+        bindings: &[(KeyCode::Z, CTRL_SHIFT), (KeyCode::Y, CTRL)],
+    },
 
     // === Recording Commands ===
     DefaultBinding {

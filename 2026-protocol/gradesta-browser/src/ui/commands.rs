@@ -214,6 +214,7 @@ pub fn execute_commands(
         results.any_command_processed = true;
         let direction = app_state.last_nav_direction;
         app_state.text_input_buffer.clear();
+        super::text_edit::reset_text_edit_state(app_state);
         app_state.input_mode = InputMode::TextInput { direction: Some(direction) };
         app_state.status = format!("Text input mode (new vertex {})", direction_name(direction));
     }
@@ -269,8 +270,8 @@ pub fn execute_commands(
         ctx.memory_mut(|mem| mem.request_focus(url_bar_id));
     }
 
-    // GlobalCopyUrl
-    if cmds.copy_url {
+    // GlobalCopyUrl - but not in TextInput mode (let egui handle Ctrl+C for text copy)
+    if cmds.copy_url && !matches!(app_state.input_mode, InputMode::TextInput { .. }) {
         results.any_command_processed = true;
         ctx.copy_text(app_state.url_input.clone());
         app_state.status = "Copied URL to clipboard".to_string();
@@ -596,6 +597,7 @@ fn execute_edit_text(app_state: &mut AppState, graph: &GraphState) {
                 app_state.text_input_buffer.clear();
             }
         }
+        super::text_edit::reset_text_edit_state(app_state);
         app_state.input_mode = InputMode::TextInput { direction: None };
         app_state.status = "Text input mode (editing current vertex)".to_string();
     }
