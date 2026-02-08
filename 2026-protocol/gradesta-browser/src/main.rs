@@ -709,8 +709,18 @@ fn find_islands(graph: &GraphState, current_vertex: Option<u64>) -> Vec<Vec<u64>
     let mut islands: Vec<Vec<u64>> = Vec::new();
     let mut visited: HashSet<u64> = HashSet::new();
 
-    // Helper to do BFS/DFS from a starting vertex
-    fn explore_island(graph: &GraphState, start: u64, visited: &mut HashSet<u64>) -> Vec<u64> {
+    // Build reverse edge map: for each vertex, find all vertices that have edges TO it
+    let mut reverse_edges: HashMap<u64, Vec<u64>> = HashMap::new();
+    for (&from_id, vertex) in &graph.vertices {
+        for &edge in &vertex.edges {
+            if edge != 0 {
+                reverse_edges.entry(edge).or_insert_with(Vec::new).push(from_id);
+            }
+        }
+    }
+
+    // Helper to do BFS from a starting vertex, following both forward and reverse edges
+    let explore_island = |graph: &GraphState, reverse_edges: &HashMap<u64, Vec<u64>>, start: u64, visited: &mut HashSet<u64>| -> Vec<u64> {
         let mut island = Vec::new();
         let mut queue = vec![start];
 
@@ -721,6 +731,7 @@ fn find_islands(graph: &GraphState, current_vertex: Option<u64>) -> Vec<Vec<u64>
             visited.insert(vertex_id);
             island.push(vertex_id);
 
+            // Follow forward edges
             if let Some(vertex) = graph.vertices.get(&vertex_id) {
                 for &edge in &vertex.edges {
                     if edge != 0 && !visited.contains(&edge) && graph.vertices.contains_key(&edge) {
@@ -728,14 +739,23 @@ fn find_islands(graph: &GraphState, current_vertex: Option<u64>) -> Vec<Vec<u64>
                     }
                 }
             }
+
+            // Follow reverse edges (vertices that point TO this vertex)
+            if let Some(sources) = reverse_edges.get(&vertex_id) {
+                for &source_id in sources {
+                    if !visited.contains(&source_id) && graph.vertices.contains_key(&source_id) {
+                        queue.push(source_id);
+                    }
+                }
+            }
         }
         island
-    }
+    };
 
     // First, explore from current vertex (if any) - this will be island 0
     if let Some(current_id) = current_vertex {
         if graph.vertices.contains_key(&current_id) {
-            let island = explore_island(graph, current_id, &mut visited);
+            let island = explore_island(graph, &reverse_edges, current_id, &mut visited);
             if !island.is_empty() {
                 islands.push(island);
             }
@@ -746,7 +766,7 @@ fn find_islands(graph: &GraphState, current_vertex: Option<u64>) -> Vec<Vec<u64>
     let all_vertex_ids: Vec<u64> = graph.vertices.keys().copied().collect();
     for vertex_id in all_vertex_ids {
         if !visited.contains(&vertex_id) {
-            let island = explore_island(graph, vertex_id, &mut visited);
+            let island = explore_island(graph, &reverse_edges, vertex_id, &mut visited);
             if !island.is_empty() {
                 islands.push(island);
             }
@@ -2381,47 +2401,123 @@ fn ui_system(
             if app_state.landmark_history.is_empty() {
                 ui.label("No landmarks visited yet.");
             } else {
+                // Find vertices that represent each landmark (first vertex from each)
+                // History is already deduplicated, show most recent first
+                let landmark_vertices: Vec<(String, Option<u64>)> = app_state.landmark_history.iter().rev()
+                    .map(|landmark| {
+                        let vertex_id = graph.landmark_vertices.get(landmark)
+                            .and_then(|vertices| vertices.first().copied());
+                        (landmark.clone(), vertex_id)
+                    })
+                    .collect();
+
                 egui::ScrollArea::vertical()
                     .id_source("landmark_history")
                     .max_height(200.0)
                     .show(ui, |ui| {
-                        let mut jump_to_landmark: Option<String> = None;
+                        let mut jump_to: Option<(String, Option<u64>)> = None;
 
-                        // Show in reverse order (most recent first)
-                        for (i, landmark) in app_state.landmark_history.iter().rev().enumerate() {
+                        let zoom = 1.0f32;
+                        let card_width = ui.available_width() - 16.0;
+                        let card_height = 100.0 * zoom;
+                        let font_size = 13.0 * zoom;
+
+                        for (landmark, vertex_id_opt) in landmark_vertices.iter() {
                             let is_current = graph.context_uri.as_ref() == Some(landmark);
-                            let prefix = if is_current { "→ " } else { "  " };
 
-                            // Truncate long landmarks for display
-                            let display: String = if landmark.len() > 40 {
-                                format!("{}...{}", &landmark[..20], &landmark[landmark.len()-17..])
-                            } else {
-                                landmark.clone()
-                            };
+                            ui.add_space(4.0);
 
-                            ui.horizontal(|ui| {
-                                if ui.selectable_label(is_current, format!("{}{}", prefix, display)).clicked() {
-                                    if !is_current {
-                                        jump_to_landmark = Some(landmark.clone());
-                                    }
-                                }
-                            });
-
-                            if i == 0 && is_current {
-                                ui.label("(current)");
+                            if is_current {
+                                ui.horizontal(|ui| {
+                                    ui.label("→ Current:");
+                                });
                             }
+
+                            // Allocate space for the card
+                            let (card_rect, response) = ui.allocate_exact_size(
+                                egui::vec2(card_width, card_height),
+                                egui::Sense::click(),
+                            );
+
+                            let painter = ui.painter();
+                            if let Some(vertex_id) = vertex_id_opt {
+                                if let Some(vertex) = graph.vertices.get(vertex_id) {
+                                    render_vertex_card(
+                                        painter,
+                                        vertex,
+                                        *vertex_id,
+                                        card_rect,
+                                        is_current,
+                                        zoom,
+                                        font_size,
+                                        &mut media_cache,
+                                        ctx,
+                                        &graph,
+                                    );
+                                } else {
+                                    // Vertex not loaded - show placeholder with landmark URL
+                                    painter.rect_filled(card_rect, 4.0, egui::Color32::from_rgb(50, 50, 55));
+                                    painter.rect_stroke(card_rect, 4.0, egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 80, 90)));
+                                    let short_landmark: String = if landmark.len() > 30 {
+                                        format!("...{}", &landmark[landmark.len()-27..])
+                                    } else {
+                                        landmark.clone()
+                                    };
+                                    painter.text(
+                                        card_rect.center(),
+                                        egui::Align2::CENTER_CENTER,
+                                        short_landmark,
+                                        egui::FontId::proportional(12.0),
+                                        egui::Color32::GRAY,
+                                    );
+                                }
+                            } else {
+                                // No vertex for this landmark - show placeholder
+                                painter.rect_filled(card_rect, 4.0, egui::Color32::from_rgb(50, 50, 55));
+                                painter.rect_stroke(card_rect, 4.0, egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 80, 90)));
+                                let short_landmark: String = if landmark.len() > 30 {
+                                    format!("...{}", &landmark[landmark.len()-27..])
+                                } else {
+                                    landmark.clone()
+                                };
+                                painter.text(
+                                    card_rect.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    short_landmark,
+                                    egui::FontId::proportional(12.0),
+                                    egui::Color32::GRAY,
+                                );
+                            }
+
+                            if response.clicked() && !is_current {
+                                jump_to = Some((landmark.clone(), *vertex_id_opt));
+                            }
+
+                            ui.add_space(4.0);
                         }
 
-                        if let Some(landmark) = jump_to_landmark {
-                            // Request this landmark
+                        if let Some((landmark, vertex_id_opt)) = jump_to {
+                            // If we already have the vertex loaded, jump directly to it
+                            if let Some(vertex_id) = vertex_id_opt {
+                                if graph.vertices.contains_key(&vertex_id) {
+                                    if let Some(current_id) = app_state.current_vertex {
+                                        app_state.history.push(current_id);
+                                    }
+                                    app_state.current_vertex = Some(vertex_id);
+                                    app_state.status = format!("Jumped to: {}", landmark);
+                                    return;
+                                }
+                            }
+                            // Otherwise request the landmark
                             if let Some(ref tx) = ws_cmd_tx.0 {
                                 if !app_state.requested_landmarks.contains(&landmark) {
                                     app_state.requested_landmarks.insert(landmark.clone());
                                     let action_id = app_state.next_action_id;
                                     app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
                                     let _ = tx.send(WsCommand::WatchLandmark { action_id, landmark: landmark.clone() });
-                                    app_state.status = format!("Jumping to: {}", landmark);
                                 }
+                                app_state.following_portal = Some(landmark.clone());
+                                app_state.status = format!("Loading: {}", landmark);
                             }
                         }
                     });
@@ -2444,6 +2540,11 @@ fn ui_system(
                     .show(ui, |ui| {
                         let mut jump_to_vertex: Option<u64> = None;
 
+                        let zoom = 1.0f32;
+                        let card_width = ui.available_width() - 16.0;
+                        let card_height = 100.0 * zoom;
+                        let font_size = 13.0 * zoom;
+
                         for (island_idx, island) in islands.iter().enumerate() {
                             let is_current_island = island_idx == 0;
                             let header = if is_current_island {
@@ -2453,25 +2554,48 @@ fn ui_system(
                             };
 
                             ui.collapsing(header, |ui| {
-                                // Show first few vertices of the island
+                                // Show first few vertices of the island as cards
                                 let display_count = island.len().min(5);
                                 for &vertex_id in island.iter().take(display_count) {
-                                    let label = graph.vertices.get(&vertex_id)
-                                        .map(|v| {
-                                            let mime = v.mime.as_deref().unwrap_or("");
-                                            let text = String::from_utf8_lossy(&v.label);
-                                            let short: String = text.chars().take(20).collect();
-                                            if short.is_empty() {
-                                                format!("[{}]", mime.split('/').last().unwrap_or("empty"))
-                                            } else {
-                                                short
-                                            }
-                                        })
-                                        .unwrap_or_else(|| format!("vertex {}", vertex_id));
+                                    ui.add_space(4.0);
 
-                                    if ui.selectable_label(false, &label).clicked() {
+                                    let (card_rect, response) = ui.allocate_exact_size(
+                                        egui::vec2(card_width, card_height),
+                                        egui::Sense::click(),
+                                    );
+
+                                    let painter = ui.painter();
+                                    if let Some(vertex) = graph.vertices.get(&vertex_id) {
+                                        let is_current = app_state.current_vertex == Some(vertex_id);
+                                        render_vertex_card(
+                                            painter,
+                                            vertex,
+                                            vertex_id,
+                                            card_rect,
+                                            is_current,
+                                            zoom,
+                                            font_size,
+                                            &mut media_cache,
+                                            ctx,
+                                            &graph,
+                                        );
+                                    } else {
+                                        painter.rect_filled(card_rect, 4.0, egui::Color32::from_rgb(50, 50, 55));
+                                        painter.rect_stroke(card_rect, 4.0, egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 80, 90)));
+                                        painter.text(
+                                            card_rect.center(),
+                                            egui::Align2::CENTER_CENTER,
+                                            format!("Vertex {}", vertex_id),
+                                            egui::FontId::proportional(12.0),
+                                            egui::Color32::GRAY,
+                                        );
+                                    }
+
+                                    if response.clicked() {
                                         jump_to_vertex = Some(vertex_id);
                                     }
+
+                                    ui.add_space(4.0);
                                 }
                                 if island.len() > display_count {
                                     ui.label(format!("... and {} more", island.len() - display_count));
@@ -5124,13 +5248,12 @@ fn ingest_server_events(
                 graph.context_uri = Some(uri.clone());
                 app_state.status = format!("Viewing: {uri}");
 
-                // Add to landmark history (avoid duplicates at the end)
-                if app_state.landmark_history.last() != Some(&uri) {
-                    app_state.landmark_history.push(uri.clone());
-                    // Trim to max size
-                    while app_state.landmark_history.len() > app_state.max_landmark_history {
-                        app_state.landmark_history.remove(0);
-                    }
+                // Add to landmark history (remove any existing occurrence first to avoid duplicates)
+                app_state.landmark_history.retain(|l| l != &uri);
+                app_state.landmark_history.push(uri.clone());
+                // Trim to max size
+                while app_state.landmark_history.len() > app_state.max_landmark_history {
+                    app_state.landmark_history.remove(0);
                 }
 
                 // Update the URL bar to show current landmark
