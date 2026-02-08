@@ -82,6 +82,8 @@ pub enum Command {
     GlobalOpenCommandBar,
     /// Open keybindings editor
     GlobalOpenKeybindings,
+    /// Toggle text-to-speech mode
+    GlobalToggleTTS,
 
     // === Graph Context Commands ===
     /// Navigate north in the graph
@@ -175,6 +177,7 @@ impl Command {
             Command::GlobalToggleFullscreen => "global.toggle_fullscreen",
             Command::GlobalOpenCommandBar => "global.open_command_bar",
             Command::GlobalOpenKeybindings => "global.open_keybindings",
+            Command::GlobalToggleTTS => "global.toggle_tts",
             // Graph
             Command::GraphNavigateNorth => "graph.navigate_north",
             Command::GraphNavigateSouth => "graph.navigate_south",
@@ -231,6 +234,7 @@ impl Command {
             "global.toggle_fullscreen" => Some(Command::GlobalToggleFullscreen),
             "global.open_command_bar" => Some(Command::GlobalOpenCommandBar),
             "global.open_keybindings" => Some(Command::GlobalOpenKeybindings),
+            "global.toggle_tts" => Some(Command::GlobalToggleTTS),
             // Graph
             "graph.navigate_north" => Some(Command::GraphNavigateNorth),
             "graph.navigate_south" => Some(Command::GraphNavigateSouth),
@@ -288,6 +292,7 @@ impl Command {
             Command::GlobalToggleFullscreen => "Toggle fullscreen mode",
             Command::GlobalOpenCommandBar => "Open the command bar",
             Command::GlobalOpenKeybindings => "Open keybindings editor",
+            Command::GlobalToggleTTS => "Toggle text-to-speech mode",
             // Graph
             Command::GraphNavigateNorth => "Navigate north in the graph",
             Command::GraphNavigateSouth => "Navigate south in the graph",
@@ -342,7 +347,8 @@ impl Command {
             | Command::GlobalRefresh
             | Command::GlobalToggleFullscreen
             | Command::GlobalOpenCommandBar
-            | Command::GlobalOpenKeybindings => Context::Global,
+            | Command::GlobalOpenKeybindings
+            | Command::GlobalToggleTTS => Context::Global,
 
             Command::GraphNavigateNorth
             | Command::GraphNavigateSouth
@@ -396,6 +402,7 @@ impl Command {
             Command::GlobalToggleFullscreen,
             Command::GlobalOpenCommandBar,
             Command::GlobalOpenKeybindings,
+            Command::GlobalToggleTTS,
             // Graph
             Command::GraphNavigateNorth,
             Command::GraphNavigateSouth,

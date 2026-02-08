@@ -3,6 +3,14 @@ name = "gradesta-browser"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+# GPU acceleration for Whisper transcription
+gpu-cuda = ["whisper-rs/cuda"]      # NVIDIA CUDA
+gpu-vulkan = ["whisper-rs/vulkan"]  # Cross-platform Vulkan (Intel, AMD, NVIDIA)
+gpu-metal = ["whisper-rs/metal"]    # Apple Metal (macOS/iOS)
+gpu-hipblas = ["whisper-rs/hipblas"] # AMD ROCm (Linux only)
+
 [dependencies]
 anyhow = "1.0"
 bevy = { version = "0.13", default-features = false, features = [
@@ -41,8 +49,8 @@ rodio = { version = "0.19", default-features = false, features = ["vorbis"] }
 ogg = "0.9"
 vorbis_rs = "0.4"
 lewton = "0.10"
-# Whisper transcription
-whisper-rs = "0.14"
+# Whisper transcription (GPU features available: cuda, vulkan, metal, hipblas)
+whisper-rs = { version = "0.14", default-features = true }
 hound = "3.5"
 # Standalone egui window for startup dialog
 eframe = "0.27"
@@ -53,3 +61,5 @@ mp4 = "0.14"
 openh264 = "0.6"
 # Audio decoding for video (AAC in MP4)
 symphonia = { version = "0.5", features = ["aac", "isomp4"] }
+# Text-to-speech (uses system TTS backends: Speech Dispatcher on Linux, SAPI on Windows, etc.)
+tts = "0.26"

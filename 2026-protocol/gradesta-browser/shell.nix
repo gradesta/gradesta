@@ -27,6 +27,8 @@ pkgs.mkShell {
     llvmPackages.libclang
     # External video player for video content
     mpv
+    # Text-to-speech (Speech Dispatcher)
+    speechd
   ];
 
   LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (with pkgs; [

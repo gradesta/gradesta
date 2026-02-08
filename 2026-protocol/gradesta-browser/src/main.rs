@@ -17,6 +17,7 @@ mod commands;
 mod identity;
 mod keybindings;
 mod sidebar;
+mod tts;
 mod video_player;
 mod whisper;
 use commands::{Command, Context as CmdContext};
@@ -282,6 +283,8 @@ struct AppState {
     sidebar: SidebarState,
     // Keybinding system
     keybindings: KeybindingResolver,
+    // Text-to-speech mode - read text cells aloud on navigation
+    tts_mode: bool,
     // Command bar state
     show_command_bar: bool,
     command_bar_input: String,
@@ -386,6 +389,7 @@ impl Default for AppState {
             video_modal_vertex_id: None,
             sidebar: SidebarState::default(),
             keybindings: KeybindingResolver::new(&KeybindingsConfig::load().unwrap_or_default()),
+            tts_mode: false,
             show_command_bar: false,
             command_bar_input: String::new(),
             command_bar_selected: 0,
@@ -1067,6 +1071,7 @@ fn ui_system(
     let cmd_recording_save = ctx.input(|i| app_state.keybindings.command_released(kb_context, &Command::RecordingSave, i));
     let cmd_open_command_bar = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GlobalOpenCommandBar, i));
     let cmd_open_keybindings = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GlobalOpenKeybindings, i));
+    let cmd_toggle_tts = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GlobalToggleTTS, i));
     let cmd_refresh = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GlobalRefresh, i));
     let cmd_set_dir_north = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GraphSetDirectionNorth, i));
     let cmd_set_dir_south = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GraphSetDirectionSouth, i));
@@ -1575,6 +1580,17 @@ fn ui_system(
         app_state.sidebar.mode = sidebar::SidebarMode::Keybindings;
     }
 
+    // GlobalToggleTTS - Toggle text-to-speech mode
+    if cmd_toggle_tts {
+        app_state.tts_mode = !app_state.tts_mode;
+        if app_state.tts_mode {
+            app_state.status = "TTS mode enabled (Ctrl+T to disable)".to_string();
+        } else {
+            tts::stop(); // Stop any current speech
+            app_state.status = "TTS mode disabled".to_string();
+        }
+    }
+
     // Check if we should finalize recording (space was released)
     let should_finalize = if let InputMode::Recording { .. } = &app_state.input_mode {
         // Check if stop signal was set (indicates space was released)
@@ -1956,6 +1972,15 @@ fn ui_system(
         ui.horizontal(|ui| {
             ui.label("↑↓←→ Nav | Enter=Click | Space=Record | I=Edit | Y=Yank | Ctrl+K=Keybindings");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // TTS mode indicator
+                let tts_label = if app_state.tts_mode { "🔊 TTS ON" } else { "🔇 TTS" };
+                if ui.button(tts_label).on_hover_text("Toggle text-to-speech (Ctrl+T)").clicked() {
+                    app_state.tts_mode = !app_state.tts_mode;
+                    if !app_state.tts_mode {
+                        tts::stop();
+                    }
+                }
+                ui.separator();
                 // Keybindings button (prominent)
                 if ui.button("⌨ Keybindings (Ctrl+K)").clicked() {
                     app_state.sidebar.mode = sidebar::SidebarMode::Keybindings;
@@ -2109,6 +2134,15 @@ fn ui_system(
                             }
                             Command::GlobalOpenKeybindings => {
                                 app_state.sidebar.mode = sidebar::SidebarMode::Keybindings;
+                            }
+                            Command::GlobalToggleTTS => {
+                                app_state.tts_mode = !app_state.tts_mode;
+                                if app_state.tts_mode {
+                                    app_state.status = "TTS mode enabled".to_string();
+                                } else {
+                                    tts::stop();
+                                    app_state.status = "TTS mode disabled".to_string();
+                                }
                             }
                             _ => {
                                 app_state.status = format!("Command not yet wired: {}", cmd.slug());
@@ -4395,6 +4429,18 @@ fn auto_play_audio_on_navigate(
                     if mime.starts_with("audio/") && !vertex.label.is_empty() {
                         // Auto-play the audio
                         play_audio(&vertex.label, mime, vertex_id, &playback_state);
+                    } else if app_state.tts_mode
+                        && mime.starts_with("text/")
+                        && mime != "text/gradesta-url"
+                        && !vertex.label.is_empty()
+                    {
+                        // TTS mode: read text cells aloud
+                        if let Ok(text) = String::from_utf8(vertex.label.clone()) {
+                            let text = text.trim();
+                            if !text.is_empty() {
+                                tts::speak(text);
+                            }
+                        }
                     }
                 }
             }

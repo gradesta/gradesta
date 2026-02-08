@@ -105,6 +105,11 @@ static DEFAULTS: &[DefaultBinding] = &[
         context: Context::Global,
         bindings: &[(KeyCode::K, CTRL)],
     },
+    DefaultBinding {
+        command: Command::GlobalToggleTTS,
+        context: Context::Global,
+        bindings: &[(KeyCode::T, CTRL)],
+    },
 
     // === Graph Navigation ===
     DefaultBinding {
