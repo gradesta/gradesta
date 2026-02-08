@@ -5248,12 +5248,16 @@ fn ingest_server_events(
                 graph.context_uri = Some(uri.clone());
                 app_state.status = format!("Viewing: {uri}");
 
-                // Add to landmark history (remove any existing occurrence first to avoid duplicates)
-                app_state.landmark_history.retain(|l| l != &uri);
-                app_state.landmark_history.push(uri.clone());
-                // Trim to max size
-                while app_state.landmark_history.len() > app_state.max_landmark_history {
-                    app_state.landmark_history.remove(0);
+                // Only add to landmark history if we're actively navigating there
+                // (following a portal or initial connection), not just preloading data
+                let is_initial = app_state.landmark_history.is_empty();
+                if is_following || is_initial {
+                    app_state.landmark_history.retain(|l| l != &uri);
+                    app_state.landmark_history.push(uri.clone());
+                    // Trim to max size
+                    while app_state.landmark_history.len() > app_state.max_landmark_history {
+                        app_state.landmark_history.remove(0);
+                    }
                 }
 
                 // Update the URL bar to show current landmark
