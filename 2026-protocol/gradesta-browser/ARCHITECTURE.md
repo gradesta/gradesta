@@ -22,6 +22,11 @@ Gradesta Browser is a client for viewing and editing gradesta graphs - 6-directi
 ```
 src/
 ├── main.rs              # App entry, UI system, Bevy setup
+├── state.rs             # AppState, InputMode, state types
+├── graph.rs             # Vertex, GraphState, GridView, layout algorithms
+├── network.rs           # WebSocket, ServerEvent, WsCommand, protocol
+├── audio.rs             # Recording, playback, OGG encoding
+├── media.rs             # MediaCache, textures, waveforms, GIF animation
 ├── commands/            # Command system
 │   └── mod.rs           # Command enum, context-aware dispatch
 ├── keybindings/         # Keybinding configuration
@@ -52,15 +57,28 @@ Vertices have 6 directional edges: West, East, North, South, Up, Down.
 - Up/Down edges form stacks (multiple items at same position)
 
 ```rust
+struct LayerContent {
+    mime: String,             // Each layer has its own MIME type
+    data: Vec<u8>,
+}
+
 struct Vertex {
     id: u64,
-    label: Vec<u8>,           // Primary content (layer 0)
-    mime: Option<String>,     // Content type
+    label: Vec<u8>,           // Primary content (layer 0 data)
+    mime: Option<String>,     // Layer 0 MIME type
     edges: [u64; 6],          // [W, E, N, S, U, D]
-    layers: HashMap<u32, LayerContent>,  // Additional layers
+    layers: HashMap<u32, LayerContent>,  // Additional layers (each with own MIME)
     edit_mask: u8,            // Editability flags
 }
 ```
+
+### Layer Conventions
+
+Each vertex can have multiple layers, each with its own MIME type:
+- **Layer 0**: Primary content (label/thumbnail)
+- **Layer 1**: Transcript or portal URL (`text/plain` or `text/gradesta-url`)
+- **Layer 2**: Full-resolution image
+- **Layer 3**: HTTP stream URL (`text/x-http-stream-url`)
 
 ### Landmarks
 
@@ -126,8 +144,13 @@ Binary WebSocket messages with type byte prefix:
 
 | File | Lines | Description |
 |------|-------|-------------|
-| main.rs | ~6000 | Core app logic, UI system |
+| main.rs | ~6000 | Core app logic, UI system (refactoring in progress) |
+| network.rs | ~600 | WebSocket and protocol handling |
 | video_player.rs | ~700 | Video decoding |
 | keybindings/key.rs | ~650 | Key code definitions |
+| graph.rs | ~300 | Graph structures and layout |
 | commands/mod.rs | ~510 | Command enum |
 | identity.rs | ~500 | Nextcloud auth |
+| audio.rs | ~350 | Audio recording and playback |
+| media.rs | ~300 | Media loading and caching |
+| state.rs | ~200 | Application state types |

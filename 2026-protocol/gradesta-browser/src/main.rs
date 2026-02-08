@@ -13,13 +13,25 @@ use std::time::{Duration, Instant};
 use tungstenite::{client, Message};
 use url::Url;
 
+// Core modules
+mod audio;
 mod commands;
+mod graph;
 mod identity;
 mod keybindings;
+mod media;
+mod network;
 mod sidebar;
+mod state;
 mod tts;
 mod video_player;
 mod whisper;
+
+// Note: The new modules (audio, graph, media, network, state) contain refactored code.
+// For now, the types remain defined in main.rs until gradual migration is complete.
+// Import specific functions from new modules as needed.
+
+// Legacy imports
 use commands::{Command, Context as CmdContext};
 use identity::{Identity, IdentityConfig};
 use keybindings::{KeyBinding, KeybindingsConfig, KeybindingResolver, Modifiers};
