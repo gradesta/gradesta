@@ -63,3 +63,5 @@ openh264 = "0.6"
 symphonia = { version = "0.5", features = ["aac", "isomp4"] }
 # Text-to-speech (uses system TTS backends: Speech Dispatcher on Linux, SAPI on Windows, etc.)
 tts = "0.26"
+# System clipboard (Wayland/X11/Windows/macOS)
+arboard = "3.4"

@@ -1,15 +1,50 @@
 //! Text editing command execution for TextInput mode
 //!
 //! Implements copy, cut, paste, select all, undo, and redo operations
-//! for the text input buffer using an internal clipboard.
-//!
-//! This module bypasses native OS clipboard since it doesn't work reliably
-//! across all environments.
+//! for the text input buffer using the system clipboard via arboard.
 
 use bevy_egui::egui;
 
 use super::input::CapturedCommands;
 use crate::state::{AppState, InputMode};
+
+/// Get text from the system clipboard
+fn get_clipboard_text() -> Option<String> {
+    match arboard::Clipboard::new() {
+        Ok(mut clipboard) => {
+            match clipboard.get_text() {
+                Ok(text) => Some(text),
+                Err(e) => {
+                    eprintln!("Failed to get clipboard text: {}", e);
+                    None
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to access clipboard: {}", e);
+            None
+        }
+    }
+}
+
+/// Set text to the system clipboard
+fn set_clipboard_text(text: &str) -> bool {
+    match arboard::Clipboard::new() {
+        Ok(mut clipboard) => {
+            match clipboard.set_text(text.to_string()) {
+                Ok(()) => true,
+                Err(e) => {
+                    eprintln!("Failed to set clipboard text: {}", e);
+                    false
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to access clipboard: {}", e);
+            false
+        }
+    }
+}
 
 /// Result of text edit command processing
 #[derive(Clone, Debug, Default)]
@@ -31,6 +66,9 @@ pub fn consume_text_edit_events(ctx: &egui::Context, app_state: &AppState) {
     }
 
     ctx.input_mut(|input| {
+        // Check if Ctrl is currently held
+        let ctrl_held = input.modifiers.ctrl || input.modifiers.command;
+
         // Consume clipboard-related events to prevent egui from using system clipboard
         input.events.retain(|event| {
             match event {
@@ -45,6 +83,12 @@ pub fn consume_text_edit_events(ctx: &egui::Context, app_state: &AppState) {
                     } else {
                         true
                     }
+                }
+                // Also filter Text events when Ctrl is held - prevents "v" being inserted for Ctrl+V
+                egui::Event::Text(text) if ctrl_held => {
+                    // Filter out single character text events when Ctrl is held
+                    // (these are the fallback characters from Ctrl+key combos)
+                    text.len() > 1
                 }
                 _ => true,
             }
@@ -80,7 +124,9 @@ pub fn process_text_edit_commands(
         if let Some(sel_start) = app_state.text_selection_start {
             let (start, end) = get_selection_range(sel_start, app_state.text_cursor_pos);
             if start < end && end <= app_state.text_input_buffer.len() {
-                app_state.text_clipboard = app_state.text_input_buffer[start..end].to_string();
+                let text = app_state.text_input_buffer[start..end].to_string();
+                set_clipboard_text(&text);
+                app_state.text_clipboard = text; // Keep internal copy as fallback
             }
         }
     }
@@ -94,7 +140,10 @@ pub fn process_text_edit_commands(
                 // Save to undo stack before modifying
                 push_undo(app_state);
 
-                app_state.text_clipboard = app_state.text_input_buffer[start..end].to_string();
+                let text = app_state.text_input_buffer[start..end].to_string();
+                set_clipboard_text(&text);
+                app_state.text_clipboard = text; // Keep internal copy as fallback
+
                 app_state.text_input_buffer = format!(
                     "{}{}",
                     &app_state.text_input_buffer[..start],
@@ -110,7 +159,11 @@ pub fn process_text_edit_commands(
     // Paste - Ctrl+V
     if cmds.text_paste {
         result.any_processed = true;
-        if !app_state.text_clipboard.is_empty() {
+        // Try system clipboard first, fall back to internal clipboard
+        let clipboard_text = get_clipboard_text()
+            .unwrap_or_else(|| app_state.text_clipboard.clone());
+
+        if !clipboard_text.is_empty() {
             // Save to undo stack before modifying
             push_undo(app_state);
 
@@ -131,11 +184,11 @@ pub fn process_text_edit_commands(
             };
 
             // Insert clipboard content
-            let clipboard_len = app_state.text_clipboard.len();
+            let clipboard_len = clipboard_text.len();
             app_state.text_input_buffer = format!(
                 "{}{}{}",
                 &app_state.text_input_buffer[..insert_pos],
-                &app_state.text_clipboard,
+                &clipboard_text,
                 &app_state.text_input_buffer[insert_pos..]
             );
             app_state.text_cursor_pos = insert_pos + clipboard_len;

@@ -2777,6 +2777,7 @@ name = "gradesta-browser"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "arboard",
  "bevy",
  "bevy_egui",
  "cpal",
