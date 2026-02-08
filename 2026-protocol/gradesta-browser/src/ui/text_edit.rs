@@ -55,44 +55,120 @@ pub struct TextEditResult {
     pub text_modified: bool,
 }
 
-/// Consume text editing key events to prevent egui from using broken system clipboard
+/// Intercept clipboard events and use system clipboard via arboard
 ///
-/// This should be called BEFORE rendering the TextEdit widget.
-/// It consumes Ctrl+C/V/X/A/Z events so egui doesn't try to use the system clipboard.
+/// This should be called BEFORE rendering any TextEdit widgets.
+/// It replaces egui's broken clipboard handling with arboard.
 pub fn consume_text_edit_events(ctx: &egui::Context, app_state: &AppState) {
-    // Only consume in TextInput mode
-    if !matches!(app_state.input_mode, InputMode::TextInput { .. }) {
+    // Handle in any text input context (TextInput mode or URL bar focus)
+    let in_text_context = matches!(app_state.input_mode, InputMode::TextInput { .. })
+        || app_state.url_bar_has_focus
+        || app_state.focus_url_bar_next_frame;
+
+    if !in_text_context {
         return;
     }
+
+    // Get system clipboard content for paste operations
+    let system_clipboard = get_clipboard_text();
 
     ctx.input_mut(|input| {
         // Check if Ctrl is currently held
         let ctrl_held = input.modifiers.ctrl || input.modifiers.command;
 
-        // Consume clipboard-related events to prevent egui from using system clipboard
+        // Check if Ctrl+V was pressed - we need to inject a Paste event
+        let ctrl_v_pressed = input.events.iter().any(|event| {
+            matches!(event, egui::Event::Key {
+                key: egui::Key::V,
+                pressed: true,
+                modifiers,
+                ..
+            } if modifiers.command || modifiers.ctrl)
+        });
+
+        // Check if Ctrl+C was pressed - we need to inject a Copy event
+        let ctrl_c_pressed = input.events.iter().any(|event| {
+            matches!(event, egui::Event::Key {
+                key: egui::Key::C,
+                pressed: true,
+                modifiers,
+                ..
+            } if modifiers.command || modifiers.ctrl)
+        });
+
+        // Check if Ctrl+X was pressed - we need to inject a Cut event
+        let ctrl_x_pressed = input.events.iter().any(|event| {
+            matches!(event, egui::Event::Key {
+                key: egui::Key::X,
+                pressed: true,
+                modifiers,
+                ..
+            } if modifiers.command || modifiers.ctrl)
+        });
+
+        // Replace any existing Paste event content with system clipboard
+        for event in input.events.iter_mut() {
+            if let egui::Event::Paste(text) = event {
+                if let Some(ref clipboard_text) = system_clipboard {
+                    *text = clipboard_text.clone();
+                }
+            }
+        }
+
+        // Filter out Ctrl+C/X/V key events and 'v'/'c'/'x' text insertions
         input.events.retain(|event| {
             match event {
-                egui::Event::Copy | egui::Event::Cut | egui::Event::Paste(_) => false,
+                // Keep existing Copy/Cut/Paste events
+                egui::Event::Copy | egui::Event::Cut | egui::Event::Paste(_) => true,
+                // Filter Ctrl+C/X/V key events (we'll inject proper events below)
                 egui::Event::Key { key, pressed: true, modifiers, .. } => {
-                    // Consume Ctrl+C, Ctrl+X, Ctrl+V, Ctrl+A, Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z
                     if modifiers.command || modifiers.ctrl {
-                        !matches!(key,
-                            egui::Key::C | egui::Key::X | egui::Key::V |
-                            egui::Key::A | egui::Key::Z | egui::Key::Y
-                        )
+                        !matches!(key, egui::Key::C | egui::Key::X | egui::Key::V)
                     } else {
                         true
                     }
                 }
-                // Also filter Text events when Ctrl is held - prevents "v" being inserted for Ctrl+V
-                egui::Event::Text(text) if ctrl_held => {
-                    // Filter out single character text events when Ctrl is held
-                    // (these are the fallback characters from Ctrl+key combos)
-                    text.len() > 1
-                }
+                // Filter Text events when Ctrl is held
+                egui::Event::Text(text) if ctrl_held => text.len() > 1,
                 _ => true,
             }
         });
+
+        // Inject clipboard events with system clipboard content
+        if ctrl_v_pressed {
+            if let Some(clipboard_text) = system_clipboard {
+                input.events.push(egui::Event::Paste(clipboard_text));
+            }
+        }
+        if ctrl_c_pressed {
+            input.events.push(egui::Event::Copy);
+        }
+        if ctrl_x_pressed {
+            input.events.push(egui::Event::Cut);
+        }
+    });
+}
+
+/// Sync selected text to system clipboard when Copy/Cut events occur
+/// Call this after TextEdit rendering to capture what was copied
+pub fn sync_copy_to_system_clipboard(ctx: &egui::Context) {
+    ctx.input(|input| {
+        for event in &input.events {
+            match event {
+                egui::Event::Copy | egui::Event::Cut => {
+                    // egui stores copied text in its output
+                    // We need to get it and sync to system clipboard
+                }
+                _ => {}
+            }
+        }
+    });
+
+    // Get text that egui copied to its internal clipboard and sync to system
+    ctx.output_mut(|output| {
+        if !output.copied_text.is_empty() {
+            set_clipboard_text(&output.copied_text);
+        }
     });
 }
 

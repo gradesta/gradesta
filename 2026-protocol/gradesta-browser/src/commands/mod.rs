@@ -29,6 +29,7 @@ pub enum Context {
 }
 
 impl Context {
+    /// Human-readable display name
     pub fn name(&self) -> &'static str {
         match self {
             Context::Global => "Global",
@@ -38,6 +39,19 @@ impl Context {
             Context::Recording => "Recording",
             Context::Authentication => "Authentication",
             Context::NavPanel => "Navigation Panel",
+        }
+    }
+
+    /// Config/log name (snake_case, matches keybindings config sections)
+    pub fn config_name(&self) -> &'static str {
+        match self {
+            Context::Global => "global",
+            Context::Graph => "graph",
+            Context::Bag => "bag",
+            Context::TextInput => "text_input",
+            Context::Recording => "recording",
+            Context::Authentication => "authentication",
+            Context::NavPanel => "nav_panel",
         }
     }
 

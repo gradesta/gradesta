@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 // Core modules
 mod audio;
 mod commands;
+mod debug_log;
 mod events;
 mod graph;
 mod identity;
@@ -42,7 +43,10 @@ fn current_context(app_state: &AppState) -> commands::Context {
         InputMode::TextInput { .. } => commands::Context::TextInput,
         InputMode::Recording { .. } => commands::Context::Recording,
         InputMode::Normal => {
-            if app_state.pending_identification.is_some() {
+            if app_state.focus_url_bar_next_frame || app_state.url_bar_has_focus {
+                // URL bar is focused - treat as text input context
+                commands::Context::TextInput
+            } else if app_state.pending_identification.is_some() {
                 commands::Context::Authentication
             } else if app_state.show_bag_panel {
                 commands::Context::Bag
@@ -110,6 +114,11 @@ fn main() {
     // Sync identities from Nextcloud on startup
     let mut app_state = AppState::default();
     sync_all_identities(&mut app_state);
+
+    // Initialize debug log file
+    let debug_log_path = debug_log::init_debug_log();
+    eprintln!("Debug log: {}", debug_log_path.display());
+    app_state.debug_log_file = Some(debug_log_path);
 
     let (net_tx, net_rx) = unbounded::<ServerEvent>();
 
@@ -296,7 +305,19 @@ fn ui_system(
 
     // Determine current keybinding context and capture keyboard commands
     let kb_context = current_context(&app_state);
+
+    // Log context changes
+    let context_name = debug_log::context_name(kb_context);
+    if app_state.debug_last_context.as_deref() != Some(context_name) {
+        if let Some(old_ctx) = app_state.debug_last_context.take() {
+            debug_log::log_context_change(&mut app_state, &old_ctx, context_name);
+        }
+        app_state.debug_last_context = Some(context_name.to_string());
+    }
+
     let cmds = ui::capture_keyboard_commands(ctx, &app_state.keybindings, kb_context);
+    // Log triggered commands to debug log (separated to avoid borrow conflicts)
+    ui::log_triggered_commands_to_debug(&cmds, &mut app_state);
     let cmd_refresh = cmds.refresh;  // Used later for refresh logic
 
     // IMPORTANT: Consume text edit events BEFORE any UI rendering
@@ -352,6 +373,9 @@ fn ui_system(
                 .lock_focus(lock_input)
                 .hint_text("ws://localhost:8080/ws?landmark=/home/");
             let response = ui.add(text_edit);
+
+            // Track URL bar focus state (from click or Ctrl+L)
+            app_state.url_bar_has_focus = response.has_focus();
 
             // Show different button based on connection state
             let button_label = if app_state.connected { "Refresh" } else { "Connect" };
@@ -433,6 +457,12 @@ fn ui_system(
                     }
                 }
                 ui.separator();
+                // Debug panel toggle
+                let debug_label = if app_state.show_debug_panel { "🐛 Debug ON" } else { "🐛 Debug" };
+                if ui.button(debug_label).on_hover_text("Toggle debug log panel").clicked() {
+                    app_state.show_debug_panel = !app_state.show_debug_panel;
+                }
+                ui.separator();
                 // Keybindings button (prominent)
                 if ui.button("⌨ Keybindings (Ctrl+K)").clicked() {
                     app_state.sidebar.mode = sidebar::SidebarMode::Keybindings;
@@ -470,6 +500,9 @@ fn ui_system(
     let sidebar_action = egui::SidePanel::right("preview_panel").min_width(400.0).show(ctx, |ui| {
         ui::render_sidebar_content(ui, ctx, &mut app_state, &graph, &mut media_cache, &ws_cmd_tx, &playback_state)
     }).inner;
+
+    // Sync any copied text to system clipboard (after all UI rendering)
+    ui::sync_copy_to_system_clipboard(ctx);
 
     // Handle sidebar actions
     match sidebar_action {
@@ -610,6 +643,13 @@ fn ui_system(
                     app_state.status = format!("Failed to load config: {}", e);
                 }
             }
+        }
+        ui::SidebarContentAction::CloseDebugPanel => {
+            app_state.show_debug_panel = false;
+        }
+        ui::SidebarContentAction::ClearDebugLog => {
+            debug_log::clear_log(&mut app_state);
+            app_state.status = "Debug log cleared".to_string();
         }
         ui::SidebarContentAction::None => {}
     }

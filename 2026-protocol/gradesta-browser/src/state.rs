@@ -4,6 +4,7 @@
 //! and pending operations.
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -12,6 +13,72 @@ use bevy::prelude::*;
 use crate::identity::IdentityConfig;
 use crate::keybindings::{KeybindingResolver, KeybindingsConfig};
 use crate::sidebar::{KeybindingsEditorState, SidebarState};
+
+/// Category of debug log entry
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DebugCategory {
+    /// Context changes (Graph, TextInput, etc.)
+    Context,
+    /// Raw keypresses detected
+    Keypress,
+    /// Commands that were triggered
+    Command,
+    /// Command execution results
+    Execution,
+}
+
+impl DebugCategory {
+    /// Get a short label for display
+    pub fn label(&self) -> &'static str {
+        match self {
+            DebugCategory::Context => "CTX",
+            DebugCategory::Keypress => "KEY",
+            DebugCategory::Command => "CMD",
+            DebugCategory::Execution => "EXE",
+        }
+    }
+
+    /// Get an icon for display
+    pub fn icon(&self) -> &'static str {
+        match self {
+            DebugCategory::Context => "🔄",
+            DebugCategory::Keypress => "⌨",
+            DebugCategory::Command => "⚡",
+            DebugCategory::Execution => "✓",
+        }
+    }
+}
+
+/// A single debug log entry
+#[derive(Clone, Debug)]
+pub struct DebugLogEntry {
+    pub timestamp: Instant,
+    pub category: DebugCategory,
+    pub message: String,
+}
+
+/// Filter state for debug panel
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum DebugFilter {
+    #[default]
+    All,
+    Context,
+    Keypress,
+    Command,
+    Execution,
+}
+
+impl DebugFilter {
+    pub fn matches(&self, category: DebugCategory) -> bool {
+        match self {
+            DebugFilter::All => true,
+            DebugFilter::Context => category == DebugCategory::Context,
+            DebugFilter::Keypress => category == DebugCategory::Keypress,
+            DebugFilter::Command => category == DebugCategory::Command,
+            DebugFilter::Execution => category == DebugCategory::Execution,
+        }
+    }
+}
 
 /// Direction edge constants
 pub const EDGE_WEST: usize = 0;
@@ -156,6 +223,8 @@ pub struct AppState {
     pub last_nav_direction: usize,
     /// Focus URL bar on next frame (to avoid 'l' being typed when pressing Ctrl+L)
     pub focus_url_bar_next_frame: bool,
+    /// True when URL bar currently has focus (from click or Ctrl+L)
+    pub url_bar_has_focus: bool,
     // Video player state
     pub show_video_modal: bool,
     pub video_modal_vertex_id: Option<u64>,
@@ -172,6 +241,13 @@ pub struct AppState {
     pub command_bar_selected: usize,
     // Keybindings editor state
     pub keybindings_editor: KeybindingsEditorState,
+    // Debug panel state
+    pub show_debug_panel: bool,
+    pub debug_log: Vec<DebugLogEntry>,
+    pub debug_log_file: Option<PathBuf>,
+    pub debug_filter: DebugFilter,
+    /// Previous context for detecting changes
+    pub debug_last_context: Option<String>,
 }
 
 impl Default for AppState {
@@ -223,6 +299,7 @@ impl Default for AppState {
             skip_autoplay_vertex: None,
             last_nav_direction: EDGE_SOUTH, // Default to south
             focus_url_bar_next_frame: false,
+            url_bar_has_focus: false,
             show_video_modal: false,
             video_modal_vertex_id: None,
             sidebar: SidebarState::default(),
@@ -232,6 +309,11 @@ impl Default for AppState {
             command_bar_input: String::new(),
             command_bar_selected: 0,
             keybindings_editor: KeybindingsEditorState::default(),
+            show_debug_panel: false,
+            debug_log: Vec::new(),
+            debug_log_file: None,
+            debug_filter: DebugFilter::default(),
+            debug_last_context: None,
         }
     }
 }

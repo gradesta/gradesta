@@ -6,6 +6,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::audio::{encode_ogg_vorbis, run_audio_recording, stop_audio, AudioPlaybackState, AudioRecordingSignal};
+use crate::commands::Command;
+use crate::debug_log;
 use crate::graph::GraphState;
 use crate::media::MediaCache;
 use crate::network::{WsCommand, WsCommandTx};
@@ -264,6 +266,13 @@ pub fn execute_commands(
     // Handle URL focus key
     let url_bar_id = bevy_egui::egui::Id::new("url_bar");
     if cmds.focus_url_down {
+        // Log only on first press (when transitioning from not pressed)
+        if !app_state.focus_url_bar_next_frame {
+            let key_info = app_state.keybindings.get_bindings(&Command::GlobalFocusUrl)
+                .first()
+                .map(|k| k.to_string());
+            debug_log::log_command_triggered(app_state, Command::GlobalFocusUrl.slug(), key_info.as_deref());
+        }
         app_state.focus_url_bar_next_frame = true;
     } else if app_state.focus_url_bar_next_frame && cmds.focus_url_released {
         app_state.focus_url_bar_next_frame = false;

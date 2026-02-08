@@ -13,7 +13,7 @@ use crate::media::{get_or_load_animated_gif, get_or_load_texture, MediaCache};
 use crate::network::WsCommandTx;
 use crate::rendering::{render_vertex_card, render_vertex_content};
 use crate::sidebar;
-use crate::state::{AppState, InputMode, EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
+use crate::state::{AppState, DebugCategory, DebugFilter, InputMode, EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
 
 /// Action returned from sidebar content rendering
 #[derive(Clone, Debug)]
@@ -44,6 +44,8 @@ pub enum SidebarContentAction {
     CloseKeybindings,
     SaveKeybindings,
     ApplyPreset(keybindings::Preset),
+    CloseDebugPanel,
+    ClearDebugLog,
 }
 
 /// Render the sidebar content panel
@@ -81,6 +83,8 @@ pub fn render_sidebar_content(
         render_bag_panel(ui, ctx, app_state, graph, media_cache)
     } else if matches!(app_state.sidebar.mode, sidebar::SidebarMode::Keybindings) {
         render_keybindings_mode(ui, app_state)
+    } else if app_state.show_debug_panel {
+        render_debug_panel(ui, app_state)
     } else {
         render_preview_mode(ui, ctx, app_state, graph, media_cache, playback_state)
     }
@@ -966,6 +970,100 @@ fn render_keybindings_mode(ui: &mut egui::Ui, app_state: &mut AppState) -> Sideb
         }
         sidebar::KeybindingsAction::None => {}
     }
+
+    action
+}
+
+fn render_debug_panel(ui: &mut egui::Ui, app_state: &mut AppState) -> SidebarContentAction {
+    let mut action = SidebarContentAction::None;
+
+    ui.horizontal(|ui| {
+        ui.heading("Debug Log");
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.button("✕").clicked() {
+                action = SidebarContentAction::CloseDebugPanel;
+            }
+        });
+    });
+    ui.separator();
+
+    // Log file path
+    if let Some(ref path) = app_state.debug_log_file {
+        ui.horizontal(|ui| {
+            ui.label("Log file:");
+            ui.monospace(path.display().to_string());
+        });
+    }
+
+    // Controls
+    ui.horizontal(|ui| {
+        if ui.button("Clear").clicked() {
+            action = SidebarContentAction::ClearDebugLog;
+        }
+        ui.label(format!("{} entries", app_state.debug_log.len()));
+    });
+
+    ui.separator();
+
+    // Filter buttons
+    ui.horizontal(|ui| {
+        ui.label("Filter:");
+        if ui.selectable_label(app_state.debug_filter == DebugFilter::All, "All").clicked() {
+            app_state.debug_filter = DebugFilter::All;
+        }
+        if ui.selectable_label(app_state.debug_filter == DebugFilter::Command, "Cmd").clicked() {
+            app_state.debug_filter = DebugFilter::Command;
+        }
+        if ui.selectable_label(app_state.debug_filter == DebugFilter::Context, "Ctx").clicked() {
+            app_state.debug_filter = DebugFilter::Context;
+        }
+        if ui.selectable_label(app_state.debug_filter == DebugFilter::Execution, "Exec").clicked() {
+            app_state.debug_filter = DebugFilter::Execution;
+        }
+        if ui.selectable_label(app_state.debug_filter == DebugFilter::Keypress, "Key").clicked() {
+            app_state.debug_filter = DebugFilter::Keypress;
+        }
+    });
+
+    ui.separator();
+
+    // Log entries (newest first)
+    egui::ScrollArea::vertical()
+        .auto_shrink([false, false])
+        .stick_to_bottom(true)
+        .show(ui, |ui| {
+            let start_time = app_state.debug_log.first().map(|e| e.timestamp);
+
+            for entry in app_state.debug_log.iter().rev() {
+                // Apply filter
+                let show = match app_state.debug_filter {
+                    DebugFilter::All => true,
+                    DebugFilter::Context => entry.category == DebugCategory::Context,
+                    DebugFilter::Keypress => entry.category == DebugCategory::Keypress,
+                    DebugFilter::Command => entry.category == DebugCategory::Command,
+                    DebugFilter::Execution => entry.category == DebugCategory::Execution,
+                };
+
+                if show {
+                    let elapsed = start_time
+                        .map(|s| entry.timestamp.duration_since(s).as_secs_f32())
+                        .unwrap_or(0.0);
+
+                    let color = match entry.category {
+                        DebugCategory::Context => egui::Color32::from_rgb(100, 180, 255),
+                        DebugCategory::Keypress => egui::Color32::from_rgb(180, 180, 180),
+                        DebugCategory::Command => egui::Color32::from_rgb(100, 255, 100),
+                        DebugCategory::Execution => egui::Color32::from_rgb(255, 200, 100),
+                    };
+
+                    ui.horizontal(|ui| {
+                        ui.monospace(format!("{:>6.2}", elapsed));
+                        ui.colored_label(color, entry.category.icon());
+                        ui.label(&entry.message);
+                    });
+                }
+            }
+        });
 
     action
 }

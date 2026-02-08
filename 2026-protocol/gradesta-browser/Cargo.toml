@@ -64,4 +64,7 @@ symphonia = { version = "0.5", features = ["aac", "isomp4"] }
 # Text-to-speech (uses system TTS backends: Speech Dispatcher on Linux, SAPI on Windows, etc.)
 tts = "0.26"
 # System clipboard (Wayland/X11/Windows/macOS)
-arboard = "3.4"
+# wayland-data-control enables wl-clipboard-rs for proper Wayland clipboard support
+arboard = { version = "3.4", features = ["wayland-data-control"] }
+# Timestamp formatting for debug logs
+chrono = "0.4"
