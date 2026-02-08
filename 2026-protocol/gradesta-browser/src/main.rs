@@ -1530,280 +1530,522 @@ fn ui_system(
         ui.add_space(4.0);
     });
 
-    // Right panel for content preview
+    // Right panel for content - renders based on sidebar mode
     egui::SidePanel::right("preview_panel").min_width(400.0).show(ctx, |ui| {
-        ui.heading("Content Preview");
-        ui.separator();
-
-        if let Some(current_id) = app_state.current_vertex {
-            if let Some(vertex) = graph.vertices.get(&current_id) {
-                render_vertex_content(ui, vertex, current_id, &mut media_cache, ctx, &mut app_state, &playback_state);
-            }
-        } else {
-            ui.label("No vertex selected");
-        }
-    });
-
-    // Text modal window (Ctrl+Enter to open, Escape to close)
-    // Skip modal rendering when in fullscreen mode (content is rendered in CentralPanel instead)
-    if app_state.show_text_modal && !app_state.sidebar.fullscreen {
-        egui::Window::new("Text Viewer")
-            .collapsible(false)
-            .resizable(true)
-            .default_size([800.0, 600.0])
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    if ui.button("Close (Esc)").clicked() {
+        // Render content based on current mode
+        if app_state.show_text_modal {
+            // Text viewing mode
+            ui.horizontal(|ui| {
+                ui.heading("Text Content");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("✕").clicked() {
                         app_state.show_text_modal = false;
                     }
                 });
-                ui.separator();
-
-                egui::ScrollArea::both()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        ui.add(
-                            egui::TextEdit::multiline(&mut app_state.text_modal_content.clone())
-                                .desired_width(f32::INFINITY)
-                                .font(egui::TextStyle::Monospace)
-                                .interactive(false)
-                        );
-                    });
             });
-    }
+            ui.separator();
+            ui.label("Ctrl+Enter: Fullscreen | Escape: Close");
+            ui.separator();
 
-    // Image modal window (Ctrl+Enter to open, Escape to close)
-    // Skip modal rendering when in fullscreen mode
-    if app_state.show_image_modal && !app_state.sidebar.fullscreen {
-        if let Some(vertex_id) = app_state.image_modal_vertex_id {
-            if let Some(vertex) = graph.vertices.get(&vertex_id) {
-                // Prefer layer 2 content (full image) over layer 0 (thumbnail/label)
-                let (image_data, mime): (&[u8], &str) = if let Some(layer2) = vertex.layers.get(&2) {
-                    (&layer2.data, &layer2.mime)
-                } else {
-                    (&vertex.label, vertex.mime.as_deref().unwrap_or(""))
-                };
-                egui::Window::new("Image Viewer")
-                    .collapsible(false)
-                    .resizable(true)
-                    .default_size([800.0, 600.0])
-                    .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                    .show(ctx, |ui| {
-                        ui.horizontal(|ui| {
-                            if ui.button("Close (Esc)").clicked() {
-                                app_state.show_image_modal = false;
-                            }
-                        });
-                        ui.separator();
-
-                        egui::ScrollArea::both()
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                if mime == "image/gif" {
-                                    if let Some(animated) = get_or_load_animated_gif(vertex_id, image_data, &mut media_cache, ctx) {
-                                        let now = Instant::now();
-                                        if now.duration_since(animated.last_switch) >= animated.delays[animated.current_frame] {
-                                            let next_frame = (animated.current_frame + 1) % animated.frames.len();
-                                            if let Some(anim) = media_cache.animated_gifs.get_mut(&vertex_id) {
-                                                anim.current_frame = next_frame;
-                                                anim.last_switch = now;
-                                            }
-                                        }
-                                        let tex = &animated.frames[animated.current_frame];
-                                        let size = tex.size_vec2();
-                                        ui.image((tex.id(), size));
-                                        ctx.request_repaint();
-                                    }
-                                } else {
-                                    if let Some(tex) = get_or_load_texture(vertex_id, image_data, mime, &mut media_cache, ctx) {
-                                        let size = tex.size_vec2();
-                                        ui.image((tex.id(), size));
-                                    }
-                                }
-                            });
-                    });
-            }
-        }
-    }
-
-    // Video modal window (opens when video loads, Escape to close)
-    // Skip modal rendering when in fullscreen mode
-    if app_state.show_video_modal && !app_state.sidebar.fullscreen {
-        if let Some(vertex_id) = app_state.video_modal_vertex_id {
-            // Update video texture from decoded frames
-            // First, collect frame data without holding player borrow
-            let (latest_frame, is_playing) = {
-                if let Some(player) = media_cache.video_players.get(&vertex_id) {
-                    let mut latest = None;
-                    while let Ok(frame) = player.frame_rx.try_recv() {
-                        latest = Some(frame);
+            egui::ScrollArea::both()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(&mut app_state.text_modal_content.clone())
+                            .desired_width(f32::INFINITY)
+                            .font(egui::TextStyle::Monospace)
+                            .interactive(false)
+                    );
+                });
+        } else if app_state.show_image_modal {
+            // Image viewing mode
+            ui.horizontal(|ui| {
+                ui.heading("Image");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("✕").clicked() {
+                        app_state.show_image_modal = false;
                     }
-                    (latest, player.is_playing())
-                } else {
-                    (None, false)
-                }
-            };
+                });
+            });
+            ui.separator();
+            ui.label("Ctrl+Enter: Fullscreen | Escape: Close");
+            ui.separator();
 
-            // Now update texture without borrow conflict (skip empty frames)
-            if let Some(frame) = latest_frame {
-                if frame.width > 0 && frame.height > 0 && !frame.rgba.is_empty() {
-                    let image = egui::ColorImage::from_rgba_unmultiplied(
-                        [frame.width as usize, frame.height as usize],
-                        &frame.rgba,
-                    );
-                    let handle = ctx.load_texture(
-                        format!("video_{}", vertex_id),
-                        image,
-                        egui::TextureOptions::default(),
-                    );
-                    media_cache.video_textures.insert(vertex_id, handle);
-                }
-            }
-
-            // Request continuous repaints while video is playing
-            if is_playing {
-                ctx.request_repaint();
-            }
-
-            egui::Window::new("Video Player")
-                .collapsible(false)
-                .resizable(true)
-                .default_size([900.0, 600.0])
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .show(ctx, |ui| {
-                    // Display video frame first (takes up most space)
-                    let video_rect = if let Some(tex) = media_cache.video_textures.get(&vertex_id) {
-                        // Reserve space for controls below (about 60px)
-                        let available = ui.available_size() - egui::vec2(0.0, 60.0);
-                        let tex_size = tex.size_vec2();
-                        // Scale to fit available space while maintaining aspect ratio
-                        let scale = (available.x / tex_size.x).min(available.y / tex_size.y).min(1.0);
-                        let display_size = tex_size * scale;
-
-                        ui.vertical_centered(|ui| {
-                            ui.image((tex.id(), display_size));
-                        });
-                        Some(display_size)
+            if let Some(vertex_id) = app_state.image_modal_vertex_id {
+                if let Some(vertex) = graph.vertices.get(&vertex_id) {
+                    // Prefer layer 2 content (full image) over layer 0 (thumbnail/label)
+                    let (image_data, mime): (&[u8], &str) = if let Some(layer2) = vertex.layers.get(&2) {
+                        (&layer2.data, &layer2.mime)
                     } else {
-                        ui.vertical_centered(|ui| {
-                            ui.add_space(200.0);
-                            ui.label("Loading video...");
-                            ui.add_space(200.0);
-                        });
-                        None
+                        (&vertex.label, vertex.mime.as_deref().unwrap_or(""))
                     };
 
-                    ui.add_space(8.0);
-
-                    // Seek bar (same width as video, centered)
-                    if let Some(player) = media_cache.video_players.get(&vertex_id) {
-                        let pos = player.get_position();
-                        let dur = player.duration;
-                        let dur_secs = dur.as_secs_f32().max(0.1);
-                        let mut pos_secs = pos.as_secs_f32();
-
-                        let slider_width = video_rect.map(|r| r.x).unwrap_or(ui.available_width());
-
-                        // Center the seek bar under the video
-                        let available_width = ui.available_width();
-                        let left_padding = ((available_width - slider_width) / 2.0).max(0.0);
-
-                        ui.horizontal(|ui| {
-                            ui.add_space(left_padding);
-                            // Use a custom widget size to force the slider to be exactly the video width
-                            let (rect, response) = ui.allocate_exact_size(
-                                egui::vec2(slider_width, 20.0),
-                                egui::Sense::click_and_drag()
-                            );
-
-                            if ui.is_rect_visible(rect) {
-                                // Draw custom progress bar / seek bar
-                                let progress = pos_secs / dur_secs;
-                                let filled_width = rect.width() * progress;
-
-                                // Background
-                                ui.painter().rect_filled(
-                                    rect,
-                                    4.0,
-                                    egui::Color32::from_gray(60)
-                                );
-
-                                // Filled portion
-                                let filled_rect = egui::Rect::from_min_size(
-                                    rect.min,
-                                    egui::vec2(filled_width, rect.height())
-                                );
-                                ui.painter().rect_filled(
-                                    filled_rect,
-                                    4.0,
-                                    egui::Color32::from_rgb(100, 150, 255)
-                                );
-
-                                // Handle dragging
-                                if response.dragged() || response.clicked() {
-                                    if let Some(pointer_pos) = response.interact_pointer_pos() {
-                                        let relative_x = (pointer_pos.x - rect.left()) / rect.width();
-                                        let new_pos = (relative_x.clamp(0.0, 1.0) * dur_secs) as f32;
-                                        if (new_pos - pos_secs).abs() > 0.1 {
-                                            pos_secs = new_pos;
+                    egui::ScrollArea::both()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            if mime == "image/gif" {
+                                if let Some(animated) = get_or_load_animated_gif(vertex_id, image_data, &mut media_cache, ctx) {
+                                    let now = Instant::now();
+                                    if now.duration_since(animated.last_switch) >= animated.delays[animated.current_frame] {
+                                        let next_frame = (animated.current_frame + 1) % animated.frames.len();
+                                        if let Some(anim) = media_cache.animated_gifs.get_mut(&vertex_id) {
+                                            anim.current_frame = next_frame;
+                                            anim.last_switch = now;
                                         }
                                     }
+                                    let tex = &animated.frames[animated.current_frame];
+                                    let size = tex.size_vec2();
+                                    let available = ui.available_size();
+                                    let scale = (available.x / size.x).min(available.y / size.y).min(1.0);
+                                    ui.image((tex.id(), size * scale));
+                                    ctx.request_repaint();
                                 }
-
-                                // Draw position indicator (small circle)
-                                let indicator_x = rect.left() + filled_width;
-                                let indicator_center = egui::pos2(indicator_x, rect.center().y);
-                                ui.painter().circle_filled(
-                                    indicator_center,
-                                    8.0,
-                                    egui::Color32::WHITE
-                                );
+                            } else {
+                                if let Some(tex) = get_or_load_texture(vertex_id, image_data, mime, &mut media_cache, ctx) {
+                                    let size = tex.size_vec2();
+                                    let available = ui.available_size();
+                                    let scale = (available.x / size.x).min(available.y / size.y).min(1.0);
+                                    ui.image((tex.id(), size * scale));
+                                }
                             }
                         });
+                }
+            }
+        } else if app_state.show_video_modal {
+            // Video playback mode
+            if let Some(vertex_id) = app_state.video_modal_vertex_id {
+                // Update video texture from decoded frames
+                let (latest_frame, is_playing) = {
+                    if let Some(player) = media_cache.video_players.get(&vertex_id) {
+                        let mut latest = None;
+                        while let Ok(frame) = player.frame_rx.try_recv() {
+                            latest = Some(frame);
+                        }
+                        (latest, player.is_playing())
+                    } else {
+                        (None, false)
+                    }
+                };
 
-                        if pos_secs != pos.as_secs_f32() {
-                            player.seek(Duration::from_secs_f32(pos_secs));
+                if let Some(frame) = latest_frame {
+                    if frame.width > 0 && frame.height > 0 && !frame.rgba.is_empty() {
+                        let image = egui::ColorImage::from_rgba_unmultiplied(
+                            [frame.width as usize, frame.height as usize],
+                            &frame.rgba,
+                        );
+                        let handle = ctx.load_texture(
+                            format!("video_{}", vertex_id),
+                            image,
+                            egui::TextureOptions::default(),
+                        );
+                        media_cache.video_textures.insert(vertex_id, handle);
+                    }
+                }
+
+                if is_playing {
+                    ctx.request_repaint();
+                }
+
+                ui.horizontal(|ui| {
+                    ui.heading("Video");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("✕").clicked() {
+                            if let Some(player) = media_cache.video_players.get(&vertex_id) {
+                                player.stop();
+                            }
+                            app_state.show_video_modal = false;
+                        }
+                    });
+                });
+                ui.separator();
+                ui.label("Ctrl+Enter: Fullscreen | Escape: Close");
+                ui.separator();
+
+                // Display video frame
+                let video_width = if let Some(tex) = media_cache.video_textures.get(&vertex_id) {
+                    let available = ui.available_size() - egui::vec2(0.0, 60.0);
+                    let tex_size = tex.size_vec2();
+                    let scale = (available.x / tex_size.x).min(available.y / tex_size.y).min(1.0);
+                    let display_size = tex_size * scale;
+                    ui.vertical_centered(|ui| {
+                        ui.image((tex.id(), display_size));
+                    });
+                    display_size.x
+                } else {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(100.0);
+                        ui.label("Loading video...");
+                        ui.spinner();
+                        ui.add_space(100.0);
+                    });
+                    ui.available_width()
+                };
+
+                ui.add_space(8.0);
+
+                // Seek bar
+                if let Some(player) = media_cache.video_players.get(&vertex_id) {
+                    let pos = player.get_position();
+                    let dur = player.duration;
+                    let dur_secs = dur.as_secs_f32().max(0.1);
+                    let mut pos_secs = pos.as_secs_f32();
+
+                    let available_width = ui.available_width();
+                    let left_padding = ((available_width - video_width) / 2.0).max(0.0);
+
+                    ui.horizontal(|ui| {
+                        ui.add_space(left_padding);
+                        let (rect, response) = ui.allocate_exact_size(
+                            egui::vec2(video_width, 20.0),
+                            egui::Sense::click_and_drag()
+                        );
+
+                        if ui.is_rect_visible(rect) {
+                            let progress = pos_secs / dur_secs;
+                            let filled_width = rect.width() * progress;
+
+                            ui.painter().rect_filled(rect, 4.0, egui::Color32::from_gray(60));
+                            let filled_rect = egui::Rect::from_min_size(
+                                rect.min,
+                                egui::vec2(filled_width, rect.height())
+                            );
+                            ui.painter().rect_filled(filled_rect, 4.0, egui::Color32::from_rgb(100, 150, 255));
+
+                            if response.dragged() || response.clicked() {
+                                if let Some(pointer_pos) = response.interact_pointer_pos() {
+                                    let relative_x = (pointer_pos.x - rect.left()) / rect.width();
+                                    let new_pos = (relative_x.clamp(0.0, 1.0) * dur_secs) as f32;
+                                    if (new_pos - pos_secs).abs() > 0.1 {
+                                        pos_secs = new_pos;
+                                    }
+                                }
+                            }
+
+                            let indicator_x = rect.left() + filled_width;
+                            let indicator_center = egui::pos2(indicator_x, rect.center().y);
+                            ui.painter().circle_filled(indicator_center, 8.0, egui::Color32::WHITE);
+                        }
+                    });
+
+                    if pos_secs != pos.as_secs_f32() {
+                        player.seek(Duration::from_secs_f32(pos_secs));
+                    }
+                }
+
+                // Controls
+                ui.horizontal(|ui| {
+                    if let Some(player) = media_cache.video_players.get(&vertex_id) {
+                        if player.is_playing() {
+                            if ui.button("⏸ Pause").clicked() {
+                                player.pause();
+                            }
+                        } else {
+                            if ui.button("▶ Play").clicked() {
+                                player.play();
+                            }
+                        }
+                        let pos = player.get_position();
+                        let dur = player.duration;
+                        ui.label(format!(
+                            "{:02}:{:02} / {:02}:{:02}",
+                            pos.as_secs() / 60,
+                            pos.as_secs() % 60,
+                            dur.as_secs() / 60,
+                            dur.as_secs() % 60
+                        ));
+                    }
+                });
+            }
+        } else if app_state.show_identity_panel && app_state.nextcloud_login_state.is_none() && app_state.pending_identity_setup.is_none() {
+            // Identity management mode
+            ui.horizontal(|ui| {
+                ui.heading("Identity Management");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("✕").clicked() {
+                        app_state.show_identity_panel = false;
+                    }
+                });
+            });
+            ui.separator();
+
+            // List existing identities
+            ui.label("Your Identities:");
+            if app_state.identity_config.identities.is_empty() {
+                ui.label("No identities configured. Add a Nextcloud account below.");
+            } else {
+                let mut to_remove = None;
+                for (i, identity) in app_state.identity_config.identities.iter().enumerate() {
+                    ui.group(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.strong(&identity.display_name);
+                            if ui.small_button("Remove").clicked() {
+                                to_remove = Some(i);
+                            }
+                        });
+                        ui.monospace(&identity.share_url);
+                    });
+                }
+                if let Some(i) = to_remove {
+                    app_state.identity_config.identities.remove(i);
+                    let _ = app_state.identity_config.save();
+                }
+            }
+
+            ui.separator();
+            ui.label("Add Nextcloud Account:");
+            ui.horizontal(|ui| {
+                ui.label("URL:");
+                ui.text_edit_singleline(&mut app_state.nextcloud_url_input);
+            });
+
+            if ui.button("Connect Nextcloud Account").clicked() {
+                let nc_url = app_state.nextcloud_url_input.trim().to_string();
+                if !nc_url.is_empty() {
+                    match identity::initiate_nextcloud_login(&nc_url) {
+                        Ok((login_url, poll_endpoint, poll_token)) => {
+                            let login_url_clone = login_url.clone();
+                            thread::spawn(move || {
+                                let _ = open::that(&login_url_clone);
+                            });
+                            app_state.nextcloud_login_state = Some(NextcloudLoginState {
+                                nextcloud_url: nc_url,
+                                poll_endpoint,
+                                poll_token,
+                                started: Instant::now(),
+                            });
+                            app_state.status = "Opening browser for Nextcloud login...".to_string();
+                        }
+                        Err(e) => {
+                            app_state.status = format!("Failed to initiate login: {}", e);
+                        }
+                    }
+                }
+            }
+        } else if let InputMode::TextInput { direction } = app_state.input_mode.clone() {
+            // Text input mode (in sidebar)
+            let title = if direction.is_some() { "New Text Note" } else { "Edit Text" };
+            ui.horizontal(|ui| {
+                ui.heading(title);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("✕ Cancel").clicked() {
+                        app_state.input_mode = InputMode::Normal;
+                        app_state.text_input_buffer.clear();
+                        app_state.status = "Text input cancelled".to_string();
+                    }
+                });
+            });
+            ui.separator();
+
+            if let Some(dir) = direction {
+                let dir_name = match dir {
+                    EDGE_NORTH => "North ↑",
+                    EDGE_SOUTH => "South ↓",
+                    EDGE_WEST => "West ←",
+                    EDGE_EAST => "East →",
+                    EDGE_UP => "Up ⬆",
+                    EDGE_DOWN => "Down ⬇",
+                    _ => "?",
+                };
+                ui.label(format!("Creating new note to the {}", dir_name));
+            } else {
+                ui.label("Editing current vertex");
+            }
+
+            if ui.button("Save (Ctrl+Enter)").clicked() {
+                // Signal submit - handled in the existing submit_text logic
+            }
+
+            ui.separator();
+
+            egui::ScrollArea::vertical()
+                .max_height(ui.available_height() - 20.0)
+                .show(ui, |ui| {
+                    let response = ui.add(
+                        egui::TextEdit::multiline(&mut app_state.text_input_buffer)
+                            .desired_width(f32::INFINITY)
+                            .desired_rows(10)
+                            .font(egui::TextStyle::Monospace)
+                    );
+                    response.request_focus();
+                });
+        } else if let InputMode::Recording { .. } = app_state.input_mode.clone() {
+            // Recording mode (in sidebar with blocking overlay)
+            let elapsed = app_state.recording_start
+                .map(|s| s.elapsed())
+                .unwrap_or(Duration::ZERO);
+
+            ui.vertical_centered(|ui| {
+                ui.add_space(20.0);
+                ui.heading("Recording Audio");
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    ui.heading("🔴");
+                    ui.heading(format!("{:.1}s", elapsed.as_secs_f32()));
+                });
+                ui.add_space(10.0);
+                ui.label("Release Space to save");
+                ui.add_space(10.0);
+
+                let level = if let Ok(samples) = app_state.audio_samples.lock() {
+                    if samples.len() > 1000 {
+                        samples.iter().rev().take(1000).map(|s| s.abs()).sum::<f32>() / 1000.0 * 10.0
+                    } else {
+                        0.0
+                    }
+                } else {
+                    0.0
+                };
+                ui.add(egui::ProgressBar::new(level.min(1.0)));
+
+                ui.add_space(20.0);
+                if ui.button("Cancel (Escape)").clicked() {
+                    // Will be handled by existing cancel_recording logic
+                }
+            });
+            ctx.request_repaint();
+        } else if app_state.pending_identification.is_some() {
+            // Identification request mode (in sidebar with blocking overlay)
+            // Clone to avoid borrow issues
+            let pending = app_state.pending_identification.clone().unwrap();
+
+            // Check if this is a remembered server (auto-identify handled elsewhere)
+            let is_remembered = app_state.identity_config.identities.get(app_state.selected_identity_index)
+                .map(|id| id.remembered_servers.contains(&pending.server_url))
+                .unwrap_or(false);
+
+            if !is_remembered {
+                ui.heading("Identification Request");
+                ui.separator();
+
+                ui.label(format!("Server: {}", pending.server_url));
+                ui.label(format!("Reason: {}", pending.reason));
+                ui.separator();
+
+                if app_state.identity_config.identities.is_empty() {
+                    ui.label("No identities configured.");
+                    ui.label("Connect a Nextcloud account to identify yourself.");
+                    ui.add_space(8.0);
+                    if ui.button("Connect Nextcloud Account").clicked() {
+                        app_state.show_identity_panel = true;
+                    }
+                    if ui.button("Refuse (Escape)").clicked() {
+                        // Will be handled by keyboard
+                    }
+                } else {
+                    ui.label("Identify as (Tab to cycle):");
+                    let identity_info: Vec<(String, String)> = app_state.identity_config.identities
+                        .iter()
+                        .map(|id| (id.display_name.clone(), id.share_url.clone()))
+                        .collect();
+                    for (i, (name, url)) in identity_info.iter().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.radio_value(&mut app_state.selected_identity_index, i, name);
+                        });
+                        if app_state.selected_identity_index == i {
+                            ui.indent("identity_url", |ui| {
+                                ui.monospace(url);
+                            });
                         }
                     }
 
-                    // Controls bar
+                    ui.separator();
                     ui.horizontal(|ui| {
-                        // Play/Pause button
-                        if let Some(player) = media_cache.video_players.get(&vertex_id) {
-                            if player.is_playing() {
-                                if ui.button("⏸ Pause").clicked() {
-                                    player.pause();
-                                }
-                            } else {
-                                if ui.button("▶ Play").clicked() {
-                                    player.play();
-                                }
-                            }
-                            // Show position / duration
-                            let pos = player.get_position();
-                            let dur = player.duration;
-                            ui.label(format!(
-                                "{:02}:{:02} / {:02}:{:02}",
-                                pos.as_secs() / 60,
-                                pos.as_secs() % 60,
-                                dur.as_secs() / 60,
-                                dur.as_secs() % 60
-                            ));
+                        if ui.button("Identify (Enter)").clicked() {
+                            // Will be handled by keyboard
                         }
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("✕ Close").clicked() {
-                                // Stop player
-                                if let Some(player) = media_cache.video_players.get(&vertex_id) {
-                                    player.stop();
-                                }
-                                app_state.show_video_modal = false;
-                            }
-                        });
+                        if ui.button("Remember").clicked() {
+                            // Will be handled by keyboard
+                        }
+                        if ui.button("Refuse (Esc)").clicked() {
+                            // Will be handled by keyboard
+                        }
                     });
+                }
+            }
+        } else if app_state.show_bag_panel {
+            // Bag (clipboard) mode
+            ui.horizontal(|ui| {
+                ui.heading("Bag (Clipboard)");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("✕").clicked() {
+                        app_state.show_bag_panel = false;
+                    }
                 });
+            });
+            ui.separator();
+
+            ui.horizontal(|ui| {
+                if ui.button("Clear All").clicked() {
+                    app_state.bag.clear();
+                    app_state.status = "Bag cleared".to_string();
+                }
+            });
+
+            ui.label("Y=Yank | Ctrl+Y=Pop | G=Go to top");
+            ui.separator();
+
+            if app_state.bag.is_empty() {
+                ui.label("Bag is empty. Press Y to yank current vertex.");
+            } else {
+                ui.label(format!("{} item(s):", app_state.bag.len()));
+
+                egui::ScrollArea::vertical()
+                    .max_height(300.0)
+                    .show(ui, |ui| {
+                        let mut remove_idx = None;
+                        let mut jump_to = None;
+
+                        for (i, &vertex_id) in app_state.bag.iter().rev().enumerate() {
+                            let stack_idx = app_state.bag.len() - 1 - i;
+                            ui.horizontal(|ui| {
+                                let is_top = i == 0;
+                                let prefix = if is_top { "→ " } else { "  " };
+
+                                let label = graph.vertices.get(&vertex_id)
+                                    .map(|v| {
+                                        let mime = v.mime.as_deref().unwrap_or("");
+                                        let text = String::from_utf8_lossy(&v.label);
+                                        let short: String = text.chars().take(15).collect();
+                                        format!("[{}] {}", mime.split('/').last().unwrap_or("?"), short)
+                                    })
+                                    .unwrap_or_else(|| format!("vertex {}", vertex_id));
+
+                                ui.label(format!("{}{}", prefix, label));
+
+                                if ui.small_button("Go").clicked() {
+                                    jump_to = Some(vertex_id);
+                                }
+                                if ui.small_button("×").clicked() {
+                                    remove_idx = Some(stack_idx);
+                                }
+                            });
+                        }
+
+                        if let Some(idx) = remove_idx {
+                            app_state.bag.remove(idx);
+                        }
+                        if let Some(vid) = jump_to {
+                            if let Some(current_id) = app_state.current_vertex {
+                                app_state.history.push(current_id);
+                            }
+                            app_state.current_vertex = Some(vid);
+                        }
+                    });
+            }
+        } else {
+            // Default: Content Preview mode
+            ui.heading("Content Preview");
+            ui.separator();
+
+            if let Some(current_id) = app_state.current_vertex {
+                if let Some(vertex) = graph.vertices.get(&current_id) {
+                    render_vertex_content(ui, vertex, current_id, &mut media_cache, ctx, &mut app_state, &playback_state);
+                }
+            } else {
+                ui.label("No vertex selected");
+            }
         }
-    }
+    });
 
     // Poll for Nextcloud login completion (runs every frame, independent of UI panels)
     if let Some(ref login_state) = app_state.nextcloud_login_state.clone() {
@@ -1973,228 +2215,22 @@ fn ui_system(
         }
     }
 
-    // Identity management panel
-    if app_state.show_identity_panel && app_state.nextcloud_login_state.is_none() && app_state.pending_identity_setup.is_none() {
-        egui::Window::new("🔑 Identity Management")
-            .collapsible(false)
-            .resizable(true)
-            .default_size([500.0, 400.0])
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    if ui.button("Close").clicked() {
-                        app_state.show_identity_panel = false;
-                    }
-                });
-                ui.separator();
+    // Note: Identity management, Bag, Text input, and Recording are now rendered in the sidebar above
 
-                // List existing identities
-                ui.heading("Your Identities");
-                if app_state.identity_config.identities.is_empty() {
-                    ui.label("No identities configured. Add a Nextcloud account below.");
-                } else {
-                    let mut to_remove = None;
-                    for (i, identity) in app_state.identity_config.identities.iter().enumerate() {
-                        ui.group(|ui| {
-                            ui.horizontal(|ui| {
-                                ui.strong(&identity.display_name);
-                                ui.label("(display name)");
-                                if ui.small_button("Remove").clicked() {
-                                    to_remove = Some(i);
-                                }
-                            });
-                            ui.horizontal(|ui| {
-                                ui.label("Identity URL:");
-                                ui.monospace(&identity.share_url);
-                            });
-                        });
-                    }
-                    if let Some(i) = to_remove {
-                        app_state.identity_config.identities.remove(i);
-                        let _ = app_state.identity_config.save();
-                    }
-                }
-
-                ui.separator();
-                ui.heading("Add Nextcloud Account");
-
-                ui.horizontal(|ui| {
-                    ui.label("Nextcloud URL:");
-                    ui.text_edit_singleline(&mut app_state.nextcloud_url_input);
-                });
-
-                if ui.button("Connect Nextcloud Account").clicked() {
-                    let nc_url = app_state.nextcloud_url_input.trim().to_string();
-                    if !nc_url.is_empty() {
-                        match identity::initiate_nextcloud_login(&nc_url) {
-                            Ok((login_url, poll_endpoint, poll_token)) => {
-                                // Open browser for login in a separate thread (non-blocking)
-                                let login_url_clone = login_url.clone();
-                                thread::spawn(move || {
-                                    let _ = open::that(&login_url_clone);
-                                });
-                                app_state.nextcloud_login_state = Some(NextcloudLoginState {
-                                    nextcloud_url: nc_url,
-                                    poll_endpoint,
-                                    poll_token,
-                                    started: Instant::now(),
-                                });
-                                app_state.status = "Opening browser for Nextcloud login...".to_string();
-                            }
-                            Err(e) => {
-                                app_state.status = format!("Failed to initiate login: {}", e);
-                            }
-                        }
-                    }
-                }
-            });
-    }
-
-    // Bag (clipboard) panel
-    if app_state.show_bag_panel {
-        egui::Window::new("📋 Bag (Clipboard)")
-            .collapsible(false)
-            .resizable(true)
-            .default_size([300.0, 300.0])
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    if ui.button("Close (Ctrl+B)").clicked() {
-                        app_state.show_bag_panel = false;
-                    }
-                    if ui.button("Clear All").clicked() {
-                        app_state.bag.clear();
-                        app_state.status = "Bag cleared".to_string();
-                    }
-                });
-                ui.separator();
-
-                ui.label("Keyboard shortcuts:");
-                ui.label("  Y = Yank current vertex to bag");
-                ui.label("  Ctrl+Y = Pop from bag");
-                ui.label("  G = Go to bag top");
-                ui.separator();
-
-                if app_state.bag.is_empty() {
-                    ui.label("Bag is empty. Press Y to yank current vertex.");
-                } else {
-                    ui.label(format!("{} item(s) in bag:", app_state.bag.len()));
-                    ui.add_space(4.0);
-
-                    egui::ScrollArea::vertical()
-                        .max_height(200.0)
-                        .show(ui, |ui| {
-                            let mut remove_idx = None;
-                            let mut jump_to = None;
-
-                            // Show items with newest (top of stack) first
-                            for (i, &vertex_id) in app_state.bag.iter().rev().enumerate() {
-                                let stack_idx = app_state.bag.len() - 1 - i;
-                                ui.horizontal(|ui| {
-                                    let is_top = i == 0;
-                                    let prefix = if is_top { "→ " } else { "  " };
-
-                                    // Get vertex label if available
-                                    let label = graph.vertices.get(&vertex_id)
-                                        .map(|v| {
-                                            let mime = v.mime.as_deref().unwrap_or("");
-                                            let text = String::from_utf8_lossy(&v.label);
-                                            let short: String = text.chars().take(20).collect();
-                                            format!("[{}] {}", mime.split('/').last().unwrap_or("?"), short)
-                                        })
-                                        .unwrap_or_else(|| format!("vertex {}", vertex_id));
-
-                                    ui.label(format!("{}{}", prefix, label));
-
-                                    if ui.small_button("Go").clicked() {
-                                        jump_to = Some(vertex_id);
-                                    }
-                                    if ui.small_button("×").clicked() {
-                                        remove_idx = Some(stack_idx);
-                                    }
-                                });
-                            }
-
-                            if let Some(idx) = remove_idx {
-                                app_state.bag.remove(idx);
-                            }
-                            if let Some(vid) = jump_to {
-                                if let Some(current_id) = app_state.current_vertex {
-                                    app_state.history.push(current_id);
-                                }
-                                app_state.current_vertex = Some(vid);
-                            }
-                        });
-                }
-            });
-    }
-
-    // Text input modal
+    // Handle text input keyboard shortcuts (Ctrl+Enter to submit, Escape to cancel)
     let mut submit_text = false;
     let mut cancel_text = false;
-    if let InputMode::TextInput { direction } = app_state.input_mode.clone() {
-        let title = if direction.is_some() {
-            "✏️ New Text Note"
-        } else {
-            "✏️ Edit Text"
-        };
-
-        egui::Window::new(title)
-            .collapsible(false)
-            .resizable(true)
-            .default_size([500.0, 300.0])
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    if ui.button("Save (Ctrl+Enter)").clicked() {
-                        submit_text = true;
-                    }
-                    if ui.button("Cancel (Esc)").clicked() {
-                        cancel_text = true;
-                    }
-                });
-
-                if let Some(dir) = direction {
-                    let dir_name = match dir {
-                        EDGE_NORTH => "North ↑",
-                        EDGE_SOUTH => "South ↓",
-                        EDGE_WEST => "West ←",
-                        EDGE_EAST => "East →",
-                        EDGE_UP => "Up ⬆",
-                        EDGE_DOWN => "Down ⬇",
-                        _ => "?",
-                    };
-                    ui.label(format!("Creating new note to the {}", dir_name));
-                } else {
-                    ui.label("Editing current vertex");
-                }
-
-                ui.separator();
-
-                // Text input area
-                egui::ScrollArea::vertical()
-                    .max_height(250.0)
-                    .show(ui, |ui| {
-                        let response = ui.add(
-                            egui::TextEdit::multiline(&mut app_state.text_input_buffer)
-                                .desired_width(f32::INFINITY)
-                                .desired_rows(10)
-                                .font(egui::TextStyle::Monospace)
-                        );
-                        // Request focus on the text input
-                        response.request_focus();
-                    });
-
-                // Handle Ctrl+Enter to submit and Escape to cancel
-                let input = ui.input(|i| (
-                    i.key_pressed(egui::Key::Enter) && i.modifiers.ctrl,
-                    i.key_pressed(egui::Key::Escape)
-                ));
-                if input.0 {
-                    submit_text = true;
-                }
-                if input.1 {
-                    cancel_text = true;
-                }
-            });
+    if let InputMode::TextInput { .. } = app_state.input_mode {
+        let input = ctx.input(|i| (
+            i.key_pressed(egui::Key::Enter) && i.modifiers.ctrl,
+            i.key_pressed(egui::Key::Escape)
+        ));
+        if input.0 {
+            submit_text = true;
+        }
+        if input.1 {
+            cancel_text = true;
+        }
     }
 
     // Process text input submission/cancellation outside the UI closure
@@ -2282,50 +2318,13 @@ fn ui_system(
         app_state.status = "Text input cancelled".to_string();
     }
 
-    // Audio recording indicator (push-to-talk style)
+    // Audio recording - handle Escape to cancel (recording UI is in sidebar)
     let mut cancel_recording = false;
-    if let InputMode::Recording { .. } = app_state.input_mode.clone() {
-        let elapsed = app_state.recording_start
-            .map(|s| s.elapsed())
-            .unwrap_or(Duration::ZERO);
-        let elapsed_secs = elapsed.as_secs_f32();
-
-        egui::Window::new("🎤 Recording")
-            .collapsible(false)
-            .resizable(false)
-            .title_bar(false)
-            .anchor(egui::Align2::CENTER_TOP, [0.0, 100.0])
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.heading("🔴");
-                    ui.heading(format!("{:.1}s", elapsed_secs));
-                });
-                ui.label("Release Space to save");
-
-                // Show audio level indicator
-                let level = if let Ok(samples) = app_state.audio_samples.lock() {
-                    if samples.len() > 1000 {
-                        let recent: f32 = samples.iter().rev().take(1000)
-                            .map(|s| s.abs())
-                            .sum::<f32>() / 1000.0;
-                        recent * 10.0 // Scale for visibility
-                    } else {
-                        0.0
-                    }
-                } else {
-                    0.0
-                };
-                ui.add(egui::ProgressBar::new(level.min(1.0)));
-
-                // Escape to cancel
-                let escape_pressed = ui.input(|i| i.key_pressed(egui::Key::Escape));
-                if escape_pressed {
-                    cancel_recording = true;
-                }
-            });
-
-        // Keep repainting to update the UI
-        ctx.request_repaint();
+    if let InputMode::Recording { .. } = app_state.input_mode {
+        let escape_pressed = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        if escape_pressed {
+            cancel_recording = true;
+        }
     }
 
     // Process recording cancel (Escape pressed during recording)
@@ -2378,64 +2377,7 @@ fn ui_system(
             if id_escape_pressed {
                 id_action = Some(IdentificationAction::Refuse);
             }
-
-            // Show consent dialog
-            egui::Window::new("🔐 Identification Request")
-                .collapsible(false)
-                .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .show(ctx, |ui| {
-                    ui.heading("Server requests identification");
-                    ui.separator();
-
-                    ui.label(format!("Server: {}", pending.server_url));
-                    ui.label(format!("Reason: {}", pending.reason));
-                    ui.separator();
-
-                    if app_state.identity_config.identities.is_empty() {
-                        ui.label("No identities configured.");
-                        ui.label("You need to connect a Nextcloud account to identify yourself.");
-                        ui.add_space(8.0);
-                        ui.horizontal(|ui| {
-                            if ui.button("🔑 Connect Nextcloud Account").clicked() {
-                                app_state.show_identity_panel = true;
-                            }
-                            if ui.button("Refuse (Esc)").clicked() {
-                                id_action = Some(IdentificationAction::Refuse);
-                            }
-                        });
-                    } else {
-                        ui.label("Identify as (Tab to cycle):");
-                        // Collect identity info first to avoid borrow conflict
-                        let identity_info: Vec<(String, String)> = app_state.identity_config.identities
-                            .iter()
-                            .map(|id| (id.display_name.clone(), id.share_url.clone()))
-                            .collect();
-                        for (i, (name, url)) in identity_info.iter().enumerate() {
-                            ui.horizontal(|ui| {
-                                ui.radio_value(&mut app_state.selected_identity_index, i, name);
-                            });
-                            if app_state.selected_identity_index == i {
-                                ui.indent("identity_url", |ui| {
-                                    ui.label(format!("URL: {}", url));
-                                });
-                            }
-                        }
-
-                        ui.separator();
-                        ui.horizontal(|ui| {
-                            if ui.button("Identify (Enter)").clicked() {
-                                id_action = Some(IdentificationAction::Identify { remember: false });
-                            }
-                            if ui.button("Identify + Remember").clicked() {
-                                id_action = Some(IdentificationAction::Identify { remember: true });
-                            }
-                            if ui.button("Refuse (Esc)").clicked() {
-                                id_action = Some(IdentificationAction::Refuse);
-                            }
-                        });
-                    }
-                });
+            // Note: Identification UI is now rendered in the sidebar above
         }
     }
 
