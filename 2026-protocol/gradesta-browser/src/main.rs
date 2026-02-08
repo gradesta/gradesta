@@ -4233,7 +4233,14 @@ fn handle_navigation(
     mut app_state: ResMut<AppState>,
     graph: Res<GraphState>,
     keys: Res<ButtonInput<bevy::prelude::KeyCode>>,
+    mut contexts: EguiContexts,
 ) {
+    // Don't handle navigation when egui wants keyboard input (e.g., URL bar focused)
+    let ctx = contexts.ctx_mut();
+    if ctx.wants_keyboard_input() {
+        return;
+    }
+
     // Don't handle navigation when in text input mode
     if matches!(app_state.input_mode, InputMode::TextInput { .. }) {
         return;
