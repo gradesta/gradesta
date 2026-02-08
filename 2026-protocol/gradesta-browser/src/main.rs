@@ -3099,7 +3099,12 @@ fn ui_system(
 
         let Some(current_id) = app_state.current_vertex else {
             ui.centered_and_justified(|ui| {
-                ui.heading("Waiting for data from server...");
+                if app_state.pending_identification.is_some() {
+                    ui.heading("Server requires authentication");
+                    ui.label("Please respond to the identification request in the sidebar.");
+                } else {
+                    ui.heading("Waiting for data from server...");
+                }
             });
             return;
         };
