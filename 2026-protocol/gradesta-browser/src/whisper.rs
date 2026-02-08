@@ -32,12 +32,13 @@ impl Default for DownloadProgress {
 }
 
 /// Get the path to the Whisper model file
+/// Uses tiny.en model (~75MB) for faster CPU inference
 pub fn get_model_path() -> PathBuf {
     let config_dir = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("gradesta")
         .join("whisper");
-    config_dir.join("ggml-base.en.bin")
+    config_dir.join("ggml-tiny.en.bin")
 }
 
 /// Check if the Whisper model is available
@@ -46,8 +47,9 @@ pub fn is_model_available() -> bool {
 }
 
 /// Get the model download URL
+/// tiny.en is ~75MB vs base.en at ~142MB, and runs ~3x faster on CPU
 pub fn get_model_url() -> &'static str {
-    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin"
 }
 
 /// Download the Whisper model with progress tracking (for GUI)
@@ -80,7 +82,7 @@ pub fn download_model_with_progress(progress: Arc<DownloadProgress>) -> Result<(
     }
 
     // Get content length for progress
-    let total_size = response.content_length().unwrap_or(142_000_000); // ~142MB default
+    let total_size = response.content_length().unwrap_or(75_000_000); // ~75MB for tiny.en
     progress.total.store(total_size, Ordering::SeqCst);
 
     // Download with progress tracking
