@@ -447,12 +447,25 @@ enum ServerEvent {
     },
 }
 
+/// A ghost edge represents a connection to a vertex that exists elsewhere in the grid
+#[derive(Clone, Debug)]
+struct GhostEdge {
+    /// The direction of the edge (EDGE_WEST, EDGE_EAST, etc.)
+    direction: usize,
+    /// The target vertex id (which exists elsewhere in the grid)
+    target_id: u64,
+    /// The position where the target vertex actually is in the grid
+    target_pos: (i32, i32),
+}
+
 #[derive(Default, Clone)]
 struct GridView {
     cells: HashMap<(i32, i32), u64>,
     positions: HashMap<u64, (i32, i32)>,
     /// Distance from current vertex for each cell (used to resolve overlapping branches)
     distances: HashMap<(i32, i32), u32>,
+    /// Ghost edges: vertex_id -> list of ghost edges from that vertex
+    ghost_edges: HashMap<u64, Vec<GhostEdge>>,
     min_x: i32,
     max_x: i32,
     min_y: i32,
@@ -639,6 +652,49 @@ fn setup(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default());
 }
 
+/// Compute the expected neighbor position for a given direction
+fn expected_neighbor_pos(pos: (i32, i32), direction: usize) -> (i32, i32) {
+    match direction {
+        EDGE_WEST => (pos.0 - 1, pos.1),
+        EDGE_EAST => (pos.0 + 1, pos.1),
+        EDGE_NORTH => (pos.0, pos.1 - 1),
+        EDGE_SOUTH => (pos.0, pos.1 + 1),
+        // Up/Down don't have spatial positions in 2D grid - they're stacks
+        _ => pos,
+    }
+}
+
+/// Detect ghost edges: edges where the target is in the grid but not at the expected position
+fn detect_ghost_edges(grid: &mut GridView, graph: &GraphState) {
+    let directions = [EDGE_WEST, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH];
+
+    for (&pos, &vertex_id) in &grid.cells.clone() {
+        if let Some(vertex) = graph.vertices.get(&vertex_id) {
+            for &dir in &directions {
+                let target_id = vertex.edges[dir];
+                if target_id == 0 {
+                    continue;
+                }
+
+                // Check if target is in the grid
+                if let Some(&target_pos) = grid.positions.get(&target_id) {
+                    let expected_pos = expected_neighbor_pos(pos, dir);
+
+                    // If target is at a different position than expected, it's a ghost edge
+                    if target_pos != expected_pos {
+                        let ghost = GhostEdge {
+                            direction: dir,
+                            target_id,
+                            target_pos,
+                        };
+                        grid.ghost_edges.entry(vertex_id).or_default().push(ghost);
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn build_grid_view(graph: &GraphState, current_id: u64) -> GridView {
     let mut grid = GridView::default();
     let mut visited = HashSet::new();
@@ -709,6 +765,9 @@ fn build_grid_view(graph: &GraphState, current_id: u64) -> GridView {
             }
         }
     }
+
+    // Detect ghost edges (connections to vertices that exist elsewhere in the grid)
+    detect_ghost_edges(&mut grid, graph);
 
     grid
 }
@@ -2869,6 +2928,36 @@ fn ui_system(
                                 arrow_color,
                                 egui::Stroke::NONE,
                             ));
+                        }
+
+                        // Draw ghost edge indicators (connections to vertices elsewhere in grid)
+                        if let Some(ghosts) = grid.ghost_edges.get(&vertex_id) {
+                            let ghost_color = egui::Color32::from_rgba_unmultiplied(180, 100, 255, 180);
+                            let ghost_size = 8.0 * zoom;
+
+                            for ghost in ghosts {
+                                // Draw a small portal/warp indicator on the edge where the ghost connection is
+                                let (indicator_pos, icon) = match ghost.direction {
+                                    EDGE_WEST => (egui::pos2(rect.left() + 4.0 * zoom, rect.center().y), "◀"),
+                                    EDGE_EAST => (egui::pos2(rect.right() - 4.0 * zoom, rect.center().y), "▶"),
+                                    EDGE_NORTH => (egui::pos2(rect.center().x, rect.top() + 4.0 * zoom), "▲"),
+                                    EDGE_SOUTH => (egui::pos2(rect.center().x, rect.bottom() - 4.0 * zoom), "▼"),
+                                    _ => continue,
+                                };
+
+                                // Draw a small glowing circle to indicate ghost connection
+                                painter.circle_filled(indicator_pos, ghost_size, egui::Color32::from_rgba_unmultiplied(100, 50, 150, 100));
+                                painter.circle_stroke(indicator_pos, ghost_size, egui::Stroke::new(2.0 * zoom, ghost_color));
+
+                                // Draw direction indicator
+                                painter.text(
+                                    indicator_pos,
+                                    egui::Align2::CENTER_CENTER,
+                                    icon,
+                                    egui::FontId::proportional(ghost_size * 0.8),
+                                    ghost_color,
+                                );
+                            }
                         }
 
                         // Calculate layout sections based on what content we have
