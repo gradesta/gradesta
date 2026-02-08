@@ -7,18 +7,21 @@ use gif::DecodeOptions;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Cursor, Write};
 use std::net::TcpStream;
-use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use tungstenite::{client, Message};
 use url::Url;
 
+mod commands;
 mod identity;
+mod keybindings;
 mod sidebar;
 mod video_player;
 mod whisper;
+use commands::{Command, Context as CmdContext};
 use identity::{Identity, IdentityConfig};
+use keybindings::{KeyBinding, KeybindingsConfig, KeybindingResolver, Modifiers};
 use sidebar::{SidebarMode, SidebarState};
 use video_player::VideoPlayer;
 
@@ -114,6 +117,28 @@ enum InputMode {
     Normal,
     TextInput { direction: Option<usize> }, // direction to create new vertex, None = edit current
     Recording { direction: usize },          // recording audio to create new vertex in direction
+}
+
+/// Determine the current keybinding context from app state
+fn current_context(app_state: &AppState) -> commands::Context {
+    match app_state.input_mode {
+        InputMode::TextInput { .. } => commands::Context::TextInput,
+        InputMode::Recording { .. } => commands::Context::Recording,
+        InputMode::Normal => {
+            if app_state.pending_identification.is_some() {
+                commands::Context::Authentication
+            } else if app_state.show_bag_panel {
+                commands::Context::Bag
+            } else if app_state.show_nav_panel {
+                commands::Context::NavPanel
+            } else if app_state.show_command_bar {
+                // Command bar has its own UI handling, use Global for fallback
+                commands::Context::Global
+            } else {
+                commands::Context::Graph
+            }
+        }
+    }
 }
 
 
@@ -255,6 +280,14 @@ struct AppState {
     video_modal_vertex_id: Option<u64>,
     // Sidebar state (for new sidebar-based UI)
     sidebar: SidebarState,
+    // Keybinding system
+    keybindings: KeybindingResolver,
+    // Command bar state
+    show_command_bar: bool,
+    command_bar_input: String,
+    command_bar_selected: usize, // Selected autocomplete suggestion
+    // Keybindings editor state
+    keybindings_editor: sidebar::KeybindingsEditorState,
 }
 
 /// Pending vertex creation data - waiting for server acknowledgment
@@ -352,6 +385,11 @@ impl Default for AppState {
             show_video_modal: false,
             video_modal_vertex_id: None,
             sidebar: SidebarState::default(),
+            keybindings: KeybindingResolver::new(&KeybindingsConfig::load().unwrap_or_default()),
+            show_command_bar: false,
+            command_bar_input: String::new(),
+            command_bar_selected: 0,
+            keybindings_editor: sidebar::KeybindingsEditorState::default(),
         }
     }
 }
@@ -983,257 +1021,232 @@ fn ui_system(
     // Handle modal keyboard shortcuts and zoom
     let url_bar_id = egui::Id::new("url_bar");
 
-    // Track Ctrl+L state - focus URL bar when Ctrl+L is released
-    let ctrl_held = ctx.input(|i| i.modifiers.ctrl);
-    let l_held = ctx.input(|i| i.key_down(egui::Key::L));
+    // Determine current keybinding context
+    let kb_context = current_context(&app_state);
 
-    if ctrl_held && l_held {
-        // Ctrl+L is being held - mark that we want to focus
+    // Track GlobalFocusUrl state - focus URL bar when key is released
+    // (Uses resolver for key mapping but keeps special hold/release behavior)
+    let focus_url_down = ctx.input(|i| app_state.keybindings.command_down(kb_context, &Command::GlobalFocusUrl, i));
+    let focus_url_released = ctx.input(|i| app_state.keybindings.command_released(kb_context, &Command::GlobalFocusUrl, i));
+
+    if focus_url_down {
+        // Key is being held - mark that we want to focus
         app_state.focus_url_bar_next_frame = true;
-    } else if app_state.focus_url_bar_next_frame && !l_held {
-        // L was released - now focus the URL bar
+    } else if app_state.focus_url_bar_next_frame && focus_url_released {
+        // Key was released - now focus the URL bar
         app_state.focus_url_bar_next_frame = false;
         ctx.memory_mut(|mem| mem.request_focus(url_bar_id));
     }
 
-    // Check for Ctrl+C to copy URL to clipboard
-    let copy_url = ctx.input(|i| i.key_pressed(egui::Key::C) && i.modifiers.ctrl);
+    // Check for GlobalCopyUrl command
+    let copy_url = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GlobalCopyUrl, i));
     if copy_url {
         ctx.copy_text(app_state.url_input.clone());
         app_state.status = "Copied URL to clipboard".to_string();
     }
 
-    ctx.input(|i| {
-        // Escape to close modals or exit fullscreen
-        if i.key_pressed(egui::Key::Escape) {
-            // First priority: exit fullscreen mode
-            if app_state.sidebar.fullscreen {
-                app_state.sidebar.fullscreen = false;
-            } else {
-                // Close old-style modals (for backwards compat during transition)
-                if app_state.show_text_modal {
-                    app_state.show_text_modal = false;
-                }
-                if app_state.show_image_modal {
-                    app_state.show_image_modal = false;
-                }
-                if app_state.show_video_modal {
-                    // Stop video player when closing
-                    if let Some(vertex_id) = app_state.video_modal_vertex_id {
-                        if let Some(player) = media_cache.video_players.get(&vertex_id) {
-                            player.stop();
-                        }
+    // Pre-compute which commands were triggered this frame
+    // (We do this outside the input closure so we can use app_state.keybindings)
+    let cmd_close_modal = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GlobalCloseModal, i));
+    let cmd_toggle_fullscreen = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GlobalToggleFullscreen, i));
+    let cmd_click_vertex = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GraphClickVertex, i));
+    let cmd_zoom_in = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GlobalZoomIn, i));
+    let cmd_zoom_out = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GlobalZoomOut, i));
+    let cmd_zoom_reset = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GlobalZoomReset, i));
+    let cmd_toggle_bag = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GlobalToggleBag, i));
+    let cmd_toggle_nav_panel = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GlobalToggleNavPanel, i));
+    let cmd_yank = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GraphYank, i));
+    let cmd_bag_pop = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::BagPop, i));
+    let cmd_go_to_bag_top = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GraphGoToBagTop, i));
+    let cmd_paste = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GraphPaste, i));
+    let cmd_cut_edge = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GraphCutEdge, i));
+    let cmd_delete_vertex = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GraphDeleteVertex, i));
+    let cmd_edit_text = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GraphEditText, i));
+    let cmd_new_text_vertex = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GraphNewTextVertex, i));
+    let cmd_start_recording = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GraphStartRecording, i));
+    let cmd_recording_save = ctx.input(|i| app_state.keybindings.command_released(kb_context, &Command::RecordingSave, i));
+    let cmd_open_command_bar = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GlobalOpenCommandBar, i));
+    let cmd_open_keybindings = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GlobalOpenKeybindings, i));
+    let cmd_refresh = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GlobalRefresh, i));
+    let cmd_set_dir_north = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GraphSetDirectionNorth, i));
+    let cmd_set_dir_south = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GraphSetDirectionSouth, i));
+    let cmd_set_dir_east = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GraphSetDirectionEast, i));
+    let cmd_set_dir_west = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GraphSetDirectionWest, i));
+    let cmd_set_dir_up = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GraphSetDirectionUp, i));
+    let cmd_set_dir_down = ctx.input(|i| app_state.keybindings.command_pressed(kb_context, &Command::GraphSetDirectionDown, i));
+
+    // Mouse wheel and pinch zoom (not bound to keybindings - these are mouse/touch gestures)
+    let (scroll_zoom, pinch_zoom) = ctx.input(|i| {
+        let scroll = if i.modifiers.ctrl && i.raw_scroll_delta.y != 0.0 {
+            Some(i.raw_scroll_delta.y * 0.001)
+        } else {
+            None
+        };
+        let pinch = if i.zoom_delta() != 1.0 {
+            Some(i.zoom_delta())
+        } else {
+            None
+        };
+        (scroll, pinch)
+    });
+
+    // GlobalCloseModal - close modals or exit fullscreen
+    if cmd_close_modal {
+        // First priority: close command bar
+        if app_state.show_command_bar {
+            app_state.show_command_bar = false;
+            app_state.command_bar_input.clear();
+            app_state.command_bar_selected = 0;
+        }
+        // Next: exit fullscreen mode
+        else if app_state.sidebar.fullscreen {
+            app_state.sidebar.fullscreen = false;
+        } else {
+            // Close old-style modals (for backwards compat during transition)
+            if app_state.show_text_modal {
+                app_state.show_text_modal = false;
+            }
+            if app_state.show_image_modal {
+                app_state.show_image_modal = false;
+            }
+            if app_state.show_video_modal {
+                // Stop video player when closing
+                if let Some(vertex_id) = app_state.video_modal_vertex_id {
+                    if let Some(player) = media_cache.video_players.get(&vertex_id) {
+                        player.stop();
                     }
-                    app_state.show_video_modal = false;
+                }
+                app_state.show_video_modal = false;
+            }
+        }
+    }
+
+    // GlobalToggleFullscreen - toggle fullscreen or open modal with current content
+    // (but not when in text input mode - that's for submitting)
+    if cmd_toggle_fullscreen && !matches!(app_state.input_mode, InputMode::TextInput { .. }) {
+        // If already in fullscreen, toggle off
+        if app_state.sidebar.fullscreen {
+            app_state.sidebar.fullscreen = false;
+        }
+        // If already showing a modal, toggle to fullscreen mode
+        else if app_state.show_text_modal || app_state.show_image_modal || app_state.show_video_modal {
+            app_state.sidebar.fullscreen = true;
+        }
+        // Otherwise, show the appropriate content
+        else if let Some(current_id) = app_state.current_vertex {
+            if let Some(vertex) = graph.vertices.get(&current_id) {
+                let mime = vertex.mime.as_deref().unwrap_or("");
+                let primary_is_image = mime.starts_with("image/") || is_image_data(&vertex.label);
+                let primary_is_text = mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url";
+
+                // Also check additional layers for images
+                let has_layer_image = vertex.layers.values()
+                    .any(|l| l.mime.starts_with("image/") || is_image_data(&l.data));
+
+                if primary_is_text && !has_layer_image {
+                    app_state.text_modal_content = String::from_utf8_lossy(&vertex.label).to_string();
+                    app_state.show_text_modal = true;
+                    app_state.sidebar.fullscreen = true;
+                } else if primary_is_image || has_layer_image {
+                    app_state.image_modal_vertex_id = Some(current_id);
+                    app_state.show_image_modal = true;
+                    app_state.sidebar.fullscreen = true;
                 }
             }
         }
-        // Ctrl+Enter to toggle fullscreen or open modal with current content
-        // (but not when in text input mode - that's for submitting)
-        if i.key_pressed(egui::Key::Enter) && i.modifiers.ctrl && !matches!(app_state.input_mode, InputMode::TextInput { .. }) {
-            // If already in fullscreen, toggle off
-            if app_state.sidebar.fullscreen {
-                app_state.sidebar.fullscreen = false;
-            }
-            // If already showing a modal, toggle to fullscreen mode
-            else if app_state.show_text_modal || app_state.show_image_modal || app_state.show_video_modal {
-                app_state.sidebar.fullscreen = true;
-            }
-            // Otherwise, show the appropriate content
-            else if let Some(current_id) = app_state.current_vertex {
-                if let Some(vertex) = graph.vertices.get(&current_id) {
-                    let mime = vertex.mime.as_deref().unwrap_or("");
-                    let primary_is_image = mime.starts_with("image/") || is_image_data(&vertex.label);
-                    let primary_is_text = mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url";
+    }
 
-                    // Also check additional layers for images
-                    let has_layer_image = vertex.layers.values()
-                        .any(|l| l.mime.starts_with("image/") || is_image_data(&l.data));
-
-                    if primary_is_text && !has_layer_image {
-                        app_state.text_modal_content = String::from_utf8_lossy(&vertex.label).to_string();
-                        app_state.show_text_modal = true;
-                        app_state.sidebar.fullscreen = true;
-                    } else if primary_is_image || has_layer_image {
-                        app_state.image_modal_vertex_id = Some(current_id);
-                        app_state.show_image_modal = true;
-                        app_state.sidebar.fullscreen = true;
-                    }
-                }
+    // GraphClickVertex - "click" the current vertex (send click message to server)
+    if cmd_click_vertex && matches!(app_state.input_mode, InputMode::Normal) {
+        if let Some(current_id) = app_state.current_vertex {
+            if let Some(ref tx) = ws_cmd_tx.0 {
+                let action_id = app_state.next_action_id;
+                app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                let _ = tx.send(WsCommand::ClickVertex { action_id, vertex_id: current_id });
+                app_state.status = format!("Clicked vertex {}", current_id);
             }
         }
-        // Plain Enter to "click" the current vertex (send click message to server)
-        if i.key_pressed(egui::Key::Enter) && !i.modifiers.ctrl && !i.modifiers.shift && !i.modifiers.alt && matches!(app_state.input_mode, InputMode::Normal) {
+    }
+
+    // GlobalZoomIn
+    if cmd_zoom_in {
+        app_state.zoom_level = (app_state.zoom_level + ZOOM_STEP).min(ZOOM_MAX);
+    }
+    // GlobalZoomOut
+    if cmd_zoom_out {
+        app_state.zoom_level = (app_state.zoom_level - ZOOM_STEP).max(ZOOM_MIN);
+    }
+    // GlobalZoomReset
+    if cmd_zoom_reset {
+        app_state.zoom_level = 1.0;
+    }
+    // Mouse wheel zoom (with Ctrl)
+    if let Some(delta) = scroll_zoom {
+        app_state.zoom_level = (app_state.zoom_level + delta).clamp(ZOOM_MIN, ZOOM_MAX);
+    }
+    // Pinch zoom (touch/trackpad)
+    if let Some(delta) = pinch_zoom {
+        app_state.zoom_level = (app_state.zoom_level * delta).clamp(ZOOM_MIN, ZOOM_MAX);
+    }
+
+    // GlobalToggleBag
+    if cmd_toggle_bag {
+        app_state.show_bag_panel = !app_state.show_bag_panel;
+        if app_state.show_bag_panel {
+            app_state.show_nav_panel = false; // Close nav panel when opening bag
+        }
+    }
+    // GlobalToggleNavPanel
+    if cmd_toggle_nav_panel {
+        app_state.show_nav_panel = !app_state.show_nav_panel;
+        if app_state.show_nav_panel {
+            app_state.show_bag_panel = false; // Close bag when opening nav panel
+        }
+    }
+
+    // GraphYank - Yank (copy) current vertex to bag
+    if cmd_yank {
+        if let Some(current_id) = app_state.current_vertex {
+            // Don't add duplicates at the top
+            if app_state.bag.last() != Some(&current_id) {
+                app_state.bag.push(current_id);
+                app_state.status = format!("Yanked vertex to bag (depth: {})", app_state.bag.len());
+            }
+        }
+    }
+
+    // BagPop - Pop from bag (remove top without connecting)
+    if cmd_bag_pop {
+        if let Some(_popped) = app_state.bag.pop() {
+            app_state.status = format!("Popped from bag (depth: {})", app_state.bag.len());
+        } else {
+            app_state.status = "Bag is empty".to_string();
+        }
+    }
+
+    // GraphGoToBagTop - Go to top of bag (jump to that vertex)
+    if cmd_go_to_bag_top && app_state.input_mode == InputMode::Normal {
+        if let Some(&top_id) = app_state.bag.last() {
             if let Some(current_id) = app_state.current_vertex {
-                if let Some(ref tx) = ws_cmd_tx.0 {
-                    let action_id = app_state.next_action_id;
-                    app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
-                    let _ = tx.send(WsCommand::ClickVertex { action_id, vertex_id: current_id });
-                    app_state.status = format!("Clicked vertex {}", current_id);
-                }
+                app_state.history.push(current_id);
             }
+            app_state.current_vertex = Some(top_id);
+            app_state.status = format!("Jumped to bag top (depth: {})", app_state.bag.len());
+        } else {
+            app_state.status = "Bag is empty".to_string();
         }
-        // Ctrl++ / Ctrl+= to zoom in
-        if i.modifiers.ctrl && (i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals)) {
-            app_state.zoom_level = (app_state.zoom_level + ZOOM_STEP).min(ZOOM_MAX);
-        }
-        // Ctrl+- to zoom out
-        if i.modifiers.ctrl && i.key_pressed(egui::Key::Minus) {
-            app_state.zoom_level = (app_state.zoom_level - ZOOM_STEP).max(ZOOM_MIN);
-        }
-        // Ctrl+0 to reset zoom
-        if i.modifiers.ctrl && i.key_pressed(egui::Key::Num0) {
-            app_state.zoom_level = 1.0;
-        }
-        // Mouse wheel zoom (with Ctrl)
-        if i.modifiers.ctrl && i.raw_scroll_delta.y != 0.0 {
-            let delta = i.raw_scroll_delta.y * 0.001;
-            app_state.zoom_level = (app_state.zoom_level + delta).clamp(ZOOM_MIN, ZOOM_MAX);
-        }
-        // Pinch zoom (touch/trackpad)
-        if i.zoom_delta() != 1.0 {
-            app_state.zoom_level = (app_state.zoom_level * i.zoom_delta()).clamp(ZOOM_MIN, ZOOM_MAX);
-        }
-        // Bag (clipboard) operations
-        // Ctrl+B: Toggle bag panel
-        if i.key_pressed(egui::Key::B) && i.modifiers.ctrl {
-            app_state.show_bag_panel = !app_state.show_bag_panel;
-            if app_state.show_bag_panel {
-                app_state.show_nav_panel = false; // Close nav panel when opening bag
-            }
-        }
-        // Ctrl+N: Toggle navigation panel (landmarks and islands)
-        if i.key_pressed(egui::Key::N) && i.modifiers.ctrl {
-            app_state.show_nav_panel = !app_state.show_nav_panel;
-            if app_state.show_nav_panel {
-                app_state.show_bag_panel = false; // Close bag when opening nav panel
-            }
-        }
-        // Y: Yank (copy) current vertex to bag
-        if i.key_pressed(egui::Key::Y) && !i.modifiers.ctrl {
+    }
+
+    // GraphPaste - Paste from bag (connect bag vertex in insertion direction)
+    if cmd_paste && app_state.input_mode == InputMode::Normal && app_state.connected {
+        if let Some(paste_id) = app_state.bag.pop() {
             if let Some(current_id) = app_state.current_vertex {
-                // Don't add duplicates at the top
-                if app_state.bag.last() != Some(&current_id) {
-                    app_state.bag.push(current_id);
-                    app_state.status = format!("Yanked vertex to bag (depth: {})", app_state.bag.len());
-                }
-            }
-        }
-        // Ctrl+Y: Pop from bag (remove top without connecting)
-        if i.key_pressed(egui::Key::Y) && i.modifiers.ctrl {
-            if let Some(_popped) = app_state.bag.pop() {
-                app_state.status = format!("Popped from bag (depth: {})", app_state.bag.len());
-            } else {
-                app_state.status = "Bag is empty".to_string();
-            }
-        }
-        // G: Go to top of bag (jump to that vertex)
-        if i.key_pressed(egui::Key::G) && !i.modifiers.ctrl && app_state.input_mode == InputMode::Normal {
-            if let Some(&top_id) = app_state.bag.last() {
-                if let Some(current_id) = app_state.current_vertex {
-                    app_state.history.push(current_id);
-                }
-                app_state.current_vertex = Some(top_id);
-                app_state.status = format!("Jumped to bag top (depth: {})", app_state.bag.len());
-            } else {
-                app_state.status = "Bag is empty".to_string();
-            }
-        }
-        // P: Paste from bag (connect bag vertex in insertion direction)
-        if i.key_pressed(egui::Key::P) && !i.modifiers.ctrl && app_state.input_mode == InputMode::Normal && app_state.connected {
-            if let Some(paste_id) = app_state.bag.pop() {
-                if let Some(current_id) = app_state.current_vertex {
-                    if current_id == paste_id {
-                        // Can't paste to self, put it back
-                        app_state.bag.push(paste_id);
-                        app_state.status = "Cannot paste: vertex is already current".to_string();
-                    } else if let Some(ref tx) = ws_cmd_tx.0 {
-                        // Get the insertion direction (last navigation direction)
-                        let direction = app_state.last_nav_direction;
-                        let opposite_direction = match direction {
-                            EDGE_WEST => EDGE_EAST,
-                            EDGE_EAST => EDGE_WEST,
-                            EDGE_NORTH => EDGE_SOUTH,
-                            EDGE_SOUTH => EDGE_NORTH,
-                            EDGE_UP => EDGE_DOWN,
-                            EDGE_DOWN => EDGE_UP,
-                            _ => EDGE_NORTH,
-                        };
-
-                        // Get the paste vertex's current edges (to preserve other connections)
-                        let paste_edges = graph.vertices.get(&paste_id)
-                            .map(|v| v.edges)
-                            .unwrap_or([0; 6]);
-
-                        // Get current vertex's current edges
-                        let current_edges = graph.vertices.get(&current_id)
-                            .map(|v| v.edges)
-                            .unwrap_or([0; 6]);
-
-                        // Build new edges for current vertex: set the insertion direction to paste_id
-                        // Use u64::MAX for unchanged edges
-                        let mut new_current_edges = [u64::MAX; 6];
-                        new_current_edges[direction] = paste_id;
-
-                        // Build new edges for paste vertex: set opposite direction to current_id
-                        // Preserve all other edges
-                        let mut new_paste_edges = paste_edges;
-                        new_paste_edges[opposite_direction] = current_id;
-
-                        // Send SetEdges for current vertex
-                        let action_id1 = app_state.next_action_id;
-                        app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
-                        let _ = tx.send(WsCommand::SetEdges {
-                            action_id: action_id1,
-                            vertex_id: current_id,
-                            edges: new_current_edges,
-                        });
-
-                        // Send SetEdges for paste vertex
-                        let action_id2 = app_state.next_action_id;
-                        app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
-                        let _ = tx.send(WsCommand::SetEdges {
-                            action_id: action_id2,
-                            vertex_id: paste_id,
-                            edges: new_paste_edges,
-                        });
-
-                        // Optimistically update local graph
-                        if let Some(current_vertex) = graph.vertices.get_mut(&current_id) {
-                            current_vertex.edges[direction] = paste_id;
-                        }
-                        if let Some(paste_vertex) = graph.vertices.get_mut(&paste_id) {
-                            paste_vertex.edges[opposite_direction] = current_id;
-                        }
-
-                        let dir_name = match direction {
-                            EDGE_NORTH => "north",
-                            EDGE_SOUTH => "south",
-                            EDGE_WEST => "west",
-                            EDGE_EAST => "east",
-                            EDGE_UP => "up",
-                            EDGE_DOWN => "down",
-                            _ => "?",
-                        };
-                        app_state.status = format!("Pasted vertex {} (bag: {})", dir_name, app_state.bag.len());
-
-                        // Navigate to the pasted vertex
-                        app_state.history.push(current_id);
-                        app_state.current_vertex = Some(paste_id);
-                    }
-                } else {
-                    // No current vertex, just put it back
+                if current_id == paste_id {
+                    // Can't paste to self, put it back
                     app_state.bag.push(paste_id);
-                    app_state.status = "Cannot paste: no current vertex".to_string();
-                }
-            } else {
-                app_state.status = "Bag is empty".to_string();
-            }
-        }
-        // C: Cut connection in the current navigation direction
-        if i.key_pressed(egui::Key::C) && !i.modifiers.ctrl && app_state.input_mode == InputMode::Normal && app_state.connected {
-            if let Some(current_id) = app_state.current_vertex {
-                if let Some(ref tx) = ws_cmd_tx.0 {
+                    app_state.status = "Cannot paste: vertex is already current".to_string();
+                } else if let Some(ref tx) = ws_cmd_tx.0 {
+                    // Get the insertion direction (last navigation direction)
                     let direction = app_state.last_nav_direction;
                     let opposite_direction = match direction {
                         EDGE_WEST => EDGE_EAST,
@@ -1245,160 +1258,47 @@ fn ui_system(
                         _ => EDGE_NORTH,
                     };
 
-                    // Get the neighbor in that direction
-                    let neighbor_id = graph.vertices.get(&current_id)
-                        .map(|v| v.edges[direction])
-                        .unwrap_or(0);
+                    // Get the paste vertex's current edges (to preserve other connections)
+                    let paste_edges = graph.vertices.get(&paste_id)
+                        .map(|v| v.edges)
+                        .unwrap_or([0; 6]);
 
-                    if neighbor_id != 0 {
-                        // Cut the edge: set current's edge to 0, and neighbor's opposite edge to 0
-                        // Use u64::MAX for unchanged edges, 0 to clear
+                    // Build new edges for current vertex: set the insertion direction to paste_id
+                    // Use u64::MAX for unchanged edges
+                    let mut new_current_edges = [u64::MAX; 6];
+                    new_current_edges[direction] = paste_id;
 
-                        // Clear current vertex's edge in the direction
-                        let mut current_edges = [u64::MAX; 6];
-                        current_edges[direction] = 0;
+                    // Build new edges for paste vertex: set opposite direction to current_id
+                    // Preserve all other edges
+                    let mut new_paste_edges = paste_edges;
+                    new_paste_edges[opposite_direction] = current_id;
 
-                        let action_id1 = app_state.next_action_id;
-                        app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
-                        let _ = tx.send(WsCommand::SetEdges {
-                            action_id: action_id1,
-                            vertex_id: current_id,
-                            edges: current_edges,
-                        });
+                    // Send SetEdges for current vertex
+                    let action_id1 = app_state.next_action_id;
+                    app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                    let _ = tx.send(WsCommand::SetEdges {
+                        action_id: action_id1,
+                        vertex_id: current_id,
+                        edges: new_current_edges,
+                    });
 
-                        // Clear neighbor's edge back to current
-                        let mut neighbor_edges = [u64::MAX; 6];
-                        neighbor_edges[opposite_direction] = 0;
+                    // Send SetEdges for paste vertex
+                    let action_id2 = app_state.next_action_id;
+                    app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                    let _ = tx.send(WsCommand::SetEdges {
+                        action_id: action_id2,
+                        vertex_id: paste_id,
+                        edges: new_paste_edges,
+                    });
 
-                        let action_id2 = app_state.next_action_id;
-                        app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
-                        let _ = tx.send(WsCommand::SetEdges {
-                            action_id: action_id2,
-                            vertex_id: neighbor_id,
-                            edges: neighbor_edges,
-                        });
-
-                        // Optimistically update local graph
-                        if let Some(current_vertex) = graph.vertices.get_mut(&current_id) {
-                            current_vertex.edges[direction] = 0;
-                        }
-                        if let Some(neighbor_vertex) = graph.vertices.get_mut(&neighbor_id) {
-                            neighbor_vertex.edges[opposite_direction] = 0;
-                        }
-
-                        let dir_name = match direction {
-                            EDGE_NORTH => "north",
-                            EDGE_SOUTH => "south",
-                            EDGE_WEST => "west",
-                            EDGE_EAST => "east",
-                            EDGE_UP => "up",
-                            EDGE_DOWN => "down",
-                            _ => "?",
-                        };
-                        app_state.status = format!("Cut connection {}", dir_name);
-                    } else {
-                        let dir_name = match direction {
-                            EDGE_NORTH => "north",
-                            EDGE_SOUTH => "south",
-                            EDGE_WEST => "west",
-                            EDGE_EAST => "east",
-                            EDGE_UP => "up",
-                            EDGE_DOWN => "down",
-                            _ => "?",
-                        };
-                        app_state.status = format!("No connection {} to cut", dir_name);
+                    // Optimistically update local graph
+                    if let Some(current_vertex) = graph.vertices.get_mut(&current_id) {
+                        current_vertex.edges[direction] = paste_id;
                     }
-                }
-            }
-        }
-        // Delete key: Delete current vertex (if editable)
-        if i.key_pressed(egui::Key::Delete) && !i.modifiers.ctrl && app_state.input_mode == InputMode::Normal && app_state.connected {
-            if let Some(current_id) = app_state.current_vertex {
-                if let Some(vertex) = graph.vertices.get(&current_id).cloned() {
-                    // Check if vertex is editable (edit_mask != 0)
-                    if vertex.edit_mask != 0 {
-                        // Find a neighbor to navigate to after deletion
-                        let next_vertex = vertex.edges.iter()
-                            .find(|&&e| e != 0)
-                            .copied();
-
-                        // Send delete command
-                        if let Some(ref tx) = ws_cmd_tx.0 {
-                            let action_id = app_state.next_action_id;
-                            app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
-                            let _ = tx.send(WsCommand::DeleteVertex { action_id, vertex_id: current_id });
-                            app_state.status = "Deleting vertex...".to_string();
-
-                            // Remove the vertex from local graph immediately (optimistic delete)
-                            graph.vertices.remove(&current_id);
-                            // Remove from landmark_vertices
-                            for vertices in graph.landmark_vertices.values_mut() {
-                                vertices.retain(|&id| id != current_id);
-                            }
-                            // Remove from history
-                            app_state.history.retain(|&id| id != current_id);
-
-                            // Navigate to a neighbor (or go back in history)
-                            if let Some(next) = next_vertex {
-                                app_state.current_vertex = Some(next);
-                            } else if let Some(prev) = app_state.history.pop() {
-                                app_state.current_vertex = Some(prev);
-                            } else {
-                                app_state.current_vertex = None;
-                            }
-                        }
-                    } else {
-                        app_state.status = "Cannot delete: vertex is read-only".to_string();
+                    if let Some(paste_vertex) = graph.vertices.get_mut(&paste_id) {
+                        paste_vertex.edges[opposite_direction] = current_id;
                     }
-                }
-            }
-        }
-        // Text input mode shortcuts (only in Normal mode)
-        if app_state.input_mode == InputMode::Normal && app_state.connected {
-            // I: Insert text at current vertex (edit)
-            if i.key_pressed(egui::Key::I) && !i.modifiers.ctrl && !i.modifiers.shift {
-                if let Some(current_id) = app_state.current_vertex {
-                    // Pre-fill with current content - check layer 1 first (transcript), then layer 0
-                    if let Some(vertex) = graph.vertices.get(&current_id) {
-                        let mime = vertex.mime.as_deref().unwrap_or("");
-                        // Check for layer 1 text (transcript)
-                        if let Some(layer1) = vertex.layers.get(&1) {
-                            if layer1.mime.starts_with("text/") {
-                                app_state.text_input_buffer = String::from_utf8_lossy(&layer1.data).to_string();
-                            } else {
-                                app_state.text_input_buffer.clear();
-                            }
-                        } else if mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url" {
-                            // Layer 0 is text
-                            app_state.text_input_buffer = String::from_utf8_lossy(&vertex.label).to_string();
-                        } else {
-                            // No text content - start fresh (will add as layer 1)
-                            app_state.text_input_buffer.clear();
-                        }
-                    }
-                    app_state.input_mode = InputMode::TextInput { direction: None };
-                    app_state.status = "Text input mode (editing current vertex)".to_string();
-                }
-            }
-            // Shift+Direction: Change last navigation direction without moving
-            if i.modifiers.shift && !i.modifiers.ctrl {
-                let dir = if i.key_pressed(egui::Key::ArrowUp) || i.key_pressed(egui::Key::W) {
-                    Some(EDGE_NORTH)
-                } else if i.key_pressed(egui::Key::ArrowDown) || i.key_pressed(egui::Key::S) {
-                    Some(EDGE_SOUTH)
-                } else if i.key_pressed(egui::Key::ArrowLeft) || i.key_pressed(egui::Key::A) {
-                    Some(EDGE_WEST)
-                } else if i.key_pressed(egui::Key::ArrowRight) || i.key_pressed(egui::Key::D) {
-                    Some(EDGE_EAST)
-                } else if i.key_pressed(egui::Key::PageUp) {
-                    Some(EDGE_UP)
-                } else if i.key_pressed(egui::Key::PageDown) {
-                    Some(EDGE_DOWN)
-                } else {
-                    None
-                };
-                if let Some(direction) = dir {
-                    app_state.last_nav_direction = direction;
+
                     let dir_name = match direction {
                         EDGE_NORTH => "north",
                         EDGE_SOUTH => "south",
@@ -1408,65 +1308,272 @@ fn ui_system(
                         EDGE_DOWN => "down",
                         _ => "?",
                     };
-                    app_state.status = format!("Direction set to {}", dir_name);
+                    app_state.status = format!("Pasted vertex {} (bag: {})", dir_name, app_state.bag.len());
+
+                    // Navigate to the pasted vertex
+                    app_state.history.push(current_id);
+                    app_state.current_vertex = Some(paste_id);
                 }
+            } else {
+                // No current vertex, just put it back
+                app_state.bag.push(paste_id);
+                app_state.status = "Cannot paste: no current vertex".to_string();
             }
-            // N: Create new text vertex in last navigation direction
-            if i.key_pressed(egui::Key::N) && !i.modifiers.ctrl && !i.modifiers.shift {
+        } else {
+            app_state.status = "Bag is empty".to_string();
+        }
+    }
+
+    // GraphCutEdge - Cut connection in the current navigation direction
+    if cmd_cut_edge && app_state.input_mode == InputMode::Normal && app_state.connected {
+        if let Some(current_id) = app_state.current_vertex {
+            if let Some(ref tx) = ws_cmd_tx.0 {
                 let direction = app_state.last_nav_direction;
-                app_state.text_input_buffer.clear();
-                app_state.input_mode = InputMode::TextInput { direction: Some(direction) };
-                let dir_name = match direction {
-                    EDGE_NORTH => "north",
-                    EDGE_SOUTH => "south",
-                    EDGE_WEST => "west",
-                    EDGE_EAST => "east",
-                    EDGE_UP => "up",
-                    EDGE_DOWN => "down",
-                    _ => "?",
+                let opposite_direction = match direction {
+                    EDGE_WEST => EDGE_EAST,
+                    EDGE_EAST => EDGE_WEST,
+                    EDGE_NORTH => EDGE_SOUTH,
+                    EDGE_SOUTH => EDGE_NORTH,
+                    EDGE_UP => EDGE_DOWN,
+                    EDGE_DOWN => EDGE_UP,
+                    _ => EDGE_NORTH,
                 };
-                app_state.status = format!("Text input mode (new vertex {})", dir_name);
-            }
-            // Space bar: Push-to-talk recording
-            // Hold space to record, release to stop and save
-            // Records in the last navigation direction (creates note in same direction you were moving)
-            if i.key_pressed(egui::Key::Space) && !i.modifiers.ctrl && !i.modifiers.shift {
-                // Start recording when space is pressed
-                let direction = app_state.last_nav_direction;
 
-                // Clear samples and reset stop signal
-                if let Ok(mut samples) = app_state.audio_samples.lock() {
-                    samples.clear();
-                }
-                if let Ok(mut stop) = audio_signal.should_stop.lock() {
-                    *stop = false;
-                }
+                // Get the neighbor in that direction
+                let neighbor_id = graph.vertices.get(&current_id)
+                    .map(|v| v.edges[direction])
+                    .unwrap_or(0);
 
-                // Start audio recording in a separate thread
-                let samples_clone = app_state.audio_samples.clone();
-                let stop_signal = audio_signal.should_stop.clone();
-                let sample_rate_out = audio_signal.actual_sample_rate.clone();
-                thread::spawn(move || {
-                    if let Err(e) = run_audio_recording(samples_clone, stop_signal, sample_rate_out) {
-                        eprintln!("Audio recording error: {}", e);
+                if neighbor_id != 0 {
+                    // Cut the edge: set current's edge to 0, and neighbor's opposite edge to 0
+                    // Use u64::MAX for unchanged edges, 0 to clear
+
+                    // Clear current vertex's edge in the direction
+                    let mut current_edges = [u64::MAX; 6];
+                    current_edges[direction] = 0;
+
+                    let action_id1 = app_state.next_action_id;
+                    app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                    let _ = tx.send(WsCommand::SetEdges {
+                        action_id: action_id1,
+                        vertex_id: current_id,
+                        edges: current_edges,
+                    });
+
+                    // Clear neighbor's edge back to current
+                    let mut neighbor_edges = [u64::MAX; 6];
+                    neighbor_edges[opposite_direction] = 0;
+
+                    let action_id2 = app_state.next_action_id;
+                    app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                    let _ = tx.send(WsCommand::SetEdges {
+                        action_id: action_id2,
+                        vertex_id: neighbor_id,
+                        edges: neighbor_edges,
+                    });
+
+                    // Optimistically update local graph
+                    if let Some(current_vertex) = graph.vertices.get_mut(&current_id) {
+                        current_vertex.edges[direction] = 0;
                     }
-                });
+                    if let Some(neighbor_vertex) = graph.vertices.get_mut(&neighbor_id) {
+                        neighbor_vertex.edges[opposite_direction] = 0;
+                    }
 
-                app_state.recording_start = Some(Instant::now());
-                app_state.input_mode = InputMode::Recording { direction };
-                app_state.status = "🔴 Recording... (release Space to save)".to_string();
-            }
-        }
-        // Check for space release while recording (push-to-talk stop)
-        if let InputMode::Recording { .. } = &app_state.input_mode {
-            if i.key_released(egui::Key::Space) {
-                // Signal to stop recording
-                if let Ok(mut stop) = audio_signal.should_stop.lock() {
-                    *stop = true;
+                    let dir_name = match direction {
+                        EDGE_NORTH => "north",
+                        EDGE_SOUTH => "south",
+                        EDGE_WEST => "west",
+                        EDGE_EAST => "east",
+                        EDGE_UP => "up",
+                        EDGE_DOWN => "down",
+                        _ => "?",
+                    };
+                    app_state.status = format!("Cut connection {}", dir_name);
+                } else {
+                    let dir_name = match direction {
+                        EDGE_NORTH => "north",
+                        EDGE_SOUTH => "south",
+                        EDGE_WEST => "west",
+                        EDGE_EAST => "east",
+                        EDGE_UP => "up",
+                        EDGE_DOWN => "down",
+                        _ => "?",
+                    };
+                    app_state.status = format!("No connection {} to cut", dir_name);
                 }
             }
         }
-    });
+    }
+
+    // GraphDeleteVertex - Delete current vertex (if editable)
+    if cmd_delete_vertex && app_state.input_mode == InputMode::Normal && app_state.connected {
+        if let Some(current_id) = app_state.current_vertex {
+            if let Some(vertex) = graph.vertices.get(&current_id).cloned() {
+                // Check if vertex is editable (edit_mask != 0)
+                if vertex.edit_mask != 0 {
+                    // Find a neighbor to navigate to after deletion
+                    let next_vertex = vertex.edges.iter()
+                        .find(|&&e| e != 0)
+                        .copied();
+
+                    // Send delete command
+                    if let Some(ref tx) = ws_cmd_tx.0 {
+                        let action_id = app_state.next_action_id;
+                        app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                        let _ = tx.send(WsCommand::DeleteVertex { action_id, vertex_id: current_id });
+                        app_state.status = "Deleting vertex...".to_string();
+
+                        // Remove the vertex from local graph immediately (optimistic delete)
+                        graph.vertices.remove(&current_id);
+                        // Remove from landmark_vertices
+                        for vertices in graph.landmark_vertices.values_mut() {
+                            vertices.retain(|&id| id != current_id);
+                        }
+                        // Remove from history
+                        app_state.history.retain(|&id| id != current_id);
+
+                        // Navigate to a neighbor (or go back in history)
+                        if let Some(next) = next_vertex {
+                            app_state.current_vertex = Some(next);
+                        } else if let Some(prev) = app_state.history.pop() {
+                            app_state.current_vertex = Some(prev);
+                        } else {
+                            app_state.current_vertex = None;
+                        }
+                    }
+                } else {
+                    app_state.status = "Cannot delete: vertex is read-only".to_string();
+                }
+            }
+        }
+    }
+
+    // GraphEditText - Insert text at current vertex (edit)
+    if cmd_edit_text && app_state.input_mode == InputMode::Normal && app_state.connected {
+        if let Some(current_id) = app_state.current_vertex {
+            // Pre-fill with current content - check layer 1 first (transcript), then layer 0
+            if let Some(vertex) = graph.vertices.get(&current_id) {
+                let mime = vertex.mime.as_deref().unwrap_or("");
+                // Check for layer 1 text (transcript)
+                if let Some(layer1) = vertex.layers.get(&1) {
+                    if layer1.mime.starts_with("text/") {
+                        app_state.text_input_buffer = String::from_utf8_lossy(&layer1.data).to_string();
+                    } else {
+                        app_state.text_input_buffer.clear();
+                    }
+                } else if mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url" {
+                    // Layer 0 is text
+                    app_state.text_input_buffer = String::from_utf8_lossy(&vertex.label).to_string();
+                } else {
+                    // No text content - start fresh (will add as layer 1)
+                    app_state.text_input_buffer.clear();
+                }
+            }
+            app_state.input_mode = InputMode::TextInput { direction: None };
+            app_state.status = "Text input mode (editing current vertex)".to_string();
+        }
+    }
+
+    // GraphSetDirection* - Change last navigation direction without moving
+    if app_state.input_mode == InputMode::Normal {
+        let dir = if cmd_set_dir_north {
+            Some(EDGE_NORTH)
+        } else if cmd_set_dir_south {
+            Some(EDGE_SOUTH)
+        } else if cmd_set_dir_west {
+            Some(EDGE_WEST)
+        } else if cmd_set_dir_east {
+            Some(EDGE_EAST)
+        } else if cmd_set_dir_up {
+            Some(EDGE_UP)
+        } else if cmd_set_dir_down {
+            Some(EDGE_DOWN)
+        } else {
+            None
+        };
+        if let Some(direction) = dir {
+            app_state.last_nav_direction = direction;
+            let dir_name = match direction {
+                EDGE_NORTH => "north",
+                EDGE_SOUTH => "south",
+                EDGE_WEST => "west",
+                EDGE_EAST => "east",
+                EDGE_UP => "up",
+                EDGE_DOWN => "down",
+                _ => "?",
+            };
+            app_state.status = format!("Direction set to {}", dir_name);
+        }
+    }
+
+    // GraphNewTextVertex - Create new text vertex in last navigation direction
+    if cmd_new_text_vertex && app_state.input_mode == InputMode::Normal && app_state.connected {
+        let direction = app_state.last_nav_direction;
+        app_state.text_input_buffer.clear();
+        app_state.input_mode = InputMode::TextInput { direction: Some(direction) };
+        let dir_name = match direction {
+            EDGE_NORTH => "north",
+            EDGE_SOUTH => "south",
+            EDGE_WEST => "west",
+            EDGE_EAST => "east",
+            EDGE_UP => "up",
+            EDGE_DOWN => "down",
+            _ => "?",
+        };
+        app_state.status = format!("Text input mode (new vertex {})", dir_name);
+    }
+
+    // GraphStartRecording - Push-to-talk recording
+    // Hold to record, release to stop and save
+    if cmd_start_recording && app_state.input_mode == InputMode::Normal && app_state.connected {
+        // Start recording when key is pressed
+        let direction = app_state.last_nav_direction;
+
+        // Clear samples and reset stop signal
+        if let Ok(mut samples) = app_state.audio_samples.lock() {
+            samples.clear();
+        }
+        if let Ok(mut stop) = audio_signal.should_stop.lock() {
+            *stop = false;
+        }
+
+        // Start audio recording in a separate thread
+        let samples_clone = app_state.audio_samples.clone();
+        let stop_signal = audio_signal.should_stop.clone();
+        let sample_rate_out = audio_signal.actual_sample_rate.clone();
+        thread::spawn(move || {
+            if let Err(e) = run_audio_recording(samples_clone, stop_signal, sample_rate_out) {
+                eprintln!("Audio recording error: {}", e);
+            }
+        });
+
+        app_state.recording_start = Some(Instant::now());
+        app_state.input_mode = InputMode::Recording { direction };
+        app_state.status = "🔴 Recording... (release key to save)".to_string();
+    }
+
+    // RecordingSave - Check for recording key release (push-to-talk stop)
+    if let InputMode::Recording { .. } = &app_state.input_mode {
+        if cmd_recording_save {
+            // Signal to stop recording
+            if let Ok(mut stop) = audio_signal.should_stop.lock() {
+                *stop = true;
+            }
+        }
+    }
+
+    // GlobalOpenCommandBar - Open command bar (vim-style)
+    if cmd_open_command_bar && app_state.input_mode == InputMode::Normal && !app_state.show_command_bar {
+        app_state.show_command_bar = true;
+        app_state.command_bar_input.clear();
+        app_state.command_bar_selected = 0;
+    }
+
+    // GlobalOpenKeybindings - Open keybindings editor
+    if cmd_open_keybindings {
+        app_state.sidebar.mode = sidebar::SidebarMode::Keybindings;
+    }
 
     // Check if we should finalize recording (space was released)
     let should_finalize = if let InputMode::Recording { .. } = &app_state.input_mode {
@@ -1558,8 +1665,7 @@ fn ui_system(
     // Apply zoom by scaling the UI - we do this manually in rendering instead of using pixels_per_point
     // because set_pixels_per_point causes layout issues
 
-    // Check for F5 refresh (outside of any specific UI element)
-    let f5_pressed = ctx.input(|i| i.key_pressed(egui::Key::F5));
+    // GlobalRefresh is already computed above as cmd_refresh
 
     // FULLSCREEN MODE: When fullscreen, skip the normal UI and render content directly
     if app_state.sidebar.fullscreen {
@@ -1794,8 +1900,8 @@ fn ui_system(
             // lost_focus() is true when Enter is pressed in a text field
             let enter_pressed = response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
 
-            // Connect/refresh on button click, Enter, or F5
-            if button_clicked || enter_pressed || f5_pressed {
+            // Connect/refresh on button click, Enter, or GlobalRefresh command
+            if button_clicked || enter_pressed || cmd_refresh {
                 let url = app_state.url_input.trim().to_string();
                 if url.is_empty() {
                     app_state.status = "URL is empty!".to_string();
@@ -1848,22 +1954,27 @@ fn ui_system(
     egui::TopBottomPanel::bottom("help_panel").show(ctx, |ui| {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.label("↑↓←→ Nav | Enter=Click | Ctrl+Enter=View | Space=Record | I=Edit | Y=Yank | G=Bag | F5=Refresh");
+            ui.label("↑↓←→ Nav | Enter=Click | Space=Record | I=Edit | Y=Yank | Ctrl+K=Keybindings");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // Keybindings button (prominent)
+                if ui.button("⌨ Keybindings (Ctrl+K)").clicked() {
+                    app_state.sidebar.mode = sidebar::SidebarMode::Keybindings;
+                }
+                ui.separator();
                 if ui.button("🔑 Identities").clicked() {
                     app_state.show_identity_panel = !app_state.show_identity_panel;
                 }
                 let id_count = app_state.identity_config.identities.len();
                 if id_count > 0 {
-                    ui.label(format!("{} identity(s)", id_count));
+                    ui.label(format!("{} id", id_count));
                 }
                 ui.separator();
                 // Bag indicator
                 let bag_count = app_state.bag.len();
                 let bag_label = if bag_count > 0 {
-                    format!("📋 Bag: {}", bag_count)
+                    format!("📋 {}", bag_count)
                 } else {
-                    "📋 Bag: empty".to_string()
+                    "📋".to_string()
                 };
                 if ui.button(&bag_label).clicked() {
                     app_state.show_bag_panel = !app_state.show_bag_panel;
@@ -1872,6 +1983,148 @@ fn ui_system(
         });
         ui.add_space(4.0);
     });
+
+    // Command bar overlay (vim-style ':' command)
+    if app_state.show_command_bar {
+        let screen_rect = ctx.screen_rect();
+        let command_bar_width = (screen_rect.width() * 0.6).min(800.0).max(400.0);
+        let command_bar_x = (screen_rect.width() - command_bar_width) / 2.0;
+
+        egui::Window::new("Command Bar")
+            .title_bar(false)
+            .resizable(false)
+            .collapsible(false)
+            .fixed_pos(egui::pos2(command_bar_x, screen_rect.height() - 150.0))
+            .fixed_size(egui::vec2(command_bar_width, 130.0))
+            .frame(egui::Frame::window(&ctx.style()).fill(egui::Color32::from_rgb(30, 30, 35)))
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(":");
+                    let response = ui.add(
+                        egui::TextEdit::singleline(&mut app_state.command_bar_input)
+                            .desired_width(command_bar_width - 30.0)
+                            .hint_text("Type command (e.g., graph.yank, global.zoom_in)")
+                            .id(egui::Id::new("command_bar_input"))
+                    );
+
+                    // Focus the input on first show
+                    if response.gained_focus() || app_state.command_bar_input.is_empty() {
+                        response.request_focus();
+                    }
+                });
+
+                ui.add_space(4.0);
+                ui.separator();
+
+                // Get matching commands
+                let matches: Vec<_> = if app_state.command_bar_input.is_empty() {
+                    // Show first 5 commands when empty
+                    Command::all().into_iter().take(5).collect()
+                } else {
+                    Command::all()
+                        .into_iter()
+                        .filter(|cmd| cmd.fuzzy_matches(&app_state.command_bar_input))
+                        .take(5)
+                        .collect()
+                };
+
+                // Display matches
+                egui::ScrollArea::vertical().max_height(80.0).show(ui, |ui| {
+                    for (i, cmd) in matches.iter().enumerate() {
+                        let is_selected = i == app_state.command_bar_selected;
+                        let bg = if is_selected {
+                            egui::Color32::from_rgb(60, 60, 100)
+                        } else {
+                            egui::Color32::TRANSPARENT
+                        };
+
+                        ui.horizontal(|ui| {
+                            let rect = ui.available_rect_before_wrap();
+                            let rect = egui::Rect::from_min_size(
+                                rect.min,
+                                egui::vec2(command_bar_width - 20.0, 18.0)
+                            );
+                            ui.painter().rect_filled(rect, 2.0, bg);
+
+                            ui.label(egui::RichText::new(cmd.slug()).strong());
+                            ui.label("-");
+                            ui.label(cmd.description());
+
+                            // Show keybinding if any
+                            let bindings = app_state.keybindings.get_bindings(cmd);
+                            if !bindings.is_empty() {
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.label(egui::RichText::new(bindings[0].to_string()).weak());
+                                });
+                            }
+                        });
+                    }
+                });
+
+                // Handle keyboard navigation in command bar
+                ctx.input(|i| {
+                    if i.key_pressed(egui::Key::ArrowDown) {
+                        app_state.command_bar_selected = (app_state.command_bar_selected + 1).min(matches.len().saturating_sub(1));
+                    }
+                    if i.key_pressed(egui::Key::ArrowUp) {
+                        app_state.command_bar_selected = app_state.command_bar_selected.saturating_sub(1);
+                    }
+                    if i.key_pressed(egui::Key::Enter) && !matches.is_empty() {
+                        let cmd = matches[app_state.command_bar_selected.min(matches.len() - 1)].clone();
+                        app_state.show_command_bar = false;
+                        app_state.command_bar_input.clear();
+                        app_state.command_bar_selected = 0;
+
+                        // Execute the command
+                        match cmd {
+                            Command::GlobalZoomIn => {
+                                app_state.zoom_level = (app_state.zoom_level + ZOOM_STEP).min(ZOOM_MAX);
+                                app_state.status = format!("Zoom: {:.0}%", app_state.zoom_level * 100.0);
+                            }
+                            Command::GlobalZoomOut => {
+                                app_state.zoom_level = (app_state.zoom_level - ZOOM_STEP).max(ZOOM_MIN);
+                                app_state.status = format!("Zoom: {:.0}%", app_state.zoom_level * 100.0);
+                            }
+                            Command::GlobalZoomReset => {
+                                app_state.zoom_level = 1.0;
+                                app_state.status = "Zoom reset".to_string();
+                            }
+                            Command::GlobalToggleBag => {
+                                app_state.show_bag_panel = !app_state.show_bag_panel;
+                                if app_state.show_bag_panel {
+                                    app_state.show_nav_panel = false;
+                                }
+                            }
+                            Command::GlobalToggleNavPanel => {
+                                app_state.show_nav_panel = !app_state.show_nav_panel;
+                                if app_state.show_nav_panel {
+                                    app_state.show_bag_panel = false;
+                                }
+                            }
+                            Command::GlobalCloseModal => {
+                                app_state.sidebar.fullscreen = false;
+                                app_state.show_text_modal = false;
+                                app_state.show_image_modal = false;
+                                app_state.show_video_modal = false;
+                            }
+                            Command::GlobalOpenKeybindings => {
+                                app_state.sidebar.mode = sidebar::SidebarMode::Keybindings;
+                            }
+                            _ => {
+                                app_state.status = format!("Command not yet wired: {}", cmd.slug());
+                            }
+                        }
+                    }
+                    if i.key_pressed(egui::Key::Tab) {
+                        // Autocomplete with selected command
+                        if !matches.is_empty() {
+                            let cmd = &matches[app_state.command_bar_selected.min(matches.len() - 1)];
+                            app_state.command_bar_input = cmd.slug().to_string();
+                        }
+                    }
+                });
+            });
+    }
 
     // Right panel for content - renders based on sidebar mode
     egui::SidePanel::right("preview_panel").min_width(400.0).show(ctx, |ui| {
@@ -2744,6 +2997,49 @@ fn ui_system(
                             app_state.current_vertex = Some(vid);
                         }
                     });
+            }
+        } else if matches!(app_state.sidebar.mode, sidebar::SidebarMode::Keybindings) {
+            // Keybindings editor mode
+            // We need to avoid borrowing app_state twice, so we take out the editor state temporarily
+            let mut editor_state = std::mem::take(&mut app_state.keybindings_editor);
+            let action = sidebar::render_keybindings_editor(
+                ui,
+                &mut app_state.keybindings,
+                &mut editor_state,
+            );
+            app_state.keybindings_editor = editor_state;
+
+            match action {
+                sidebar::KeybindingsAction::Close => {
+                    app_state.sidebar.mode = sidebar::SidebarMode::Preview;
+                }
+                sidebar::KeybindingsAction::Save => {
+                    // Save keybindings config to file
+                    if let Err(e) = app_state.keybindings.save_to_config() {
+                        app_state.status = format!("Failed to save keybindings: {}", e);
+                    } else {
+                        app_state.status = "Keybindings saved".to_string();
+                    }
+                }
+                sidebar::KeybindingsAction::ApplyPreset(preset) => {
+                    // Load current config, apply preset, save, and reload resolver
+                    match keybindings::KeybindingsConfig::load() {
+                        Ok(mut config) => {
+                            keybindings::presets::apply_preset(&mut config, &preset);
+                            if let Err(e) = config.save() {
+                                app_state.status = format!("Failed to save preset: {}", e);
+                            } else {
+                                // Reload resolver with new config
+                                app_state.keybindings = keybindings::KeybindingResolver::new(&config);
+                                app_state.status = format!("{} preset applied", preset.name());
+                            }
+                        }
+                        Err(e) => {
+                            app_state.status = format!("Failed to load config: {}", e);
+                        }
+                    }
+                }
+                sidebar::KeybindingsAction::None => {}
             }
         } else {
             // Default: Content Preview mode
@@ -3628,7 +3924,7 @@ fn render_vertex_content(
             if ui.button("🔗 Open with system handler").clicked() {
                 // Open file:// URL with xdg-open
                 let url_str = url.to_string();
-                let _ = Command::new("xdg-open")
+                let _ = std::process::Command::new("xdg-open")
                     .arg(&url_str)
                     .spawn();
             }
@@ -3807,7 +4103,7 @@ fn open_with_external(data: &[u8], mime: &str) {
     if let Ok(mut file) = std::fs::File::create(&temp_path) {
         if file.write_all(data).is_ok() {
             // Open with xdg-open (Linux)
-            let _ = Command::new("xdg-open")
+            let _ = std::process::Command::new("xdg-open")
                 .arg(&temp_path)
                 .spawn();
         }
@@ -3936,7 +4232,7 @@ fn get_or_load_animated_gif(
 fn handle_navigation(
     mut app_state: ResMut<AppState>,
     graph: Res<GraphState>,
-    keys: Res<ButtonInput<KeyCode>>,
+    keys: Res<ButtonInput<bevy::prelude::KeyCode>>,
 ) {
     // Don't handle navigation when in text input mode
     if matches!(app_state.input_mode, InputMode::TextInput { .. }) {
@@ -3944,7 +4240,7 @@ fn handle_navigation(
     }
 
     // Don't move when shift is held - shift+arrow only changes direction (handled in ui_system)
-    let shift_held = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+    let shift_held = keys.pressed(bevy::prelude::KeyCode::ShiftLeft) || keys.pressed(bevy::prelude::KeyCode::ShiftRight);
     if shift_held {
         return;
     }
@@ -3952,41 +4248,46 @@ fn handle_navigation(
     let Some(current_id) = app_state.current_vertex else { return };
     let Some(vertex) = graph.vertices.get(&current_id) else { return };
 
+    // Use resolver to check which navigation command is active
+    let context = commands::Context::Graph;
+    let resolver = &app_state.keybindings;
+
     // Check which navigation key is held (if any)
-    let held_edge: Option<usize> = if keys.pressed(KeyCode::ArrowUp) || keys.pressed(KeyCode::KeyW) {
+    let held_edge: Option<usize> = if resolver.command_pressed_bevy(context, &Command::GraphNavigateNorth, &keys) {
         Some(EDGE_NORTH)
-    } else if keys.pressed(KeyCode::ArrowDown) || keys.pressed(KeyCode::KeyS) {
+    } else if resolver.command_pressed_bevy(context, &Command::GraphNavigateSouth, &keys) {
         Some(EDGE_SOUTH)
-    } else if keys.pressed(KeyCode::ArrowLeft) || keys.pressed(KeyCode::KeyA) {
+    } else if resolver.command_pressed_bevy(context, &Command::GraphNavigateWest, &keys) {
         Some(EDGE_WEST)
-    } else if keys.pressed(KeyCode::ArrowRight) || keys.pressed(KeyCode::KeyD) {
+    } else if resolver.command_pressed_bevy(context, &Command::GraphNavigateEast, &keys) {
         Some(EDGE_EAST)
-    } else if keys.pressed(KeyCode::PageUp) {
+    } else if resolver.command_pressed_bevy(context, &Command::GraphNavigateUp, &keys) {
         Some(EDGE_UP)
-    } else if keys.pressed(KeyCode::PageDown) {
+    } else if resolver.command_pressed_bevy(context, &Command::GraphNavigateDown, &keys) {
         Some(EDGE_DOWN)
     } else {
         None
     };
 
     // Check for just pressed (initial press)
-    let just_pressed_edge: Option<usize> = if keys.just_pressed(KeyCode::ArrowUp) || keys.just_pressed(KeyCode::KeyW) {
+    let just_pressed_edge: Option<usize> = if resolver.command_just_pressed_bevy(context, &Command::GraphNavigateNorth, &keys) {
         Some(EDGE_NORTH)
-    } else if keys.just_pressed(KeyCode::ArrowDown) || keys.just_pressed(KeyCode::KeyS) {
+    } else if resolver.command_just_pressed_bevy(context, &Command::GraphNavigateSouth, &keys) {
         Some(EDGE_SOUTH)
-    } else if keys.just_pressed(KeyCode::ArrowLeft) || keys.just_pressed(KeyCode::KeyA) {
+    } else if resolver.command_just_pressed_bevy(context, &Command::GraphNavigateWest, &keys) {
         Some(EDGE_WEST)
-    } else if keys.just_pressed(KeyCode::ArrowRight) || keys.just_pressed(KeyCode::KeyD) {
+    } else if resolver.command_just_pressed_bevy(context, &Command::GraphNavigateEast, &keys) {
         Some(EDGE_EAST)
-    } else if keys.just_pressed(KeyCode::PageUp) {
+    } else if resolver.command_just_pressed_bevy(context, &Command::GraphNavigateUp, &keys) {
         Some(EDGE_UP)
-    } else if keys.just_pressed(KeyCode::PageDown) {
+    } else if resolver.command_just_pressed_bevy(context, &Command::GraphNavigateDown, &keys) {
         Some(EDGE_DOWN)
     } else {
         None
     };
 
-    if keys.just_pressed(KeyCode::Backspace) {
+    // Check for history back command
+    if resolver.command_just_pressed_bevy(context, &Command::GraphHistoryBack, &keys) {
         if let Some(prev_id) = app_state.history.pop() {
             app_state.current_vertex = Some(prev_id);
         }
@@ -5566,7 +5867,7 @@ fn ingest_server_events(
                                 drop(file); // Close file handle before opening
 
                                 eprintln!("HTTP Fetch: Launching mpv for {}", file_path.display());
-                                if let Err(e) = Command::new("mpv")
+                                if let Err(e) = std::process::Command::new("mpv")
                                     .arg(&file_path)
                                     .spawn()
                                 {

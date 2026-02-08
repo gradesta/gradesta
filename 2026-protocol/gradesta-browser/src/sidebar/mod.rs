@@ -6,6 +6,7 @@ mod bag;
 mod identification;
 mod identity;
 mod image;
+mod keybindings;
 mod preview;
 mod recording;
 mod text;
@@ -16,6 +17,7 @@ use bevy_egui::egui;
 use std::time::Duration;
 
 pub use bag::render_bag;
+pub use keybindings::{render_keybindings_editor, KeybindingsEditorState, KeybindingsAction};
 pub use identification::render_identification_request;
 pub use identity::render_identity_management;
 pub use image::render_image_view;
@@ -131,6 +133,9 @@ pub enum SidebarMode {
 
     /// Bag (clipboard) panel
     Bag,
+
+    /// Keybindings editor
+    Keybindings,
 }
 
 impl Default for SidebarMode {
@@ -249,5 +254,6 @@ pub fn get_help_text(state: &SidebarState) -> &'static str {
         SidebarMode::IdentificationRequest { .. } => "Enter: Accept | Escape: Refuse",
         SidebarMode::TextInput { .. } => "Ctrl+Enter: Save | Escape: Cancel",
         SidebarMode::Bag => "Y: Yank | G: Go to top | Ctrl+Y: Pop | Escape: Close",
+        SidebarMode::Keybindings => "Enter: Edit | Escape: Close",
     }
 }
