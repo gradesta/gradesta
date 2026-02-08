@@ -229,6 +229,10 @@ struct AppState {
     // Bag (clipboard stack) for connecting non-adjacent cells
     bag: Vec<u64>,
     show_bag_panel: bool,
+    // Navigation panel - landmark history and islands
+    show_nav_panel: bool,
+    landmark_history: Vec<String>, // Recently visited landmarks (most recent last)
+    max_landmark_history: usize,
     // Input mode state
     input_mode: InputMode,
     text_input_buffer: String,
@@ -332,6 +336,9 @@ impl Default for AppState {
             nextcloud_url_input: "https://".to_string(),
             bag: Vec::new(),
             show_bag_panel: false,
+            show_nav_panel: false,
+            landmark_history: Vec::new(),
+            max_landmark_history: 20,
             input_mode: InputMode::Normal,
             text_input_buffer: String::new(),
             audio_samples: Arc::new(Mutex::new(Vec::new())),
@@ -695,6 +702,60 @@ fn detect_ghost_edges(grid: &mut GridView, graph: &GraphState) {
     }
 }
 
+/// Find all disconnected islands (connected components) in the graph
+/// Returns a list of islands, where each island is a list of vertex IDs
+/// The first island contains the current vertex (if any)
+fn find_islands(graph: &GraphState, current_vertex: Option<u64>) -> Vec<Vec<u64>> {
+    let mut islands: Vec<Vec<u64>> = Vec::new();
+    let mut visited: HashSet<u64> = HashSet::new();
+
+    // Helper to do BFS/DFS from a starting vertex
+    fn explore_island(graph: &GraphState, start: u64, visited: &mut HashSet<u64>) -> Vec<u64> {
+        let mut island = Vec::new();
+        let mut queue = vec![start];
+
+        while let Some(vertex_id) = queue.pop() {
+            if visited.contains(&vertex_id) {
+                continue;
+            }
+            visited.insert(vertex_id);
+            island.push(vertex_id);
+
+            if let Some(vertex) = graph.vertices.get(&vertex_id) {
+                for &edge in &vertex.edges {
+                    if edge != 0 && !visited.contains(&edge) && graph.vertices.contains_key(&edge) {
+                        queue.push(edge);
+                    }
+                }
+            }
+        }
+        island
+    }
+
+    // First, explore from current vertex (if any) - this will be island 0
+    if let Some(current_id) = current_vertex {
+        if graph.vertices.contains_key(&current_id) {
+            let island = explore_island(graph, current_id, &mut visited);
+            if !island.is_empty() {
+                islands.push(island);
+            }
+        }
+    }
+
+    // Then explore any remaining unvisited vertices
+    let all_vertex_ids: Vec<u64> = graph.vertices.keys().copied().collect();
+    for vertex_id in all_vertex_ids {
+        if !visited.contains(&vertex_id) {
+            let island = explore_island(graph, vertex_id, &mut visited);
+            if !island.is_empty() {
+                islands.push(island);
+            }
+        }
+    }
+
+    islands
+}
+
 fn build_grid_view(graph: &GraphState, current_id: u64) -> GridView {
     let mut grid = GridView::default();
     let mut visited = HashSet::new();
@@ -1017,6 +1078,16 @@ fn ui_system(
         // Ctrl+B: Toggle bag panel
         if i.key_pressed(egui::Key::B) && i.modifiers.ctrl {
             app_state.show_bag_panel = !app_state.show_bag_panel;
+            if app_state.show_bag_panel {
+                app_state.show_nav_panel = false; // Close nav panel when opening bag
+            }
+        }
+        // Ctrl+N: Toggle navigation panel (landmarks and islands)
+        if i.key_pressed(egui::Key::N) && i.modifiers.ctrl {
+            app_state.show_nav_panel = !app_state.show_nav_panel;
+            if app_state.show_nav_panel {
+                app_state.show_bag_panel = false; // Close bag when opening nav panel
+            }
         }
         // Y: Yank (copy) current vertex to bag
         if i.key_pressed(egui::Key::Y) && !i.modifiers.ctrl {
@@ -2289,6 +2360,133 @@ fn ui_system(
                         }
                     });
                 }
+            }
+        } else if app_state.show_nav_panel {
+            // Navigation panel - landmark history and islands
+            ui.horizontal(|ui| {
+                ui.heading("Navigation");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("✕").clicked() {
+                        app_state.show_nav_panel = false;
+                    }
+                });
+            });
+            ui.separator();
+
+            ui.label("Ctrl+N to toggle | Click to jump");
+            ui.separator();
+
+            // Landmark History section
+            ui.heading("Landmark History");
+            if app_state.landmark_history.is_empty() {
+                ui.label("No landmarks visited yet.");
+            } else {
+                egui::ScrollArea::vertical()
+                    .id_source("landmark_history")
+                    .max_height(200.0)
+                    .show(ui, |ui| {
+                        let mut jump_to_landmark: Option<String> = None;
+
+                        // Show in reverse order (most recent first)
+                        for (i, landmark) in app_state.landmark_history.iter().rev().enumerate() {
+                            let is_current = graph.context_uri.as_ref() == Some(landmark);
+                            let prefix = if is_current { "→ " } else { "  " };
+
+                            // Truncate long landmarks for display
+                            let display: String = if landmark.len() > 40 {
+                                format!("{}...{}", &landmark[..20], &landmark[landmark.len()-17..])
+                            } else {
+                                landmark.clone()
+                            };
+
+                            ui.horizontal(|ui| {
+                                if ui.selectable_label(is_current, format!("{}{}", prefix, display)).clicked() {
+                                    if !is_current {
+                                        jump_to_landmark = Some(landmark.clone());
+                                    }
+                                }
+                            });
+
+                            if i == 0 && is_current {
+                                ui.label("(current)");
+                            }
+                        }
+
+                        if let Some(landmark) = jump_to_landmark {
+                            // Request this landmark
+                            if let Some(ref tx) = ws_cmd_tx.0 {
+                                if !app_state.requested_landmarks.contains(&landmark) {
+                                    app_state.requested_landmarks.insert(landmark.clone());
+                                    let action_id = app_state.next_action_id;
+                                    app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                                    let _ = tx.send(WsCommand::WatchLandmark { action_id, landmark: landmark.clone() });
+                                    app_state.status = format!("Jumping to: {}", landmark);
+                                }
+                            }
+                        }
+                    });
+            }
+
+            ui.separator();
+
+            // Islands section
+            ui.heading("Islands");
+            let islands = find_islands(&graph, app_state.current_vertex);
+
+            if islands.len() <= 1 {
+                ui.label("No disconnected islands.");
+            } else {
+                ui.label(format!("{} islands found:", islands.len()));
+
+                egui::ScrollArea::vertical()
+                    .id_source("islands")
+                    .max_height(ui.available_height() - 20.0)
+                    .show(ui, |ui| {
+                        let mut jump_to_vertex: Option<u64> = None;
+
+                        for (island_idx, island) in islands.iter().enumerate() {
+                            let is_current_island = island_idx == 0;
+                            let header = if is_current_island {
+                                format!("Current ({} vertices)", island.len())
+                            } else {
+                                format!("Island {} ({} vertices)", island_idx, island.len())
+                            };
+
+                            ui.collapsing(header, |ui| {
+                                // Show first few vertices of the island
+                                let display_count = island.len().min(5);
+                                for &vertex_id in island.iter().take(display_count) {
+                                    let label = graph.vertices.get(&vertex_id)
+                                        .map(|v| {
+                                            let mime = v.mime.as_deref().unwrap_or("");
+                                            let text = String::from_utf8_lossy(&v.label);
+                                            let short: String = text.chars().take(20).collect();
+                                            if short.is_empty() {
+                                                format!("[{}]", mime.split('/').last().unwrap_or("empty"))
+                                            } else {
+                                                short
+                                            }
+                                        })
+                                        .unwrap_or_else(|| format!("vertex {}", vertex_id));
+
+                                    if ui.selectable_label(false, &label).clicked() {
+                                        jump_to_vertex = Some(vertex_id);
+                                    }
+                                }
+                                if island.len() > display_count {
+                                    ui.label(format!("... and {} more", island.len() - display_count));
+                                }
+                            });
+                        }
+
+                        if let Some(vid) = jump_to_vertex {
+                            if let Some(current_id) = app_state.current_vertex {
+                                app_state.history.push(current_id);
+                            }
+                            app_state.current_vertex = Some(vid);
+                            app_state.status = format!("Jumped to island vertex");
+                        }
+                    });
             }
         } else if app_state.show_bag_panel {
             // Bag mode
@@ -4925,6 +5123,16 @@ fn ingest_server_events(
 
                 graph.context_uri = Some(uri.clone());
                 app_state.status = format!("Viewing: {uri}");
+
+                // Add to landmark history (avoid duplicates at the end)
+                if app_state.landmark_history.last() != Some(&uri) {
+                    app_state.landmark_history.push(uri.clone());
+                    // Trim to max size
+                    while app_state.landmark_history.len() > app_state.max_landmark_history {
+                        app_state.landmark_history.remove(0);
+                    }
+                }
+
                 // Update the URL bar to show current landmark
                 if let Some(base) = &app_state.base_ws_url {
                     app_state.url_input = format!("{}?landmark={}", base, uri);
