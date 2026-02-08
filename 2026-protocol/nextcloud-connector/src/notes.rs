@@ -226,6 +226,21 @@ impl NotesIndex {
         self.meta.modified = Utc::now();
     }
 
+    /// Remove an edge in a given direction from a vertex
+    pub fn remove_edge(&mut self, from: Uuid, direction: Direction) {
+        let dir_str = match direction {
+            Direction::West => "west",
+            Direction::East => "east",
+            Direction::North => "north",
+            Direction::South => "south",
+            Direction::Up => "up",
+            Direction::Down => "down",
+        };
+
+        self.edges.retain(|e| !(e.from == from && e.direction == dir_str));
+        self.meta.modified = Utc::now();
+    }
+
     /// Insert a vertex into a chain, maintaining connectivity
     /// If `from` already has an edge in `direction` to some vertex `displaced`,
     /// create: from -> new_vertex -> displaced (preserving the chain)

@@ -982,6 +982,7 @@ where
     };
 
     // Update edges
+    // EDGE_UNCHANGED (u64::MAX) means keep existing, 0 means remove, other values set the edge
     let directions = [
         Direction::West,
         Direction::East,
@@ -992,7 +993,14 @@ where
     ];
 
     for (i, &target_hash) in edges.iter().enumerate() {
-        if target_hash != 0 {
+        if target_hash == u64::MAX {
+            // EDGE_UNCHANGED - skip this edge
+            continue;
+        } else if target_hash == 0 {
+            // Remove edge in this direction
+            index.remove_edge(from_uuid, directions[i]);
+        } else {
+            // Set edge to target vertex
             if let Some(to_uuid) = notes::hash_to_uuid(&index, target_hash) {
                 index.add_edge(from_uuid, to_uuid, directions[i]);
             }
