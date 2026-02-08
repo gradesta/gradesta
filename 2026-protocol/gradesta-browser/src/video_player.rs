@@ -41,8 +41,10 @@ pub enum VideoPlayerState {
 pub struct VideoPlayer {
     /// Receiver for decoded frames
     pub frame_rx: Receiver<VideoFrame>,
-    /// Sender for commands to the player thread
+    /// Sender for commands to the video player thread
     pub command_tx: Sender<VideoPlayerCommand>,
+    /// Sender for commands to the audio player thread
+    audio_command_tx: Option<Sender<VideoPlayerCommand>>,
     /// Video duration
     pub duration: Duration,
     /// Current playback position (atomic for lock-free access)
@@ -128,17 +130,22 @@ impl VideoPlayer {
         });
 
         // Spawn audio decoder thread if audio track exists
-        if audio_track_id.is_some() {
+        let audio_command_tx = if audio_track_id.is_some() {
+            let (audio_cmd_tx, audio_cmd_rx) = crossbeam_channel::unbounded();
             thread::spawn(move || {
-                if let Err(e) = decode_and_play_audio(audio_data, audio_position, audio_playing) {
+                if let Err(e) = decode_and_play_audio(audio_data, audio_cmd_rx, audio_position, audio_playing) {
                     eprintln!("VideoPlayer: Audio decode error: {}", e);
                 }
             });
-        }
+            Some(audio_cmd_tx)
+        } else {
+            None
+        };
 
         Ok(Self {
             frame_rx,
             command_tx,
+            audio_command_tx,
             duration,
             position_ms,
             is_playing,
@@ -151,20 +158,32 @@ impl VideoPlayer {
     pub fn play(&self) {
         self.is_playing.store(true, Ordering::SeqCst);
         let _ = self.command_tx.send(VideoPlayerCommand::Play);
+        if let Some(ref tx) = self.audio_command_tx {
+            let _ = tx.send(VideoPlayerCommand::Play);
+        }
     }
 
     pub fn pause(&self) {
         self.is_playing.store(false, Ordering::SeqCst);
         let _ = self.command_tx.send(VideoPlayerCommand::Pause);
+        if let Some(ref tx) = self.audio_command_tx {
+            let _ = tx.send(VideoPlayerCommand::Pause);
+        }
     }
 
     pub fn stop(&self) {
         self.is_playing.store(false, Ordering::SeqCst);
         let _ = self.command_tx.send(VideoPlayerCommand::Stop);
+        if let Some(ref tx) = self.audio_command_tx {
+            let _ = tx.send(VideoPlayerCommand::Stop);
+        }
     }
 
     pub fn seek(&self, position: Duration) {
         let _ = self.command_tx.send(VideoPlayerCommand::Seek(position));
+        if let Some(ref tx) = self.audio_command_tx {
+            let _ = tx.send(VideoPlayerCommand::Seek(position));
+        }
     }
 
     pub fn is_playing(&self) -> bool {
@@ -385,47 +404,59 @@ fn decode_video(
 /// Decode and play audio using symphonia and rodio
 fn decode_and_play_audio(
     data: Vec<u8>,
+    command_rx: Receiver<VideoPlayerCommand>,
     position_ms: Arc<AtomicU64>,
     is_playing: Arc<AtomicBool>,
 ) -> Result<(), String> {
     use symphonia::core::audio::SampleBuffer;
     use symphonia::core::codecs::DecoderOptions;
-    use symphonia::core::formats::FormatOptions;
+    use symphonia::core::formats::{FormatOptions, SeekMode, SeekTo};
     use symphonia::core::io::MediaSourceStream;
     use symphonia::core::meta::MetadataOptions;
     use symphonia::core::probe::Hint;
+    use symphonia::core::units::Time;
 
-    // Create media source
-    let cursor = Cursor::new(data);
-    let mss = MediaSourceStream::new(Box::new(cursor), Default::default());
+    // Helper function to create format reader and decoder
+    fn create_audio_pipeline(data: &[u8]) -> Result<(
+        Box<dyn symphonia::core::formats::FormatReader>,
+        Box<dyn symphonia::core::codecs::Decoder>,
+        u32,  // track_id
+        u32,  // sample_rate
+        usize // channels
+    ), String> {
+        let cursor = Cursor::new(data.to_vec());
+        let mss = MediaSourceStream::new(Box::new(cursor), Default::default());
 
-    // Probe the format
-    let mut hint = Hint::new();
-    hint.with_extension("mp4");
+        let mut hint = Hint::new();
+        hint.with_extension("mp4");
 
-    let probed = symphonia::default::get_probe()
-        .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
-        .map_err(|e| format!("Failed to probe audio: {}", e))?;
+        let probed = symphonia::default::get_probe()
+            .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
+            .map_err(|e| format!("Failed to probe audio: {}", e))?;
 
-    let mut format = probed.format;
+        let format = probed.format;
 
-    // Find audio track
-    let track = format
-        .tracks()
-        .iter()
-        .find(|t| t.codec_params.codec != symphonia::core::codecs::CODEC_TYPE_NULL)
-        .ok_or_else(|| "No audio track found".to_string())?;
+        let track = format
+            .tracks()
+            .iter()
+            .find(|t| t.codec_params.codec != symphonia::core::codecs::CODEC_TYPE_NULL)
+            .ok_or_else(|| "No audio track found".to_string())?;
 
-    let track_id = track.id;
-    let sample_rate = track.codec_params.sample_rate.unwrap_or(44100);
-    let channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(2);
+        let track_id = track.id;
+        let sample_rate = track.codec_params.sample_rate.unwrap_or(44100);
+        let channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(2);
+
+        let audio_decoder = symphonia::default::get_codecs()
+            .make(&track.codec_params, &DecoderOptions::default())
+            .map_err(|e| format!("Failed to create audio decoder: {}", e))?;
+
+        Ok((format, audio_decoder, track_id, sample_rate, channels))
+    }
+
+    let (mut format, mut audio_decoder, track_id, sample_rate, channels) =
+        create_audio_pipeline(&data)?;
 
     eprintln!("VideoPlayer: Audio track: {} Hz, {} channels", sample_rate, channels);
-
-    // Create decoder
-    let mut audio_decoder = symphonia::default::get_codecs()
-        .make(&track.codec_params, &DecoderOptions::default())
-        .map_err(|e| format!("Failed to create audio decoder: {}", e))?;
 
     // Create audio output
     let (_stream, stream_handle) = OutputStream::try_default()
@@ -433,9 +464,51 @@ fn decode_and_play_audio(
     let sink = Sink::try_new(&stream_handle)
         .map_err(|e| format!("Failed to create audio sink: {}", e))?;
 
+    let mut seek_pending: Option<Duration> = None;
+
     // Decode and play audio
     loop {
-        // Check if we should stop
+        // Check for commands
+        while let Ok(cmd) = command_rx.try_recv() {
+            match cmd {
+                VideoPlayerCommand::Play => {
+                    sink.play();
+                }
+                VideoPlayerCommand::Pause => {
+                    sink.pause();
+                }
+                VideoPlayerCommand::Stop => {
+                    sink.stop();
+                    return Ok(());
+                }
+                VideoPlayerCommand::Seek(target) => {
+                    seek_pending = Some(target);
+                }
+            }
+        }
+
+        // Handle seeking
+        if let Some(target) = seek_pending.take() {
+            // Clear the current audio buffer
+            sink.clear();
+
+            // Re-create the audio pipeline to seek from the beginning
+            let result = create_audio_pipeline(&data);
+            if let Ok((new_format, new_decoder, _, _, _)) = result {
+                format = new_format;
+                audio_decoder = new_decoder;
+
+                // Try to seek in the format
+                let seek_time = Time::from(target.as_secs_f64());
+                if let Err(e) = format.seek(SeekMode::Coarse, SeekTo::Time { time: seek_time, track_id: Some(track_id) }) {
+                    eprintln!("VideoPlayer: Audio seek error: {}", e);
+                } else {
+                    eprintln!("VideoPlayer: Audio seeked to {:?}", target);
+                }
+            }
+        }
+
+        // Check if we should be paused
         if !is_playing.load(Ordering::SeqCst) {
             sink.pause();
             thread::sleep(Duration::from_millis(10));
@@ -450,6 +523,11 @@ fn decode_and_play_audio(
             Err(symphonia::core::errors::Error::IoError(e))
                 if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 break; // End of stream
+            }
+            Err(symphonia::core::errors::Error::ResetRequired) => {
+                // Reset required after seek
+                audio_decoder.reset();
+                continue;
             }
             Err(e) => {
                 eprintln!("VideoPlayer: Audio packet error: {}", e);
@@ -483,6 +561,10 @@ fn decode_and_play_audio(
                 };
 
                 sink.append(source);
+            }
+            Err(symphonia::core::errors::Error::DecodeError(_)) => {
+                // Skip decode errors (can happen after seek)
+                continue;
             }
             Err(e) => {
                 eprintln!("VideoPlayer: Audio decode error: {}", e);

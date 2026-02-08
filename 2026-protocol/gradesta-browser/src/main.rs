@@ -1407,16 +1407,15 @@ fn ui_system(
 
                     ui.add_space(8.0);
 
-                    // Seek bar (full width)
+                    // Seek bar (same width as video, centered)
                     if let Some(player) = media_cache.video_players.get(&vertex_id) {
                         let pos = player.get_position();
                         let dur = player.duration;
                         let dur_secs = dur.as_secs_f32().max(0.1);
                         let mut pos_secs = pos.as_secs_f32();
 
-                        // Make slider full width
                         let slider_width = video_rect.map(|r| r.x).unwrap_or(ui.available_width());
-                        ui.horizontal(|ui| {
+                        ui.vertical_centered(|ui| {
                             ui.add_sized(
                                 [slider_width, 20.0],
                                 egui::Slider::new(&mut pos_secs, 0.0..=dur_secs)
