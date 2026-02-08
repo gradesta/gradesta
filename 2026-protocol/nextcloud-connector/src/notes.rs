@@ -414,4 +414,76 @@ impl NotesIndex {
     pub fn get_root_vertex(&self) -> Option<Uuid> {
         self.vertices.first().map(|v| v.id)
     }
+
+    /// Delete a vertex and reconnect its neighbors to maintain chains.
+    /// For each axis (E/W, N/S, U/D), if the vertex has neighbors on both sides,
+    /// connect them to each other. Returns the files to delete and the affected neighbor IDs.
+    ///
+    /// Returns: (files_to_delete, affected_neighbors)
+    pub fn delete_vertex(&mut self, vertex_id: Uuid) -> Result<(Vec<String>, Vec<Uuid>)> {
+        // Find the vertex
+        let vertex = self.vertices.iter()
+            .find(|v| v.id == vertex_id)
+            .ok_or_else(|| anyhow!("Vertex not found"))?
+            .clone();
+
+        let mut files_to_delete = Vec::new();
+        let mut affected_neighbors = Vec::new();
+
+        // Collect files to delete
+        files_to_delete.push(vertex.file.clone());
+        for layer_content in vertex.layers.values() {
+            files_to_delete.push(layer_content.file.clone());
+        }
+
+        // For each axis, get the two neighbors and reconnect them
+        let axis_pairs = [
+            ("west", "east"),
+            ("north", "south"),
+            ("up", "down"),
+        ];
+
+        for (dir_a, dir_b) in axis_pairs {
+            let neighbor_a = self.get_neighbor(vertex_id, dir_a);
+            let neighbor_b = self.get_neighbor(vertex_id, dir_b);
+
+            // Track affected neighbors
+            if let Some(n) = neighbor_a {
+                if !affected_neighbors.contains(&n) {
+                    affected_neighbors.push(n);
+                }
+            }
+            if let Some(n) = neighbor_b {
+                if !affected_neighbors.contains(&n) {
+                    affected_neighbors.push(n);
+                }
+            }
+
+            // If both neighbors exist, connect them
+            if let (Some(na), Some(nb)) = (neighbor_a, neighbor_b) {
+                // Connect neighbor_a's dir_b side to neighbor_b
+                // (e.g., if deleting X in A-X-B, connect A's east to B)
+                let direction = match dir_b {
+                    "west" => Direction::West,
+                    "east" => Direction::East,
+                    "north" => Direction::North,
+                    "south" => Direction::South,
+                    "up" => Direction::Up,
+                    "down" => Direction::Down,
+                    _ => continue,
+                };
+                self.add_edge(na, nb, direction);
+            }
+        }
+
+        // Remove all edges involving this vertex
+        self.edges.retain(|e| e.from != vertex_id && e.to != vertex_id);
+
+        // Remove the vertex
+        self.vertices.retain(|v| v.id != vertex_id);
+
+        self.meta.modified = Utc::now();
+
+        Ok((files_to_delete, affected_neighbors))
+    }
 }

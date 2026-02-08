@@ -102,6 +102,7 @@ fn compute_stack(graph: &GraphState, vertex_id: u64) -> StackInfo {
 // Client -> Server messages for editing
 const MSG_CLIENT_SET_VERTEX_LABEL: u8 = 0x85;
 const MSG_CLIENT_CREATE_VERTEX: u8 = 0x86;
+const MSG_CLIENT_DELETE_VERTEX: u8 = 0x87;
 
 /// Input mode for the browser
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -129,6 +130,9 @@ struct Vertex {
     edges: [u64; 6],
     /// Additional layers (layer_id -> content)
     layers: HashMap<u32, LayerContent>,
+    /// Edit mask: bit 0-5 for edge editability, bit 6 for label editability
+    /// 0x7F = all editable, 0 = read-only
+    edit_mask: u8,
 }
 
 #[derive(Resource, Default)]
@@ -173,6 +177,10 @@ enum WsCommand {
         layer: u32,
         mime: String,
         data: Vec<u8>,
+    },
+    DeleteVertex {
+        action_id: u64,
+        vertex_id: u64,
     },
 }
 
@@ -401,7 +409,7 @@ struct AnimatedGif {
 enum ServerEvent {
     SetContext { uri: String },
     SetVertexLabel { vertex_id: u64, layer: u32, mime: String, data: Vec<u8> },
-    SetEdges { vertex_id: u64, edges: [u64; 6] },
+    SetEdges { vertex_id: u64, edges: [u64; 6], edit_mask: u8 },
     Log { action_id: u64, status: u32, vertex_id: u64, message: String },
     Connected { base_url: String },
     Disconnected { reason: String },
@@ -950,6 +958,38 @@ fn ui_system(
                 app_state.status = format!("Jumped to bag top (depth: {})", app_state.bag.len());
             } else {
                 app_state.status = "Bag is empty".to_string();
+            }
+        }
+        // Delete key: Delete current vertex (if editable)
+        if i.key_pressed(egui::Key::Delete) && !i.modifiers.ctrl && app_state.input_mode == InputMode::Normal && app_state.connected {
+            if let Some(current_id) = app_state.current_vertex {
+                if let Some(vertex) = graph.vertices.get(&current_id) {
+                    // Check if vertex is editable (edit_mask != 0)
+                    if vertex.edit_mask != 0 {
+                        // Find a neighbor to navigate to after deletion
+                        let next_vertex = vertex.edges.iter()
+                            .find(|&&e| e != 0)
+                            .copied();
+
+                        // Send delete command
+                        if let Some(ref tx) = ws_cmd_tx.0 {
+                            let action_id = app_state.next_action_id;
+                            app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                            let _ = tx.send(WsCommand::DeleteVertex { action_id, vertex_id: current_id });
+                            app_state.status = "Deleting vertex...".to_string();
+
+                            // Navigate to a neighbor (or go back in history)
+                            if let Some(next) = next_vertex {
+                                app_state.history.push(current_id);
+                                app_state.current_vertex = Some(next);
+                            } else if let Some(prev) = app_state.history.pop() {
+                                app_state.current_vertex = Some(prev);
+                            }
+                        }
+                    } else {
+                        app_state.status = "Cannot delete: vertex is read-only".to_string();
+                    }
+                }
             }
         }
         // Text input mode shortcuts (only in Normal mode)
@@ -3911,6 +3951,15 @@ fn run_ws(uri: String, net_tx: Sender<ServerEvent>, cmd_rx: Receiver<WsCommand>)
                     buf.extend_from_slice(&data);
                     socket.send(Message::Binary(buf))?;
                 }
+                WsCommand::DeleteVertex { action_id, vertex_id } => {
+                    // 0x87: Type (1) + Action ID (8) + Vertex ID (8)
+                    eprintln!("SEND DeleteVertex action={} vertex={}", action_id, vertex_id);
+                    let mut buf = Vec::with_capacity(1 + 8 + 8);
+                    buf.push(MSG_CLIENT_DELETE_VERTEX);
+                    buf.extend_from_slice(&action_id.to_be_bytes());
+                    buf.extend_from_slice(&vertex_id.to_be_bytes());
+                    socket.send(Message::Binary(buf))?;
+                }
             }
         }
         
@@ -3977,9 +4026,11 @@ fn parse_server_message(data: &[u8]) -> Result<ServerEvent> {
                 *edge = v;
                 slice = next;
             }
-            eprintln!("RECV SetEdges action={} vertex={} W={} E={} N={} S={} U={} D={}", 
-                action_id, vertex_id, edges[0], edges[1], edges[2], edges[3], edges[4], edges[5]);
-            Ok(ServerEvent::SetEdges { vertex_id, edges })
+            // Read edit_mask (1 byte) if present, default to 0x7F (editable)
+            let edit_mask = if !slice.is_empty() { slice[0] } else { 0x7F };
+            eprintln!("RECV SetEdges action={} vertex={} W={} E={} N={} S={} U={} D={} edit_mask=0x{:02x}",
+                action_id, vertex_id, edges[0], edges[1], edges[2], edges[3], edges[4], edges[5], edit_mask);
+            Ok(ServerEvent::SetEdges { vertex_id, edges, edit_mask })
         }
         MSG_SERVER_LOG => {
             let (action_id, rest) = read_u64(&data[1..])?;
@@ -4170,18 +4221,31 @@ fn ingest_server_events(
                     app_state.current_vertex = Some(vertex_id);
                 }
             }
-            ServerEvent::SetEdges { vertex_id, edges } => {
-                let entry = graph.vertices.entry(vertex_id).or_default();
-                entry.id = vertex_id;
-                // Merge edges: u64::MAX means "unchanged", skip those
-                for (i, &new_edge) in edges.iter().enumerate() {
-                    if new_edge != u64::MAX {
-                        entry.edges[i] = new_edge;
+            ServerEvent::SetEdges { vertex_id, edges, edit_mask } => {
+                // Check if this is a deletion signal (all edges = 0, edit_mask = 0)
+                let is_deletion = edges.iter().all(|&e| e == 0) && edit_mask == 0;
+
+                if is_deletion {
+                    // Remove the vertex from the graph
+                    graph.vertices.remove(&vertex_id);
+                    // Remove from history
+                    app_state.history.retain(|&id| id != vertex_id);
+                    // If we're currently on this vertex, we've already navigated away
+                    eprintln!("Vertex {} deleted from local graph", vertex_id);
+                } else {
+                    let entry = graph.vertices.entry(vertex_id).or_default();
+                    entry.id = vertex_id;
+                    entry.edit_mask = edit_mask;
+                    // Merge edges: u64::MAX means "unchanged", skip those
+                    for (i, &new_edge) in edges.iter().enumerate() {
+                        if new_edge != u64::MAX {
+                            entry.edges[i] = new_edge;
+                        }
                     }
-                }
-                
-                if app_state.current_vertex.is_none() {
-                    app_state.current_vertex = Some(vertex_id);
+
+                    if app_state.current_vertex.is_none() {
+                        app_state.current_vertex = Some(vertex_id);
+                    }
                 }
             }
             ServerEvent::Log { action_id, status, vertex_id, message } => {

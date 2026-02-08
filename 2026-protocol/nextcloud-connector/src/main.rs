@@ -288,6 +288,9 @@ where
         MSG_CLIENT_CREATE_VERTEX => {
             handle_create_vertex(data, state, write).await
         }
+        MSG_CLIENT_DELETE_VERTEX => {
+            handle_delete_vertex(data, state, write).await
+        }
         MSG_CLIENT_CLICK_VERTEX => {
             handle_click_vertex(data, state, write).await
         }
@@ -1195,6 +1198,117 @@ where
     write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
     log::info!("Created vertex {} at {}", new_id, file_path);
+    Ok(())
+}
+
+async fn handle_delete_vertex<W>(
+    data: &[u8],
+    state: &Arc<Mutex<ConnState>>,
+    write: &mut W,
+) -> Result<()>
+where
+    W: SinkExt<AxumWsMessage> + Unpin,
+    W::Error: std::fmt::Debug,
+{
+    let (action_id, vertex_id) = parse_client_delete_vertex(data)?;
+    log::info!("DeleteVertex: action={}, vertex={}", action_id, vertex_id);
+
+    let (nc, mut index, _identity) = {
+        let s = state.lock().await;
+        (s.nextcloud.clone(), s.index.clone(), s.identity.clone())
+    };
+
+    let nc = match nc {
+        Some(nc) => nc,
+        None => {
+            let msg = encode_log_message(action_id, 401, 0, "Not authenticated");
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            return Ok(());
+        }
+    };
+    let mut index = match index {
+        Some(idx) => idx,
+        None => {
+            let msg = encode_log_message(action_id, 500, 0, "No index loaded");
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            return Ok(());
+        }
+    };
+
+    // Find vertex by hash
+    let vertex_uuid = match notes::hash_to_uuid(&index, vertex_id) {
+        Some(uuid) => uuid,
+        None => {
+            let msg = encode_log_message(action_id, 404, vertex_id, "Vertex not found");
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            return Ok(());
+        }
+    };
+
+    // Delete vertex and get files to delete + affected neighbors
+    let (files_to_delete, affected_neighbors) = match index.delete_vertex(vertex_uuid) {
+        Ok(result) => result,
+        Err(e) => {
+            let msg = encode_log_message(action_id, 500, vertex_id, &format!("Delete failed: {}", e));
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            return Ok(());
+        }
+    };
+
+    // Delete content files from Nextcloud
+    for file_path in &files_to_delete {
+        if let Err(e) = nc.delete(file_path).await {
+            log::warn!("Failed to delete file {}: {}", file_path, e);
+            // Continue anyway - the index is the source of truth
+        }
+    }
+
+    // Save updated index
+    if let Err(e) = index.save(&nc).await {
+        let msg = encode_log_message(action_id, 500, vertex_id, &format!("Save failed: {}", e));
+        write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+        return Ok(());
+    }
+
+    // Update state
+    {
+        let mut s = state.lock().await;
+        s.index = Some(index.clone());
+    }
+
+    // Send updated edges for all affected neighbors
+    for neighbor_uuid in affected_neighbors {
+        let neighbor_hash = uuid_to_hash(neighbor_uuid);
+        let edge_array = index.build_edge_array(neighbor_uuid);
+        log::info!("Sending updated edges for neighbor {} after delete -> {:?}", neighbor_hash, edge_array);
+        let edges_msg = encode_set_edges(
+            action_id,
+            neighbor_hash,
+            edge_array[0],
+            edge_array[1],
+            edge_array[2],
+            edge_array[3],
+            edge_array[4],
+            edge_array[5],
+            0x7F,
+        );
+        write.send(AxumWsMessage::Binary(edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+    }
+
+    // Send edges update for the deleted vertex with all zeros to signal deletion
+    let deleted_edges_msg = encode_set_edges(
+        action_id,
+        vertex_id,
+        0, 0, 0, 0, 0, 0,
+        0,  // edit_mask = 0 means read-only (deleted)
+    );
+    write.send(AxumWsMessage::Binary(deleted_edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+    // Send success acknowledgment
+    let msg = encode_log_message(action_id, 200, vertex_id, "Deleted");
+    write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+    log::info!("Deleted vertex {} (uuid={})", vertex_id, vertex_uuid);
     Ok(())
 }
 

@@ -20,12 +20,46 @@ The app opens with a graphical interface:
 
 ## Keyboard Controls
 
+### Navigation
 | Key | Action |
 |-----|--------|
-| Type | Enter WebSocket URL in the URL bar |
-| Enter | Connect to the server |
-| Backspace | Delete characters from URL |
-| Up/Down | Navigate the file list (after connecting) |
+| Arrow keys / WASD | Navigate the graph (N/S/E/W) |
+| PageUp / PageDown | Navigate up/down in stacks |
+| Enter | Activate current vertex (follow links) |
+| Backspace | Go back in history |
+
+### Editing (Notes)
+| Key | Action |
+|-----|--------|
+| I | Edit current vertex (text input mode) |
+| Shift+Arrow | Create new text vertex in that direction |
+| Space (hold) | Record audio note in last navigation direction |
+| Delete | Delete current vertex (if editable) |
+| Escape | Cancel current operation |
+
+### Bag (Clipboard)
+| Key | Action |
+|-----|--------|
+| Y | Yank (copy) current vertex to bag |
+| G | Go to top of bag |
+| P | Pop from bag |
+
+### Connection
+| Key | Action |
+|-----|--------|
+| Type in URL bar | Enter WebSocket URL |
+| Enter (in URL bar) | Connect to the server |
+
+## Deleting Vertices
+
+Pressing the **Delete** key will delete the current vertex if it is editable:
+
+- **Editable vertices** have `edit_mask != 0` (sent in the SetEdges message)
+- Read-only vertices (like calendar entries, file browser entries) cannot be deleted
+- When a vertex is deleted:
+  - The browser navigates to a neighboring vertex (or back in history if none)
+  - The server reconnects neighbors to maintain graph connectivity (E↔W, N↔S, U↔D chains are preserved)
+  - Content files are removed from storage
 
 ## Example URL
 
