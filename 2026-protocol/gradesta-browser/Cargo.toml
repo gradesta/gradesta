@@ -51,3 +51,5 @@ tempfile = "3.10"
 # Video playback (native in-browser)
 mp4 = "0.14"
 openh264 = "0.6"
+# Audio decoding for video (AAC in MP4)
+symphonia = { version = "0.5", features = ["aac", "isomp4"] }

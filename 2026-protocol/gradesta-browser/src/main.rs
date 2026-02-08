@@ -1356,18 +1356,20 @@ fn ui_system(
                 }
             };
 
-            // Now update texture without borrow conflict
+            // Now update texture without borrow conflict (skip empty frames)
             if let Some(frame) = latest_frame {
-                let image = egui::ColorImage::from_rgba_unmultiplied(
-                    [frame.width as usize, frame.height as usize],
-                    &frame.rgba,
-                );
-                let handle = ctx.load_texture(
-                    format!("video_{}", vertex_id),
-                    image,
-                    egui::TextureOptions::default(),
-                );
-                media_cache.video_textures.insert(vertex_id, handle);
+                if frame.width > 0 && frame.height > 0 && !frame.rgba.is_empty() {
+                    let image = egui::ColorImage::from_rgba_unmultiplied(
+                        [frame.width as usize, frame.height as usize],
+                        &frame.rgba,
+                    );
+                    let handle = ctx.load_texture(
+                        format!("video_{}", vertex_id),
+                        image,
+                        egui::TextureOptions::default(),
+                    );
+                    media_cache.video_textures.insert(vertex_id, handle);
+                }
             }
 
             // Request continuous repaints while video is playing
@@ -1378,9 +1380,57 @@ fn ui_system(
             egui::Window::new("Video Player")
                 .collapsible(false)
                 .resizable(true)
-                .default_size([800.0, 600.0])
+                .default_size([900.0, 600.0])
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(ctx, |ui| {
+                    // Display video frame first (takes up most space)
+                    let video_rect = if let Some(tex) = media_cache.video_textures.get(&vertex_id) {
+                        // Reserve space for controls below (about 60px)
+                        let available = ui.available_size() - egui::vec2(0.0, 60.0);
+                        let tex_size = tex.size_vec2();
+                        // Scale to fit available space while maintaining aspect ratio
+                        let scale = (available.x / tex_size.x).min(available.y / tex_size.y).min(1.0);
+                        let display_size = tex_size * scale;
+
+                        ui.vertical_centered(|ui| {
+                            ui.image((tex.id(), display_size));
+                        });
+                        Some(display_size)
+                    } else {
+                        ui.vertical_centered(|ui| {
+                            ui.add_space(200.0);
+                            ui.label("Loading video...");
+                            ui.add_space(200.0);
+                        });
+                        None
+                    };
+
+                    ui.add_space(8.0);
+
+                    // Seek bar (full width)
+                    if let Some(player) = media_cache.video_players.get(&vertex_id) {
+                        let pos = player.get_position();
+                        let dur = player.duration;
+                        let dur_secs = dur.as_secs_f32().max(0.1);
+                        let mut pos_secs = pos.as_secs_f32();
+
+                        // Make slider full width
+                        let slider_width = video_rect.map(|r| r.x).unwrap_or(ui.available_width());
+                        ui.horizontal(|ui| {
+                            ui.add_sized(
+                                [slider_width, 20.0],
+                                egui::Slider::new(&mut pos_secs, 0.0..=dur_secs)
+                                    .show_value(false)
+                                    .trailing_fill(true)
+                            );
+                        });
+
+                        if pos_secs != pos.as_secs_f32() {
+                            player.seek(Duration::from_secs_f32(pos_secs));
+                        }
+                    }
+
+                    // Controls bar
                     ui.horizontal(|ui| {
                         // Play/Pause button
                         if let Some(player) = media_cache.video_players.get(&vertex_id) {
@@ -1405,7 +1455,7 @@ fn ui_system(
                             ));
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("Close (Esc)").clicked() {
+                            if ui.button("✕ Close").clicked() {
                                 // Stop player
                                 if let Some(player) = media_cache.video_players.get(&vertex_id) {
                                     player.stop();
@@ -1414,23 +1464,6 @@ fn ui_system(
                             }
                         });
                     });
-                    ui.separator();
-
-                    // Display video frame
-                    if let Some(tex) = media_cache.video_textures.get(&vertex_id) {
-                        let available = ui.available_size();
-                        let tex_size = tex.size_vec2();
-                        // Scale to fit available space while maintaining aspect ratio
-                        let scale = (available.x / tex_size.x).min(available.y / tex_size.y).min(1.0);
-                        let display_size = tex_size * scale;
-                        ui.centered_and_justified(|ui| {
-                            ui.image((tex.id(), display_size));
-                        });
-                    } else {
-                        ui.centered_and_justified(|ui| {
-                            ui.label("Loading video...");
-                        });
-                    }
                 });
         }
     }
