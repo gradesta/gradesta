@@ -21,12 +21,24 @@ Gradesta Browser is a client for viewing and editing gradesta graphs - 6-directi
 
 ```
 src/
-├── main.rs              # App entry, UI system, Bevy setup
+├── main.rs              # App entry, Bevy setup, navigation systems (~1100 lines)
 ├── state.rs             # AppState, InputMode, state types
 ├── graph.rs             # Vertex, GraphState, GridView, layout algorithms
 ├── network.rs           # WebSocket, ServerEvent, WsCommand, protocol
+├── events.rs            # Server event processing (ingest_server_events)
+├── rendering.rs         # Vertex card/content rendering functions
 ├── audio.rs             # Recording, playback, OGG encoding
 ├── media.rs             # MediaCache, textures, waveforms, GIF animation
+├── ui/                  # UI system components (action-enum pattern)
+│   ├── mod.rs           # Module exports and shared types
+│   ├── input.rs         # Keyboard command capture (CapturedCommands)
+│   ├── commands.rs      # Command execution logic
+│   ├── panels.rs        # Top/bottom panel rendering
+│   ├── command_bar.rs   # Vim-style ':' command palette
+│   ├── grid.rs          # Central grid view rendering
+│   ├── fullscreen.rs    # Fullscreen content mode
+│   ├── processing.rs    # Text input, recording, identification handlers
+│   └── sidebar_content.rs # Right panel content (modals, preview, etc.)
 ├── commands/            # Command system
 │   └── mod.rs           # Command enum, context-aware dispatch
 ├── keybindings/         # Keybinding configuration
@@ -36,12 +48,9 @@ src/
 │   ├── defaults.rs      # Default keybindings
 │   ├── presets.rs       # Vim/Emacs/Normal presets
 │   └── resolver.rs      # Context-aware resolution
-├── sidebar/             # Sidebar UI components
+├── sidebar/             # Sidebar state and keybindings editor
 │   ├── mod.rs           # SidebarMode, SidebarState
-│   ├── keybindings.rs   # Keybindings editor UI
-│   ├── bag.rs           # Clipboard UI
-│   ├── recording.rs     # Audio recording UI
-│   └── ...              # Other sidebar panels
+│   └── keybindings.rs   # Keybindings editor UI
 ├── identity.rs          # ECDSA identity, Nextcloud auth
 ├── video_player.rs      # MP4/H.264 video player
 ├── whisper.rs           # Whisper model management

@@ -465,7 +465,7 @@ pub fn ingest_server_events(
                 }
 
                 // Invalidate cached texture/media when content changes
-                if mime.starts_with("image/") || crate::is_image_data(&data) {
+                if mime.starts_with("image/") || crate::media::is_image_data(&data) {
                     media_cache.textures.remove(&vertex_id);
                     media_cache.animated_gifs.remove(&vertex_id);
                 }
@@ -634,7 +634,7 @@ pub fn ingest_server_events(
                 }
 
                 // Invalidate cache to trigger reload
-                if mime.starts_with("image/") || crate::is_image_data(&data) {
+                if mime.starts_with("image/") || crate::media::is_image_data(&data) {
                     media_cache.textures.remove(&vertex_id);
                     media_cache.animated_gifs.remove(&vertex_id);
                 }

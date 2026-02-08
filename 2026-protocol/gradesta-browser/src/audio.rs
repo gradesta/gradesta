@@ -25,23 +25,29 @@ pub struct AudioPlaybackState {
     pub playing_vertex: Arc<Mutex<Option<u64>>>,
 }
 
-/// Play audio data in a background thread
-pub fn play_audio(data: &[u8], vertex_id: u64, state: &AudioPlaybackState) {
-    // First stop any currently playing audio
+/// Play audio data using rodio with stop signal support
+pub fn play_audio(data: &[u8], _mime: &str, vertex_id: u64, state: &AudioPlaybackState) {
+    use crate::media::calculate_audio_rms;
+    use crate::tts;
+
+    // Stop any currently playing audio
     if let Ok(mut stop) = state.should_stop.lock() {
         *stop = true;
     }
-    // Small delay to let the previous playback stop
+    // Small delay to let the previous thread notice the stop signal
     thread::sleep(Duration::from_millis(50));
 
-    // Reset the stop signal for the new playback
+    // Reset signal for new playback
     if let Ok(mut stop) = state.should_stop.lock() {
         *stop = false;
     }
-
-    // Mark this vertex as playing
     if let Ok(mut playing) = state.playing_vertex.lock() {
         *playing = Some(vertex_id);
+    }
+
+    // Calculate RMS of audio for TTS volume calibration
+    if let Some(rms) = calculate_audio_rms(data) {
+        tts::set_reference_audio_level(rms);
     }
 
     let data_vec = data.to_vec();
@@ -253,52 +259,60 @@ pub fn encode_ogg_vorbis(samples: &[f32], sample_rate: u32, transcript: Option<&
     Ok(output)
 }
 
-/// Parse WAV header to get duration
-pub fn parse_wav_duration(data: &[u8]) -> Option<Duration> {
+/// Parse WAV header to get duration in seconds
+pub fn parse_wav_duration(data: &[u8]) -> Option<f32> {
     if data.len() < 44 {
         return None;
     }
-
     // Check RIFF header
     if &data[0..4] != b"RIFF" || &data[8..12] != b"WAVE" {
         return None;
     }
-
-    // Parse fmt chunk - look for it after WAVE header
+    // Find fmt chunk
     let mut pos = 12;
     while pos + 8 < data.len() {
-        let chunk_id = &data[pos..pos + 4];
-        let chunk_size = u32::from_le_bytes([data[pos + 4], data[pos + 5], data[pos + 6], data[pos + 7]]) as usize;
+        let chunk_id = &data[pos..pos+4];
+        let chunk_size = u32::from_le_bytes(data[pos+4..pos+8].try_into().ok()?) as usize;
 
         if chunk_id == b"fmt " && chunk_size >= 16 {
-            let sample_rate = u32::from_le_bytes([data[pos + 12], data[pos + 13], data[pos + 14], data[pos + 15]]);
-            let byte_rate = u32::from_le_bytes([data[pos + 16], data[pos + 17], data[pos + 18], data[pos + 19]]);
+            let channels = u16::from_le_bytes(data[pos+10..pos+12].try_into().ok()?) as u32;
+            let sample_rate = u32::from_le_bytes(data[pos+12..pos+16].try_into().ok()?);
+            let bits_per_sample = u16::from_le_bytes(data[pos+22..pos+24].try_into().ok()?) as u32;
 
             // Find data chunk
             pos += 8 + chunk_size;
             while pos + 8 < data.len() {
-                let chunk_id = &data[pos..pos + 4];
-                let chunk_size = u32::from_le_bytes([data[pos + 4], data[pos + 5], data[pos + 6], data[pos + 7]]) as usize;
+                let data_chunk_id = &data[pos..pos+4];
+                let data_size = u32::from_le_bytes(data[pos+4..pos+8].try_into().ok()?);
 
-                if chunk_id == b"data" {
-                    let duration_secs = chunk_size as f64 / byte_rate as f64;
-                    return Some(Duration::from_secs_f64(duration_secs));
+                if data_chunk_id == b"data" {
+                    let bytes_per_sample = (bits_per_sample / 8) * channels;
+                    if bytes_per_sample > 0 && sample_rate > 0 {
+                        let num_samples = data_size / bytes_per_sample;
+                        return Some(num_samples as f32 / sample_rate as f32);
+                    }
                 }
-                pos += 8 + chunk_size;
+                pos += 8 + data_size as usize;
+                if data_size % 2 == 1 {
+                    pos += 1; // Pad to even
+                }
             }
-            break;
         }
         pos += 8 + chunk_size;
+        if chunk_size % 2 == 1 {
+            pos += 1; // Pad to even
+        }
     }
-
     None
 }
 
-/// Extract transcript from audio file (OGG Vorbis comments or embedded metadata)
+/// Extract transcript from audio data (OGG Vorbis comments or WAV 'trns' chunk)
 pub fn extract_transcript(data: &[u8], mime: &str) -> Option<String> {
-    if mime == "audio/ogg" || mime.contains("ogg") {
+    if mime == "audio/ogg" || (data.len() >= 4 && &data[0..4] == b"OggS") {
+        // Try to extract from OGG Vorbis comments
         extract_ogg_transcript(data)
-    } else if mime == "audio/wav" || mime.contains("wav") {
+    } else if data.len() >= 12 && &data[0..4] == b"RIFF" && &data[8..12] == b"WAVE" {
+        // Try to extract from WAV 'trns' chunk
         extract_wav_transcript(data)
     } else {
         None
@@ -307,56 +321,42 @@ pub fn extract_transcript(data: &[u8], mime: &str) -> Option<String> {
 
 /// Extract transcript from OGG Vorbis comments
 fn extract_ogg_transcript(data: &[u8]) -> Option<String> {
-    // Simple Vorbis comment extraction
-    // Look for "TRANSCRIPT=" in the comment header
-    let needle = b"TRANSCRIPT=";
-    for window in data.windows(needle.len()) {
-        if window == needle {
-            let start = data.iter().position(|&b| b == needle[0])? + needle.len();
-            // Find the end of the comment (null byte or next tag)
-            let remaining = &data[start..];
-            let end = remaining.iter()
-                .position(|&b| b == 0 || b == b'=' && remaining.get((b as usize).saturating_sub(10)..(b as usize)).map(|s| s.iter().all(|&c| c.is_ascii_uppercase())).unwrap_or(false))
-                .unwrap_or(remaining.len().min(1000));
-            let transcript = String::from_utf8_lossy(&remaining[..end]);
-            if !transcript.is_empty() {
-                return Some(transcript.to_string());
-            }
+    use lewton::inside_ogg::OggStreamReader;
+    use std::io::Cursor;
+
+    let cursor = Cursor::new(data);
+    let reader = OggStreamReader::new(cursor).ok()?;
+
+    // Look for TRANSCRIPT comment in Vorbis comments
+    for (key, value) in reader.comment_hdr.comment_list.iter() {
+        if key.eq_ignore_ascii_case("TRANSCRIPT") {
+            return Some(value.clone());
         }
     }
     None
 }
 
-/// Extract transcript from WAV file (LIST/INFO chunk)
+/// Extract transcript from WAV 'trns' chunk
 fn extract_wav_transcript(data: &[u8]) -> Option<String> {
-    // Look for INFO chunk with ICMT (comment) or INAM (name) tag
-    let mut pos = 12; // Skip RIFF header
+    if data.len() < 44 {
+        return None;
+    }
+    // Find trns chunk
+    let mut pos = 12;
     while pos + 8 < data.len() {
-        let chunk_id = &data[pos..pos + 4];
-        let chunk_size = u32::from_le_bytes([data[pos + 4], data[pos + 5], data[pos + 6], data[pos + 7]]) as usize;
+        let chunk_id = &data[pos..pos+4];
+        let chunk_size = u32::from_le_bytes(data[pos+4..pos+8].try_into().ok()?) as usize;
 
-        if chunk_id == b"LIST" && pos + 12 < data.len() && &data[pos + 8..pos + 12] == b"INFO" {
-            // Parse INFO subchunks
-            let mut info_pos = pos + 12;
-            let info_end = pos + 8 + chunk_size;
-            while info_pos + 8 < info_end && info_pos + 8 < data.len() {
-                let sub_id = &data[info_pos..info_pos + 4];
-                let sub_size = u32::from_le_bytes([data[info_pos + 4], data[info_pos + 5], data[info_pos + 6], data[info_pos + 7]]) as usize;
-
-                if (sub_id == b"ICMT" || sub_id == b"INAM") && info_pos + 8 + sub_size <= data.len() {
-                    let text_data = &data[info_pos + 8..info_pos + 8 + sub_size];
-                    // Trim null terminator if present
-                    let text = text_data.split(|&b| b == 0).next().unwrap_or(text_data);
-                    if let Ok(s) = std::str::from_utf8(text) {
-                        if !s.is_empty() {
-                            return Some(s.to_string());
-                        }
-                    }
-                }
-                info_pos += 8 + ((sub_size + 1) & !1); // Align to word boundary
+        if chunk_id == b"trns" {
+            let text_end = pos + 8 + chunk_size;
+            if text_end <= data.len() {
+                return String::from_utf8(data[pos+8..text_end].to_vec()).ok();
             }
         }
-        pos += 8 + ((chunk_size + 1) & !1); // Align to word boundary
+        pos += 8 + chunk_size;
+        if chunk_size % 2 == 1 {
+            pos += 1; // Pad to even
+        }
     }
     None
 }

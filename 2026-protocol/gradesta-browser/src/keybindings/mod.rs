@@ -13,6 +13,6 @@ pub mod presets;
 pub mod resolver;
 
 pub use config::KeybindingsConfig;
-pub use key::{KeyBinding, KeyCode, Modifiers};
+pub use key::{KeyBinding, Modifiers};
 pub use presets::Preset;
 pub use resolver::KeybindingResolver;
