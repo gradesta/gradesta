@@ -156,7 +156,10 @@ pub enum IdentificationAction {
 /// Main application state resource
 #[derive(Resource)]
 pub struct AppState {
-    pub url_input: String,
+    pub server_input: String,
+    pub landmark_input: String,
+    pub server_bar_has_focus: bool,
+    pub landmark_bar_has_focus: bool,
     pub status: String,
     pub connected: bool,
     pub current_vertex: Option<u64>,
@@ -256,7 +259,10 @@ impl Default for AppState {
         let identity_config = IdentityConfig::load().unwrap_or_default();
 
         Self {
-            url_input: "ws://localhost:8080/ws?landmark=/home/".to_string(),
+            server_input: "ws://localhost:8080".to_string(),
+            landmark_input: "/".to_string(),
+            server_bar_has_focus: false,
+            landmark_bar_has_focus: false,
             status: "Enter URL and click Connect".to_string(),
             connected: false,
             current_vertex: None,

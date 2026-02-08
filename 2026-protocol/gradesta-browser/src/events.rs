@@ -97,9 +97,8 @@ fn handle_set_context(uri: &str, graph: &mut GraphState, app_state: &mut AppStat
             app_state.landmark_history.remove(0);
         }
     }
-    if let Some(base) = &app_state.base_ws_url {
-        app_state.url_input = format!("{}?landmark={}", base, uri);
-    }
+    // Update only the landmark input (server stays the same)
+    app_state.landmark_input = uri.to_string();
 }
 
 fn handle_set_vertex_label(

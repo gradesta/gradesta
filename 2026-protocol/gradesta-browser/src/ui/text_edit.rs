@@ -149,6 +149,87 @@ pub fn consume_text_edit_events(ctx: &egui::Context, app_state: &AppState) {
     });
 }
 
+/// Handle smart paste for URL bars - detects full URLs and distributes to server/landmark
+///
+/// This should be called BEFORE rendering URL bar widgets but AFTER consume_text_edit_events.
+/// Returns true if a smart paste was handled (caller should skip normal paste).
+pub fn handle_url_bar_smart_paste(ctx: &egui::Context, app_state: &mut AppState) -> bool {
+    // Only handle when server or landmark bar has focus
+    if !app_state.server_bar_has_focus && !app_state.landmark_bar_has_focus {
+        return false;
+    }
+
+    let mut handled = false;
+
+    ctx.input_mut(|input| {
+        // Look for paste events
+        let paste_text = input.events.iter().find_map(|event| {
+            if let egui::Event::Paste(text) = event {
+                Some(text.clone())
+            } else {
+                None
+            }
+        });
+
+        if let Some(text) = paste_text {
+            if super::url_utils::looks_like_full_url(&text) {
+                if let Some(parsed) = super::url_utils::parse_full_url(&text) {
+                    // Populate both inputs
+                    app_state.server_input = parsed.server;
+                    app_state.landmark_input = parsed.landmark;
+
+                    // Remove the paste event so it doesn't also paste into the focused field
+                    input.events.retain(|e| !matches!(e, egui::Event::Paste(_)));
+                    handled = true;
+                }
+            }
+        }
+    });
+
+    handled
+}
+
+/// Handle Ctrl+Shift+C to copy full URL when URL bars are focused
+///
+/// This should be called BEFORE rendering URL bar widgets.
+pub fn handle_url_bar_copy_shortcut(ctx: &egui::Context, app_state: &mut AppState) {
+    // Only handle when server or landmark bar has focus
+    if !app_state.server_bar_has_focus && !app_state.landmark_bar_has_focus {
+        return;
+    }
+
+    ctx.input_mut(|input| {
+        // Check if Ctrl+Shift+C was pressed
+        let ctrl_shift_c_pressed = input.events.iter().any(|event| {
+            matches!(event, egui::Event::Key {
+                key: egui::Key::C,
+                pressed: true,
+                modifiers,
+                ..
+            } if (modifiers.command || modifiers.ctrl) && modifiers.shift)
+        });
+
+        if ctrl_shift_c_pressed {
+            let full_url = super::url_utils::construct_full_url(
+                &app_state.server_input,
+                &app_state.landmark_input,
+            );
+            super::url_utils::set_clipboard_text(&full_url);
+            app_state.status = "Copied URL to clipboard".to_string();
+
+            // Filter out the Ctrl+Shift+C event so it doesn't trigger other handlers
+            input.events.retain(|event| {
+                !matches!(event, egui::Event::Key {
+                    key: egui::Key::C,
+                    pressed: true,
+                    modifiers,
+                    ..
+                } if (modifiers.command || modifiers.ctrl) && modifiers.shift)
+            });
+        }
+    });
+}
+
 /// Sync selected text to system clipboard when Copy/Cut events occur
 /// Call this after TextEdit rendering to capture what was copied
 pub fn sync_copy_to_system_clipboard(ctx: &egui::Context) {

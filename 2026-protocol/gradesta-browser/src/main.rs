@@ -301,7 +301,6 @@ fn ui_system(
     }
 
     // Handle modal keyboard shortcuts and zoom
-    let url_bar_id = egui::Id::new("url_bar");
 
     // Determine current keybinding context and capture keyboard commands
     let kb_context = current_context(&app_state);
@@ -324,6 +323,12 @@ fn ui_system(
     // This prevents egui's TextEdit from trying to use the broken system clipboard
     // and inserting raw characters like 'v' when Ctrl+V is pressed
     ui::consume_text_edit_events(ctx, &app_state);
+
+    // Handle Ctrl+Shift+C to copy full URL when URL bars are focused
+    ui::handle_url_bar_copy_shortcut(ctx, &mut app_state);
+
+    // Handle smart paste for URL bars (detects full URLs and distributes to server/landmark)
+    ui::handle_url_bar_smart_paste(ctx, &mut app_state);
 
     // Execute all keyboard commands using the ui module
     let cmd_results = ui::execute_commands(
@@ -360,35 +365,65 @@ fn ui_system(
     }
 
     // NORMAL MODE: Render full UI with panels
-    // Top panel with URL bar
+    // Top panel with URL bar (split into server and landmark)
     egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            ui.label("URL:");
-            // Lock keyboard input while Ctrl+L is being pressed to prevent 'l' from being typed
+            // Server input
+            ui.label("Server:");
+            let server_bar_id = egui::Id::new("server_bar");
             let lock_input = app_state.focus_url_bar_next_frame;
-            let text_edit = egui::TextEdit::singleline(&mut app_state.url_input)
-                .id(url_bar_id)
-                .desired_width(600.0)
+            let server_edit = egui::TextEdit::singleline(&mut app_state.server_input)
+                .id(server_bar_id)
+                .desired_width(250.0)
                 .lock_focus(lock_input)
-                .hint_text("ws://localhost:8080/ws?landmark=/home/");
-            let response = ui.add(text_edit);
+                .hint_text("ws://localhost:8080");
+            let server_response = ui.add(server_edit);
+            app_state.server_bar_has_focus = server_response.has_focus();
 
-            // Track URL bar focus state (from click or Ctrl+L)
-            app_state.url_bar_has_focus = response.has_focus();
+            ui.add_space(8.0);
+
+            // Landmark input
+            ui.label("Landmark:");
+            let landmark_bar_id = egui::Id::new("landmark_bar");
+            let landmark_edit = egui::TextEdit::singleline(&mut app_state.landmark_input)
+                .id(landmark_bar_id)
+                .desired_width(300.0)
+                .hint_text("/");
+            let landmark_response = ui.add(landmark_edit);
+            app_state.landmark_bar_has_focus = landmark_response.has_focus();
+
+            // Track combined URL bar focus state
+            app_state.url_bar_has_focus = app_state.server_bar_has_focus || app_state.landmark_bar_has_focus;
 
             // Show different button based on connection state
             let button_label = if app_state.connected { "Refresh" } else { "Connect" };
             let button_clicked = ui.button(button_label).clicked();
-            // lost_focus() is true when Enter is pressed in a text field
-            let enter_pressed = response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+
+            // Copy URL button (clipboard icon)
+            let copy_clicked = ui.button("📋").clicked();
+            if copy_clicked {
+                let full_url = ui::url_utils::construct_full_url(&app_state.server_input, &app_state.landmark_input);
+                ui::url_utils::set_clipboard_text(&full_url);
+                app_state.status = "Copied URL to clipboard".to_string();
+            }
+
+            // Enter pressed in either input triggers connection
+            let server_enter = server_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            let landmark_enter = landmark_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
 
             // Connect/refresh on button click, Enter, or GlobalRefresh command
-            if button_clicked || enter_pressed || cmd_refresh {
-                let url = app_state.url_input.trim().to_string();
-                if url.is_empty() {
-                    app_state.status = "URL is empty!".to_string();
+            if button_clicked || server_enter || landmark_enter || cmd_refresh {
+                let server = app_state.server_input.trim().to_string();
+                let landmark = app_state.landmark_input.trim().to_string();
+                if server.is_empty() {
+                    app_state.status = "Server is empty!".to_string();
+                } else if landmark.is_empty() {
+                    app_state.status = "Landmark is empty!".to_string();
                 } else {
+                    // Construct full URL from server and landmark
+                    let url = ui::url_utils::construct_full_url(&server, &landmark);
+
                     // Disconnect existing connection first
                     if app_state.connected {
                         app_state.connected = false;

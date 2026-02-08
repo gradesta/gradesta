@@ -27,14 +27,13 @@ pub enum BottomPanelAction {
     ToggleBag,
 }
 
-/// Render the top panel with URL bar and connection controls
+/// Render the top panel with URL bar (server + landmark) and connection controls
 ///
 /// Returns an action if the user requested a connection or refresh.
 pub fn render_top_panel(
     ctx: &egui::Context,
     app_state: &mut AppState,
-    graph: &GraphState,
-    url_bar_id: egui::Id,
+    _graph: &GraphState,
     cmd_refresh: bool,
 ) -> TopPanelAction {
     let mut action = TopPanelAction::None;
@@ -42,38 +41,67 @@ pub fn render_top_panel(
     egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            ui.label("URL:");
-            // Lock keyboard input while Ctrl+L is being pressed
+            // Server input
+            ui.label("Server:");
+            let server_bar_id = egui::Id::new("server_bar");
             let lock_input = app_state.focus_url_bar_next_frame;
-            let text_edit = egui::TextEdit::singleline(&mut app_state.url_input)
-                .id(url_bar_id)
-                .desired_width(600.0)
+            let server_edit = egui::TextEdit::singleline(&mut app_state.server_input)
+                .id(server_bar_id)
+                .desired_width(250.0)
                 .lock_focus(lock_input)
-                .hint_text("ws://localhost:8080/ws?landmark=/home/");
-            let response = ui.add(text_edit);
+                .hint_text("ws://localhost:8080");
+            let server_response = ui.add(server_edit);
+            app_state.server_bar_has_focus = server_response.has_focus();
+
+            ui.add_space(8.0);
+
+            // Landmark input
+            ui.label("Landmark:");
+            let landmark_bar_id = egui::Id::new("landmark_bar");
+            let landmark_edit = egui::TextEdit::singleline(&mut app_state.landmark_input)
+                .id(landmark_bar_id)
+                .desired_width(300.0)
+                .hint_text("/");
+            let landmark_response = ui.add(landmark_edit);
+            app_state.landmark_bar_has_focus = landmark_response.has_focus();
+
+            // Track combined URL bar focus state
+            app_state.url_bar_has_focus = app_state.server_bar_has_focus || app_state.landmark_bar_has_focus;
 
             let button_label = if app_state.connected { "Refresh" } else { "Connect" };
             let button_clicked = ui.button(button_label).clicked();
-            let enter_pressed = response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
 
-            if button_clicked || enter_pressed || cmd_refresh {
-                let url = app_state.url_input.trim().to_string();
-                if url.is_empty() {
-                    app_state.status = "URL is empty!".to_string();
-                } else if app_state.connected {
-                    action = TopPanelAction::Refresh;
+            // Copy URL button (clipboard icon)
+            let copy_clicked = ui.button("📋").clicked();
+            if copy_clicked {
+                let full_url = super::url_utils::construct_full_url(&app_state.server_input, &app_state.landmark_input);
+                super::url_utils::set_clipboard_text(&full_url);
+                app_state.status = "Copied URL to clipboard".to_string();
+            }
+
+            let server_enter = server_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            let landmark_enter = landmark_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+
+            if button_clicked || server_enter || landmark_enter || cmd_refresh {
+                let server = app_state.server_input.trim().to_string();
+                let landmark = app_state.landmark_input.trim().to_string();
+                if server.is_empty() {
+                    app_state.status = "Server is empty!".to_string();
+                } else if landmark.is_empty() {
+                    app_state.status = "Landmark is empty!".to_string();
                 } else {
-                    action = TopPanelAction::Connect { url };
+                    let url = super::url_utils::construct_full_url(&server, &landmark);
+                    if app_state.connected {
+                        action = TopPanelAction::Refresh;
+                    } else {
+                        action = TopPanelAction::Connect { url };
+                    }
                 }
             }
         });
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.label(&app_state.status);
-            if let Some(uri) = &graph.context_uri {
-                ui.separator();
-                ui.label(format!("Landmark: {}", uri));
-            }
             ui.separator();
             ui.label(format!("Zoom: {:.0}%", app_state.zoom_level * 100.0));
         });

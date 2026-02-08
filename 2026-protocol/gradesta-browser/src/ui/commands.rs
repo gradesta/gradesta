@@ -263,8 +263,8 @@ pub fn execute_commands(
         }
     }
 
-    // Handle URL focus key
-    let url_bar_id = bevy_egui::egui::Id::new("url_bar");
+    // Handle URL focus key - focuses the server bar
+    let server_bar_id = bevy_egui::egui::Id::new("server_bar");
     if cmds.focus_url_down {
         // Log only on first press (when transitioning from not pressed)
         if !app_state.focus_url_bar_next_frame {
@@ -276,14 +276,7 @@ pub fn execute_commands(
         app_state.focus_url_bar_next_frame = true;
     } else if app_state.focus_url_bar_next_frame && cmds.focus_url_released {
         app_state.focus_url_bar_next_frame = false;
-        ctx.memory_mut(|mem| mem.request_focus(url_bar_id));
-    }
-
-    // GlobalCopyUrl - but not in TextInput mode (let egui handle Ctrl+C for text copy)
-    if cmds.copy_url && !matches!(app_state.input_mode, InputMode::TextInput { .. }) {
-        results.any_command_processed = true;
-        ctx.copy_text(app_state.url_input.clone());
-        app_state.status = "Copied URL to clipboard".to_string();
+        ctx.memory_mut(|mem| mem.request_focus(server_bar_id));
     }
 
     // Check if we should finalize recording (space was released)

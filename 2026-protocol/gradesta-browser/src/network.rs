@@ -411,10 +411,8 @@ pub fn ingest_server_events(
                     }
                 }
 
-                // Update the URL bar to show current landmark
-                if let Some(base) = &app_state.base_ws_url {
-                    app_state.url_input = format!("{}?landmark={}", base, uri);
-                }
+                // Update only the landmark input (server stays the same)
+                app_state.landmark_input = uri.clone();
             }
             ServerEvent::SetVertexLabel { vertex_id, layer, mime, data } => {
                 let entry = graph.vertices.entry(vertex_id).or_default();
