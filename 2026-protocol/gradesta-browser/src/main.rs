@@ -102,6 +102,7 @@ fn compute_stack(graph: &GraphState, vertex_id: u64) -> StackInfo {
 }
 
 // Client -> Server messages for editing
+const MSG_CLIENT_SET_EDGES: u8 = 0x83;
 const MSG_CLIENT_SET_VERTEX_LABEL: u8 = 0x85;
 const MSG_CLIENT_CREATE_VERTEX: u8 = 0x86;
 const MSG_CLIENT_DELETE_VERTEX: u8 = 0x87;
@@ -183,6 +184,11 @@ enum WsCommand {
     DeleteVertex {
         action_id: u64,
         vertex_id: u64,
+    },
+    SetEdges {
+        action_id: u64,
+        vertex_id: u64,
+        edges: [u64; 6],
     },
 }
 
@@ -983,6 +989,97 @@ fn ui_system(
                 app_state.status = "Bag is empty".to_string();
             }
         }
+        // P: Paste from bag (connect bag vertex in insertion direction)
+        if i.key_pressed(egui::Key::P) && !i.modifiers.ctrl && app_state.input_mode == InputMode::Normal && app_state.connected {
+            if let Some(paste_id) = app_state.bag.pop() {
+                if let Some(current_id) = app_state.current_vertex {
+                    if current_id == paste_id {
+                        // Can't paste to self, put it back
+                        app_state.bag.push(paste_id);
+                        app_state.status = "Cannot paste: vertex is already current".to_string();
+                    } else if let Some(ref tx) = ws_cmd_tx.0 {
+                        // Get the insertion direction (last navigation direction)
+                        let direction = app_state.last_nav_direction;
+                        let opposite_direction = match direction {
+                            EDGE_WEST => EDGE_EAST,
+                            EDGE_EAST => EDGE_WEST,
+                            EDGE_NORTH => EDGE_SOUTH,
+                            EDGE_SOUTH => EDGE_NORTH,
+                            EDGE_UP => EDGE_DOWN,
+                            EDGE_DOWN => EDGE_UP,
+                            _ => EDGE_NORTH,
+                        };
+
+                        // Get the paste vertex's current edges (to preserve other connections)
+                        let paste_edges = graph.vertices.get(&paste_id)
+                            .map(|v| v.edges)
+                            .unwrap_or([0; 6]);
+
+                        // Get current vertex's current edges
+                        let current_edges = graph.vertices.get(&current_id)
+                            .map(|v| v.edges)
+                            .unwrap_or([0; 6]);
+
+                        // Build new edges for current vertex: set the insertion direction to paste_id
+                        // Use u64::MAX for unchanged edges
+                        let mut new_current_edges = [u64::MAX; 6];
+                        new_current_edges[direction] = paste_id;
+
+                        // Build new edges for paste vertex: set opposite direction to current_id
+                        // Preserve all other edges
+                        let mut new_paste_edges = paste_edges;
+                        new_paste_edges[opposite_direction] = current_id;
+
+                        // Send SetEdges for current vertex
+                        let action_id1 = app_state.next_action_id;
+                        app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                        let _ = tx.send(WsCommand::SetEdges {
+                            action_id: action_id1,
+                            vertex_id: current_id,
+                            edges: new_current_edges,
+                        });
+
+                        // Send SetEdges for paste vertex
+                        let action_id2 = app_state.next_action_id;
+                        app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                        let _ = tx.send(WsCommand::SetEdges {
+                            action_id: action_id2,
+                            vertex_id: paste_id,
+                            edges: new_paste_edges,
+                        });
+
+                        // Optimistically update local graph
+                        if let Some(current_vertex) = graph.vertices.get_mut(&current_id) {
+                            current_vertex.edges[direction] = paste_id;
+                        }
+                        if let Some(paste_vertex) = graph.vertices.get_mut(&paste_id) {
+                            paste_vertex.edges[opposite_direction] = current_id;
+                        }
+
+                        let dir_name = match direction {
+                            EDGE_NORTH => "north",
+                            EDGE_SOUTH => "south",
+                            EDGE_WEST => "west",
+                            EDGE_EAST => "east",
+                            EDGE_UP => "up",
+                            EDGE_DOWN => "down",
+                            _ => "?",
+                        };
+                        app_state.status = format!("Pasted vertex {} (bag: {})", dir_name, app_state.bag.len());
+
+                        // Navigate to the pasted vertex
+                        app_state.history.push(current_id);
+                        app_state.current_vertex = Some(paste_id);
+                    }
+                } else {
+                    // No current vertex, just put it back
+                    app_state.bag.push(paste_id);
+                    app_state.status = "Cannot paste: no current vertex".to_string();
+                }
+            } else {
+                app_state.status = "Bag is empty".to_string();
+            }
+        }
         // Delete key: Delete current vertex (if editable)
         if i.key_pressed(egui::Key::Delete) && !i.modifiers.ctrl && app_state.input_mode == InputMode::Normal && app_state.connected {
             if let Some(current_id) = app_state.current_vertex {
@@ -1756,7 +1853,98 @@ fn ui_system(
                     }
                 });
             }
-        } else if app_state.show_identity_panel && app_state.nextcloud_login_state.is_none() && app_state.pending_identity_setup.is_none() {
+        } else if app_state.nextcloud_login_state.is_some() {
+            // Awaiting Nextcloud activation (login flow in progress)
+            let nc_url = app_state.nextcloud_login_state.as_ref().unwrap().nextcloud_url.clone();
+
+            ui.vertical_centered(|ui| {
+                ui.add_space(20.0);
+                ui.heading("Awaiting Nextcloud Activation");
+                ui.add_space(10.0);
+                ui.label(format!("Connecting to: {}", nc_url));
+                ui.add_space(10.0);
+                ui.label("Please complete the login in your web browser.");
+                ui.label("This will close automatically when done.");
+                ui.add_space(20.0);
+                ui.spinner();
+                ui.add_space(20.0);
+                if ui.button("Cancel").clicked() {
+                    app_state.nextcloud_login_state = None;
+                }
+            });
+            ctx.request_repaint();
+        } else if app_state.pending_identity_setup.is_some() {
+            // Choose display name (after successful Nextcloud login)
+            ui.vertical_centered(|ui| {
+                ui.add_space(10.0);
+                ui.heading("Choose Display Name");
+            });
+            ui.add_space(10.0);
+            ui.label("Logged in successfully!");
+            ui.add_space(5.0);
+            ui.label("Choose a display name for this identity.");
+            ui.label("(This is just a label - your real identity is the public key URL)");
+            ui.add_space(10.0);
+
+            // We need to handle this carefully due to borrowing
+            let mut create_action = false;
+            let mut cancel_action = false;
+
+            if let Some(ref mut pending_setup) = app_state.pending_identity_setup {
+                ui.horizontal(|ui| {
+                    ui.label("Display Name:");
+                    ui.text_edit_singleline(&mut pending_setup.display_name_input);
+                });
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Create Identity").clicked() {
+                        create_action = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel_action = true;
+                    }
+                });
+            }
+
+            // Handle actions outside the borrow
+            if cancel_action {
+                app_state.pending_identity_setup = None;
+                app_state.status = "Identity creation cancelled.".to_string();
+            }
+            if create_action {
+                if let Some(pending_setup) = app_state.pending_identity_setup.take() {
+                    // Setup identity (generate keys, upload, create share)
+                    let display_name = pending_setup.display_name_input.trim().to_string();
+                    let display_name = if display_name.is_empty() {
+                        pending_setup.username.clone()
+                    } else {
+                        display_name
+                    };
+                    match identity::setup_identity(&pending_setup.nextcloud_url, &pending_setup.username, &pending_setup.app_password, &display_name) {
+                        Ok((signing_key, share_url)) => {
+                            eprintln!("Identity created with display name: {}", display_name);
+                            eprintln!("Identity URL (real identity): {}", share_url);
+                            let new_identity = Identity {
+                                display_name: display_name.clone(),
+                                nextcloud_url: pending_setup.nextcloud_url,
+                                username: pending_setup.username,
+                                app_password: pending_setup.app_password,
+                                share_url,
+                                remembered_servers: Vec::new(),
+                                signing_key: Some(signing_key),
+                            };
+                            app_state.identity_config.identities.push(new_identity);
+                            let _ = app_state.identity_config.save();
+                            app_state.status = format!("Identity '{}' created successfully!", display_name);
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to setup identity: {}", e);
+                            app_state.status = format!("Failed to setup identity: {}", e);
+                        }
+                    }
+                }
+            }
+        } else if app_state.show_identity_panel {
             // Identity management mode
             ui.horizontal(|ui| {
                 ui.heading("Identity Management");
@@ -1963,9 +2151,9 @@ fn ui_system(
                 }
             }
         } else if app_state.show_bag_panel {
-            // Bag (clipboard) mode
+            // Bag mode
             ui.horizontal(|ui| {
-                ui.heading("Bag (Clipboard)");
+                ui.heading("Bag");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("✕").clicked() {
                         app_state.show_bag_panel = false;
@@ -1981,7 +2169,7 @@ fn ui_system(
                 }
             });
 
-            ui.label("Y=Yank | Ctrl+Y=Pop | G=Go to top");
+            ui.label("Y=Yank | P=Paste | G=Go | Ctrl+Y=Pop");
             ui.separator();
 
             if app_state.bag.is_empty() {
@@ -1990,35 +2178,83 @@ fn ui_system(
                 ui.label(format!("{} item(s):", app_state.bag.len()));
 
                 egui::ScrollArea::vertical()
-                    .max_height(300.0)
+                    .max_height(ui.available_height() - 20.0)
                     .show(ui, |ui| {
                         let mut remove_idx = None;
                         let mut jump_to = None;
 
+                        // Card dimensions for bag items - use same sizing as grid cells
+                        let zoom = 1.0f32; // Fixed zoom for sidebar
+                        let card_width = ui.available_width() - 16.0;
+                        let card_height = 140.0 * zoom; // Same as cell_height in grid
+                        let font_size = 13.0 * zoom;
+
                         for (i, &vertex_id) in app_state.bag.iter().rev().enumerate() {
                             let stack_idx = app_state.bag.len() - 1 - i;
+                            let is_top = i == 0;
+
+                            ui.add_space(4.0);
+
+                            // Top marker for the top item
+                            if is_top {
+                                ui.horizontal(|ui| {
+                                    ui.label("→ Next to paste:");
+                                });
+                            }
+
+                            // Allocate space for the card
+                            let (card_rect, response) = ui.allocate_exact_size(
+                                egui::vec2(card_width, card_height),
+                                egui::Sense::click(),
+                            );
+
+                            // Render the vertex card using same rendering as grid cells
+                            let painter = ui.painter();
+                            if let Some(vertex) = graph.vertices.get(&vertex_id) {
+                                render_vertex_card(
+                                    painter,
+                                    vertex,
+                                    vertex_id,
+                                    card_rect,
+                                    is_top, // highlight top item
+                                    zoom,
+                                    font_size,
+                                    &mut media_cache,
+                                    ctx,
+                                    &graph,
+                                );
+                            } else {
+                                // Vertex not loaded - show placeholder
+                                painter.rect_filled(card_rect, 4.0, egui::Color32::from_rgb(50, 50, 55));
+                                painter.rect_stroke(card_rect, 4.0, egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 80, 90)));
+                                painter.text(
+                                    card_rect.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    format!("Vertex {}", vertex_id),
+                                    egui::FontId::proportional(12.0),
+                                    egui::Color32::GRAY,
+                                );
+                            }
+
+                            // Handle click on card
+                            if response.clicked() {
+                                jump_to = Some(vertex_id);
+                            }
+
+                            // Action buttons below the card
                             ui.horizontal(|ui| {
-                                let is_top = i == 0;
-                                let prefix = if is_top { "→ " } else { "  " };
-
-                                let label = graph.vertices.get(&vertex_id)
-                                    .map(|v| {
-                                        let mime = v.mime.as_deref().unwrap_or("");
-                                        let text = String::from_utf8_lossy(&v.label);
-                                        let short: String = text.chars().take(15).collect();
-                                        format!("[{}] {}", mime.split('/').last().unwrap_or("?"), short)
-                                    })
-                                    .unwrap_or_else(|| format!("vertex {}", vertex_id));
-
-                                ui.label(format!("{}{}", prefix, label));
-
                                 if ui.small_button("Go").clicked() {
                                     jump_to = Some(vertex_id);
                                 }
-                                if ui.small_button("×").clicked() {
+                                if ui.small_button("Remove").clicked() {
                                     remove_idx = Some(stack_idx);
                                 }
                             });
+
+                            ui.add_space(4.0);
+                            if i < app_state.bag.len() - 1 {
+                                ui.separator();
+                            }
                         }
 
                         if let Some(idx) = remove_idx {
@@ -2118,104 +2354,8 @@ fn ui_system(
         }
     }
 
-    // Awaiting Nextcloud activation modal (shown when login flow is in progress)
-    let mut cancel_login = false;
-    if let Some(ref login_state) = app_state.nextcloud_login_state {
-        let nc_url = login_state.nextcloud_url.clone();
-        egui::Window::new("⏳ Awaiting Nextcloud Activation")
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(ctx, |ui| {
-                ui.add_space(10.0);
-                ui.label(format!("Connecting to: {}", nc_url));
-                ui.add_space(10.0);
-                ui.label("Please complete the login in your web browser.");
-                ui.label("This dialog will close automatically when done.");
-                ui.add_space(10.0);
-                ui.spinner();
-                ui.add_space(10.0);
-                if ui.button("Cancel").clicked() {
-                    cancel_login = true;
-                }
-            });
-        // Request repaint to keep polling
-        ctx.request_repaint();
-    }
-    if cancel_login {
-        app_state.nextcloud_login_state = None;
-    }
-
-    // Display name prompt modal (shown after successful Nextcloud login)
-    let mut identity_setup_action: Option<bool> = None; // Some(true) = create, Some(false) = cancel
-    if let Some(ref mut pending_setup) = app_state.pending_identity_setup {
-        egui::Window::new("🔑 Choose Display Name")
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(ctx, |ui| {
-                ui.add_space(10.0);
-                ui.label("Logged in successfully!");
-                ui.add_space(5.0);
-                ui.label("Choose a display name for this identity.");
-                ui.label("(This is just a label - your real identity is the public key URL)");
-                ui.add_space(10.0);
-                ui.horizontal(|ui| {
-                    ui.label("Display Name:");
-                    ui.text_edit_singleline(&mut pending_setup.display_name_input);
-                });
-                ui.add_space(10.0);
-                ui.horizontal(|ui| {
-                    if ui.button("Create Identity").clicked() {
-                        identity_setup_action = Some(true);
-                    }
-                    if ui.button("Cancel").clicked() {
-                        identity_setup_action = Some(false);
-                    }
-                });
-            });
-    }
-    // Handle identity setup action outside the borrow
-    if let Some(create) = identity_setup_action {
-        if create {
-            if let Some(pending_setup) = app_state.pending_identity_setup.take() {
-                // Setup identity (generate keys, upload, create share)
-                let display_name = pending_setup.display_name_input.trim().to_string();
-                let display_name = if display_name.is_empty() {
-                    pending_setup.username.clone()
-                } else {
-                    display_name
-                };
-                match identity::setup_identity(&pending_setup.nextcloud_url, &pending_setup.username, &pending_setup.app_password, &display_name) {
-                    Ok((signing_key, share_url)) => {
-                        eprintln!("Identity created with display name: {}", display_name);
-                        eprintln!("Identity URL (real identity): {}", share_url);
-                        let new_identity = Identity {
-                            display_name: display_name.clone(),
-                            nextcloud_url: pending_setup.nextcloud_url,
-                            username: pending_setup.username,
-                            app_password: pending_setup.app_password,
-                            share_url,
-                            remembered_servers: Vec::new(),
-                            signing_key: Some(signing_key),
-                        };
-                        app_state.identity_config.identities.push(new_identity);
-                        let _ = app_state.identity_config.save();
-                        app_state.status = format!("Identity '{}' created successfully!", display_name);
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to setup identity: {}", e);
-                        app_state.status = format!("Failed to setup identity: {}", e);
-                    }
-                }
-            }
-        } else {
-            app_state.pending_identity_setup = None;
-            app_state.status = "Identity creation cancelled.".to_string();
-        }
-    }
-
-    // Note: Identity management, Bag, Text input, and Recording are now rendered in the sidebar above
+    // Note: Nextcloud activation, display name prompt, identity management, bag, text input,
+    // and recording are all now rendered in the sidebar above
 
     // Handle text input keyboard shortcuts (Ctrl+Enter to submit, Escape to cancel)
     let mut submit_text = false;
@@ -3895,6 +4035,291 @@ fn draw_waveform(
     }
 }
 
+/// Render a vertex as a card preview in the given rect
+/// This uses the exact same rendering logic as the main grid cells
+fn render_vertex_card(
+    painter: &egui::Painter,
+    vertex: &Vertex,
+    vertex_id: u64,
+    rect: egui::Rect,
+    is_current: bool,
+    zoom: f32,
+    font_size: f32,
+    media_cache: &mut MediaCache,
+    ctx: &egui::Context,
+    graph: &GraphState,
+) {
+    let mime = vertex.mime.as_deref().unwrap_or("");
+    let primary_is_image = mime.starts_with("image/") || is_image_data(&vertex.label);
+    let primary_is_audio = mime.starts_with("audio/");
+
+    // Collect all content types present
+    let mut has_image = primary_is_image;
+    let mut has_audio = primary_is_audio;
+    let mut has_text = mime.starts_with("text/") && !mime.contains("gradesta-url");
+    let mut text_content: Option<String> = None;
+
+    // Check additional layers for images, audio, text
+    for layer in vertex.layers.values() {
+        if layer.mime.starts_with("image/") || is_image_data(&layer.data) {
+            has_image = true;
+        } else if layer.mime.starts_with("audio/") {
+            has_audio = true;
+        } else if layer.mime.starts_with("text/") && !layer.mime.contains("gradesta-url") {
+            has_text = true;
+            if text_content.is_none() {
+                text_content = String::from_utf8(layer.data.clone()).ok();
+            }
+        }
+    }
+
+    // For primary text content
+    if mime.starts_with("text/") && !mime.contains("gradesta-url") && text_content.is_none() {
+        text_content = String::from_utf8(vertex.label.clone()).ok();
+    }
+
+    // Different colors based on content type (same as grid cells)
+    let (bg_color, border_color) = if is_current {
+        (egui::Color32::from_rgb(50, 100, 70), egui::Color32::from_rgb(100, 200, 120))
+    } else if mime == "text/gradesta-url" {
+        (egui::Color32::from_rgb(60, 60, 90), egui::Color32::from_rgb(100, 100, 150))
+    } else if has_image {
+        (egui::Color32::from_rgb(40, 40, 45), egui::Color32::from_rgb(140, 100, 140))
+    } else if has_audio {
+        (egui::Color32::from_rgb(70, 60, 50), egui::Color32::from_rgb(140, 120, 100))
+    } else if has_text {
+        (egui::Color32::from_rgb(50, 60, 70), egui::Color32::from_rgb(100, 120, 140))
+    } else {
+        (egui::Color32::from_rgb(50, 50, 55), egui::Color32::from_rgb(80, 80, 90))
+    };
+
+    let corner_radius = 4.0 * zoom;
+
+    // Check for stacked cards (up/down connections)
+    let stack = compute_stack(graph, vertex_id);
+    let has_stack = stack.total > 1;
+
+    // Draw stacked card shadows behind the main card
+    if has_stack {
+        let shadow_color = egui::Color32::from_rgba_unmultiplied(30, 30, 35, 180);
+        let cards_to_show = (stack.total - stack.current_index - 1).min(3); // Cards below current
+        for i in (1..=cards_to_show).rev() {
+            let offset = i as f32 * 4.0 * zoom;
+            let shadow_rect = rect.translate(egui::vec2(offset, offset));
+            painter.rect_filled(shadow_rect, corner_radius, shadow_color);
+            painter.rect_stroke(shadow_rect, corner_radius, egui::Stroke::new(1.0 * zoom, egui::Color32::from_rgb(60, 60, 65)));
+        }
+        // Also draw cards above (offset in opposite direction)
+        let cards_above = stack.current_index.min(3);
+        for i in (1..=cards_above).rev() {
+            let offset = i as f32 * 4.0 * zoom;
+            let shadow_rect = rect.translate(egui::vec2(-offset, -offset));
+            painter.rect_filled(shadow_rect, corner_radius, shadow_color);
+            painter.rect_stroke(shadow_rect, corner_radius, egui::Stroke::new(1.0 * zoom, egui::Color32::from_rgb(60, 60, 65)));
+        }
+    }
+
+    painter.rect_filled(rect, corner_radius, bg_color);
+    painter.rect_stroke(rect, corner_radius, egui::Stroke::new(if is_current { 3.0 * zoom } else { 2.0 * zoom }, border_color));
+
+    // Draw stack position badge if this vertex is part of a stack
+    if has_stack {
+        let badge_text = format!("{}/{}", stack.current_index + 1, stack.total);
+        let badge_font = egui::FontId::proportional(font_size * 0.6);
+        let badge_pos = egui::pos2(rect.right() - 4.0 * zoom, rect.top() + 4.0 * zoom);
+        // Draw badge background
+        let badge_rect = egui::Rect::from_center_size(
+            badge_pos + egui::vec2(-12.0 * zoom, 6.0 * zoom),
+            egui::vec2(28.0 * zoom, 14.0 * zoom),
+        );
+        painter.rect_filled(badge_rect, 3.0 * zoom, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 180));
+        painter.text(
+            badge_pos,
+            egui::Align2::RIGHT_TOP,
+            badge_text,
+            badge_font,
+            egui::Color32::from_rgb(200, 200, 255),
+        );
+    }
+
+    // Calculate layout sections based on what content we have
+    let inner_rect = rect.shrink(4.0 * zoom);
+    let num_sections = (has_image as usize) + (has_audio as usize) + (has_text as usize);
+    let section_height = if num_sections > 0 { inner_rect.height() / num_sections as f32 } else { inner_rect.height() };
+
+    let mut y_offset = 0.0;
+
+    // Render image section
+    if has_image {
+        let section_rect = egui::Rect::from_min_size(
+            inner_rect.min + egui::vec2(0.0, y_offset),
+            egui::vec2(inner_rect.width(), section_height),
+        );
+
+        // Try primary layer first, then additional layers
+        let (img_data, img_mime) = if primary_is_image {
+            (&vertex.label, mime)
+        } else {
+            vertex.layers.values()
+                .find(|l| l.mime.starts_with("image/") || is_image_data(&l.data))
+                .map(|l| (&l.data, l.mime.as_str()))
+                .unwrap_or((&vertex.label, mime))
+        };
+
+        if let Some(tex) = get_or_load_texture(vertex_id, img_data, img_mime, media_cache, ctx) {
+            let tex_size = tex.size_vec2();
+            let scale = (section_rect.width() / tex_size.x).min(section_rect.height() / tex_size.y);
+            let scaled_size = tex_size * scale;
+            let img_rect = egui::Rect::from_center_size(section_rect.center(), scaled_size);
+            painter.image(tex.id(), img_rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE);
+        }
+        y_offset += section_height;
+    }
+
+    // Render audio waveform section
+    if has_audio {
+        let section_rect = egui::Rect::from_min_size(
+            inner_rect.min + egui::vec2(0.0, y_offset),
+            egui::vec2(inner_rect.width(), section_height),
+        ).shrink(2.0 * zoom);
+
+        let num_bars = (section_rect.width() / (3.0 * zoom)) as usize;
+        let num_bars = num_bars.max(10).min(64);
+
+        // Get audio data from primary or layers
+        let audio_data = if primary_is_audio {
+            &vertex.label
+        } else {
+            vertex.layers.values()
+                .find(|l| l.mime.starts_with("audio/"))
+                .map(|l| &l.data)
+                .unwrap_or(&vertex.label)
+        };
+
+        if let Some(waveform) = get_or_generate_waveform(vertex_id, audio_data, media_cache, num_bars) {
+            let waveform_color = if is_current {
+                egui::Color32::from_rgb(100, 200, 255)
+            } else {
+                egui::Color32::from_rgb(140, 120, 100)
+            };
+            draw_waveform(painter, section_rect, waveform, waveform_color, egui::Color32::TRANSPARENT);
+        }
+
+        // Draw small speaker icon
+        painter.text(
+            egui::pos2(section_rect.left() + 2.0 * zoom, section_rect.top() + 2.0 * zoom),
+            egui::Align2::LEFT_TOP,
+            "🔊",
+            egui::FontId::proportional(font_size * 0.6),
+            egui::Color32::from_rgba_unmultiplied(255, 255, 255, 150),
+        );
+        y_offset += section_height;
+    }
+
+    // Render text section
+    if has_text {
+        let section_rect = egui::Rect::from_min_size(
+            inner_rect.min + egui::vec2(0.0, y_offset),
+            egui::vec2(inner_rect.width(), section_height),
+        );
+
+        if let Some(ref text) = text_content {
+            let text_font_size = font_size * 0.9;
+            let char_width = text_font_size * 0.5;
+            let line_height = text_font_size * 1.2;
+            let chars_per_line = ((section_rect.width() - 4.0 * zoom) / char_width) as usize;
+            let chars_per_line = chars_per_line.max(5);
+            let max_lines = ((section_rect.height() - 4.0 * zoom) / line_height) as usize;
+            let max_lines = max_lines.max(1);
+
+            // Word wrap the text, up to tweet length (280 chars) before truncating
+            let max_chars = 280.min(chars_per_line * max_lines);
+            let text_to_wrap: String = text.chars().take(max_chars).collect();
+            let needs_ellipsis = text.chars().count() > max_chars;
+
+            // Simple word wrap
+            let mut lines: Vec<String> = Vec::new();
+            let mut current_line = String::new();
+
+            for word in text_to_wrap.split_whitespace() {
+                if current_line.is_empty() {
+                    current_line = word.to_string();
+                } else if current_line.chars().count() + 1 + word.chars().count() <= chars_per_line {
+                    current_line.push(' ');
+                    current_line.push_str(word);
+                } else {
+                    lines.push(current_line);
+                    current_line = word.to_string();
+                    if lines.len() >= max_lines {
+                        break;
+                    }
+                }
+            }
+            if !current_line.is_empty() && lines.len() < max_lines {
+                lines.push(current_line);
+            }
+
+            // Add ellipsis to last line if truncated
+            if needs_ellipsis && !lines.is_empty() {
+                let last = lines.last_mut().unwrap();
+                if last.chars().count() + 1 <= chars_per_line {
+                    last.push('…');
+                } else {
+                    // Truncate last word to make room
+                    let truncated: String = last.chars().take(chars_per_line - 1).collect();
+                    *last = format!("{}…", truncated);
+                }
+            }
+
+            // Draw each line
+            let total_text_height = lines.len() as f32 * line_height;
+            let start_y = section_rect.center().y - total_text_height / 2.0 + line_height / 2.0;
+
+            for (i, line) in lines.iter().enumerate() {
+                painter.text(
+                    egui::pos2(section_rect.center().x, start_y + i as f32 * line_height),
+                    egui::Align2::CENTER_CENTER,
+                    line,
+                    egui::FontId::proportional(text_font_size),
+                    egui::Color32::WHITE,
+                );
+            }
+        }
+    }
+
+    // If no content at all, show placeholder
+    if !has_image && !has_audio && !has_text {
+        let icon = if mime == "text/gradesta-url" {
+            "🌀"
+        } else if mime == "text/x-url" {
+            "📎"
+        } else if mime.starts_with("video/") {
+            "🎬"
+        } else if !mime.is_empty() {
+            "📦"
+        } else {
+            "◻"
+        };
+
+        // For portals, also show destination
+        let display = if mime == "text/gradesta-url" {
+            let url = String::from_utf8_lossy(&vertex.label);
+            let short_url: String = url.chars().take(20).collect();
+            format!("{} {}", icon, if url.len() > 20 { format!("{}…", short_url) } else { short_url })
+        } else {
+            icon.to_string()
+        };
+
+        painter.text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            display,
+            egui::FontId::proportional(font_size),
+            egui::Color32::WHITE,
+        );
+    }
+}
+
 fn run_audio_recording(samples: Arc<Mutex<Vec<f32>>>, stop_signal: Arc<Mutex<bool>>, sample_rate_out: Arc<Mutex<u32>>) -> Result<()> {
     let host = cpal::default_host();
     let device = host.default_input_device()
@@ -4149,6 +4574,18 @@ fn run_ws(uri: String, net_tx: Sender<ServerEvent>, cmd_rx: Receiver<WsCommand>)
                     buf.push(MSG_CLIENT_DELETE_VERTEX);
                     buf.extend_from_slice(&action_id.to_be_bytes());
                     buf.extend_from_slice(&vertex_id.to_be_bytes());
+                    socket.send(Message::Binary(buf))?;
+                }
+                WsCommand::SetEdges { action_id, vertex_id, edges } => {
+                    // 0x83: Type (1) + Action ID (8) + Vertex ID (8) + Edges (6x8)
+                    eprintln!("SEND SetEdges action={} vertex={} edges={:?}", action_id, vertex_id, edges);
+                    let mut buf = Vec::with_capacity(1 + 8 + 8 + 48);
+                    buf.push(MSG_CLIENT_SET_EDGES);
+                    buf.extend_from_slice(&action_id.to_be_bytes());
+                    buf.extend_from_slice(&vertex_id.to_be_bytes());
+                    for edge in &edges {
+                        buf.extend_from_slice(&edge.to_be_bytes());
+                    }
                     socket.send(Message::Binary(buf))?;
                 }
             }
