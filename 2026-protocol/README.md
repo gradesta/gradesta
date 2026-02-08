@@ -35,12 +35,24 @@ Client to server
    - Vertex id: 8 bytes
    - Mime-type: UTF-8 bytes, null-terminated
    - Label/media: bytes to end of message
-6. Identification response
+6. Create vertex
+   - Type: 1 byte = 0b1000 0110
+   - Action id: 8 bytes
+   - From vertex id: 8 bytes (source vertex to connect from, 0 for standalone)
+   - Direction: 1 byte (0=west, 1=east, 2=north, 3=south, 4=up, 5=down)
+   - Layer: 4 bytes (big-endian uint32)
+   - Mime-type: UTF-8 bytes, null-terminated
+   - Content: bytes to end of message
+7. Delete vertex
+   - Type: 1 byte = 0b1000 0111
+   - Action id: 8 bytes
+   - Vertex id: 8 bytes
+8. Identification response
    - Type: 1 byte = 0b1001 0000
    - Action id: 8 bytes (must match the request)
    - Identity URL: UTF-8 bytes, null-terminated (public share URL of identity.pub)
    - Signature: 64 bytes (ECDSA P-256 signature of nonce || timestamp from request)
-7. Identification refused
+9. Identification refused
    - Type: 1 byte = 0b1001 0001
    - Action id: 8 bytes (must match the request)
 
@@ -110,6 +122,20 @@ text/x-http-stream-url
   - Tokens expire after 1 hour if unused
   - Tokens are tied to the WebSocket session that issued them
   - All tokens for a session are revoked when the WebSocket disconnects
+
+Vertex deletion
+---------------
+When a client sends "Delete vertex":
+1. Server checks if the vertex is editable (edit_mask != 0)
+2. Server removes the vertex and its content from storage
+3. Server reconnects neighbors to maintain graph connectivity:
+   - For each axis (E↔W, N↔S, U↔D), if the deleted vertex had neighbors on both sides, connect them to each other
+   - Example: If A→X→B (east chain) and X is deleted, A→B is created
+4. Server sends "Set edges" updates to all affected neighbors
+5. Server signals deletion to clients by sending "Set edges" for the deleted vertex with:
+   - All edges = 0
+   - Edit mask = 0
+6. Clients should remove the vertex from their local graph when receiving this signal
 
 Notes
 - A vertex with mime-type text/gradesta-url should be replaced by the landmark vertex that the contained URI points to, allowing patches to stitch into an ongoing graph.
