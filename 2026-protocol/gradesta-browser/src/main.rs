@@ -1532,6 +1532,9 @@ fn ui_system(
     // GraphStartRecording - Push-to-talk recording
     // Hold to record, release to stop and save
     if cmd_start_recording && app_state.input_mode == InputMode::Normal && app_state.connected {
+        // Stop any currently playing audio before recording
+        stop_audio(&playback_state);
+
         // Start recording when key is pressed
         let direction = app_state.last_nav_direction;
 
