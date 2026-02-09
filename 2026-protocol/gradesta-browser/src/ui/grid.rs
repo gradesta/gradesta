@@ -72,7 +72,11 @@ pub fn render_grid_view(
         let offset_x = available.x / 2.0 - current_cell_x;
         let offset_y = available.y / 2.0 - current_cell_y;
 
-        let painter = ui.painter();
+        // Get the actual CentralPanel bounds - ui.max_rect() is the panel's allocated area
+        // ui.clip_rect() returns the full content_rect which includes other panels
+        let panel_rect = ui.max_rect();
+        // Create a painter that clips to the CentralPanel area only
+        let painter = ui.painter().with_clip_rect(panel_rect);
         let base_pos = panel_min + egui::vec2(offset_x, offset_y);
 
         // Draw edge lines first (behind cells)
@@ -128,16 +132,16 @@ pub fn render_grid_view(
                     let is_current = vertex_id == current_id;
 
                     if let Some(vertex) = graph.vertices.get(&vertex_id) {
-                        render_vertex_card(painter, vertex, vertex_id, rect, is_current, zoom, font_size, media_cache, ctx, graph);
+                        render_vertex_card(&painter, vertex, vertex_id, rect, is_current, zoom, font_size, media_cache, ctx, graph);
 
                         // Draw direction arrow indicator on current cell
                         if is_current {
-                            draw_direction_arrow(painter, rect, app_state.last_nav_direction, zoom);
+                            draw_direction_arrow(&painter, rect, app_state.last_nav_direction, zoom);
                         }
 
                         // Draw ghost edge indicators
                         if let Some(ghosts) = grid.ghost_edges.get(&vertex_id) {
-                            draw_ghost_indicators(painter, rect, ghosts, zoom);
+                            draw_ghost_indicators(&painter, rect, ghosts, zoom);
                         }
                     } else {
                         // No vertex data - just draw empty cell
