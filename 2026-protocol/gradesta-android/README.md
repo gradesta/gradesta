@@ -37,6 +37,28 @@ Android client for Gradesta graph-based content management.
 ./gradlew assembleDebug
 ```
 
+### NixOS / Nix Shell
+
+On NixOS, use the provided `shell.nix` which sets up an FHS environment:
+
+```bash
+# Enter nix-shell
+nix-shell
+
+# Build the app
+android-fhs-env -c './gradlew assembleDebug'
+
+# Create emulator AVD (first time only)
+android-fhs-env -c 'avdmanager create avd -n gradesta_avd -k "system-images;android-34;google_apis;x86_64" --device "pixel_5"'
+
+# Run the emulator
+android-fhs-env -c 'emulator -avd gradesta_avd'
+
+# Install and launch the app (in another terminal)
+android-fhs-env -c 'adb install -r app/build/outputs/apk/debug/app-debug.apk'
+android-fhs-env -c 'adb shell am start -n com.gradesta.android/.MainActivity'
+```
+
 ## Architecture
 
 - **Kotlin + Jetpack Compose**: Modern declarative UI
