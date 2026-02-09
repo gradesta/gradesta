@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Gradesta</string>
+    <string name="connect">Connect</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="server_url">Server URL</string>
+    <string name="landmark">Landmark</string>
+    <string name="connecting">Connecting...</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
+    <string name="error">Error</string>
+    <string name="settings">Settings</string>
+    <string name="record_audio">Record audio</string>
+    <string name="take_photo">Take photo</string>
+    <string name="add_text">Add text</string>
+    <string name="add_attachment">Add attachment</string>
+</resources>

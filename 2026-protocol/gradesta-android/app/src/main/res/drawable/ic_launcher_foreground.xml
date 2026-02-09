@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Simple "G" letter for Gradesta -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,30
+                         C35,30 24,42 24,54
+                         C24,66 35,78 54,78
+                         C65,78 72,72 76,66
+                         L76,54
+                         L54,54
+                         L54,62
+                         L66,62
+                         C64,68 60,70 54,70
+                         C42,70 34,62 34,54
+                         C34,46 42,38 54,38
+                         C62,38 68,42 70,48
+                         L80,44
+                         C76,36 66,30 54,30
+                         Z"/>
+</vector>
