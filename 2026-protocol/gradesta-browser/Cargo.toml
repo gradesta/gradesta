@@ -68,3 +68,7 @@ tts = "0.26"
 arboard = { version = "3.4", features = ["wayland-data-control"] }
 # Timestamp formatting for debug logs
 chrono = "0.4"
+# Base64 encoding for HTML export
+base64 = "0.22"
+# Native file dialogs for export
+rfd = "0.14"

@@ -3,6 +3,7 @@
 //! This module replaces the modal dialogs with a unified sidebar-based UI.
 
 mod bag;
+mod export;
 mod identification;
 mod identity;
 mod image;
@@ -16,64 +17,10 @@ mod video;
 use bevy_egui::egui;
 
 pub use keybindings::{render_keybindings_editor, KeybindingsEditorState, KeybindingsAction};
+pub use export::{render_export_panel, ExportAction};
 
-/// Direction for creating new vertices or recording audio
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Direction {
-    West,
-    East,
-    North,
-    South,
-    Up,
-    Down,
-}
-
-impl Direction {
-    pub fn to_edge_index(&self) -> usize {
-        match self {
-            Direction::West => 0,
-            Direction::East => 1,
-            Direction::North => 2,
-            Direction::South => 3,
-            Direction::Up => 4,
-            Direction::Down => 5,
-        }
-    }
-
-    pub fn from_edge_index(index: usize) -> Option<Self> {
-        match index {
-            0 => Some(Direction::West),
-            1 => Some(Direction::East),
-            2 => Some(Direction::North),
-            3 => Some(Direction::South),
-            4 => Some(Direction::Up),
-            5 => Some(Direction::Down),
-            _ => None,
-        }
-    }
-
-    pub fn name(&self) -> &'static str {
-        match self {
-            Direction::West => "West",
-            Direction::East => "East",
-            Direction::North => "North",
-            Direction::South => "South",
-            Direction::Up => "Up",
-            Direction::Down => "Down",
-        }
-    }
-
-    pub fn arrow(&self) -> &'static str {
-        match self {
-            Direction::West => "←",
-            Direction::East => "→",
-            Direction::North => "↑",
-            Direction::South => "↓",
-            Direction::Up => "⬆",
-            Direction::Down => "⬇",
-        }
-    }
-}
+// Re-export Direction from state for backwards compatibility
+pub use crate::state::Direction;
 
 /// Sidebar display mode - determines what content is shown in the sidebar
 #[derive(Clone, Debug)]
@@ -126,6 +73,9 @@ pub enum SidebarMode {
 
     /// Keybindings editor
     Keybindings,
+
+    /// HTML export panel
+    Export,
 }
 
 impl Default for SidebarMode {
@@ -245,5 +195,6 @@ pub fn get_help_text(state: &SidebarState) -> &'static str {
         SidebarMode::TextInput { .. } => "Ctrl+Enter: Save | Escape: Cancel",
         SidebarMode::Bag => "Y: Yank | G: Go to top | Ctrl+Y: Pop | Escape: Close",
         SidebarMode::Keybindings => "Enter: Edit | Escape: Close",
+        SidebarMode::Export => "E/W/N/S/U/D: Toggle directions | Enter: Export | Escape: Cancel",
     }
 }

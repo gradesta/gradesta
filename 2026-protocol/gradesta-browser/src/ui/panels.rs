@@ -25,6 +25,7 @@ pub enum BottomPanelAction {
     OpenKeybindings,
     ToggleIdentities,
     ToggleBag,
+    OpenExport,
 }
 
 /// Render the top panel with URL bar (server + landmark) and connection controls
@@ -148,6 +149,11 @@ pub fn render_bottom_panel(
                 let id_count = app_state.identity_config.identities.len();
                 if id_count > 0 {
                     ui.label(format!("{} id", id_count));
+                }
+                ui.separator();
+                // Export button
+                if ui.button("📤 Export").on_hover_text("Export graph section to HTML").clicked() {
+                    action = BottomPanelAction::OpenExport;
                 }
                 ui.separator();
                 // Bag indicator

@@ -9,6 +9,7 @@ mod audio;
 mod commands;
 mod debug_log;
 mod events;
+mod export;
 mod graph;
 mod identity;
 mod keybindings;
@@ -511,6 +512,12 @@ fn ui_system(
                     ui.label(format!("{} id", id_count));
                 }
                 ui.separator();
+                // Export button
+                if ui.button("📤 Export").on_hover_text("Export graph section to HTML").clicked() {
+                    app_state.sidebar.mode = sidebar::SidebarMode::Export;
+                    app_state.export_state = export::ExportState::new();
+                }
+                ui.separator();
                 // Bag indicator
                 let bag_count = app_state.bag.len();
                 let bag_label = if bag_count > 0 {
@@ -685,6 +692,38 @@ fn ui_system(
         ui::SidebarContentAction::ClearDebugLog => {
             debug_log::clear_log(&mut app_state);
             app_state.status = "Debug log cleared".to_string();
+        }
+        ui::SidebarContentAction::ExportToggleDirection(dir) => {
+            app_state.export_state.toggle_direction(dir);
+        }
+        ui::SidebarContentAction::ExportConfirm => {
+            if let Some(current_id) = app_state.current_vertex {
+                let data = export::collect_vertices_for_export(
+                    &graph,
+                    current_id,
+                    &app_state.export_state.directions,
+                );
+                let title = format!("Gradesta Export - {}",
+                    graph.context_uri.as_deref().unwrap_or("Unknown"));
+                let html = export::generate_html(&data, &title);
+                match export::save_html_file(&html) {
+                    Ok(path) => {
+                        app_state.status = format!("Exported to: {}", path);
+                        app_state.sidebar.mode = sidebar::SidebarMode::Preview;
+                        app_state.export_state = export::ExportState::new();
+                    }
+                    Err(e) => {
+                        app_state.status = format!("Export failed: {}", e);
+                    }
+                }
+            } else {
+                app_state.status = "No vertex selected for export".to_string();
+            }
+        }
+        ui::SidebarContentAction::ExportCancel => {
+            app_state.sidebar.mode = sidebar::SidebarMode::Preview;
+            app_state.export_state = export::ExportState::new();
+            app_state.status = "Export cancelled".to_string();
         }
         ui::SidebarContentAction::None => {}
     }

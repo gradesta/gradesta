@@ -26,6 +26,8 @@ pub enum Context {
     Authentication,
     /// Navigation panel sidebar
     NavPanel,
+    /// Export panel for HTML export
+    Export,
 }
 
 impl Context {
@@ -39,6 +41,7 @@ impl Context {
             Context::Recording => "Recording",
             Context::Authentication => "Authentication",
             Context::NavPanel => "Navigation Panel",
+            Context::Export => "Export",
         }
     }
 
@@ -52,6 +55,7 @@ impl Context {
             Context::Recording => "recording",
             Context::Authentication => "authentication",
             Context::NavPanel => "nav_panel",
+            Context::Export => "export",
         }
     }
 
@@ -64,6 +68,7 @@ impl Context {
             Context::Recording,
             Context::Authentication,
             Context::NavPanel,
+            Context::Export,
         ]
     }
 }
@@ -188,6 +193,26 @@ pub enum Command {
     AuthAcceptRemember,
     /// Refuse identification request
     AuthRefuse,
+
+    // === Export Context Commands ===
+    /// Open HTML export panel
+    GlobalExportHtml,
+    /// Confirm export in export panel
+    ExportConfirm,
+    /// Cancel export panel
+    ExportCancel,
+    /// Toggle East direction for export
+    ExportToggleEast,
+    /// Toggle West direction for export
+    ExportToggleWest,
+    /// Toggle North direction for export
+    ExportToggleNorth,
+    /// Toggle South direction for export
+    ExportToggleSouth,
+    /// Toggle Up direction for export
+    ExportToggleUp,
+    /// Toggle Down direction for export
+    ExportToggleDown,
 }
 
 impl Command {
@@ -253,6 +278,16 @@ impl Command {
             Command::AuthAccept => "auth.accept",
             Command::AuthAcceptRemember => "auth.accept_remember",
             Command::AuthRefuse => "auth.refuse",
+            // Export
+            Command::GlobalExportHtml => "global.export_html",
+            Command::ExportConfirm => "export.confirm",
+            Command::ExportCancel => "export.cancel",
+            Command::ExportToggleEast => "export.toggle_east",
+            Command::ExportToggleWest => "export.toggle_west",
+            Command::ExportToggleNorth => "export.toggle_north",
+            Command::ExportToggleSouth => "export.toggle_south",
+            Command::ExportToggleUp => "export.toggle_up",
+            Command::ExportToggleDown => "export.toggle_down",
         }
     }
 
@@ -318,6 +353,16 @@ impl Command {
             "auth.accept" => Some(Command::AuthAccept),
             "auth.accept_remember" => Some(Command::AuthAcceptRemember),
             "auth.refuse" => Some(Command::AuthRefuse),
+            // Export
+            "global.export_html" => Some(Command::GlobalExportHtml),
+            "export.confirm" => Some(Command::ExportConfirm),
+            "export.cancel" => Some(Command::ExportCancel),
+            "export.toggle_east" => Some(Command::ExportToggleEast),
+            "export.toggle_west" => Some(Command::ExportToggleWest),
+            "export.toggle_north" => Some(Command::ExportToggleNorth),
+            "export.toggle_south" => Some(Command::ExportToggleSouth),
+            "export.toggle_up" => Some(Command::ExportToggleUp),
+            "export.toggle_down" => Some(Command::ExportToggleDown),
             _ => None,
         }
     }
@@ -384,6 +429,16 @@ impl Command {
             Command::AuthAccept => "Accept identification",
             Command::AuthAcceptRemember => "Accept and remember server",
             Command::AuthRefuse => "Refuse identification",
+            // Export
+            Command::GlobalExportHtml => "Export graph section to HTML",
+            Command::ExportConfirm => "Confirm export",
+            Command::ExportCancel => "Cancel export",
+            Command::ExportToggleEast => "Toggle East direction",
+            Command::ExportToggleWest => "Toggle West direction",
+            Command::ExportToggleNorth => "Toggle North direction",
+            Command::ExportToggleSouth => "Toggle South direction",
+            Command::ExportToggleUp => "Toggle Up direction",
+            Command::ExportToggleDown => "Toggle Down direction",
         }
     }
 
@@ -446,6 +501,17 @@ impl Command {
             | Command::AuthAccept
             | Command::AuthAcceptRemember
             | Command::AuthRefuse => Context::Authentication,
+
+            Command::GlobalExportHtml => Context::Global,
+
+            Command::ExportConfirm
+            | Command::ExportCancel
+            | Command::ExportToggleEast
+            | Command::ExportToggleWest
+            | Command::ExportToggleNorth
+            | Command::ExportToggleSouth
+            | Command::ExportToggleUp
+            | Command::ExportToggleDown => Context::Export,
         }
     }
 
@@ -511,6 +577,16 @@ impl Command {
             Command::AuthAccept,
             Command::AuthAcceptRemember,
             Command::AuthRefuse,
+            // Export
+            Command::GlobalExportHtml,
+            Command::ExportConfirm,
+            Command::ExportCancel,
+            Command::ExportToggleEast,
+            Command::ExportToggleWest,
+            Command::ExportToggleNorth,
+            Command::ExportToggleSouth,
+            Command::ExportToggleUp,
+            Command::ExportToggleDown,
         ]
     }
 

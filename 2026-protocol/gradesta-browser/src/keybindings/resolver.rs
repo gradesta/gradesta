@@ -56,6 +56,7 @@ impl KeybindingResolver {
                     Context::Recording => "recording",
                     Context::Authentication => "auth",
                     Context::NavPanel => "nav_panel",
+                    Context::Export => "export",
                 };
                 let slug = format!("{}.{}", ctx_name, action);
 
@@ -318,6 +319,7 @@ impl KeybindingResolver {
                 Context::Recording => { config.recording.insert(action, value); }
                 Context::Authentication => { config.authentication.insert(action, value); }
                 Context::NavPanel => { config.nav_panel.insert(action, value); }
+                Context::Export => { config.export.insert(action, value); }
             }
         }
 

@@ -46,6 +46,10 @@ pub enum SidebarContentAction {
     ApplyPreset(keybindings::Preset),
     CloseDebugPanel,
     ClearDebugLog,
+    // Export actions
+    ExportToggleDirection(crate::state::Direction),
+    ExportConfirm,
+    ExportCancel,
 }
 
 /// Render the sidebar content panel
@@ -83,6 +87,8 @@ pub fn render_sidebar_content(
         render_bag_panel(ui, ctx, app_state, graph, media_cache)
     } else if matches!(app_state.sidebar.mode, sidebar::SidebarMode::Keybindings) {
         render_keybindings_mode(ui, app_state)
+    } else if matches!(app_state.sidebar.mode, sidebar::SidebarMode::Export) {
+        render_export_mode(ui, app_state)
     } else if app_state.show_debug_panel {
         render_debug_panel(ui, app_state)
     } else {
@@ -1088,4 +1094,17 @@ fn render_preview_mode(
     }
 
     SidebarContentAction::None
+}
+
+fn render_export_mode(ui: &mut egui::Ui, app_state: &AppState) -> SidebarContentAction {
+    let export_action = sidebar::render_export_panel(ui, &app_state.export_state);
+
+    match export_action {
+        sidebar::ExportAction::ToggleDirection(dir) => {
+            SidebarContentAction::ExportToggleDirection(dir)
+        }
+        sidebar::ExportAction::Confirm => SidebarContentAction::ExportConfirm,
+        sidebar::ExportAction::Cancel => SidebarContentAction::ExportCancel,
+        sidebar::ExportAction::None => SidebarContentAction::None,
+    }
 }

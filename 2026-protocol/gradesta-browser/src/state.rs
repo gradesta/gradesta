@@ -10,6 +10,7 @@ use std::time::Instant;
 
 use bevy::prelude::*;
 
+use crate::export::ExportState;
 use crate::identity::IdentityConfig;
 use crate::keybindings::{KeybindingResolver, KeybindingsConfig};
 use crate::sidebar::{KeybindingsEditorState, SidebarState};
@@ -87,6 +88,102 @@ pub const EDGE_NORTH: usize = 2;
 pub const EDGE_SOUTH: usize = 3;
 pub const EDGE_UP: usize = 4;
 pub const EDGE_DOWN: usize = 5;
+
+/// Direction enum for graph navigation and operations
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Direction {
+    West,
+    East,
+    North,
+    South,
+    Up,
+    Down,
+}
+
+impl Direction {
+    /// Convert to edge index
+    pub fn to_edge_index(self) -> usize {
+        match self {
+            Direction::West => EDGE_WEST,
+            Direction::East => EDGE_EAST,
+            Direction::North => EDGE_NORTH,
+            Direction::South => EDGE_SOUTH,
+            Direction::Up => EDGE_UP,
+            Direction::Down => EDGE_DOWN,
+        }
+    }
+
+    /// Create from edge index
+    pub fn from_edge_index(index: usize) -> Option<Self> {
+        match index {
+            EDGE_WEST => Some(Direction::West),
+            EDGE_EAST => Some(Direction::East),
+            EDGE_NORTH => Some(Direction::North),
+            EDGE_SOUTH => Some(Direction::South),
+            EDGE_UP => Some(Direction::Up),
+            EDGE_DOWN => Some(Direction::Down),
+            _ => None,
+        }
+    }
+
+    /// Human-readable name
+    pub fn name(self) -> &'static str {
+        match self {
+            Direction::West => "West",
+            Direction::East => "East",
+            Direction::North => "North",
+            Direction::South => "South",
+            Direction::Up => "Up",
+            Direction::Down => "Down",
+        }
+    }
+
+    /// Arrow character for display
+    pub fn arrow(self) -> &'static str {
+        match self {
+            Direction::West => "←",
+            Direction::East => "→",
+            Direction::North => "↑",
+            Direction::South => "↓",
+            Direction::Up => "⬆",
+            Direction::Down => "⬇",
+        }
+    }
+
+    /// Get the opposite direction
+    pub fn opposite(self) -> Direction {
+        match self {
+            Direction::West => Direction::East,
+            Direction::East => Direction::West,
+            Direction::North => Direction::South,
+            Direction::South => Direction::North,
+            Direction::Up => Direction::Down,
+            Direction::Down => Direction::Up,
+        }
+    }
+
+    /// All directions
+    pub fn all() -> &'static [Direction] {
+        &[
+            Direction::West,
+            Direction::East,
+            Direction::North,
+            Direction::South,
+            Direction::Up,
+            Direction::Down,
+        ]
+    }
+
+    /// Horizontal/vertical directions (excluding up/down stacks)
+    pub fn cardinal() -> &'static [Direction] {
+        &[
+            Direction::West,
+            Direction::East,
+            Direction::North,
+            Direction::South,
+        ]
+    }
+}
 
 /// Key repeat timing constants
 pub const KEY_REPEAT_DELAY: std::time::Duration = std::time::Duration::from_millis(400);
@@ -251,6 +348,8 @@ pub struct AppState {
     pub debug_filter: DebugFilter,
     /// Previous context for detecting changes
     pub debug_last_context: Option<String>,
+    // Export state
+    pub export_state: ExportState,
 }
 
 impl Default for AppState {
@@ -320,6 +419,7 @@ impl Default for AppState {
             debug_log_file: None,
             debug_filter: DebugFilter::default(),
             debug_last_context: None,
+            export_state: ExportState::new(),
         }
     }
 }
