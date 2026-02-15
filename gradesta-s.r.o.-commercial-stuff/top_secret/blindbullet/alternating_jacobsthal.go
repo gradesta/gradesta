@@ -45,9 +45,8 @@ type AlternatingJacobsthalChapter struct {
 	scrollOffsetInputBuffer string
 	
 	// Help dialog
-	showHelp bool
-	helpScrollOffset int
-	
+	helpState HelpDialogState
+
 	// Number of cells that must match for offset finding (default 3)
 	matchCellCount int
 	
@@ -728,7 +727,7 @@ func (a *AlternatingJacobsthalChapter) Draw(screen *ebiten.Image) {
 	}
 	
 	// Draw help dialog if open
-	if a.showHelp {
+	if a.helpState.ShowHelp {
 		a.drawHelpDialog(screen)
 	}
 	
@@ -918,7 +917,7 @@ func (a *AlternatingJacobsthalChapter) drawHelpDialog(screen *ebiten.Image) {
 	}
 	
 	// Draw scrollable content
-	startY := int(dialogY) + 50 - a.helpScrollOffset
+	startY := int(dialogY) + 50 - a.helpState.HelpScrollOffset
 	lineHeight := 15
 	
 	for i, line := range helpLines {
@@ -942,7 +941,7 @@ func (a *AlternatingJacobsthalChapter) drawHelpDialog(screen *ebiten.Image) {
 	totalHeight := len(helpLines) * lineHeight
 	if totalHeight > int(dialogHeight-70) {
 		// Show scroll position
-		scrollText := fmt.Sprintf("Scroll: %d/%d", a.helpScrollOffset, totalHeight-int(dialogHeight-70))
+		scrollText := fmt.Sprintf("Scroll: %d/%d", a.helpState.HelpScrollOffset, totalHeight-int(dialogHeight-70))
 		scrollBounds := text.BoundString(basicfont.Face7x13, scrollText)
 		scrollX := int(dialogX + dialogWidth - float64(scrollBounds.Dx()) - 10)
 		scrollY := int(dialogY + dialogHeight - 20)

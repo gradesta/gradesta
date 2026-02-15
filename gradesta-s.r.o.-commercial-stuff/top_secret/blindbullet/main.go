@@ -34,6 +34,7 @@ const (
 	StateAlternatingJacobsthal
 	StateSchwingerLimit
 	StateEssenceOfSelf
+	StateZeroGenesis
 )
 
 // Chapter represents a selectable chapter
@@ -53,6 +54,7 @@ const (
 	ChapterAlternatingJacobsthal
 	ChapterSchwingerLimit
 	ChapterEssenceOfSelf
+	ChapterZeroGenesis
 	ChapterExit
 	ChapterCount // Total number of chapters
 )
@@ -73,6 +75,7 @@ type Game struct {
 	grammarForFiniteSentences    *GrammarForFiniteSentencesChapter
 	schwingerLimit               *SchwingerLimitChapter
 	essenceOfSelf                *EssenceOfSelfChapter
+	zeroGenesis                  *ZeroGenesisChapter
 	selectedChapter              Chapter
 }
 
@@ -93,6 +96,7 @@ func NewGame() *Game {
 		grammarForFiniteSentences:    NewGrammarForFiniteSentencesChapter(),
 		schwingerLimit:               NewSchwingerLimitChapter(),
 		essenceOfSelf:                NewEssenceOfSelfChapter(),
+		zeroGenesis:                  NewZeroGenesisChapter(),
 		selectedChapter:              ChapterMaxwellsDaemon,
 	}
 }
@@ -143,6 +147,8 @@ func (g *Game) Update() error {
 				g.state = StateSchwingerLimit
 			case ChapterEssenceOfSelf:
 				g.state = StateEssenceOfSelf
+			case ChapterZeroGenesis:
+				g.state = StateZeroGenesis
 			case ChapterExit:
 				return errors.New("user requested exit")
 			}
@@ -234,6 +240,13 @@ func (g *Game) Update() error {
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !g.essenceOfSelf.WasEscConsumed() {
 			g.state = StateLaunchScreen
 		}
+	case StateZeroGenesis:
+		if err := g.zeroGenesis.Update(); err != nil {
+			return err
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !g.zeroGenesis.WasEscConsumed() {
+			g.state = StateLaunchScreen
+		}
 	case StateStairs:
 		if err := g.stairs.Update(); err != nil {
 			return err
@@ -294,6 +307,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.schwingerLimit.Draw(screen)
 	case StateEssenceOfSelf:
 		g.essenceOfSelf.Draw(screen)
+	case StateZeroGenesis:
+		g.zeroGenesis.Draw(screen)
 	}
 }
 
@@ -330,6 +345,7 @@ func (g *Game) drawLaunchScreen(screen *ebiten.Image) {
 		{"The Alternating Jacobsthal sequence", ChapterAlternatingJacobsthal},
 		{"The Schwinger Limit", ChapterSchwingerLimit},
 		{"The Essence of the Self", ChapterEssenceOfSelf},
+		{"Zero Genesis", ChapterZeroGenesis},
 		{"Exit", ChapterExit},
 	}
 	
