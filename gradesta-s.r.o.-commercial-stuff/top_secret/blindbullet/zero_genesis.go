@@ -648,7 +648,13 @@ func (z *ZeroGenesisChapter) drawZeroSumSubsets(screen *ebiten.Image, startY int
 
 	// Column 2: New subsets containing last value (deduplicated)
 	drawY = y
-	for i := 0; i < visibleLines && i < len(newSubsets); i++ {
+	newStartIdx := z.subsetScrollOffset
+	newEndIdx := newStartIdx + visibleLines
+	if newEndIdx > len(newSubsets) {
+		newEndIdx = len(newSubsets)
+	}
+
+	for i := newStartIdx; i < newEndIdx; i++ {
 		subset := newSubsets[i]
 		subsetStr := z.formatSubsetCompact(subset)
 
@@ -696,10 +702,14 @@ func (z *ZeroGenesisChapter) drawZeroSumSubsets(screen *ebiten.Image, startY int
 		drawY += 14
 	}
 
-	// Scroll indicators
+	// Scroll indicators for all three columns
 	if len(z.zeroSumSubsets) > visibleLines {
 		scrollInfo := "[" + strconv.Itoa(startIdx+1) + "-" + strconv.Itoa(endIdx) + "]"
 		text.Draw(screen, scrollInfo, basicfont.Face7x13, col1X+colWidth-50, startY, color.Gray{Y: 100})
+	}
+	if len(newSubsets) > visibleLines {
+		scrollInfo := "[" + strconv.Itoa(newStartIdx+1) + "-" + strconv.Itoa(newEndIdx) + "]"
+		text.Draw(screen, scrollInfo, basicfont.Face7x13, col2X+colWidth-50, startY, color.Gray{Y: 100})
 	}
 	if len(z.zeroSumSubsetsAll) > visibleLines {
 		scrollInfo := "[" + strconv.Itoa(tupleStartIdx+1) + "-" + strconv.Itoa(tupleEndIdx) + "]"
