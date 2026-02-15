@@ -33,7 +33,12 @@ type ZeroGenesisChapter struct {
 	countValues []int
 
 	// Cached zero-sum subsets (each subset is a slice of indices into jumpValues)
+	// Deduplicated by value multiset
 	zeroSumSubsets [][]int
+
+	// All minimal zero-sum subsets including "value duplicates" (different indices, same values)
+	// These are unique when shown as (jump, k, n) tuples
+	zeroSumSubsetsAll [][]int
 
 	// Scroll offset for jump values (horizontal)
 	jumpScrollOffset int
@@ -139,9 +144,10 @@ func (z *ZeroGenesisChapter) getSubsetValueKey(indices []int) string {
 
 // findZeroSumSubsets finds all minimal subsets of jumpValues that sum to zero
 // A minimal zero-sum subset has no proper subset that also sums to zero
-// Deduplicates subsets with the same multiset of values
+// Populates both deduplicated list and full list with all "value duplicates"
 func (z *ZeroGenesisChapter) findZeroSumSubsets() {
 	z.zeroSumSubsets = make([][]int, 0)
+	z.zeroSumSubsetsAll = make([][]int, 0)
 
 	n := len(z.jumpValues)
 	if n == 0 {
@@ -170,7 +176,10 @@ func (z *ZeroGenesisChapter) findZeroSumSubsets() {
 		if sum == 0 {
 			// Check if this is a minimal zero-sum subset (no proper subset sums to zero)
 			if !z.hasProperZeroSumSubset(mask, n) {
-				// Check if we've already seen a subset with the same values
+				// Add to the full list (includes all "value duplicates")
+				z.zeroSumSubsetsAll = append(z.zeroSumSubsetsAll, subset)
+
+				// Add to deduplicated list only if we haven't seen these values
 				valueKey := z.getSubsetValueKey(subset)
 				if !seenValueSets[valueKey] {
 					seenValueSets[valueKey] = true
@@ -180,17 +189,21 @@ func (z *ZeroGenesisChapter) findZeroSumSubsets() {
 		}
 	}
 
-	// Sort subsets by size for better visualization
-	sort.Slice(z.zeroSumSubsets, func(i, j int) bool {
-		if len(z.zeroSumSubsets[i]) != len(z.zeroSumSubsets[j]) {
-			return len(z.zeroSumSubsets[i]) < len(z.zeroSumSubsets[j])
-		}
-		// If same size, sort by first element's value
-		if len(z.zeroSumSubsets[i]) > 0 && len(z.zeroSumSubsets[j]) > 0 {
-			return z.jumpValues[z.zeroSumSubsets[i][0]] < z.jumpValues[z.zeroSumSubsets[j][0]]
-		}
-		return false
-	})
+	// Sort both lists by size for better visualization
+	sortFunc := func(subsets [][]int) {
+		sort.Slice(subsets, func(i, j int) bool {
+			if len(subsets[i]) != len(subsets[j]) {
+				return len(subsets[i]) < len(subsets[j])
+			}
+			// If same size, sort by first element's value
+			if len(subsets[i]) > 0 && len(subsets[j]) > 0 {
+				return z.jumpValues[subsets[i][0]] < z.jumpValues[subsets[j][0]]
+			}
+			return false
+		})
+	}
+	sortFunc(z.zeroSumSubsets)
+	sortFunc(z.zeroSumSubsetsAll)
 }
 
 // hasProperZeroSumSubsetN checks if the given subset has any proper subset that sums to zero
@@ -550,24 +563,41 @@ func (z *ZeroGenesisChapter) getSubsetsContainingLast() [][]int {
 	return result
 }
 
-// drawZeroSumSubsets draws the zero-sum subsets in two columns
+// getSubsetsContainingLastAll returns all subsets (including value dups) containing the last index
+func (z *ZeroGenesisChapter) getSubsetsContainingLastAll() [][]int {
+	lastIdx := z.numJumps - 1
+	if lastIdx < 0 || lastIdx >= maxSubsetElements {
+		lastIdx = maxSubsetElements - 1
+	}
+
+	result := make([][]int, 0)
+	for _, subset := range z.zeroSumSubsetsAll {
+		for _, idx := range subset {
+			if idx == lastIdx {
+				result = append(result, subset)
+				break
+			}
+		}
+	}
+	return result
+}
+
+// drawZeroSumSubsets draws the zero-sum subsets in three columns
 func (z *ZeroGenesisChapter) drawZeroSumSubsets(screen *ebiten.Image, startY int) {
-	// Get subsets containing the most recent value
+	// Get subsets containing the most recent value (deduplicated)
 	newSubsets := z.getSubsetsContainingLast()
 
-	// Column layout
-	leftColX := 20
-	rightColX := screenWidth/2 + 10
-	colWidth := screenWidth/2 - 30
+	// Three column layout
+	col1X := 10
+	col2X := screenWidth/3 + 5
+	col3X := 2*screenWidth/3 + 5
+	colWidth := screenWidth/3 - 15
 
-	// Draw left column header: All subsets
-	leftHeader := "All subsets: " + strconv.Itoa(len(z.zeroSumSubsets))
-	if z.numJumps > maxSubsetElements {
-		leftHeader += " (first " + strconv.Itoa(maxSubsetElements) + ")"
-	}
-	text.Draw(screen, leftHeader, basicfont.Face7x13, leftColX, startY, color.RGBA{255, 200, 100, 255})
+	// Column 1 header: Deduplicated subsets
+	header1 := "Unique values: " + strconv.Itoa(len(z.zeroSumSubsets))
+	text.Draw(screen, header1, basicfont.Face7x13, col1X, startY, color.RGBA{255, 200, 100, 255})
 
-	// Draw right column header: New subsets (containing last value)
+	// Column 2 header: New deduplicated subsets
 	lastVal := 0
 	if z.numJumps > 0 && z.numJumps <= len(z.jumpValues) {
 		lastIdx := z.numJumps - 1
@@ -576,15 +606,19 @@ func (z *ZeroGenesisChapter) drawZeroSumSubsets(screen *ebiten.Image, startY int
 		}
 		lastVal = z.jumpValues[lastIdx]
 	}
-	rightHeader := "New (containing " + strconv.Itoa(lastVal) + "): " + strconv.Itoa(len(newSubsets))
-	text.Draw(screen, rightHeader, basicfont.Face7x13, rightColX, startY, color.RGBA{100, 255, 200, 255})
+	header2 := "New(" + strconv.Itoa(lastVal) + "): " + strconv.Itoa(len(newSubsets))
+	text.Draw(screen, header2, basicfont.Face7x13, col2X, startY, color.RGBA{100, 255, 200, 255})
+
+	// Column 3 header: All subsets with tuples
+	header3 := "Tuples(j,k,n): " + strconv.Itoa(len(z.zeroSumSubsetsAll))
+	text.Draw(screen, header3, basicfont.Face7x13, col3X, startY, color.RGBA{255, 150, 255, 255})
 
 	// Calculate visible lines
-	y := startY + 20
+	y := startY + 18
 	maxY := screenHeight - 40
-	visibleLines := (maxY - y) / 16
+	visibleLines := (maxY - y) / 14 // Slightly tighter spacing
 
-	// Draw left column: All subsets
+	// Column 1: All deduplicated subsets
 	startIdx := z.subsetScrollOffset
 	endIdx := startIdx + visibleLines
 	if endIdx > len(z.zeroSumSubsets) {
@@ -596,10 +630,9 @@ func (z *ZeroGenesisChapter) drawZeroSumSubsets(screen *ebiten.Image, startY int
 		subset := z.zeroSumSubsets[i]
 		subsetStr := z.formatSubsetCompact(subset)
 
-		// Truncate if too long for column
-		maxLen := colWidth / 7 // Approximate character width
+		maxLen := colWidth / 7
 		if len(subsetStr) > maxLen {
-			subsetStr = subsetStr[:maxLen-3] + "..."
+			subsetStr = subsetStr[:maxLen-2] + ".."
 		}
 
 		var subsetColor color.Color
@@ -609,26 +642,19 @@ func (z *ZeroGenesisChapter) drawZeroSumSubsets(screen *ebiten.Image, startY int
 			subsetColor = color.RGBA{180, 255, 180, 255}
 		}
 
-		text.Draw(screen, subsetStr, basicfont.Face7x13, leftColX+10, drawY, subsetColor)
-		drawY += 16
+		text.Draw(screen, subsetStr, basicfont.Face7x13, col1X, drawY, subsetColor)
+		drawY += 14
 	}
 
-	// Draw scroll indicator for left column
-	if len(z.zeroSumSubsets) > visibleLines {
-		scrollInfo := "[" + strconv.Itoa(startIdx+1) + "-" + strconv.Itoa(endIdx) + "/" + strconv.Itoa(len(z.zeroSumSubsets)) + "]"
-		text.Draw(screen, scrollInfo, basicfont.Face7x13, leftColX+colWidth-80, startY, color.Gray{Y: 120})
-	}
-
-	// Draw right column: New subsets containing last value
+	// Column 2: New subsets containing last value (deduplicated)
 	drawY = y
 	for i := 0; i < visibleLines && i < len(newSubsets); i++ {
 		subset := newSubsets[i]
 		subsetStr := z.formatSubsetCompact(subset)
 
-		// Truncate if too long for column
 		maxLen := colWidth / 7
 		if len(subsetStr) > maxLen {
-			subsetStr = subsetStr[:maxLen-3] + "..."
+			subsetStr = subsetStr[:maxLen-2] + ".."
 		}
 
 		var subsetColor color.Color
@@ -638,14 +664,46 @@ func (z *ZeroGenesisChapter) drawZeroSumSubsets(screen *ebiten.Image, startY int
 			subsetColor = color.RGBA{200, 255, 150, 255}
 		}
 
-		text.Draw(screen, subsetStr, basicfont.Face7x13, rightColX+10, drawY, subsetColor)
-		drawY += 16
+		text.Draw(screen, subsetStr, basicfont.Face7x13, col2X, drawY, subsetColor)
+		drawY += 14
 	}
 
-	// Show if more new subsets exist
-	if len(newSubsets) > visibleLines {
-		moreText := "... +" + strconv.Itoa(len(newSubsets)-visibleLines) + " more"
-		text.Draw(screen, moreText, basicfont.Face7x13, rightColX+10, drawY, color.Gray{Y: 120})
+	// Column 3: All subsets with tuples (including "value duplicates")
+	drawY = y
+	tupleStartIdx := z.subsetScrollOffset
+	tupleEndIdx := tupleStartIdx + visibleLines
+	if tupleEndIdx > len(z.zeroSumSubsetsAll) {
+		tupleEndIdx = len(z.zeroSumSubsetsAll)
+	}
+
+	for i := tupleStartIdx; i < tupleEndIdx; i++ {
+		subset := z.zeroSumSubsetsAll[i]
+		subsetStr := z.formatSubsetTuple(subset)
+
+		maxLen := colWidth / 7
+		if len(subsetStr) > maxLen {
+			subsetStr = subsetStr[:maxLen-2] + ".."
+		}
+
+		var subsetColor color.Color
+		if i%2 == 0 {
+			subsetColor = color.RGBA{255, 150, 255, 255}
+		} else {
+			subsetColor = color.RGBA{255, 200, 200, 255}
+		}
+
+		text.Draw(screen, subsetStr, basicfont.Face7x13, col3X, drawY, subsetColor)
+		drawY += 14
+	}
+
+	// Scroll indicators
+	if len(z.zeroSumSubsets) > visibleLines {
+		scrollInfo := "[" + strconv.Itoa(startIdx+1) + "-" + strconv.Itoa(endIdx) + "]"
+		text.Draw(screen, scrollInfo, basicfont.Face7x13, col1X+colWidth-50, startY, color.Gray{Y: 100})
+	}
+	if len(z.zeroSumSubsetsAll) > visibleLines {
+		scrollInfo := "[" + strconv.Itoa(tupleStartIdx+1) + "-" + strconv.Itoa(tupleEndIdx) + "]"
+		text.Draw(screen, scrollInfo, basicfont.Face7x13, col3X+colWidth-50, startY, color.Gray{Y: 100})
 	}
 }
 
@@ -698,6 +756,27 @@ func (z *ZeroGenesisChapter) formatSubsetCompact(indices []int) string {
 			result += ","
 		}
 		result += strconv.Itoa(v)
+	}
+	result += "}"
+
+	return result
+}
+
+// formatSubsetTuple formats a subset as tuples (jump,k,n) - these are unique even for "value duplicates"
+func (z *ZeroGenesisChapter) formatSubsetTuple(indices []int) string {
+	if len(indices) == 0 {
+		return "{}"
+	}
+
+	result := "{"
+	for i, idx := range indices {
+		if i > 0 {
+			result += " "
+		}
+		jump := z.jumpValues[idx]
+		k := z.kValues[idx]
+		n := 2*idx + 1 // The odd number
+		result += "(" + strconv.Itoa(jump) + "," + strconv.Itoa(k) + "," + strconv.Itoa(n) + ")"
 	}
 	result += "}"
 
