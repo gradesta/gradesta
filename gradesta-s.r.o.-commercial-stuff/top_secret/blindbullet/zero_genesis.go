@@ -46,6 +46,9 @@ type ZeroGenesisChapter struct {
 	// Scroll offset for subset list (vertical)
 	subsetScrollOffset int
 
+	// Expanded column: 0 = none (3-column view), 1/2/3 = expand that column
+	expandedColumn int
+
 	// Help dialog state
 	helpState HelpDialogState
 }
@@ -369,9 +372,33 @@ func (z *ZeroGenesisChapter) Update() error {
 		z.numJumps = 1
 		z.jumpScrollOffset = 0
 		z.subsetScrollOffset = 0
+		z.expandedColumn = 0
 		z.updateJumpValues()
 		z.findZeroSumSubsets()
 		z.updateDeltaValues()
+	}
+
+	// Toggle expanded column view: 1/2/3 to expand that column, or press again to collapse
+	if inpututil.IsKeyJustPressed(ebiten.Key1) {
+		if z.expandedColumn == 1 {
+			z.expandedColumn = 0
+		} else {
+			z.expandedColumn = 1
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.Key2) {
+		if z.expandedColumn == 2 {
+			z.expandedColumn = 0
+		} else {
+			z.expandedColumn = 2
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.Key3) {
+		if z.expandedColumn == 3 {
+			z.expandedColumn = 0
+		} else {
+			z.expandedColumn = 3
+		}
 	}
 
 	return nil
@@ -409,7 +436,12 @@ func (z *ZeroGenesisChapter) Draw(screen *ebiten.Image) {
 	}
 
 	// Draw instructions
-	instructions := "LEFT/RIGHT: Add/remove | A/D: Scroll values | K/J: Scroll subsets | R: Reset | H: Help | ESC: Return"
+	var instructions string
+	if z.expandedColumn > 0 {
+		instructions = "1/2/3: Collapse column | K/J: Scroll | LEFT/RIGHT: Add/remove | H: Help | ESC: Return"
+	} else {
+		instructions = "1/2/3: Expand column | K/J: Scroll | A/D: Scroll values | LEFT/RIGHT: Add/remove | H: Help"
+	}
 	instBounds := text.BoundString(basicfont.Face7x13, instructions)
 	instX := (screenWidth - instBounds.Dx()) / 2
 	instY := screenHeight - 15
@@ -582,8 +614,106 @@ func (z *ZeroGenesisChapter) getSubsetsContainingLastAll() [][]int {
 	return result
 }
 
-// drawZeroSumSubsets draws the zero-sum subsets in three columns
+// getKPattern returns a canonical string representation of the k-values in a subset
+func (z *ZeroGenesisChapter) getKPattern(indices []int) string {
+	kVals := make([]int, len(indices))
+	for i, idx := range indices {
+		kVals[i] = z.kValues[idx]
+	}
+	sort.Ints(kVals)
+
+	result := "["
+	for i, k := range kVals {
+		if i > 0 {
+			result += ","
+		}
+		result += strconv.Itoa(k)
+	}
+	result += "]"
+	return result
+}
+
+// findPreviousSameK finds the index of the previous n that had the same k value as current
+// Returns -1 if no previous n with same k exists
+func (z *ZeroGenesisChapter) findPreviousSameK() int {
+	lastIdx := z.numJumps - 1
+	if lastIdx < 1 || lastIdx >= len(z.kValues) {
+		return -1
+	}
+
+	currentK := z.kValues[lastIdx]
+	for i := lastIdx - 1; i >= 0; i-- {
+		if z.kValues[i] == currentK {
+			return i
+		}
+	}
+	return -1
+}
+
+// getSubsetsBornAtN returns all subsets (including value dups) where the max index equals n
+func (z *ZeroGenesisChapter) getSubsetsBornAtN(nIdx int) [][]int {
+	result := make([][]int, 0)
+	for _, subset := range z.zeroSumSubsetsAll {
+		maxIdx := 0
+		for _, idx := range subset {
+			if idx > maxIdx {
+				maxIdx = idx
+			}
+		}
+		if maxIdx == nIdx {
+			result = append(result, subset)
+		}
+	}
+	return result
+}
+
+// splitNewTuplesByKPattern splits new tuples into two groups:
+// 1. Those whose k-pattern was seen at the previous same-k position ("continuing")
+// 2. Those whose k-pattern is new for this k value ("novel")
+func (z *ZeroGenesisChapter) splitNewTuplesByKPattern() (continuing [][]int, novel [][]int, prevK int) {
+	newTuples := z.getSubsetsContainingLastAll()
+	continuing = make([][]int, 0)
+	novel = make([][]int, 0)
+
+	prevIdx := z.findPreviousSameK()
+	if prevIdx < 0 {
+		// No previous same-k, all are novel
+		return continuing, newTuples, -1
+	}
+
+	// Get k-patterns seen at previous same-k position
+	prevSubsets := z.getSubsetsBornAtN(prevIdx)
+	seenPatterns := make(map[string]bool)
+	for _, subset := range prevSubsets {
+		pattern := z.getKPattern(subset)
+		seenPatterns[pattern] = true
+	}
+
+	// Split current new tuples
+	for _, subset := range newTuples {
+		pattern := z.getKPattern(subset)
+		if seenPatterns[pattern] {
+			continuing = append(continuing, subset)
+		} else {
+			novel = append(novel, subset)
+		}
+	}
+
+	lastIdx := z.numJumps - 1
+	if lastIdx >= 0 && lastIdx < len(z.kValues) {
+		prevK = z.kValues[lastIdx]
+	}
+	return continuing, novel, prevK
+}
+
+// drawZeroSumSubsets draws the zero-sum subsets in three columns (or expanded single column)
 func (z *ZeroGenesisChapter) drawZeroSumSubsets(screen *ebiten.Image, startY int) {
+	// Handle expanded column view
+	if z.expandedColumn > 0 {
+		z.drawExpandedColumn(screen, startY)
+		return
+	}
+
 	// Get subsets containing the most recent value (deduplicated)
 	newSubsets := z.getSubsetsContainingLast()
 
@@ -594,7 +724,7 @@ func (z *ZeroGenesisChapter) drawZeroSumSubsets(screen *ebiten.Image, startY int
 	colWidth := screenWidth/3 - 15
 
 	// Column 1 header: Deduplicated subsets
-	header1 := "Unique values: " + strconv.Itoa(len(z.zeroSumSubsets))
+	header1 := "[1] Unique values: " + strconv.Itoa(len(z.zeroSumSubsets))
 	text.Draw(screen, header1, basicfont.Face7x13, col1X, startY, color.RGBA{255, 200, 100, 255})
 
 	// Column 2 header: New deduplicated subsets
@@ -606,11 +736,12 @@ func (z *ZeroGenesisChapter) drawZeroSumSubsets(screen *ebiten.Image, startY int
 		}
 		lastVal = z.jumpValues[lastIdx]
 	}
-	header2 := "New(" + strconv.Itoa(lastVal) + "): " + strconv.Itoa(len(newSubsets))
+	header2 := "[2] New(" + strconv.Itoa(lastVal) + "): " + strconv.Itoa(len(newSubsets))
 	text.Draw(screen, header2, basicfont.Face7x13, col2X, startY, color.RGBA{100, 255, 200, 255})
 
-	// Column 3 header: All subsets with tuples
-	header3 := "Tuples(j,k,n): " + strconv.Itoa(len(z.zeroSumSubsetsAll))
+	// Column 3 header: New subsets with tuples (split by k-pattern)
+	continuing, novel, currentK := z.splitNewTuplesByKPattern()
+	header3 := "[3] Tuples k=" + strconv.Itoa(currentK)
 	text.Draw(screen, header3, basicfont.Face7x13, col3X, startY, color.RGBA{255, 150, 255, 255})
 
 	// Calculate visible lines
@@ -674,32 +805,53 @@ func (z *ZeroGenesisChapter) drawZeroSumSubsets(screen *ebiten.Image, startY int
 		drawY += 14
 	}
 
-	// Column 3: All subsets with tuples (including "value duplicates")
+	// Column 3: New subsets with tuples, split into continuing and novel
 	drawY = y
-	tupleStartIdx := z.subsetScrollOffset
-	tupleEndIdx := tupleStartIdx + visibleLines
-	if tupleEndIdx > len(z.zeroSumSubsetsAll) {
-		tupleEndIdx = len(z.zeroSumSubsetsAll)
+
+	// Section 1: Continuing patterns (from last k=X)
+	if len(continuing) > 0 {
+		sectionHeader := "From last k=" + strconv.Itoa(currentK) + ": " + strconv.Itoa(len(continuing))
+		text.Draw(screen, sectionHeader, basicfont.Face7x13, col3X, drawY, color.RGBA{200, 200, 255, 255})
+		drawY += 14
+
+		for i := 0; i < len(continuing) && drawY < maxY-28; i++ {
+			subset := continuing[i]
+			subsetStr := z.formatSubsetTuple(subset)
+
+			maxLen := colWidth / 7
+			if len(subsetStr) > maxLen {
+				subsetStr = subsetStr[:maxLen-2] + ".."
+			}
+
+			text.Draw(screen, subsetStr, basicfont.Face7x13, col3X, drawY, color.RGBA{180, 180, 255, 255})
+			drawY += 14
+		}
+		drawY += 4 // Gap between sections
 	}
 
-	for i := tupleStartIdx; i < tupleEndIdx; i++ {
-		subset := z.zeroSumSubsetsAll[i]
-		subsetStr := z.formatSubsetTuple(subset)
-
-		maxLen := colWidth / 7
-		if len(subsetStr) > maxLen {
-			subsetStr = subsetStr[:maxLen-2] + ".."
-		}
-
-		var subsetColor color.Color
-		if i%2 == 0 {
-			subsetColor = color.RGBA{255, 150, 255, 255}
-		} else {
-			subsetColor = color.RGBA{255, 200, 200, 255}
-		}
-
-		text.Draw(screen, subsetStr, basicfont.Face7x13, col3X, drawY, subsetColor)
+	// Section 2: Novel patterns (new for this k)
+	if len(novel) > 0 && drawY < maxY-14 {
+		sectionHeader := "New for k=" + strconv.Itoa(currentK) + ": " + strconv.Itoa(len(novel))
+		text.Draw(screen, sectionHeader, basicfont.Face7x13, col3X, drawY, color.RGBA{255, 200, 100, 255})
 		drawY += 14
+
+		for i := 0; i < len(novel) && drawY < maxY; i++ {
+			subset := novel[i]
+			subsetStr := z.formatSubsetTuple(subset)
+
+			maxLen := colWidth / 7
+			if len(subsetStr) > maxLen {
+				subsetStr = subsetStr[:maxLen-2] + ".."
+			}
+
+			text.Draw(screen, subsetStr, basicfont.Face7x13, col3X, drawY, color.RGBA{255, 220, 150, 255})
+			drawY += 14
+		}
+	}
+
+	// If no tuples at all
+	if len(continuing) == 0 && len(novel) == 0 {
+		text.Draw(screen, "(none)", basicfont.Face7x13, col3X, drawY, color.Gray{Y: 100})
 	}
 
 	// Scroll indicators for all three columns
@@ -711,9 +863,194 @@ func (z *ZeroGenesisChapter) drawZeroSumSubsets(screen *ebiten.Image, startY int
 		scrollInfo := "[" + strconv.Itoa(newStartIdx+1) + "-" + strconv.Itoa(newEndIdx) + "]"
 		text.Draw(screen, scrollInfo, basicfont.Face7x13, col2X+colWidth-50, startY, color.Gray{Y: 100})
 	}
-	if len(z.zeroSumSubsetsAll) > visibleLines {
-		scrollInfo := "[" + strconv.Itoa(tupleStartIdx+1) + "-" + strconv.Itoa(tupleEndIdx) + "]"
-		text.Draw(screen, scrollInfo, basicfont.Face7x13, col3X+colWidth-50, startY, color.Gray{Y: 100})
+	totalTuples := len(continuing) + len(novel)
+	if totalTuples > 0 {
+		scrollInfo := strconv.Itoa(totalTuples) + " tuples"
+		text.Draw(screen, scrollInfo, basicfont.Face7x13, col3X+colWidth-60, startY, color.Gray{Y: 100})
+	}
+}
+
+// drawExpandedColumn draws a single column in expanded (full-width) view
+func (z *ZeroGenesisChapter) drawExpandedColumn(screen *ebiten.Image, startY int) {
+	colX := 10
+	colWidth := screenWidth - 20
+
+	var header string
+	var headerColor color.Color
+	var subsets [][]int
+	var formatFunc func([]int) string
+
+	switch z.expandedColumn {
+	case 1:
+		header = "[1] Unique values: " + strconv.Itoa(len(z.zeroSumSubsets)) + " (press 1 to collapse)"
+		headerColor = color.RGBA{255, 200, 100, 255}
+		subsets = z.zeroSumSubsets
+		formatFunc = z.formatSubsetCompact
+	case 2:
+		newSubsets := z.getSubsetsContainingLast()
+		lastVal := 0
+		if z.numJumps > 0 && z.numJumps <= len(z.jumpValues) {
+			lastIdx := z.numJumps - 1
+			if lastIdx >= maxSubsetElements {
+				lastIdx = maxSubsetElements - 1
+			}
+			lastVal = z.jumpValues[lastIdx]
+		}
+		header = "[2] New(" + strconv.Itoa(lastVal) + "): " + strconv.Itoa(len(newSubsets)) + " (press 2 to collapse)"
+		headerColor = color.RGBA{100, 255, 200, 255}
+		subsets = newSubsets
+		formatFunc = z.formatSubsetCompact
+	case 3:
+		// Special handling for column 3 - show split view
+		z.drawExpandedColumn3(screen, startY)
+		return
+	default:
+		return
+	}
+
+	text.Draw(screen, header, basicfont.Face7x13, colX, startY, headerColor)
+
+	// Calculate visible lines
+	y := startY + 18
+	maxY := screenHeight - 40
+	visibleLines := (maxY - y) / 14
+
+	startIdx := z.subsetScrollOffset
+	endIdx := startIdx + visibleLines
+	if endIdx > len(subsets) {
+		endIdx = len(subsets)
+	}
+
+	drawY := y
+	for i := startIdx; i < endIdx; i++ {
+		subset := subsets[i]
+		subsetStr := formatFunc(subset)
+
+		// Allow much longer strings in expanded view
+		maxLen := colWidth / 7
+		if len(subsetStr) > maxLen {
+			subsetStr = subsetStr[:maxLen-2] + ".."
+		}
+
+		var subsetColor color.Color
+		if i%2 == 0 {
+			subsetColor = color.RGBA{200, 200, 255, 255}
+		} else {
+			subsetColor = color.RGBA{200, 255, 200, 255}
+		}
+
+		text.Draw(screen, subsetStr, basicfont.Face7x13, colX, drawY, subsetColor)
+		drawY += 14
+	}
+
+	// Scroll indicator
+	if len(subsets) > visibleLines {
+		scrollInfo := "[" + strconv.Itoa(startIdx+1) + "-" + strconv.Itoa(endIdx) + " of " + strconv.Itoa(len(subsets)) + "]"
+		text.Draw(screen, scrollInfo, basicfont.Face7x13, screenWidth-150, startY, color.Gray{Y: 100})
+	}
+}
+
+// drawExpandedColumn3 draws the split tuple view at full width
+func (z *ZeroGenesisChapter) drawExpandedColumn3(screen *ebiten.Image, startY int) {
+	colX := 10
+	colWidth := screenWidth - 20
+
+	continuing, novel, currentK := z.splitNewTuplesByKPattern()
+
+	// Build a combined list with section markers for scrolling
+	// We'll create a flat list of "lines" to display
+	type displayLine struct {
+		text      string
+		color     color.Color
+		isHeader  bool
+	}
+
+	var lines []displayLine
+
+	// Section 1: Continuing patterns
+	if len(continuing) > 0 {
+		lines = append(lines, displayLine{
+			text:     "--- From last k=" + strconv.Itoa(currentK) + ": " + strconv.Itoa(len(continuing)) + " ---",
+			color:    color.RGBA{150, 150, 255, 255},
+			isHeader: true,
+		})
+		for i, subset := range continuing {
+			subsetStr := z.formatSubsetTuple(subset)
+			pattern := z.getKPattern(subset)
+			subsetStr = pattern + " " + subsetStr
+
+			var c color.Color
+			if i%2 == 0 {
+				c = color.RGBA{180, 180, 255, 255}
+			} else {
+				c = color.RGBA{160, 160, 235, 255}
+			}
+			lines = append(lines, displayLine{text: subsetStr, color: c, isHeader: false})
+		}
+		// Add gap
+		lines = append(lines, displayLine{text: "", color: color.Gray{Y: 50}, isHeader: false})
+	}
+
+	// Section 2: Novel patterns
+	if len(novel) > 0 {
+		lines = append(lines, displayLine{
+			text:     "--- New for k=" + strconv.Itoa(currentK) + ": " + strconv.Itoa(len(novel)) + " ---",
+			color:    color.RGBA{255, 200, 100, 255},
+			isHeader: true,
+		})
+		for i, subset := range novel {
+			subsetStr := z.formatSubsetTuple(subset)
+			pattern := z.getKPattern(subset)
+			subsetStr = pattern + " " + subsetStr
+
+			var c color.Color
+			if i%2 == 0 {
+				c = color.RGBA{255, 220, 150, 255}
+			} else {
+				c = color.RGBA{235, 200, 130, 255}
+			}
+			lines = append(lines, displayLine{text: subsetStr, color: c, isHeader: false})
+		}
+	}
+
+	// Header
+	header := "[3] Tuples k=" + strconv.Itoa(currentK) + " (press 3 to collapse)"
+	text.Draw(screen, header, basicfont.Face7x13, colX, startY, color.RGBA{255, 150, 255, 255})
+
+	// Scroll info on right
+	totalTuples := len(continuing) + len(novel)
+	if len(lines) > 0 {
+		scrollInfo := strconv.Itoa(z.subsetScrollOffset+1) + "-" + strconv.Itoa(min(z.subsetScrollOffset+20, len(lines))) + "/" + strconv.Itoa(len(lines))
+		text.Draw(screen, scrollInfo, basicfont.Face7x13, screenWidth-120, startY, color.Gray{Y: 100})
+	}
+	countStr := strconv.Itoa(totalTuples) + " tuples"
+	text.Draw(screen, countStr, basicfont.Face7x13, screenWidth-220, startY, color.Gray{Y: 100})
+
+	y := startY + 18
+	maxY := screenHeight - 40
+	maxLen := colWidth / 7
+
+	// Apply scroll offset
+	startIdx := z.subsetScrollOffset
+	if startIdx >= len(lines) {
+		startIdx = 0
+	}
+
+	for i := startIdx; i < len(lines) && y < maxY; i++ {
+		line := lines[i]
+		displayText := line.text
+
+		if len(displayText) > maxLen {
+			displayText = displayText[:maxLen-2] + ".."
+		}
+
+		text.Draw(screen, displayText, basicfont.Face7x13, colX, y, line.color)
+		y += 14
+	}
+
+	// If no tuples at all
+	if len(continuing) == 0 && len(novel) == 0 {
+		text.Draw(screen, "(no tuples born at this n)", basicfont.Face7x13, colX, startY+18, color.Gray{Y: 100})
 	}
 }
 
@@ -819,6 +1156,13 @@ func (z *ZeroGenesisChapter) getHelpLines() []string {
 		"NOTE: Computation limited to first 25 values (2^25 subsets).",
 		"      Beyond this limit, Count shows '?' and Delta shows '?'.",
 		"",
+		"COLUMNS (3 column view):",
+		"  [1] Unique values   - Deduplicated zero-sum subsets by value",
+		"  [2] New             - New subsets (deduplicated by value)",
+		"  [3] Tuples k=X      - New tuples split by k-pattern:",
+		"      From last k=X   - Patterns seen at previous same-k position",
+		"      New for k=X     - Novel patterns for this k value",
+		"",
 		"NAVIGATION:",
 		"  LEFT/DOWN           - Remove the last number from the set",
 		"  RIGHT/UP            - Add the next jump number to the set",
@@ -827,6 +1171,11 @@ func (z *ZeroGenesisChapter) getHelpLines() []string {
 		"  K/PgUp              - Scroll subsets up",
 		"  J/PgDn              - Scroll subsets down",
 		"  R                   - Reset to initial state (1 number)",
+		"",
+		"COLUMN EXPANSION:",
+		"  1                   - Expand/collapse column 1 (full width)",
+		"  2                   - Expand/collapse column 2 (full width)",
+		"  3                   - Expand/collapse column 3 (full width)",
 		"",
 		"VISUALIZATION:",
 		"  Green numbers       - Positive values / increases",

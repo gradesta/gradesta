@@ -35,6 +35,8 @@ const (
 	StateSchwingerLimit
 	StateEssenceOfSelf
 	StateZeroGenesis
+	StateTupleShapes
+	StateZeroSumOrigins
 )
 
 // Chapter represents a selectable chapter
@@ -55,9 +57,38 @@ const (
 	ChapterSchwingerLimit
 	ChapterEssenceOfSelf
 	ChapterZeroGenesis
+	ChapterTupleShapes
+	ChapterZeroSumOrigins
 	ChapterExit
 	ChapterCount // Total number of chapters
 )
+
+// MenuItem represents a menu entry
+type MenuItem struct {
+	Name    string
+	Chapter Chapter
+}
+
+// menuItems defines the menu order (single source of truth)
+var menuItems = []MenuItem{
+	{"Maxwell's Daemon", ChapterMaxwellsDaemon},
+	{"Crystals", ChapterCrystals},
+	{"Stairs", ChapterStairs},
+	{"The Spiral Staircase", ChapterSpiralStairs},
+	{"Three Row Bootlace", ChapterThreeRowBootlace},
+	{"Zig Zag", ChapterZigZag},
+	{"A Grammar for Finite Sentences", ChapterGrammarForFiniteSentences},
+	{"Waves", ChapterWaves},
+	{"K-Table", ChapterKTable},
+	{"Jumps", ChapterJumps},
+	{"The Alternating Jacobsthal sequence", ChapterAlternatingJacobsthal},
+	{"Zero Genesis", ChapterZeroGenesis},
+	{"Tuple Shapes", ChapterTupleShapes},
+	{"Zero Sum Origins", ChapterZeroSumOrigins},
+	{"The Schwinger Limit", ChapterSchwingerLimit},
+	{"The Essence of the Self", ChapterEssenceOfSelf},
+	{"Exit", ChapterExit},
+}
 
 // Game is the main game struct
 type Game struct {
@@ -76,7 +107,9 @@ type Game struct {
 	schwingerLimit               *SchwingerLimitChapter
 	essenceOfSelf                *EssenceOfSelfChapter
 	zeroGenesis                  *ZeroGenesisChapter
-	selectedChapter              Chapter
+	tupleShapes                  *TupleShapesChapter
+	zeroSumOrigins               *ZeroSumOriginsChapter
+	selectedMenuIndex            int // Index into menuItems
 }
 
 // NewGame creates a new game instance
@@ -97,7 +130,9 @@ func NewGame() *Game {
 		schwingerLimit:               NewSchwingerLimitChapter(),
 		essenceOfSelf:                NewEssenceOfSelfChapter(),
 		zeroGenesis:                  NewZeroGenesisChapter(),
-		selectedChapter:              ChapterMaxwellsDaemon,
+		tupleShapes:                  NewTupleShapesChapter(),
+		zeroSumOrigins:               NewZeroSumOriginsChapter(),
+		selectedMenuIndex:            0,
 	}
 }
 
@@ -106,21 +141,22 @@ func (g *Game) Update() error {
 	case StateLaunchScreen:
 		// Handle chapter selection with arrow keys
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
-			g.selectedChapter--
-			if g.selectedChapter < 0 {
-				g.selectedChapter = ChapterCount - 1
+			g.selectedMenuIndex--
+			if g.selectedMenuIndex < 0 {
+				g.selectedMenuIndex = len(menuItems) - 1
 			}
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
-			g.selectedChapter++
-			if g.selectedChapter >= ChapterCount {
-				g.selectedChapter = 0
+			g.selectedMenuIndex++
+			if g.selectedMenuIndex >= len(menuItems) {
+				g.selectedMenuIndex = 0
 			}
 		}
-		
+
 		// Activate selected chapter
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
-			switch g.selectedChapter {
+			selectedChapter := menuItems[g.selectedMenuIndex].Chapter
+			switch selectedChapter {
 			case ChapterMaxwellsDaemon:
 				g.state = StateMaxwellsDaemon
 			case ChapterCrystals:
@@ -131,13 +167,13 @@ func (g *Game) Update() error {
 				g.state = StateSpiralStairs
 			case ChapterThreeRowBootlace:
 				g.state = StateThreeRowBootlace
-		case ChapterWaves:
-			g.state = StateWaves
-		case ChapterKTable:
-			g.state = StateKTable
-		case ChapterJumps:
-			g.state = StateJumps
-		case ChapterAlternatingJacobsthal:
+			case ChapterWaves:
+				g.state = StateWaves
+			case ChapterKTable:
+				g.state = StateKTable
+			case ChapterJumps:
+				g.state = StateJumps
+			case ChapterAlternatingJacobsthal:
 				g.state = StateAlternatingJacobsthal
 			case ChapterZigZag:
 				g.state = StateZigZag
@@ -149,6 +185,10 @@ func (g *Game) Update() error {
 				g.state = StateEssenceOfSelf
 			case ChapterZeroGenesis:
 				g.state = StateZeroGenesis
+			case ChapterTupleShapes:
+				g.state = StateTupleShapes
+			case ChapterZeroSumOrigins:
+				g.state = StateZeroSumOrigins
 			case ChapterExit:
 				return errors.New("user requested exit")
 			}
@@ -247,6 +287,20 @@ func (g *Game) Update() error {
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !g.zeroGenesis.WasEscConsumed() {
 			g.state = StateLaunchScreen
 		}
+	case StateTupleShapes:
+		if err := g.tupleShapes.Update(); err != nil {
+			return err
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !g.tupleShapes.WasEscConsumed() {
+			g.state = StateLaunchScreen
+		}
+	case StateZeroSumOrigins:
+		if err := g.zeroSumOrigins.Update(); err != nil {
+			return err
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !g.zeroSumOrigins.WasEscConsumed() {
+			g.state = StateLaunchScreen
+		}
 	case StateStairs:
 		if err := g.stairs.Update(); err != nil {
 			return err
@@ -309,6 +363,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.essenceOfSelf.Draw(screen)
 	case StateZeroGenesis:
 		g.zeroGenesis.Draw(screen)
+	case StateTupleShapes:
+		g.tupleShapes.Draw(screen)
+	case StateZeroSumOrigins:
+		g.zeroSumOrigins.Draw(screen)
 	}
 }
 
@@ -328,30 +386,9 @@ func (g *Game) drawLaunchScreen(screen *ebiten.Image) {
 	
 	// Draw chapters in order (left-aligned, starting below the "Chapters:" label)
 	chapterY := chapterTextY + 20
-	chapters := []struct {
-		name    string
-		chapter Chapter
-	}{
-		{"Maxwell's Daemon", ChapterMaxwellsDaemon},
-		{"Crystals", ChapterCrystals},
-		{"Stairs", ChapterStairs},
-		{"The Spiral Staircase", ChapterSpiralStairs},
-		{"Three Row Bootlace", ChapterThreeRowBootlace},
-		{"Zig Zag", ChapterZigZag},
-		{"A Grammar for Finite Sentences", ChapterGrammarForFiniteSentences},
-		{"Waves", ChapterWaves},
-		{"K-Table", ChapterKTable},
-		{"Jumps", ChapterJumps},
-		{"The Alternating Jacobsthal sequence", ChapterAlternatingJacobsthal},
-		{"The Schwinger Limit", ChapterSchwingerLimit},
-		{"The Essence of the Self", ChapterEssenceOfSelf},
-		{"Zero Genesis", ChapterZeroGenesis},
-		{"Exit", ChapterExit},
-	}
-	
-	for _, ch := range chapters {
+	for i, item := range menuItems {
 		// Left-align chapters
-		drawChapter(screen, ch.name, ch.chapter, g.selectedChapter, chapterTextX, chapterY)
+		drawMenuItem(screen, item.Name, i, g.selectedMenuIndex, chapterTextX, chapterY)
 		chapterY += 15
 	}
 	
@@ -377,11 +414,11 @@ func (g *Game) drawLaunchScreen(screen *ebiten.Image) {
 	text.Draw(screen, navText, basicfont.Face7x13, navX, navY, color.Gray{Y: 100})
 }
 
-// drawChapter draws a chapter name with selection highlighting (left-aligned)
-func drawChapter(screen *ebiten.Image, name string, chapter Chapter, selectedChapter Chapter, x, y int) {
+// drawMenuItem draws a menu item with selection highlighting (left-aligned)
+func drawMenuItem(screen *ebiten.Image, name string, index int, selectedIndex int, x, y int) {
 	textStr := "- " + name
 	var textColor color.Color = color.Gray{Y: 150}
-	if selectedChapter == chapter {
+	if selectedIndex == index {
 		textStr = "> " + name
 		textColor = color.White
 	}
