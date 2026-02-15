@@ -649,43 +649,55 @@ func (z *ZeroGenesisChapter) drawZeroSumSubsets(screen *ebiten.Image, startY int
 	}
 }
 
-// formatSubset formats a subset as a string showing the actual values with sum
+// formatSubset formats a subset as a string showing the actual values with sum, values sorted
 func (z *ZeroGenesisChapter) formatSubset(indices []int) string {
 	if len(indices) == 0 {
 		return "{}"
 	}
 
-	result := "{"
+	// Get values and sort them for consistent display
+	values := make([]int, len(indices))
+	sum := 0
 	for i, idx := range indices {
+		values[i] = z.jumpValues[idx]
+		sum += z.jumpValues[idx]
+	}
+	sort.Ints(values)
+
+	result := "{"
+	for i, v := range values {
 		if i > 0 {
 			result += ", "
 		}
-		result += strconv.Itoa(z.jumpValues[idx])
+		result += strconv.Itoa(v)
 	}
 	result += "}"
 
 	// Also show sum verification (should always be 0)
-	sum := 0
-	for _, idx := range indices {
-		sum += z.jumpValues[idx]
-	}
 	result += " = " + strconv.Itoa(sum)
 
 	return result
 }
 
-// formatSubsetCompact formats a subset compactly without the sum
+// formatSubsetCompact formats a subset compactly without the sum, values sorted
 func (z *ZeroGenesisChapter) formatSubsetCompact(indices []int) string {
 	if len(indices) == 0 {
 		return "{}"
 	}
 
-	result := "{"
+	// Get values and sort them for consistent display
+	values := make([]int, len(indices))
 	for i, idx := range indices {
+		values[i] = z.jumpValues[idx]
+	}
+	sort.Ints(values)
+
+	result := "{"
+	for i, v := range values {
 		if i > 0 {
 			result += ","
 		}
-		result += strconv.Itoa(z.jumpValues[idx])
+		result += strconv.Itoa(v)
 	}
 	result += "}"
 
