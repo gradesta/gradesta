@@ -1,0 +1,35 @@
+[package]
+name = "gradesta-elf"
+version = "0.1.0"
+edition = "2021"
+description = "Library for building Gradesta elf services"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP server
+axum = { version = "0.7", features = ["ws"] }
+tower = "0.4"
+
+# WebSocket client
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Async trait
+async-trait = "0.1"
+
+# Logging
+log = "0.4"
+env_logger = "0.10"
+
+# Channels
+tokio-stream = "0.1"

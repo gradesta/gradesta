@@ -28,6 +28,8 @@ pub enum Context {
     NavPanel,
     /// Export panel for HTML export
     Export,
+    /// Elf panel for managing and summoning elves
+    Elf,
 }
 
 impl Context {
@@ -42,6 +44,7 @@ impl Context {
             Context::Authentication => "Authentication",
             Context::NavPanel => "Navigation Panel",
             Context::Export => "Export",
+            Context::Elf => "Elf",
         }
     }
 
@@ -56,6 +59,7 @@ impl Context {
             Context::Authentication => "authentication",
             Context::NavPanel => "nav_panel",
             Context::Export => "export",
+            Context::Elf => "elf",
         }
     }
 
@@ -69,6 +73,7 @@ impl Context {
             Context::Authentication,
             Context::NavPanel,
             Context::Export,
+            Context::Elf,
         ]
     }
 }
@@ -213,6 +218,38 @@ pub enum Command {
     ExportToggleUp,
     /// Toggle Down direction for export
     ExportToggleDown,
+
+    // === Elf Context Commands ===
+    /// Toggle the elf management panel
+    GlobalToggleElfPanel,
+    /// Summon the selected elf
+    ElfSummon,
+    /// Add a new trusted elf URL
+    ElfAddUrl,
+    /// Remove selected elf
+    ElfRemove,
+    /// Refresh elf manifest
+    ElfRefresh,
+    /// Select next elf
+    ElfNextElf,
+    /// Select previous elf
+    ElfPrevElf,
+    /// Select next command
+    ElfNextCommand,
+    /// Select previous command
+    ElfPrevCommand,
+    /// Toggle West direction for elf region
+    ElfToggleWest,
+    /// Toggle East direction for elf region
+    ElfToggleEast,
+    /// Toggle North direction for elf region
+    ElfToggleNorth,
+    /// Toggle South direction for elf region
+    ElfToggleSouth,
+    /// Toggle Up direction for elf region
+    ElfToggleUp,
+    /// Toggle Down direction for elf region
+    ElfToggleDown,
 }
 
 impl Command {
@@ -288,6 +325,22 @@ impl Command {
             Command::ExportToggleSouth => "export.toggle_south",
             Command::ExportToggleUp => "export.toggle_up",
             Command::ExportToggleDown => "export.toggle_down",
+            // Elf
+            Command::GlobalToggleElfPanel => "global.toggle_elf_panel",
+            Command::ElfSummon => "elf.summon",
+            Command::ElfAddUrl => "elf.add_url",
+            Command::ElfRemove => "elf.remove",
+            Command::ElfRefresh => "elf.refresh",
+            Command::ElfNextElf => "elf.next_elf",
+            Command::ElfPrevElf => "elf.prev_elf",
+            Command::ElfNextCommand => "elf.next_command",
+            Command::ElfPrevCommand => "elf.prev_command",
+            Command::ElfToggleWest => "elf.toggle_west",
+            Command::ElfToggleEast => "elf.toggle_east",
+            Command::ElfToggleNorth => "elf.toggle_north",
+            Command::ElfToggleSouth => "elf.toggle_south",
+            Command::ElfToggleUp => "elf.toggle_up",
+            Command::ElfToggleDown => "elf.toggle_down",
         }
     }
 
@@ -363,6 +416,22 @@ impl Command {
             "export.toggle_south" => Some(Command::ExportToggleSouth),
             "export.toggle_up" => Some(Command::ExportToggleUp),
             "export.toggle_down" => Some(Command::ExportToggleDown),
+            // Elf
+            "global.toggle_elf_panel" => Some(Command::GlobalToggleElfPanel),
+            "elf.summon" => Some(Command::ElfSummon),
+            "elf.add_url" => Some(Command::ElfAddUrl),
+            "elf.remove" => Some(Command::ElfRemove),
+            "elf.refresh" => Some(Command::ElfRefresh),
+            "elf.next_elf" => Some(Command::ElfNextElf),
+            "elf.prev_elf" => Some(Command::ElfPrevElf),
+            "elf.next_command" => Some(Command::ElfNextCommand),
+            "elf.prev_command" => Some(Command::ElfPrevCommand),
+            "elf.toggle_west" => Some(Command::ElfToggleWest),
+            "elf.toggle_east" => Some(Command::ElfToggleEast),
+            "elf.toggle_north" => Some(Command::ElfToggleNorth),
+            "elf.toggle_south" => Some(Command::ElfToggleSouth),
+            "elf.toggle_up" => Some(Command::ElfToggleUp),
+            "elf.toggle_down" => Some(Command::ElfToggleDown),
             _ => None,
         }
     }
@@ -439,6 +508,22 @@ impl Command {
             Command::ExportToggleSouth => "Toggle South direction",
             Command::ExportToggleUp => "Toggle Up direction",
             Command::ExportToggleDown => "Toggle Down direction",
+            // Elf
+            Command::GlobalToggleElfPanel => "Toggle elf management panel",
+            Command::ElfSummon => "Summon selected elf",
+            Command::ElfAddUrl => "Add trusted elf URL",
+            Command::ElfRemove => "Remove selected elf",
+            Command::ElfRefresh => "Refresh elf manifest",
+            Command::ElfNextElf => "Select next elf",
+            Command::ElfPrevElf => "Select previous elf",
+            Command::ElfNextCommand => "Select next command",
+            Command::ElfPrevCommand => "Select previous command",
+            Command::ElfToggleWest => "Toggle West direction",
+            Command::ElfToggleEast => "Toggle East direction",
+            Command::ElfToggleNorth => "Toggle North direction",
+            Command::ElfToggleSouth => "Toggle South direction",
+            Command::ElfToggleUp => "Toggle Up direction",
+            Command::ElfToggleDown => "Toggle Down direction",
         }
     }
 
@@ -512,6 +597,23 @@ impl Command {
             | Command::ExportToggleSouth
             | Command::ExportToggleUp
             | Command::ExportToggleDown => Context::Export,
+
+            Command::GlobalToggleElfPanel => Context::Global,
+
+            Command::ElfSummon
+            | Command::ElfAddUrl
+            | Command::ElfRemove
+            | Command::ElfRefresh
+            | Command::ElfNextElf
+            | Command::ElfPrevElf
+            | Command::ElfNextCommand
+            | Command::ElfPrevCommand
+            | Command::ElfToggleWest
+            | Command::ElfToggleEast
+            | Command::ElfToggleNorth
+            | Command::ElfToggleSouth
+            | Command::ElfToggleUp
+            | Command::ElfToggleDown => Context::Elf,
         }
     }
 
@@ -587,6 +689,22 @@ impl Command {
             Command::ExportToggleSouth,
             Command::ExportToggleUp,
             Command::ExportToggleDown,
+            // Elf
+            Command::GlobalToggleElfPanel,
+            Command::ElfSummon,
+            Command::ElfAddUrl,
+            Command::ElfRemove,
+            Command::ElfRefresh,
+            Command::ElfNextElf,
+            Command::ElfPrevElf,
+            Command::ElfNextCommand,
+            Command::ElfPrevCommand,
+            Command::ElfToggleWest,
+            Command::ElfToggleEast,
+            Command::ElfToggleNorth,
+            Command::ElfToggleSouth,
+            Command::ElfToggleUp,
+            Command::ElfToggleDown,
         ]
     }
 

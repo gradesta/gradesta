@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 mod audio;
 mod commands;
 mod debug_log;
+mod elf_http;
 mod events;
 mod export;
 mod graph;

@@ -24,6 +24,8 @@ pub const MSG_SERVER_SET_EDGES: u8 = 0x03;
 pub const MSG_SERVER_SET_VERTEX_LABEL: u8 = 0x05;
 pub const MSG_SERVER_LOG: u8 = 0x0F;
 pub const MSG_SERVER_REQUEST_IDENTIFICATION: u8 = 0x10;
+pub const MSG_SERVER_INTRODUCTION_TOKEN: u8 = 0x20;
+pub const MSG_SERVER_ELF_OUTPUT_FWD: u8 = 0x22;
 
 // Protocol message type constants - Client to Server
 pub const MSG_CLIENT_WATCH_LANDMARK: u8 = 0x81;
@@ -34,6 +36,21 @@ pub const MSG_CLIENT_CREATE_VERTEX: u8 = 0x86;
 pub const MSG_CLIENT_DELETE_VERTEX: u8 = 0x87;
 pub const MSG_CLIENT_IDENTIFICATION_RESPONSE: u8 = 0x90;
 pub const MSG_CLIENT_IDENTIFICATION_REFUSED: u8 = 0x91;
+pub const MSG_CLIENT_INTRODUCE_ELF: u8 = 0xA0;
+
+// Direction bitmask flags
+pub const DIRECTION_WEST: u8 = 0x01;
+pub const DIRECTION_EAST: u8 = 0x02;
+pub const DIRECTION_NORTH: u8 = 0x04;
+pub const DIRECTION_SOUTH: u8 = 0x08;
+pub const DIRECTION_UP: u8 = 0x10;
+pub const DIRECTION_DOWN: u8 = 0x20;
+
+// Permission bitmask flags
+pub const PERM_READ: u8 = 0x01;
+pub const PERM_WRITE: u8 = 0x02;
+pub const PERM_CREATE: u8 = 0x04;
+pub const PERM_DELETE: u8 = 0x08;
 
 /// Events received from the server or generated locally
 #[derive(Clone, Debug)]
@@ -63,6 +80,18 @@ pub enum ServerEvent {
     HttpStreamContentFetched {
         vertex_id: u64,
         mime: String,
+        data: Vec<u8>,
+    },
+    /// Server provided an introduction token for an elf
+    IntroductionToken {
+        action_id: u64,
+        token: String,
+        server_ws_url: String,
+    },
+    /// Elf output forwarded from server
+    ElfOutputFwd {
+        action_id: u64,
+        output_type: u8,
         data: Vec<u8>,
     },
 }
@@ -103,6 +132,20 @@ pub enum WsCommand {
         action_id: u64,
         vertex_id: u64,
         edges: [u64; 6],
+    },
+    /// Introduce an elf to the server
+    IntroduceElf {
+        action_id: u64,
+        elf_url: String,
+        command: String,
+        cursor_landmark: String,
+        cursor_vertex: u64,
+        origin_landmark: String,
+        origin_vertex: u64,
+        allowed_directions: u8,
+        max_depth: i32,
+        permissions: u8,
+        params: std::collections::HashMap<String, String>,
     },
 }
 
@@ -229,6 +272,48 @@ pub fn run_ws(
                     }
                     socket.send(Message::Binary(buf))?;
                 }
+                WsCommand::IntroduceElf {
+                    action_id,
+                    elf_url,
+                    command,
+                    cursor_landmark,
+                    cursor_vertex,
+                    origin_landmark,
+                    origin_vertex,
+                    allowed_directions,
+                    max_depth,
+                    permissions,
+                    params,
+                } => {
+                    eprintln!("SEND IntroduceElf action={} elf_url={} command={}", action_id, elf_url, command);
+                    let mut buf = Vec::new();
+                    buf.push(MSG_CLIENT_INTRODUCE_ELF);
+                    buf.extend_from_slice(&action_id.to_be_bytes());
+                    buf.extend_from_slice(elf_url.as_bytes());
+                    buf.push(0);
+                    buf.extend_from_slice(command.as_bytes());
+                    buf.push(0);
+                    buf.extend_from_slice(cursor_landmark.as_bytes());
+                    buf.push(0);
+                    buf.extend_from_slice(&cursor_vertex.to_be_bytes());
+                    // Region spec
+                    buf.extend_from_slice(origin_landmark.as_bytes());
+                    buf.push(0);
+                    buf.extend_from_slice(&origin_vertex.to_be_bytes());
+                    buf.push(allowed_directions);
+                    buf.extend_from_slice(&max_depth.to_be_bytes());
+                    // Permissions
+                    buf.push(permissions);
+                    // Params
+                    buf.extend_from_slice(&(params.len() as u16).to_be_bytes());
+                    for (k, v) in &params {
+                        buf.extend_from_slice(k.as_bytes());
+                        buf.push(0);
+                        buf.extend_from_slice(v.as_bytes());
+                        buf.push(0);
+                    }
+                    socket.send(Message::Binary(buf))?;
+                }
             }
         }
 
@@ -322,6 +407,28 @@ pub fn parse_server_message(data: &[u8]) -> Result<ServerEvent> {
             eprintln!("RECV RequestIdentification action={} nonce={:?}... timestamp={} reason={:?}",
                 action_id, &nonce[..8], timestamp, reason);
             Ok(ServerEvent::RequestIdentification { action_id, nonce, timestamp, reason })
+        }
+        MSG_SERVER_INTRODUCTION_TOKEN => {
+            if data.len() < 1 + 8 {
+                return Err(anyhow!("IntroductionToken message too short"));
+            }
+            let (action_id, rest) = read_u64(&data[1..])?;
+            let (token, rest) = read_null_terminated(rest)?;
+            let (server_ws_url, _) = read_null_terminated(rest)?;
+            eprintln!("RECV IntroductionToken action={} token={}... server_ws_url={}",
+                action_id, &token[..std::cmp::min(8, token.len())], server_ws_url);
+            Ok(ServerEvent::IntroductionToken { action_id, token, server_ws_url })
+        }
+        MSG_SERVER_ELF_OUTPUT_FWD => {
+            if data.len() < 1 + 8 + 1 {
+                return Err(anyhow!("ElfOutputFwd message too short"));
+            }
+            let (action_id, rest) = read_u64(&data[1..])?;
+            let output_type = rest[0];
+            let output_data = rest[1..].to_vec();
+            eprintln!("RECV ElfOutputFwd action={} type={} {} bytes",
+                action_id, output_type, output_data.len());
+            Ok(ServerEvent::ElfOutputFwd { action_id, output_type, data: output_data })
         }
         other => {
             eprintln!("RECV Unknown message type: 0x{:02x}", other);
@@ -641,6 +748,56 @@ pub fn ingest_server_events(
                     mime,
                     data,
                 });
+            }
+            ServerEvent::IntroductionToken { action_id, token, server_ws_url } => {
+                eprintln!("IntroductionToken received: action={}, token={}..., server_ws_url={}",
+                    action_id, &token[..std::cmp::min(8, token.len())], server_ws_url);
+
+                // Find the elf task that requested this
+                if let Some(task) = app_state.active_elf_tasks.get(&action_id) {
+                    let elf_url = task.elf_url.clone();
+                    let summon_url = format!("{}/summon", elf_url.trim_end_matches('/'));
+
+                    // Spawn a thread to POST the summon request to the elf
+                    let token_clone = token.clone();
+                    let server_url_clone = server_ws_url.clone();
+                    let command = task.command.clone();
+
+                    thread::spawn(move || {
+                        eprintln!("Summoning elf at {} with token {}...", summon_url, &token_clone[..std::cmp::min(8, token_clone.len())]);
+
+                        // Build summon request JSON
+                        let body = serde_json::json!({
+                            "token": token_clone,
+                            "server_ws_url": server_url_clone,
+                            "command": command,
+                            "params": {}
+                        });
+
+                        match reqwest::blocking::Client::new()
+                            .post(&summon_url)
+                            .json(&body)
+                            .send()
+                        {
+                            Ok(response) => {
+                                if response.status().is_success() {
+                                    eprintln!("Elf summon request accepted");
+                                } else {
+                                    eprintln!("Elf summon failed: HTTP {}", response.status());
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to summon elf: {}", e);
+                            }
+                        }
+                    });
+                }
+            }
+            ServerEvent::ElfOutputFwd { action_id, output_type, data } => {
+                // Add output to the active task
+                if let Some(task) = app_state.active_elf_tasks.get_mut(&action_id) {
+                    task.add_output(output_type, data);
+                }
             }
         }
     }

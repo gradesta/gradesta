@@ -1,6 +1,7 @@
 //! Nextcloud Connector - stores notes, calendar, and files on Nextcloud via WebDAV/CalDAV
 
 mod calendar;
+mod elf;
 mod files;
 mod http_stream;
 mod identity;
@@ -27,6 +28,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
 
+use crate::elf::{ElfConnection, ElfRegistry, SharedElfRegistry};
 use crate::http_stream::{JwtSecret, StreamState};
 use crate::identity::PendingAuth;
 use crate::nextcloud::NextcloudClient;
@@ -51,9 +53,13 @@ struct Args {
 /// Connection states
 #[derive(Debug, Clone, PartialEq)]
 enum ConnectionState {
+    /// Waiting for first message to determine connection type
+    AwaitingFirstMessage,
     AwaitingIdentity,
     AwaitingAuth,
     Browsing,
+    /// Elf connection mode
+    Elf,
 }
 
 /// Per-connection state
@@ -75,14 +81,21 @@ struct ConnState {
     jwt_secret: Arc<JwtSecret>,
     /// Server port for generating streaming URLs
     server_port: u16,
+    /// Unique connection ID for this session
+    conn_id: u64,
+    /// Elf connection state (only set when conn_state == Elf)
+    elf_connection: Option<ElfConnection>,
 }
 
 impl Default for ConnState {
     fn default() -> Self {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static CONN_COUNTER: AtomicU64 = AtomicU64::new(1);
+
         Self {
             identity: None,
             nextcloud: None,
-            conn_state: ConnectionState::AwaitingIdentity,
+            conn_state: ConnectionState::AwaitingFirstMessage,
             pending_auth: None,
             poll_endpoint: None,
             poll_token: None,
@@ -92,6 +105,8 @@ impl Default for ConnState {
             thumbnail_cache: HashMap::new(),
             jwt_secret: Arc::new(JwtSecret::default()),
             server_port: 8083,
+            conn_id: CONN_COUNTER.fetch_add(1, Ordering::SeqCst),
+            elf_connection: None,
         }
     }
 }
@@ -121,6 +136,7 @@ struct AppState {
     cred_store: Arc<Mutex<CredentialStore>>,
     jwt_secret: Arc<JwtSecret>,
     port: u16,
+    elf_registry: SharedElfRegistry,
 }
 
 // Allow extracting StreamState from AppState for the streaming endpoints
@@ -159,6 +175,7 @@ async fn main() -> Result<()> {
         cred_store,
         jwt_secret,
         port: args.port,
+        elf_registry: elf::new_shared_registry(),
     };
 
     // Build router with both WebSocket and HTTP streaming endpoints
@@ -185,7 +202,13 @@ async fn ws_handler(
 /// Handle WebSocket connection
 async fn handle_socket(socket: WebSocket, app_state: AppState) {
     log::info!("New WebSocket connection");
-    if let Err(e) = handle_connection_axum(socket, app_state.cred_store, app_state.jwt_secret, app_state.port).await {
+    if let Err(e) = handle_connection_axum(
+        socket,
+        app_state.cred_store,
+        app_state.jwt_secret,
+        app_state.port,
+        app_state.elf_registry,
+    ).await {
         log::error!("Connection error: {}", e);
     }
 }
@@ -195,14 +218,40 @@ async fn handle_connection_axum(
     cred_store: Arc<Mutex<CredentialStore>>,
     jwt_secret: Arc<JwtSecret>,
     port: u16,
+    elf_registry: SharedElfRegistry,
 ) -> Result<()> {
     let (mut write, mut read) = socket.split();
 
     let state = Arc::new(Mutex::new(ConnState {
-        jwt_secret,
+        jwt_secret: jwt_secret.clone(),
         server_port: port,
         ..ConnState::default()
     }));
+
+    // Wait for first message to determine connection type
+    // If it's ELF_CONNECT, treat this as an elf connection
+    // Otherwise, proceed with normal browser flow
+    let first_msg = match read.next().await {
+        Some(Ok(AxumWsMessage::Binary(data))) if !data.is_empty() => data,
+        Some(Ok(_)) => {
+            // Non-binary or empty message - treat as browser
+            vec![]
+        }
+        Some(Err(e)) => return Err(e.into()),
+        None => return Ok(()), // Connection closed immediately
+    };
+
+    if !first_msg.is_empty() && first_msg[0] == MSG_ELF_CONNECT {
+        // This is an elf connection
+        log::info!("Elf connection detected");
+        return handle_elf_connection(first_msg, state, elf_registry, &mut write, &mut read).await;
+    }
+
+    // Normal browser connection flow
+    {
+        let mut s = state.lock().await;
+        s.conn_state = ConnectionState::AwaitingIdentity;
+    }
 
     // Send identification request with server-generated action_id
     let action_id = {
@@ -220,6 +269,27 @@ async fn handle_connection_axum(
 
     log::info!("Sent identification request");
 
+    // Process the first message if it wasn't an elf connect
+    if !first_msg.is_empty() {
+        let msg_type = first_msg[0];
+        let result = handle_message(
+            msg_type,
+            &first_msg,
+            &state,
+            &cred_store,
+            &elf_registry,
+            port,
+            &mut write,
+        )
+        .await;
+
+        if let Err(e) = result {
+            log::error!("Error handling first message: {}", e);
+            let log_msg = encode_log_message(0, 500, 0, &format!("Error: {}", e));
+            let _ = write.send(AxumWsMessage::Binary(log_msg)).await;
+        }
+    }
+
     // Message handling loop
     while let Some(msg) = read.next().await {
         let msg = msg?;
@@ -234,6 +304,8 @@ async fn handle_connection_axum(
                 &data,
                 &state,
                 &cred_store,
+                &elf_registry,
+                port,
                 &mut write,
             )
             .await;
@@ -249,11 +321,134 @@ async fn handle_connection_axum(
     Ok(())
 }
 
+/// Handle an elf connection
+async fn handle_elf_connection<W, R>(
+    first_msg: Vec<u8>,
+    state: Arc<Mutex<ConnState>>,
+    elf_registry: SharedElfRegistry,
+    write: &mut W,
+    read: &mut R,
+) -> Result<()>
+where
+    W: SinkExt<AxumWsMessage> + Unpin,
+    W::Error: std::fmt::Debug,
+    R: StreamExt<Item = Result<AxumWsMessage, axum::Error>> + Unpin,
+{
+    // Parse the elf connect message
+    let token = parse_elf_connect(&first_msg)?;
+    log::info!("Elf connecting with token: {}...", &token[..std::cmp::min(8, token.len())]);
+
+    // Validate and consume the invitation
+    let (invitation, browser_conn_id) = {
+        let mut registry = elf_registry.lock().await;
+        let browser_conn_id = registry.get_browser_connection(&token)
+            .ok_or_else(|| anyhow!("No browser connection for token"))?;
+        let invitation = registry.consume_invitation(&token)
+            .ok_or_else(|| anyhow!("Invalid or expired invitation token"))?;
+        (invitation, browser_conn_id)
+    };
+
+    log::info!("Elf invitation validated: command={}, elf_url={}",
+        invitation.command, invitation.elf_url);
+
+    // Set up elf connection state
+    {
+        let mut s = state.lock().await;
+        s.conn_state = ConnectionState::Elf;
+        s.elf_connection = Some(ElfConnection::new(invitation.clone(), browser_conn_id));
+    }
+
+    // Send ELF_TASK to the elf
+    let task_msg = encode_elf_task(
+        &invitation.command,
+        &invitation.region.origin_landmark,
+        invitation.region.origin_vertex,
+        &invitation.region,
+        &invitation.params,
+    );
+    write.send(AxumWsMessage::Binary(task_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+    log::info!("Sent ELF_TASK to elf");
+
+    // Handle elf messages
+    while let Some(msg) = read.next().await {
+        let msg = msg?;
+        if let AxumWsMessage::Binary(data) = msg {
+            if data.is_empty() {
+                continue;
+            }
+
+            let msg_type = data[0];
+            match msg_type {
+                MSG_ELF_OUTPUT => {
+                    let (output_type, output_data) = parse_elf_output(&data)?;
+                    log::info!("Elf output: type={}, {} bytes", output_type, output_data.len());
+
+                    // TODO: Forward to browser via a shared channel or stored connection
+                    // For now, just log the output
+                    if output_type == 0 {
+                        // Text output
+                        if let Ok(text) = String::from_utf8(output_data.clone()) {
+                            log::info!("Elf text: {}", text);
+                        }
+                    }
+                }
+                MSG_ELF_COMPLETE => {
+                    let (status, message) = parse_elf_complete(&data)?;
+                    log::info!("Elf complete: status={}, message={}", status, message);
+                    break;
+                }
+                MSG_CLIENT_SET_VERTEX_LABEL => {
+                    // Elf is trying to set a vertex label
+                    let s = state.lock().await;
+                    if let Some(elf_conn) = &s.elf_connection {
+                        if !elf_conn.can_write() {
+                            log::warn!("Elf attempted write without permission");
+                            let err_msg = encode_log_message(0, 403, 0, "Write permission denied");
+                            write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                            continue;
+                        }
+                    }
+                    drop(s);
+                    // TODO: Validate vertex is in allowed region and forward to appropriate handler
+                    log::info!("Elf SetVertexLabel - forwarding to handler");
+                }
+                MSG_CLIENT_CREATE_VERTEX => {
+                    let s = state.lock().await;
+                    if let Some(elf_conn) = &s.elf_connection {
+                        if !elf_conn.can_create() {
+                            log::warn!("Elf attempted create without permission");
+                            let err_msg = encode_log_message(0, 403, 0, "Create permission denied");
+                            write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                            continue;
+                        }
+                    }
+                    drop(s);
+                    log::info!("Elf CreateVertex - forwarding to handler");
+                }
+                _ => {
+                    log::warn!("Unknown elf message type: 0x{:02x}", msg_type);
+                }
+            }
+        }
+    }
+
+    // Clean up
+    {
+        let mut registry = elf_registry.lock().await;
+        registry.remove_browser_connection(&token);
+    }
+
+    log::info!("Elf connection closed");
+    Ok(())
+}
+
 async fn handle_message<W>(
     msg_type: u8,
     data: &[u8],
     state: &Arc<Mutex<ConnState>>,
     cred_store: &Arc<Mutex<CredentialStore>>,
+    elf_registry: &SharedElfRegistry,
+    server_port: u16,
     write: &mut W,
 ) -> Result<()>
 where
@@ -294,11 +489,72 @@ where
         MSG_CLIENT_CLICK_VERTEX => {
             handle_click_vertex(data, state, write).await
         }
+        MSG_CLIENT_INTRODUCE_ELF => {
+            handle_introduce_elf(data, state, elf_registry, server_port, write).await
+        }
         _ => {
             log::warn!("Unknown message type: 0x{:02x}", msg_type);
             Ok(())
         }
     }
+}
+
+/// Handle INTRODUCE_ELF message from browser
+async fn handle_introduce_elf<W>(
+    data: &[u8],
+    state: &Arc<Mutex<ConnState>>,
+    elf_registry: &SharedElfRegistry,
+    server_port: u16,
+    write: &mut W,
+) -> Result<()>
+where
+    W: SinkExt<AxumWsMessage> + Unpin,
+    W::Error: std::fmt::Debug,
+{
+    let (action_id, elf_url, command, cursor_landmark, cursor_vertex, region, permissions, params) =
+        parse_introduce_elf(data)?;
+
+    log::info!("IntroduceElf: action={} elf_url={} command={} region={:?}",
+        action_id, elf_url, command, region.origin_landmark);
+
+    // Verify the user is authenticated
+    let (identity, conn_id) = {
+        let s = state.lock().await;
+        if s.conn_state != ConnectionState::Browsing {
+            let msg = encode_log_message(action_id, 401, 0, "Not authenticated");
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            return Ok(());
+        }
+        (s.identity.clone().unwrap_or_default(), s.conn_id)
+    };
+
+    // Create invitation in registry
+    let token = {
+        let mut registry = elf_registry.lock().await;
+        registry.create_invitation(
+            identity,
+            elf_url.clone(),
+            region,
+            permissions,
+            command.clone(),
+            params,
+            conn_id,
+            300, // 5 minute TTL
+        )
+    };
+
+    log::info!("Created elf invitation with token: {}...", &token[..std::cmp::min(8, token.len())]);
+
+    // Build WebSocket URL for elf to connect to
+    // Use ws://localhost for now - in production this would be configurable
+    let server_ws_url = format!("ws://localhost:{}/ws", server_port);
+
+    // Send IntroductionToken back to browser
+    let token_msg = encode_introduction_token(action_id, &token, &server_ws_url);
+    write.send(AxumWsMessage::Binary(token_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+    log::info!("Sent IntroductionToken to browser");
+    Ok(())
 }
 
 async fn handle_identification_response<W>(

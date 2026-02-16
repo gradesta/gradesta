@@ -3,6 +3,7 @@
 //! This module replaces the modal dialogs with a unified sidebar-based UI.
 
 mod bag;
+pub mod elf;
 mod export;
 mod identification;
 mod identity;
@@ -76,6 +77,9 @@ pub enum SidebarMode {
 
     /// HTML export panel
     Export,
+
+    /// Elf management panel
+    ElfBrowser,
 }
 
 impl Default for SidebarMode {
@@ -196,5 +200,6 @@ pub fn get_help_text(state: &SidebarState) -> &'static str {
         SidebarMode::Bag => "Y: Yank | G: Go to top | Ctrl+Y: Pop | Escape: Close",
         SidebarMode::Keybindings => "Enter: Edit | Escape: Close",
         SidebarMode::Export => "E/W/N/S/U/D: Toggle directions | Enter: Export | Escape: Cancel",
+        SidebarMode::ElfBrowser => "Enter: Summon | Escape: Close",
     }
 }

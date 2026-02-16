@@ -1,0 +1,39 @@
+[package]
+name = "claude-code-elf"
+version = "0.1.0"
+edition = "2021"
+description = "Claude Code integration elf for Gradesta"
+
+[dependencies]
+# Elf library
+gradesta-elf = { path = "../gradesta-elf" }
+
+# Async runtime
+tokio = { version = "1", features = ["full", "process"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Async trait
+async-trait = "0.1"
+
+# Logging
+log = "0.4"
+env_logger = "0.10"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Process management
+which = "7"
+
+# Shell escaping
+shell-escape = "0.1"
+
+# Directories
+dirs = "5.0"

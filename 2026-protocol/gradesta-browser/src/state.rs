@@ -15,6 +15,157 @@ use crate::identity::IdentityConfig;
 use crate::keybindings::{KeybindingResolver, KeybindingsConfig};
 use crate::sidebar::{KeybindingsEditorState, SidebarState};
 
+// ============================================================================
+// Elf System Types
+// ============================================================================
+
+/// A command exposed by an elf
+#[derive(Clone, Debug)]
+pub struct ElfCommand {
+    /// Command name (identifier)
+    pub name: String,
+    /// Human-readable description
+    pub description: String,
+    /// Input types required
+    pub inputs: Vec<ElfInputType>,
+}
+
+/// Types of inputs an elf command can accept
+#[derive(Clone, Debug)]
+pub enum ElfInputType {
+    /// Current cursor position
+    Cursor,
+    /// A region of the graph
+    Region,
+    /// A text prompt
+    Prompt,
+}
+
+/// Manifest describing an elf's capabilities
+#[derive(Clone, Debug)]
+pub struct ElfManifest {
+    /// Unique identifier for this elf
+    pub elf_id: String,
+    /// Human-readable name
+    pub name: String,
+    /// Description of what this elf does
+    pub description: String,
+    /// Available commands
+    pub commands: Vec<ElfCommand>,
+}
+
+/// A trusted elf configuration (stored locally)
+#[derive(Clone, Debug)]
+pub struct TrustedElf {
+    /// URL of the elf service
+    pub url: String,
+    /// Cached manifest (fetched from elf)
+    pub manifest: Option<ElfManifest>,
+    /// Last time manifest was fetched
+    pub last_fetched: Option<Instant>,
+    /// Whether the elf is currently reachable
+    pub is_reachable: bool,
+}
+
+impl TrustedElf {
+    pub fn new(url: &str) -> Self {
+        Self {
+            url: url.to_string(),
+            manifest: None,
+            last_fetched: None,
+            is_reachable: false,
+        }
+    }
+}
+
+/// Active elf task state
+#[derive(Clone, Debug)]
+pub struct ElfTask {
+    /// Action ID for this task
+    pub action_id: u64,
+    /// Elf URL
+    pub elf_url: String,
+    /// Command being executed
+    pub command: String,
+    /// Output received so far
+    pub output: Vec<ElfTaskOutput>,
+    /// Whether the task has completed
+    pub completed: bool,
+    /// Final status (if completed)
+    pub status: Option<u32>,
+    /// Final message (if completed)
+    pub message: Option<String>,
+    /// When the task started
+    pub started: Instant,
+}
+
+/// Output from an elf task
+#[derive(Clone, Debug)]
+pub struct ElfTaskOutput {
+    /// Output type: 0=text, 1=binary
+    pub output_type: u8,
+    /// The output data
+    pub data: Vec<u8>,
+    /// When this output was received
+    pub received: Instant,
+}
+
+impl ElfTask {
+    pub fn new(action_id: u64, elf_url: &str, command: &str) -> Self {
+        Self {
+            action_id,
+            elf_url: elf_url.to_string(),
+            command: command.to_string(),
+            output: Vec::new(),
+            completed: false,
+            status: None,
+            message: None,
+            started: Instant::now(),
+        }
+    }
+
+    /// Add output to the task
+    pub fn add_output(&mut self, output_type: u8, data: Vec<u8>) {
+        self.output.push(ElfTaskOutput {
+            output_type,
+            data,
+            received: Instant::now(),
+        });
+    }
+
+    /// Mark the task as complete
+    pub fn complete(&mut self, status: u32, message: String) {
+        self.completed = true;
+        self.status = Some(status);
+        self.message = Some(message);
+    }
+
+    /// Get all text output as a string
+    pub fn get_text_output(&self) -> String {
+        self.output
+            .iter()
+            .filter(|o| o.output_type == 0)
+            .filter_map(|o| String::from_utf8(o.data.clone()).ok())
+            .collect::<Vec<_>>()
+            .join("")
+    }
+}
+
+/// State for elf panel UI
+#[derive(Clone, Debug, Default)]
+pub struct ElfPanelState {
+    /// URL input field
+    pub url_input: String,
+    /// Currently selected elf index
+    pub selected_elf_index: usize,
+    /// Currently selected command index
+    pub selected_command_index: usize,
+    /// Region direction checkboxes (bitmask)
+    pub selected_directions: u8,
+    /// Permission checkboxes (bitmask)
+    pub selected_permissions: u8,
+}
+
 /// Category of debug log entry
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DebugCategory {
@@ -350,6 +501,15 @@ pub struct AppState {
     pub debug_last_context: Option<String>,
     // Export state
     pub export_state: ExportState,
+    // Elf system state
+    /// List of trusted elf URLs (user-configured)
+    pub trusted_elves: Vec<TrustedElf>,
+    /// Active elf tasks (action_id -> task state)
+    pub active_elf_tasks: HashMap<u64, ElfTask>,
+    /// Whether the elf panel is visible
+    pub show_elf_panel: bool,
+    /// Elf panel UI state
+    pub elf_panel: ElfPanelState,
 }
 
 impl Default for AppState {
@@ -420,6 +580,10 @@ impl Default for AppState {
             debug_filter: DebugFilter::default(),
             debug_last_context: None,
             export_state: ExportState::new(),
+            trusted_elves: Vec::new(),
+            active_elf_tasks: HashMap::new(),
+            show_elf_panel: false,
+            elf_panel: ElfPanelState::default(),
         }
     }
 }
