@@ -9,6 +9,8 @@
 //! 6. Summon the elf to transform the content
 //! 7. Verify the content was transformed to pig latin
 
+mod claude_code_test;
+
 use anyhow::{anyhow, Result};
 use futures_util::{SinkExt, StreamExt};
 use std::collections::HashMap;
@@ -29,7 +31,7 @@ const MSG_SERVER_SET_VERTEX_LABEL: u8 = 0x05;
 const MSG_SERVER_LOG_MESSAGE: u8 = 0x0F;
 const MSG_SERVER_INTRODUCTION_TOKEN: u8 = 0x20;
 
-const SERVER_PORT: u16 = 8098;
+pub const SERVER_PORT: u16 = 8098;
 const ELF_PORT: u16 = 9098;
 
 struct TestHarness {
@@ -101,7 +103,7 @@ async fn start_elf() -> Result<Child> {
 }
 
 // Protocol encoding functions
-fn encode_watch_landmark(action_id: u64, landmark: &str) -> Vec<u8> {
+pub fn encode_watch_landmark(action_id: u64, landmark: &str) -> Vec<u8> {
     let mut buf = Vec::new();
     buf.push(MSG_CLIENT_WATCH_LANDMARK);
     buf.extend_from_slice(&action_id.to_be_bytes());
@@ -109,7 +111,7 @@ fn encode_watch_landmark(action_id: u64, landmark: &str) -> Vec<u8> {
     buf
 }
 
-fn encode_create_vertex(
+pub fn encode_create_vertex(
     action_id: u64,
     from_vertex: u64,
     direction: u8,
@@ -129,7 +131,7 @@ fn encode_create_vertex(
     buf
 }
 
-fn encode_introduce_elf(
+pub fn encode_introduce_elf(
     action_id: u64,
     elf_url: &str,
     command: &str,
@@ -159,7 +161,7 @@ fn encode_introduce_elf(
 }
 
 #[derive(Debug)]
-enum ServerMessage {
+pub enum ServerMessage {
     Context { action_id: u64, landmark: String },
     Vertex { action_id: u64, vertex_id: u64, mime: String, content: Vec<u8> },
     Edges { action_id: u64, vertex_id: u64, edges: [u64; 6] },
@@ -168,7 +170,7 @@ enum ServerMessage {
     Unknown(u8),
 }
 
-fn parse_message(data: &[u8]) -> Result<ServerMessage> {
+pub fn parse_message(data: &[u8]) -> Result<ServerMessage> {
     if data.is_empty() {
         return Err(anyhow!("Empty message"));
     }
@@ -222,7 +224,13 @@ fn parse_message(data: &[u8]) -> Result<ServerMessage> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    let test_claude = args.iter().any(|a| a == "--claude" || a == "-c");
+
     println!("Starting Elves integration test...\n");
+    if test_claude {
+        println!("(Will also test claude-code-elf)\n");
+    }
 
     // Create temp storage directory
     let storage_dir = tempfile::tempdir()?;
@@ -417,12 +425,23 @@ async fn main() -> Result<()> {
     println!("  Expected: \"{}\"", expected);
     println!("  Got:      \"{}\"", transformed_content);
 
-    if transformed_content == expected {
-        println!("\n========================================");
-        println!("       INTEGRATION TEST PASSED!");
-        println!("========================================\n");
-        Ok(())
-    } else {
-        Err(anyhow!("Transformation mismatch! Expected '{}', got '{}'", expected, transformed_content))
+    if transformed_content != expected {
+        return Err(anyhow!("Transformation mismatch! Expected '{}', got '{}'", expected, transformed_content));
     }
+
+    println!("\n========================================");
+    println!("   PIG LATIN ELF TEST PASSED!");
+    println!("========================================\n");
+
+    // Optionally test claude-code-elf
+    if test_claude {
+        // The server is already running, test claude-code-elf
+        claude_code_test::test_claude_code_elf_streaming(true).await?;
+    }
+
+    println!("\n========================================");
+    println!("   ALL INTEGRATION TESTS PASSED!");
+    println!("========================================\n");
+
+    Ok(())
 }

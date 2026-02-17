@@ -22,7 +22,7 @@ use axum::{
 };
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
-use tokio::sync::Mutex;
+use tokio::sync::{broadcast, Mutex};
 
 use crate::protocol::*;
 use crate::storage::{NotesIndex, StorageClient};
@@ -52,6 +52,22 @@ struct Invitation {
     browser_conn_id: u64,
 }
 
+/// Broadcast message for vertex updates
+#[derive(Clone, Debug)]
+enum BroadcastMsg {
+    /// A vertex was created or updated
+    VertexUpdate {
+        vertex_id: u64,
+        mime: String,
+        content: Vec<u8>,
+    },
+    /// Edges were updated
+    EdgesUpdate {
+        vertex_id: u64,
+        edges: [u64; 6],
+    },
+}
+
 /// Shared server state
 struct ServerState {
     storage: StorageClient,
@@ -62,6 +78,8 @@ struct ServerState {
     conn_counter: std::sync::atomic::AtomicU64,
     /// Server port for introduction tokens
     port: u16,
+    /// Broadcast channel for vertex updates
+    broadcast_tx: broadcast::Sender<BroadcastMsg>,
 }
 
 #[derive(Clone)]
@@ -82,6 +100,9 @@ async fn main() -> Result<()> {
     let storage = StorageClient::new(&storage_path);
     let index = storage.load_index().await?;
 
+    // Create broadcast channel with capacity for 1000 messages
+    let (broadcast_tx, _) = broadcast::channel(1000);
+
     println!("Test Server v{}", env!("CARGO_PKG_VERSION"));
     println!("Storage: {}", storage_path.display());
     println!("Listening on: ws://localhost:{}/ws", args.port);
@@ -94,6 +115,7 @@ async fn main() -> Result<()> {
             invitations: Mutex::new(HashMap::new()),
             conn_counter: std::sync::atomic::AtomicU64::new(1),
             port: args.port,
+            broadcast_tx,
         }),
     };
 
@@ -142,7 +164,8 @@ async fn handle_connection_inner(socket: WebSocket, state: AppState, conn_id: u6
         return handle_elf_connection(first_msg, state, &mut write, &mut read).await;
     }
 
-    // Browser connection - no auth needed, go straight to browsing
+    // Browser connection - subscribe to broadcasts
+    let mut broadcast_rx = state.inner.broadcast_tx.subscribe();
     let identity = format!("local://conn-{}", conn_id);
     log::info!("Browser connection from {}", identity);
 
@@ -151,12 +174,45 @@ async fn handle_connection_inner(socket: WebSocket, state: AppState, conn_id: u6
         handle_browser_message(&first_msg, &state, conn_id, &identity, &mut write).await?;
     }
 
-    // Message loop
-    while let Some(msg) = read.next().await {
-        let msg = msg?;
-        if let Message::Binary(data) = msg {
-            if !data.is_empty() {
-                handle_browser_message(&data, &state, conn_id, &identity, &mut write).await?;
+    // Message loop - handle both incoming messages and broadcasts
+    loop {
+        tokio::select! {
+            // Handle incoming WebSocket messages
+            msg = read.next() => {
+                match msg {
+                    Some(Ok(Message::Binary(data))) if !data.is_empty() => {
+                        handle_browser_message(&data, &state, conn_id, &identity, &mut write).await?;
+                    }
+                    Some(Ok(_)) => continue,
+                    Some(Err(e)) => return Err(e.into()),
+                    None => break,
+                }
+            }
+            // Handle broadcast messages
+            broadcast = broadcast_rx.recv() => {
+                match broadcast {
+                    Ok(BroadcastMsg::VertexUpdate { vertex_id, mime, content }) => {
+                        // Send vertex update to this connection
+                        let label_msg = encode_set_vertex_label(0, vertex_id, &mime, &content);
+                        if let Err(e) = write.send(Message::Binary(label_msg)).await {
+                            log::error!("Failed to send broadcast to conn {}: {:?}", conn_id, e);
+                            break;
+                        }
+                    }
+                    Ok(BroadcastMsg::EdgesUpdate { vertex_id, edges }) => {
+                        let edges_msg = encode_set_edges(0, vertex_id, edges, 0x7F);
+                        if let Err(e) = write.send(Message::Binary(edges_msg)).await {
+                            log::error!("Failed to send broadcast to conn {}: {:?}", conn_id, e);
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        log::warn!("Connection {} lagged {} messages", conn_id, n);
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        break;
+                    }
+                }
             }
         }
     }
@@ -168,7 +224,7 @@ async fn handle_browser_message<W>(
     data: &[u8],
     state: &AppState,
     conn_id: u64,
-    identity: &str,
+    _identity: &str,
     write: &mut W,
 ) -> Result<()>
 where
@@ -223,10 +279,17 @@ where
             if let Some(vertex) = index.find_vertex_mut(vertex_id) {
                 // Save content
                 state.inner.storage.upload(&vertex.file, &content).await?;
-                vertex.mime = mime;
+                vertex.mime = mime.clone();
 
                 // Save index
                 state.inner.storage.save_index(&index).await?;
+
+                // Broadcast the update to all connections
+                let _ = state.inner.broadcast_tx.send(BroadcastMsg::VertexUpdate {
+                    vertex_id,
+                    mime,
+                    content,
+                });
 
                 let log_msg = encode_log_message(action_id, 200, vertex_id, "OK");
                 write.send(Message::Binary(log_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
@@ -237,7 +300,7 @@ where
         }
 
         MSG_CLIENT_CREATE_VERTEX => {
-            let (action_id, from_vertex, direction, layer, mime, content) = parse_create_vertex(data)?;
+            let (action_id, from_vertex, direction, _layer, mime, content) = parse_create_vertex(data)?;
             log::info!("CreateVertex: action={} from={} dir={}", action_id, from_vertex, direction);
 
             let mut index = state.inner.index.lock().await;
@@ -264,8 +327,21 @@ where
             // Save index
             state.inner.storage.save_index(&index).await?;
 
-            // Send edges for new vertex
+            // Build edges
             let edges = index.build_edges(new_id);
+
+            // Broadcast vertex creation
+            let _ = state.inner.broadcast_tx.send(BroadcastMsg::VertexUpdate {
+                vertex_id: vertex_hash,
+                mime: mime.clone(),
+                content: content.clone(),
+            });
+            let _ = state.inner.broadcast_tx.send(BroadcastMsg::EdgesUpdate {
+                vertex_id: vertex_hash,
+                edges,
+            });
+
+            // Send edges for new vertex to requesting client
             let edges_msg = encode_set_edges(action_id, vertex_hash, edges, 0x7F);
             write.send(Message::Binary(edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
@@ -275,6 +351,12 @@ where
                     let from_edges = index.build_edges(from_uuid);
                     let from_edges_msg = encode_set_edges(action_id, from_vertex, from_edges, 0x7F);
                     write.send(Message::Binary(from_edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+                    // Also broadcast the edge update
+                    let _ = state.inner.broadcast_tx.send(BroadcastMsg::EdgesUpdate {
+                        vertex_id: from_vertex,
+                        edges: from_edges,
+                    });
                 }
             }
 
@@ -300,7 +382,7 @@ where
         }
 
         MSG_CLIENT_INTRODUCE_ELF => {
-            let (action_id, elf_url, command, cursor_landmark, cursor_vertex, region, permissions, params) =
+            let (action_id, elf_url, command, _cursor_landmark, cursor_vertex, region, permissions, params) =
                 parse_introduce_elf(data)?;
             log::info!("IntroduceElf: action={} elf_url={} command={}", action_id, elf_url, command);
 
@@ -320,7 +402,7 @@ where
                 });
             }
 
-            // Send token back - TODO: get actual port from config
+            // Send token back
             let server_ws_url = format!("ws://localhost:{}/ws", state.inner.port);
             let token_msg = encode_introduction_token(action_id, &token, &server_ws_url);
             write.send(Message::Binary(token_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
@@ -400,14 +482,21 @@ where
                         continue;
                     }
 
-                    let (action_id, vertex_id, layer, mime, content) = parse_set_vertex_label(&data)?;
+                    let (action_id, vertex_id, _layer, mime, content) = parse_set_vertex_label(&data)?;
                     log::info!("Elf SetVertexLabel: vertex={} mime={}", vertex_id, mime);
 
                     let mut index = state.inner.index.lock().await;
                     if let Some(vertex) = index.find_vertex_mut(vertex_id) {
                         state.inner.storage.upload(&vertex.file, &content).await?;
-                        vertex.mime = mime;
+                        vertex.mime = mime.clone();
                         state.inner.storage.save_index(&index).await?;
+
+                        // Broadcast the update to all browser connections
+                        let _ = state.inner.broadcast_tx.send(BroadcastMsg::VertexUpdate {
+                            vertex_id,
+                            mime,
+                            content,
+                        });
 
                         let log_msg = encode_log_message(action_id, 200, vertex_id, "OK");
                         write.send(Message::Binary(log_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
@@ -415,6 +504,73 @@ where
                         let log_msg = encode_log_message(action_id, 404, vertex_id, "Vertex not found");
                         write.send(Message::Binary(log_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
                     }
+                }
+                MSG_CLIENT_CREATE_VERTEX => {
+                    // Check create permission
+                    if (invitation.permissions & PERM_CREATE) == 0 {
+                        let log_msg = encode_log_message(0, 403, 0, "Create permission denied");
+                        write.send(Message::Binary(log_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                        continue;
+                    }
+
+                    let (action_id, from_vertex, direction, _layer, mime, content) = parse_create_vertex(&data)?;
+                    log::info!("Elf CreateVertex: from={} dir={}", from_vertex, direction);
+
+                    let mut index = state.inner.index.lock().await;
+
+                    // Create new vertex
+                    let new_id = uuid::Uuid::new_v4();
+                    let file_path = format!("content/{}.{}", new_id, mime_to_ext(&mime));
+
+                    // Save content
+                    state.inner.storage.upload(&file_path, &content).await?;
+
+                    // Add vertex to index
+                    let vertex = storage::Vertex::new(new_id, &mime, &file_path);
+                    let vertex_hash = vertex.id_hash();
+                    index.vertices.push(vertex);
+
+                    // Add edge from source
+                    if from_vertex != 0 {
+                        if let Some(from_uuid) = index.find_uuid(from_vertex) {
+                            index.add_edge(from_uuid, new_id, direction);
+                        }
+                    }
+
+                    // Save index
+                    state.inner.storage.save_index(&index).await?;
+
+                    // Build edges
+                    let edges = index.build_edges(new_id);
+
+                    // Broadcast vertex creation to all browser connections
+                    let _ = state.inner.broadcast_tx.send(BroadcastMsg::VertexUpdate {
+                        vertex_id: vertex_hash,
+                        mime: mime.clone(),
+                        content: content.clone(),
+                    });
+                    let _ = state.inner.broadcast_tx.send(BroadcastMsg::EdgesUpdate {
+                        vertex_id: vertex_hash,
+                        edges,
+                    });
+
+                    // Also broadcast updated edges for source vertex
+                    if from_vertex != 0 {
+                        if let Some(from_uuid) = index.find_uuid(from_vertex) {
+                            let from_edges = index.build_edges(from_uuid);
+                            let _ = state.inner.broadcast_tx.send(BroadcastMsg::EdgesUpdate {
+                                vertex_id: from_vertex,
+                                edges: from_edges,
+                            });
+                        }
+                    }
+
+                    // Send response to elf
+                    let edges_msg = encode_set_edges(action_id, vertex_hash, edges, 0x7F);
+                    write.send(Message::Binary(edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+                    let log_msg = encode_log_message(action_id, 200, vertex_hash, "Created");
+                    write.send(Message::Binary(log_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
                 }
                 MSG_CLIENT_CLICK_VERTEX => {
                     // Check read permission

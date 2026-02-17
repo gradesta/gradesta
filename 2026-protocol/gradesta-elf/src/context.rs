@@ -9,8 +9,10 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::protocol::{
     encode_elf_connect, encode_elf_output, encode_elf_complete, parse_elf_task,
-    encode_set_vertex_label, encode_click_vertex, parse_server_set_vertex_label,
-    parse_server_log_message, MSG_SERVER_SET_VERTEX_LABEL, MSG_SERVER_LOG_MESSAGE,
+    encode_set_vertex_label, encode_click_vertex, encode_create_vertex,
+    parse_server_set_vertex_label, parse_server_log_message, parse_server_set_edges,
+    MSG_SERVER_SET_VERTEX_LABEL, MSG_SERVER_LOG_MESSAGE, MSG_SERVER_SET_EDGES,
+    DIR_SOUTH,
 };
 use crate::ElfTask;
 
@@ -36,6 +38,8 @@ enum WsCommand {
     ReadVertex { vertex_id: u64, response_tx: oneshot::Sender<Result<(String, Vec<u8>)>> },
     /// Set a vertex and send ack back
     SetVertex { vertex_id: u64, mime: String, content: Vec<u8>, response_tx: oneshot::Sender<Result<()>> },
+    /// Create a vertex and return the new vertex ID
+    CreateVertex { from_vertex: u64, direction: u8, mime: String, content: Vec<u8>, response_tx: oneshot::Sender<Result<u64>> },
 }
 
 impl ElfContext {
@@ -80,6 +84,8 @@ impl ElfContext {
             let mut pending_reads: std::collections::HashMap<u64, oneshot::Sender<Result<(String, Vec<u8>)>>> = std::collections::HashMap::new();
             // Map to track pending write requests: action_id -> response channel
             let mut pending_writes: std::collections::HashMap<u64, oneshot::Sender<Result<()>>> = std::collections::HashMap::new();
+            // Map to track pending create requests: action_id -> response channel
+            let mut pending_creates: std::collections::HashMap<u64, oneshot::Sender<Result<u64>>> = std::collections::HashMap::new();
             let mut action_counter: u64 = 1;
 
             loop {
@@ -119,6 +125,15 @@ impl ElfContext {
                                     log::error!("Failed to send set vertex: {}", e);
                                 }
                             }
+                            Some(WsCommand::CreateVertex { from_vertex, direction, mime, content, response_tx }) => {
+                                let action_id = action_counter;
+                                action_counter += 1;
+                                pending_creates.insert(action_id, response_tx);
+                                let msg = encode_create_vertex(action_id, from_vertex, direction, &mime, &content);
+                                if let Err(e) = write.send(Message::Binary(msg)).await {
+                                    log::error!("Failed to send create vertex: {}", e);
+                                }
+                            }
                             None => break,
                         }
                     }
@@ -138,7 +153,8 @@ impl ElfContext {
                                         }
                                     }
                                     MSG_SERVER_LOG_MESSAGE => {
-                                        if let Ok((action_id, status, _, message)) = parse_server_log_message(&data) {
+                                        if let Ok((action_id, status, vertex_id, message)) = parse_server_log_message(&data) {
+                                            // Check if this is a response to a write
                                             if let Some(tx) = pending_writes.remove(&action_id) {
                                                 if status == 200 {
                                                     let _ = tx.send(Ok(()));
@@ -146,7 +162,20 @@ impl ElfContext {
                                                     let _ = tx.send(Err(anyhow!("Server error {}: {}", status, message)));
                                                 }
                                             }
+                                            // Check if this is a response to a create (after SetEdges)
+                                            if let Some(tx) = pending_creates.remove(&action_id) {
+                                                if status == 200 {
+                                                    let _ = tx.send(Ok(vertex_id));
+                                                } else {
+                                                    let _ = tx.send(Err(anyhow!("Create failed {}: {}", status, message)));
+                                                }
+                                            }
                                         }
+                                    }
+                                    MSG_SERVER_SET_EDGES => {
+                                        // SetEdges comes before LogMessage for create, contains the new vertex ID
+                                        // We don't need to handle it specially since LogMessage also contains the vertex ID
+                                        log::debug!("Received SetEdges");
                                     }
                                     _ => {
                                         log::debug!("Ignoring message type: 0x{:02x}", data[0]);
@@ -242,6 +271,33 @@ impl ElfContext {
     /// Set the cursor vertex content
     pub async fn set_cursor(&self, mime: &str, content: &[u8]) -> Result<()> {
         self.set_vertex(self.task.cursor_vertex, mime, content).await
+    }
+
+    /// Create a new vertex in a direction from another vertex
+    /// Returns the new vertex ID
+    pub async fn create_vertex(&self, from_vertex: u64, direction: u8, mime: &str, content: &[u8]) -> Result<u64> {
+        let (tx, rx) = oneshot::channel();
+        self.cmd_tx.send(WsCommand::CreateVertex {
+            from_vertex,
+            direction,
+            mime: mime.to_string(),
+            content: content.to_vec(),
+            response_tx: tx,
+        }).await
+            .map_err(|_| anyhow!("Command channel closed"))?;
+
+        rx.await
+            .map_err(|_| anyhow!("Response channel closed"))?
+    }
+
+    /// Create a vertex south of another vertex
+    pub async fn create_south(&self, from_vertex: u64, mime: &str, content: &[u8]) -> Result<u64> {
+        self.create_vertex(from_vertex, DIR_SOUTH, mime, content).await
+    }
+
+    /// Create a vertex south of the cursor
+    pub async fn create_south_of_cursor(&self, mime: &str, content: &[u8]) -> Result<u64> {
+        self.create_south(self.task.cursor_vertex, mime, content).await
     }
 
     /// Get the command name

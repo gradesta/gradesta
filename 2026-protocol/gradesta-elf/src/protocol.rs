@@ -12,12 +12,22 @@ pub const MSG_ELF_COMPLETE: u8 = 0xB2;
 pub const MSG_SERVER_ELF_TASK: u8 = 0x21;
 
 // Standard client message types (elves use same protocol as browser)
-pub const MSG_CLIENT_SET_VERTEX_LABEL: u8 = 0x85;
 pub const MSG_CLIENT_CLICK_VERTEX: u8 = 0x84;
+pub const MSG_CLIENT_SET_VERTEX_LABEL: u8 = 0x85;
+pub const MSG_CLIENT_CREATE_VERTEX: u8 = 0x86;
 
 // Standard server message types
+pub const MSG_SERVER_SET_EDGES: u8 = 0x03;
 pub const MSG_SERVER_SET_VERTEX_LABEL: u8 = 0x05;
 pub const MSG_SERVER_LOG_MESSAGE: u8 = 0x0F;
+
+// Direction constants
+pub const DIR_WEST: u8 = 0;
+pub const DIR_EAST: u8 = 1;
+pub const DIR_NORTH: u8 = 2;
+pub const DIR_SOUTH: u8 = 3;
+pub const DIR_UP: u8 = 4;
+pub const DIR_DOWN: u8 = 5;
 
 /// Encode ELF_CONNECT message
 pub fn encode_elf_connect(token: &str) -> Vec<u8> {
@@ -160,6 +170,27 @@ pub fn encode_click_vertex(action_id: u64, vertex_id: u64) -> Vec<u8> {
     buf
 }
 
+/// Encode CreateVertex message
+/// Format: [type:1][action_id:8][from_vertex:8][direction:1][layer:4][mime\0][content...]
+pub fn encode_create_vertex(
+    action_id: u64,
+    from_vertex: u64,
+    direction: u8,
+    mime: &str,
+    content: &[u8],
+) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(1 + 8 + 8 + 1 + 4 + mime.len() + 1 + content.len());
+    buf.push(MSG_CLIENT_CREATE_VERTEX);
+    buf.extend_from_slice(&action_id.to_be_bytes());
+    buf.extend_from_slice(&from_vertex.to_be_bytes());
+    buf.push(direction);
+    buf.extend_from_slice(&0u32.to_be_bytes()); // layer 0
+    buf.extend_from_slice(mime.as_bytes());
+    buf.push(0);
+    buf.extend_from_slice(content);
+    buf
+}
+
 /// Parse SetVertexLabel message from server
 /// Returns: (action_id, vertex_id, layer, mime, content)
 pub fn parse_server_set_vertex_label(data: &[u8]) -> Result<(u64, u64, u32, String, Vec<u8>)> {
@@ -199,4 +230,28 @@ pub fn parse_server_log_message(data: &[u8]) -> Result<(u64, u32, u64, String)> 
     let message = String::from_utf8(data[21..].to_vec())?;
 
     Ok((action_id, status, vertex_id, message))
+}
+
+/// Parse SetEdges from server (used to get new vertex ID after create)
+/// Returns: (action_id, vertex_id, edges[6], edit_mask)
+pub fn parse_server_set_edges(data: &[u8]) -> Result<(u64, u64, [u64; 6], u8)> {
+    if data.is_empty() || data[0] != MSG_SERVER_SET_EDGES {
+        return Err(anyhow!("Not a SetEdges message"));
+    }
+    if data.len() < 1 + 8 + 8 + 48 + 1 {
+        return Err(anyhow!("SetEdges message too short"));
+    }
+
+    let action_id = u64::from_be_bytes(data[1..9].try_into()?);
+    let vertex_id = u64::from_be_bytes(data[9..17].try_into()?);
+
+    let mut edges = [0u64; 6];
+    for i in 0..6 {
+        let start = 17 + i * 8;
+        edges[i] = u64::from_be_bytes(data[start..start + 8].try_into()?);
+    }
+
+    let edit_mask = data[65];
+
+    Ok((action_id, vertex_id, edges, edit_mask))
 }

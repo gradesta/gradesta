@@ -18,12 +18,28 @@ pub async fn build_nix_docker_image(
 ) -> Result<()> {
     output_fn(&format!("Building Docker image from {}\n", nix_shell_path.display()));
 
-    // Create a Dockerfile that uses nix-shell
+    // Create a Dockerfile that uses nix-shell and installs Claude Code
     let dockerfile_content = format!(
         r#"FROM nixos/nix:latest
+
+# Copy shell.nix
 COPY {} /shell.nix
+
+# Update channels and build nix environment
 RUN nix-channel --update
+
+# Install dependencies from shell.nix
 RUN nix-shell /shell.nix --run "echo Dependencies installed"
+
+# Set up npm global directory and install Claude Code
+ENV NPM_CONFIG_PREFIX=/root/.npm-global
+ENV PATH="/root/.npm-global/bin:$PATH"
+RUN mkdir -p /root/.npm-global
+RUN nix-shell /shell.nix --run "npm install -g @anthropic-ai/claude-code"
+
+# Verify claude is installed
+RUN nix-shell /shell.nix --run "claude --version"
+
 WORKDIR /workspace
 ENTRYPOINT ["nix-shell", "/shell.nix", "--run"]
 "#,
