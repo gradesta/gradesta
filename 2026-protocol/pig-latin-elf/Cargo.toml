@@ -1,0 +1,25 @@
+[package]
+name = "pig-latin-elf"
+version = "0.1.0"
+edition = "2021"
+description = "Pig Latin transformation elf for testing"
+
+[dependencies]
+# Gradesta elf library
+gradesta-elf = { path = "../gradesta-elf" }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Async trait
+async-trait = "0.1"
+
+# Error handling
+anyhow = "1.0"
+
+# Logging
+log = "0.4"
+env_logger = "0.10"
+
+# CLI
+clap = { version = "4", features = ["derive"] }

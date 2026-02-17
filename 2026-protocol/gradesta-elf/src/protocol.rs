@@ -11,6 +11,14 @@ pub const MSG_ELF_OUTPUT: u8 = 0xB1;
 pub const MSG_ELF_COMPLETE: u8 = 0xB2;
 pub const MSG_SERVER_ELF_TASK: u8 = 0x21;
 
+// Standard client message types (elves use same protocol as browser)
+pub const MSG_CLIENT_SET_VERTEX_LABEL: u8 = 0x85;
+pub const MSG_CLIENT_CLICK_VERTEX: u8 = 0x84;
+
+// Standard server message types
+pub const MSG_SERVER_SET_VERTEX_LABEL: u8 = 0x05;
+pub const MSG_SERVER_LOG_MESSAGE: u8 = 0x0F;
+
 /// Encode ELF_CONNECT message
 pub fn encode_elf_connect(token: &str) -> Vec<u8> {
     let mut buf = Vec::with_capacity(1 + token.len() + 1);
@@ -122,4 +130,73 @@ fn parse_region_spec(data: &[u8]) -> Result<(RegionSpec, &[u8])> {
         allowed_directions,
         max_depth,
     }, &rest[13..]))
+}
+
+// ============================================================================
+// Standard Protocol Messages (same as browser uses)
+// ============================================================================
+
+/// Encode SetVertexLabel message (layer 0)
+/// Format: [type:1][action_id:8][vertex_id:8][layer:4][mime\0][content...]
+pub fn encode_set_vertex_label(action_id: u64, vertex_id: u64, mime: &str, content: &[u8]) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(1 + 8 + 8 + 4 + mime.len() + 1 + content.len());
+    buf.push(MSG_CLIENT_SET_VERTEX_LABEL);
+    buf.extend_from_slice(&action_id.to_be_bytes());
+    buf.extend_from_slice(&vertex_id.to_be_bytes());
+    buf.extend_from_slice(&0u32.to_be_bytes()); // layer 0
+    buf.extend_from_slice(mime.as_bytes());
+    buf.push(0);
+    buf.extend_from_slice(content);
+    buf
+}
+
+/// Encode ClickVertex message (to request vertex content)
+/// Format: [type:1][action_id:8][vertex_id:8]
+pub fn encode_click_vertex(action_id: u64, vertex_id: u64) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(1 + 8 + 8);
+    buf.push(MSG_CLIENT_CLICK_VERTEX);
+    buf.extend_from_slice(&action_id.to_be_bytes());
+    buf.extend_from_slice(&vertex_id.to_be_bytes());
+    buf
+}
+
+/// Parse SetVertexLabel message from server
+/// Returns: (action_id, vertex_id, layer, mime, content)
+pub fn parse_server_set_vertex_label(data: &[u8]) -> Result<(u64, u64, u32, String, Vec<u8>)> {
+    if data.is_empty() || data[0] != MSG_SERVER_SET_VERTEX_LABEL {
+        return Err(anyhow!("Not a SetVertexLabel message"));
+    }
+    if data.len() < 1 + 8 + 8 + 4 {
+        return Err(anyhow!("SetVertexLabel message too short"));
+    }
+
+    let action_id = u64::from_be_bytes(data[1..9].try_into()?);
+    let vertex_id = u64::from_be_bytes(data[9..17].try_into()?);
+    let layer = u32::from_be_bytes(data[17..21].try_into()?);
+
+    let rest = &data[21..];
+    let null_pos = rest.iter().position(|&b| b == 0)
+        .ok_or_else(|| anyhow!("No null terminator in mime type"))?;
+    let mime = String::from_utf8(rest[..null_pos].to_vec())?;
+    let content = rest[null_pos + 1..].to_vec();
+
+    Ok((action_id, vertex_id, layer, mime, content))
+}
+
+/// Parse LogMessage from server
+/// Returns: (action_id, status, vertex_id, message)
+pub fn parse_server_log_message(data: &[u8]) -> Result<(u64, u32, u64, String)> {
+    if data.is_empty() || data[0] != MSG_SERVER_LOG_MESSAGE {
+        return Err(anyhow!("Not a LogMessage"));
+    }
+    if data.len() < 1 + 8 + 4 + 8 {
+        return Err(anyhow!("LogMessage too short"));
+    }
+
+    let action_id = u64::from_be_bytes(data[1..9].try_into()?);
+    let status = u32::from_be_bytes(data[9..13].try_into()?);
+    let vertex_id = u64::from_be_bytes(data[13..21].try_into()?);
+    let message = String::from_utf8(data[21..].to_vec())?;
+
+    Ok((action_id, status, vertex_id, message))
 }

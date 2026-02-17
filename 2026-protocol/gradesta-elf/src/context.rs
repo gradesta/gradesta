@@ -4,26 +4,38 @@
 
 use anyhow::{anyhow, Result};
 use futures_util::{SinkExt, StreamExt};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
-use crate::protocol::{encode_elf_connect, encode_elf_output, encode_elf_complete, parse_elf_task};
+use crate::protocol::{
+    encode_elf_connect, encode_elf_output, encode_elf_complete, parse_elf_task,
+    encode_set_vertex_label, encode_click_vertex, parse_server_set_vertex_label,
+    parse_server_log_message, MSG_SERVER_SET_VERTEX_LABEL, MSG_SERVER_LOG_MESSAGE,
+};
 use crate::ElfTask;
 
 /// Context for elf operations during task execution
 pub struct ElfContext {
     /// The task being executed
     pub task: ElfTask,
-    /// Channel for sending output
-    output_tx: mpsc::Sender<OutputMessage>,
+    /// Channel for sending commands to the WebSocket task
+    cmd_tx: mpsc::Sender<WsCommand>,
     /// Handle to the WebSocket connection task
     _ws_handle: tokio::task::JoinHandle<()>,
+    /// Action ID counter
+    next_action_id: std::sync::atomic::AtomicU64,
 }
 
-enum OutputMessage {
-    Text(String),
-    Binary(Vec<u8>),
+/// Commands sent to the WebSocket handler task
+enum WsCommand {
+    /// Send output to browser
+    Output { output_type: u8, data: Vec<u8> },
+    /// Signal completion
     Complete { status: u32, message: String },
+    /// Read a vertex and send response back
+    ReadVertex { vertex_id: u64, response_tx: oneshot::Sender<Result<(String, Vec<u8>)>> },
+    /// Set a vertex and send ack back
+    SetVertex { vertex_id: u64, mime: String, content: Vec<u8>, response_tx: oneshot::Sender<Result<()>> },
 }
 
 impl ElfContext {
@@ -59,41 +71,115 @@ impl ElfContext {
 
         log::info!("Received task: command={}", task.command);
 
-        // Create channel for output messages
-        let (output_tx, mut output_rx) = mpsc::channel::<OutputMessage>(100);
+        // Create channel for commands to the WebSocket handler
+        let (cmd_tx, mut cmd_rx) = mpsc::channel::<WsCommand>(100);
 
-        // Spawn task to forward output to WebSocket
+        // Spawn task to handle WebSocket communication
         let ws_handle = tokio::spawn(async move {
-            while let Some(msg) = output_rx.recv().await {
-                let binary = match msg {
-                    OutputMessage::Text(text) => encode_elf_output(0, text.as_bytes()),
-                    OutputMessage::Binary(data) => encode_elf_output(1, &data),
-                    OutputMessage::Complete { status, message } => {
-                        let complete = encode_elf_complete(status, &message);
-                        if let Err(e) = write.send(Message::Binary(complete)).await {
-                            log::error!("Failed to send complete: {}", e);
+            // Map to track pending read requests: vertex_id -> response channel
+            let mut pending_reads: std::collections::HashMap<u64, oneshot::Sender<Result<(String, Vec<u8>)>>> = std::collections::HashMap::new();
+            // Map to track pending write requests: action_id -> response channel
+            let mut pending_writes: std::collections::HashMap<u64, oneshot::Sender<Result<()>>> = std::collections::HashMap::new();
+            let mut action_counter: u64 = 1;
+
+            loop {
+                tokio::select! {
+                    // Handle commands from the elf
+                    cmd = cmd_rx.recv() => {
+                        match cmd {
+                            Some(WsCommand::Output { output_type, data }) => {
+                                let msg = encode_elf_output(output_type, &data);
+                                if let Err(e) = write.send(Message::Binary(msg)).await {
+                                    log::error!("Failed to send output: {}", e);
+                                    break;
+                                }
+                            }
+                            Some(WsCommand::Complete { status, message }) => {
+                                let msg = encode_elf_complete(status, &message);
+                                if let Err(e) = write.send(Message::Binary(msg)).await {
+                                    log::error!("Failed to send complete: {}", e);
+                                }
+                                break;
+                            }
+                            Some(WsCommand::ReadVertex { vertex_id, response_tx }) => {
+                                let action_id = action_counter;
+                                action_counter += 1;
+                                pending_reads.insert(vertex_id, response_tx);
+                                let msg = encode_click_vertex(action_id, vertex_id);
+                                if let Err(e) = write.send(Message::Binary(msg)).await {
+                                    log::error!("Failed to send click: {}", e);
+                                }
+                            }
+                            Some(WsCommand::SetVertex { vertex_id, mime, content, response_tx }) => {
+                                let action_id = action_counter;
+                                action_counter += 1;
+                                pending_writes.insert(action_id, response_tx);
+                                let msg = encode_set_vertex_label(action_id, vertex_id, &mime, &content);
+                                if let Err(e) = write.send(Message::Binary(msg)).await {
+                                    log::error!("Failed to send set vertex: {}", e);
+                                }
+                            }
+                            None => break,
                         }
-                        break;
                     }
-                };
-                if let Err(e) = write.send(Message::Binary(binary)).await {
-                    log::error!("Failed to send output: {}", e);
-                    break;
+                    // Handle messages from the server
+                    msg = read.next() => {
+                        match msg {
+                            Some(Ok(Message::Binary(data))) => {
+                                if data.is_empty() {
+                                    continue;
+                                }
+                                match data[0] {
+                                    MSG_SERVER_SET_VERTEX_LABEL => {
+                                        if let Ok((_, vertex_id, _, mime, content)) = parse_server_set_vertex_label(&data) {
+                                            if let Some(tx) = pending_reads.remove(&vertex_id) {
+                                                let _ = tx.send(Ok((mime, content)));
+                                            }
+                                        }
+                                    }
+                                    MSG_SERVER_LOG_MESSAGE => {
+                                        if let Ok((action_id, status, _, message)) = parse_server_log_message(&data) {
+                                            if let Some(tx) = pending_writes.remove(&action_id) {
+                                                if status == 200 {
+                                                    let _ = tx.send(Ok(()));
+                                                } else {
+                                                    let _ = tx.send(Err(anyhow!("Server error {}: {}", status, message)));
+                                                }
+                                            }
+                                        }
+                                    }
+                                    _ => {
+                                        log::debug!("Ignoring message type: 0x{:02x}", data[0]);
+                                    }
+                                }
+                            }
+                            Some(Ok(_)) => continue,
+                            Some(Err(e)) => {
+                                log::error!("WebSocket error: {}", e);
+                                break;
+                            }
+                            None => break,
+                        }
+                    }
                 }
             }
         });
 
         Ok(ElfContext {
             task,
-            output_tx,
+            cmd_tx,
             _ws_handle: ws_handle,
+            next_action_id: std::sync::atomic::AtomicU64::new(1),
         })
     }
 
     /// Stream text output to the browser
     pub async fn output(&self, text: &str) -> Result<()> {
-        self.output_tx.send(OutputMessage::Text(text.to_string())).await
-            .map_err(|_| anyhow!("Output channel closed"))
+        self.cmd_tx.send(WsCommand::Output {
+            output_type: 0,
+            data: text.as_bytes().to_vec(),
+        }).await
+            .map_err(|_| anyhow!("Command channel closed"))
     }
 
     /// Stream a line of text output (with newline)
@@ -103,17 +189,59 @@ impl ElfContext {
 
     /// Stream binary output to the browser
     pub async fn output_binary(&self, data: &[u8]) -> Result<()> {
-        self.output_tx.send(OutputMessage::Binary(data.to_vec())).await
-            .map_err(|_| anyhow!("Output channel closed"))
+        self.cmd_tx.send(WsCommand::Output {
+            output_type: 1,
+            data: data.to_vec(),
+        }).await
+            .map_err(|_| anyhow!("Command channel closed"))
     }
 
     /// Signal task completion
     pub async fn complete(&self, status: u32, message: &str) -> Result<()> {
-        self.output_tx.send(OutputMessage::Complete {
+        self.cmd_tx.send(WsCommand::Complete {
             status,
             message: message.to_string(),
         }).await
-            .map_err(|_| anyhow!("Output channel closed"))
+            .map_err(|_| anyhow!("Command channel closed"))
+    }
+
+    /// Read the content of a vertex
+    /// Returns (mime_type, content)
+    pub async fn read_vertex(&self, vertex_id: u64) -> Result<(String, Vec<u8>)> {
+        let (tx, rx) = oneshot::channel();
+        self.cmd_tx.send(WsCommand::ReadVertex {
+            vertex_id,
+            response_tx: tx,
+        }).await
+            .map_err(|_| anyhow!("Command channel closed"))?;
+
+        rx.await
+            .map_err(|_| anyhow!("Response channel closed"))?
+    }
+
+    /// Read the cursor vertex content
+    pub async fn read_cursor(&self) -> Result<(String, Vec<u8>)> {
+        self.read_vertex(self.task.cursor_vertex).await
+    }
+
+    /// Set the content of a vertex
+    pub async fn set_vertex(&self, vertex_id: u64, mime: &str, content: &[u8]) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        self.cmd_tx.send(WsCommand::SetVertex {
+            vertex_id,
+            mime: mime.to_string(),
+            content: content.to_vec(),
+            response_tx: tx,
+        }).await
+            .map_err(|_| anyhow!("Command channel closed"))?;
+
+        rx.await
+            .map_err(|_| anyhow!("Response channel closed"))?
+    }
+
+    /// Set the cursor vertex content
+    pub async fn set_cursor(&self, mime: &str, content: &[u8]) -> Result<()> {
+        self.set_vertex(self.task.cursor_vertex, mime, content).await
     }
 
     /// Get the command name

@@ -5,6 +5,7 @@ mod elf;
 mod files;
 mod http_stream;
 mod identity;
+mod local_storage;
 mod nextcloud;
 mod notes;
 mod protocol;
@@ -37,7 +38,7 @@ use crate::protocol::*;
 use crate::storage::{Credential, CredentialStore};
 
 /// Gradesta Nextcloud Connector - stores notes and calendar on Nextcloud via WebDAV/CalDAV
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(name = "nextcloud-connector")]
 #[command(version, about, long_about = None)]
 struct Args {
@@ -48,6 +49,11 @@ struct Args {
     /// Address to bind to
     #[arg(short, long, default_value = "0.0.0.0")]
     bind: String,
+
+    /// Run in local/offline mode (no Nextcloud auth, file-based storage)
+    /// Provide the path to use for local storage
+    #[arg(short, long)]
+    local: Option<String>,
 }
 
 /// Connection states
@@ -66,6 +72,8 @@ enum ConnectionState {
 struct ConnState {
     identity: Option<String>,
     nextcloud: Option<NextcloudClient>,
+    /// Local storage client for offline mode
+    local_storage: Option<local_storage::LocalStorageClient>,
     conn_state: ConnectionState,
     pending_auth: Option<PendingAuth>,
     poll_endpoint: Option<String>,
@@ -95,6 +103,7 @@ impl Default for ConnState {
         Self {
             identity: None,
             nextcloud: None,
+            local_storage: None,
             conn_state: ConnectionState::AwaitingFirstMessage,
             pending_auth: None,
             poll_endpoint: None,
@@ -137,6 +146,8 @@ struct AppState {
     jwt_secret: Arc<JwtSecret>,
     port: u16,
     elf_registry: SharedElfRegistry,
+    /// If set, run in local mode with file-based storage at this path
+    local_storage_path: Option<std::path::PathBuf>,
 }
 
 // Allow extracting StreamState from AppState for the streaming endpoints
@@ -160,6 +171,20 @@ async fn main() -> Result<()> {
     println!("Listening on {}", addr);
     println!("Connect with: ws://localhost:{}/ws", args.port);
     println!("HTTP streaming: http://localhost:{}/stream/<token>", args.port);
+
+    // Handle local mode
+    let local_storage_path = if let Some(ref path) = args.local {
+        let path = std::path::PathBuf::from(path);
+        println!("Running in LOCAL MODE with storage at: {}", path.display());
+        println!("  - No authentication required");
+        println!("  - Data stored in local filesystem");
+        // Create the directory if it doesn't exist
+        std::fs::create_dir_all(&path)?;
+        Some(path)
+    } else {
+        None
+    };
+
     println!();
     println!("Waiting for connections...");
 
@@ -176,6 +201,7 @@ async fn main() -> Result<()> {
         jwt_secret,
         port: args.port,
         elf_registry: elf::new_shared_registry(),
+        local_storage_path,
     };
 
     // Build router with both WebSocket and HTTP streaming endpoints
@@ -208,6 +234,7 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
         app_state.jwt_secret,
         app_state.port,
         app_state.elf_registry,
+        app_state.local_storage_path,
     ).await {
         log::error!("Connection error: {}", e);
     }
@@ -219,6 +246,7 @@ async fn handle_connection_axum(
     jwt_secret: Arc<JwtSecret>,
     port: u16,
     elf_registry: SharedElfRegistry,
+    local_storage_path: Option<std::path::PathBuf>,
 ) -> Result<()> {
     let (mut write, mut read) = socket.split();
 
@@ -244,30 +272,58 @@ async fn handle_connection_axum(
     if !first_msg.is_empty() && first_msg[0] == MSG_ELF_CONNECT {
         // This is an elf connection
         log::info!("Elf connection detected");
-        return handle_elf_connection(first_msg, state, elf_registry, &mut write, &mut read).await;
+        return handle_elf_connection(first_msg, state, elf_registry, cred_store, &mut write, &mut read).await;
     }
 
-    // Normal browser connection flow
-    {
-        let mut s = state.lock().await;
-        s.conn_state = ConnectionState::AwaitingIdentity;
+    // Check if we're in local mode
+    if let Some(ref storage_path) = local_storage_path {
+        // Local mode: skip authentication, set up local storage
+        log::info!("Local mode: skipping authentication");
+
+        let local_storage = local_storage::LocalStorageClient::new(storage_path);
+        let identity = "local://test".to_string();
+
+        // Load or create notes index (empty for local mode)
+        let index = notes::NotesIndex::default();
+
+        {
+            let mut s = state.lock().await;
+            s.identity = Some(identity.clone());
+            s.conn_state = ConnectionState::Browsing;
+            s.index = Some(index);
+            // Store local storage in a new field (we'll need to add this)
+            s.local_storage = Some(local_storage);
+        }
+
+        // Send router
+        let action_id = {
+            let mut s = state.lock().await;
+            s.get_next_action_id()
+        };
+        router::send_router(&identity, &mut write, action_id).await?;
+    } else {
+        // Normal browser connection flow - require authentication
+        {
+            let mut s = state.lock().await;
+            s.conn_state = ConnectionState::AwaitingIdentity;
+        }
+
+        // Send identification request with server-generated action_id
+        let action_id = {
+            let mut s = state.lock().await;
+            s.get_next_action_id()
+        };
+        let pending = PendingAuth::new(action_id);
+        let msg = pending.encode_request("Nextcloud connector needs to verify your identity");
+        write.send(AxumWsMessage::Binary(msg)).await?;
+
+        {
+            let mut s = state.lock().await;
+            s.pending_auth = Some(pending);
+        }
+
+        log::info!("Sent identification request");
     }
-
-    // Send identification request with server-generated action_id
-    let action_id = {
-        let mut s = state.lock().await;
-        s.get_next_action_id()
-    };
-    let pending = PendingAuth::new(action_id);
-    let msg = pending.encode_request("Nextcloud connector needs to verify your identity");
-    write.send(AxumWsMessage::Binary(msg)).await?;
-
-    {
-        let mut s = state.lock().await;
-        s.pending_auth = Some(pending);
-    }
-
-    log::info!("Sent identification request");
 
     // Process the first message if it wasn't an elf connect
     if !first_msg.is_empty() {
@@ -326,6 +382,7 @@ async fn handle_elf_connection<W, R>(
     first_msg: Vec<u8>,
     state: Arc<Mutex<ConnState>>,
     elf_registry: SharedElfRegistry,
+    cred_store: Arc<Mutex<CredentialStore>>,
     write: &mut W,
     read: &mut R,
 ) -> Result<()>
@@ -348,13 +405,31 @@ where
         (invitation, browser_conn_id)
     };
 
-    log::info!("Elf invitation validated: command={}, elf_url={}",
-        invitation.command, invitation.elf_url);
+    log::info!("Elf invitation validated: command={}, elf_url={}, summoner={}",
+        invitation.command, invitation.elf_url, invitation.summoner_identity);
+
+    // Look up summoner's credentials and set up NextcloudClient
+    let cred = {
+        let store = cred_store.lock().await;
+        store.get(&invitation.summoner_identity).cloned()
+    };
+
+    let (nc, index) = if let Some(cred) = cred {
+        let nc = NextcloudClient::new(&cred.nextcloud_url, &cred.username, &cred.app_password);
+        let index = NotesIndex::load(&nc).await?;
+        (Some(nc), Some(index))
+    } else {
+        log::warn!("No credentials found for summoner: {}", invitation.summoner_identity);
+        (None, None)
+    };
 
     // Set up elf connection state
     {
         let mut s = state.lock().await;
         s.conn_state = ConnectionState::Elf;
+        s.identity = Some(invitation.summoner_identity.clone());
+        s.nextcloud = nc;
+        s.index = index;
         s.elf_connection = Some(ElfConnection::new(invitation.clone(), browser_conn_id));
     }
 
@@ -369,7 +444,7 @@ where
     write.send(AxumWsMessage::Binary(task_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
     log::info!("Sent ELF_TASK to elf");
 
-    // Handle elf messages
+    // Handle elf messages - reuse the same handlers as browser but with permission checks
     while let Some(msg) = read.next().await {
         let msg = msg?;
         if let AxumWsMessage::Binary(data) = msg {
@@ -384,9 +459,7 @@ where
                     log::info!("Elf output: type={}, {} bytes", output_type, output_data.len());
 
                     // TODO: Forward to browser via a shared channel or stored connection
-                    // For now, just log the output
                     if output_type == 0 {
-                        // Text output
                         if let Ok(text) = String::from_utf8(output_data.clone()) {
                             log::info!("Elf text: {}", text);
                         }
@@ -398,32 +471,76 @@ where
                     break;
                 }
                 MSG_CLIENT_SET_VERTEX_LABEL => {
-                    // Elf is trying to set a vertex label
-                    let s = state.lock().await;
-                    if let Some(elf_conn) = &s.elf_connection {
-                        if !elf_conn.can_write() {
-                            log::warn!("Elf attempted write without permission");
-                            let err_msg = encode_log_message(0, 403, 0, "Write permission denied");
-                            write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-                            continue;
+                    // Check write permission
+                    {
+                        let s = state.lock().await;
+                        if let Some(elf_conn) = &s.elf_connection {
+                            if !elf_conn.can_write() {
+                                log::warn!("Elf attempted write without permission");
+                                let err_msg = encode_log_message(0, 403, 0, "Write permission denied");
+                                write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                                continue;
+                            }
                         }
                     }
-                    drop(s);
-                    // TODO: Validate vertex is in allowed region and forward to appropriate handler
-                    log::info!("Elf SetVertexLabel - forwarding to handler");
+                    // Use existing handler
+                    if let Err(e) = handle_set_vertex_label(&data, &state, write).await {
+                        log::error!("Elf SetVertexLabel failed: {}", e);
+                    }
+                }
+                MSG_CLIENT_CLICK_VERTEX => {
+                    // Check read permission
+                    {
+                        let s = state.lock().await;
+                        if let Some(elf_conn) = &s.elf_connection {
+                            if !elf_conn.can_read() {
+                                log::warn!("Elf attempted read without permission");
+                                let err_msg = encode_log_message(0, 403, 0, "Read permission denied");
+                                write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                                continue;
+                            }
+                        }
+                    }
+                    // Use existing handler
+                    if let Err(e) = handle_click_vertex(&data, &state, write).await {
+                        log::error!("Elf ClickVertex failed: {}", e);
+                    }
                 }
                 MSG_CLIENT_CREATE_VERTEX => {
-                    let s = state.lock().await;
-                    if let Some(elf_conn) = &s.elf_connection {
-                        if !elf_conn.can_create() {
-                            log::warn!("Elf attempted create without permission");
-                            let err_msg = encode_log_message(0, 403, 0, "Create permission denied");
-                            write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-                            continue;
+                    // Check create permission
+                    {
+                        let s = state.lock().await;
+                        if let Some(elf_conn) = &s.elf_connection {
+                            if !elf_conn.can_create() {
+                                log::warn!("Elf attempted create without permission");
+                                let err_msg = encode_log_message(0, 403, 0, "Create permission denied");
+                                write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                                continue;
+                            }
                         }
                     }
-                    drop(s);
-                    log::info!("Elf CreateVertex - forwarding to handler");
+                    // Use existing handler
+                    if let Err(e) = handle_create_vertex(&data, &state, write).await {
+                        log::error!("Elf CreateVertex failed: {}", e);
+                    }
+                }
+                MSG_CLIENT_DELETE_VERTEX => {
+                    // Check delete permission
+                    {
+                        let s = state.lock().await;
+                        if let Some(elf_conn) = &s.elf_connection {
+                            if !elf_conn.can_delete() {
+                                log::warn!("Elf attempted delete without permission");
+                                let err_msg = encode_log_message(0, 403, 0, "Delete permission denied");
+                                write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                                continue;
+                            }
+                        }
+                    }
+                    // Use existing handler
+                    if let Err(e) = handle_delete_vertex(&data, &state, write).await {
+                        log::error!("Elf DeleteVertex failed: {}", e);
+                    }
                 }
                 _ => {
                     log::warn!("Unknown elf message type: 0x{:02x}", msg_type);
