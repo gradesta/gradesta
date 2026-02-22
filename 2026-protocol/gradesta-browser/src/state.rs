@@ -369,6 +369,13 @@ pub enum IdentificationAction {
     Refuse,
 }
 
+/// State for server bar autocomplete dropdown
+#[derive(Default)]
+pub struct ServerDropdownState {
+    pub selected_index: usize,
+    pub filtered_indices: Vec<usize>,
+}
+
 /// Main application state resource
 #[derive(Resource)]
 pub struct AppState {
@@ -482,6 +489,8 @@ pub struct AppState {
     pub local_services: Option<LocalServices>,
     /// Currently selected local server index (for dropdown)
     pub selected_local_server: usize,
+    /// Server bar autocomplete dropdown state
+    pub server_dropdown: ServerDropdownState,
 }
 
 impl Default for AppState {
@@ -570,6 +579,7 @@ impl Default for AppState {
             elf_panel: ElfPanelState::default(),
             local_services,
             selected_local_server: 0,
+            server_dropdown: ServerDropdownState::default(),
         }
     }
 }

@@ -75,6 +75,7 @@ pub fn generate_browser_services(registry: &ServiceRegistry) -> Result<()> {
     let browser_services_path = services_dir.join("browser-services.json");
 
     let caddy_url = format!("http://localhost:{}", registry.caddy_port);
+    let caddy_ws_url = format!("ws://localhost:{}", registry.caddy_port);
 
     let mut servers = Vec::new();
     let mut elves = Vec::new();
@@ -84,15 +85,18 @@ pub fn generate_browser_services(registry: &ServiceRegistry) -> Result<()> {
             continue;
         }
 
-        let browser_service = BrowserService {
-            name: service.name.clone(),
-            url: format!("{}/{}", caddy_url, service.name),
-        };
-
         if service.service_type == "elf" {
-            elves.push(browser_service);
+            // Elves use HTTP for REST API
+            elves.push(BrowserService {
+                name: service.name.clone(),
+                url: format!("{}/{}", caddy_url, service.name),
+            });
         } else {
-            servers.push(browser_service);
+            // Servers use WebSocket
+            servers.push(BrowserService {
+                name: service.name.clone(),
+                url: format!("{}/{}", caddy_ws_url, service.name),
+            });
         }
     }
 

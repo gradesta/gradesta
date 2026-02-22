@@ -388,20 +388,91 @@ fn ui_system(
 
     // NORMAL MODE: Render full UI with panels
     // Top panel with URL bar (split into server and landmark)
+    // Store server_rect for dropdown positioning (outside the panel closure)
+    let mut server_rect_for_dropdown: Option<egui::Rect> = None;
+    let mut should_connect = false;
+
+    // Pre-process dropdown keyboard navigation BEFORE TextEdit consumes the keys
+    // We use the previous frame's dropdown state to decide if we should intercept
+    let dropdown_has_items = !app_state.server_dropdown.filtered_indices.is_empty();
+    let mut dropdown_selection_made: Option<String> = None;
+
+    if app_state.server_bar_has_focus && dropdown_has_items {
+        // Consume arrow keys and Enter to prevent TextEdit from using them
+        let arrow_down = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown));
+        let arrow_up = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp));
+        let enter = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
+        let escape = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+
+        let max_idx = app_state.server_dropdown.filtered_indices.len().saturating_sub(1);
+
+        if arrow_down {
+            app_state.server_dropdown.selected_index = (app_state.server_dropdown.selected_index + 1).min(max_idx);
+        }
+        if arrow_up {
+            app_state.server_dropdown.selected_index = app_state.server_dropdown.selected_index.saturating_sub(1);
+        }
+        if enter {
+            // Get the URL from local_services using the filtered index
+            if let Some(&server_idx) = app_state.server_dropdown.filtered_indices.get(app_state.server_dropdown.selected_index) {
+                if let Some(ref services) = app_state.local_services {
+                    if let Some(server) = services.servers.get(server_idx) {
+                        dropdown_selection_made = Some(server.url.clone());
+                    }
+                }
+            }
+        }
+        if escape {
+            app_state.server_dropdown.filtered_indices.clear();
+            app_state.server_dropdown.selected_index = 0;
+        }
+    }
+
+    // Apply dropdown selection (fills URL and triggers connect)
+    if let Some(url) = dropdown_selection_made {
+        app_state.server_input = url;
+        app_state.server_dropdown.filtered_indices.clear();
+        app_state.server_dropdown.selected_index = 0;
+        should_connect = true;
+    }
+
     egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
         ui.add_space(8.0);
         ui.horizontal(|ui| {
+            // Calculate flexible widths
+            let available = ui.available_width();
+            // Reserve space for labels (~50 + ~70), buttons (~80 + ~40), spacing
+            let reserved = 280.0;
+            let input_space = (available - reserved).max(200.0);
+            let server_width = input_space * 0.4;
+            let landmark_width = input_space * 0.6;
+
             // Server input
             ui.label("Server:");
             let server_bar_id = egui::Id::new("server_bar");
             let lock_input = app_state.focus_url_bar_next_frame;
             let server_edit = egui::TextEdit::singleline(&mut app_state.server_input)
                 .id(server_bar_id)
-                .desired_width(250.0)
+                .desired_width(server_width)
                 .lock_focus(lock_input)
                 .hint_text("ws://localhost:8080");
             let server_response = ui.add(server_edit);
             app_state.server_bar_has_focus = server_response.has_focus();
+
+            // Select all text when focused via Ctrl+L
+            if lock_input && server_response.has_focus() {
+                if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), server_bar_id) {
+                    let text_len = app_state.server_input.len();
+                    state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
+                        egui::text::CCursor::new(0),
+                        egui::text::CCursor::new(text_len),
+                    )));
+                    state.store(ui.ctx(), server_bar_id);
+                }
+            }
+
+            // Store rect for dropdown positioning
+            server_rect_for_dropdown = Some(server_response.rect);
 
             ui.add_space(8.0);
 
@@ -410,7 +481,7 @@ fn ui_system(
             let landmark_bar_id = egui::Id::new("landmark_bar");
             let landmark_edit = egui::TextEdit::singleline(&mut app_state.landmark_input)
                 .id(landmark_bar_id)
-                .desired_width(300.0)
+                .desired_width(landmark_width)
                 .hint_text("/");
             let landmark_response = ui.add(landmark_edit);
             app_state.landmark_bar_has_focus = landmark_response.has_focus();
@@ -418,72 +489,30 @@ fn ui_system(
             // Track combined URL bar focus state
             app_state.url_bar_has_focus = app_state.server_bar_has_focus || app_state.landmark_bar_has_focus;
 
-            // Show different button based on connection state
-            let button_label = if app_state.connected { "Refresh" } else { "Connect" };
-            let button_clicked = ui.button(button_label).clicked();
+            // Right-align buttons
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // Copy button (renders first = rightmost)
+                if ui.button("📋").clicked() {
+                    let full_url = ui::url_utils::construct_full_url(&app_state.server_input, &app_state.landmark_input);
+                    ui::url_utils::set_clipboard_text(&full_url);
+                    app_state.status = "Copied URL to clipboard".to_string();
+                }
 
-            // Copy URL button (clipboard icon)
-            let copy_clicked = ui.button("📋").clicked();
-            if copy_clicked {
-                let full_url = ui::url_utils::construct_full_url(&app_state.server_input, &app_state.landmark_input);
-                ui::url_utils::set_clipboard_text(&full_url);
-                app_state.status = "Copied URL to clipboard".to_string();
-            }
+                // Connect/Refresh button
+                let button_label = if app_state.connected { "Refresh" } else { "Connect" };
+                if ui.button(button_label).clicked() {
+                    should_connect = true;
+                }
+            });
 
             // Enter pressed in either input triggers connection
-            let server_enter = server_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            // But only if dropdown is empty (not selecting from autocomplete)
+            let dropdown_empty = app_state.server_dropdown.filtered_indices.is_empty();
+            let server_enter = server_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && dropdown_empty;
             let landmark_enter = landmark_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
 
-            // Connect/refresh on button click, Enter, or GlobalRefresh command
-            if button_clicked || server_enter || landmark_enter || cmd_refresh {
-                let server = app_state.server_input.trim().to_string();
-                let landmark = app_state.landmark_input.trim().to_string();
-                if server.is_empty() {
-                    app_state.status = "Server is empty!".to_string();
-                } else if landmark.is_empty() {
-                    app_state.status = "Landmark is empty!".to_string();
-                } else {
-                    // Construct full URL from server and landmark
-                    let url = ui::url_utils::construct_full_url(&server, &landmark);
-
-                    // Disconnect existing connection first
-                    if app_state.connected {
-                        app_state.connected = false;
-                        ws_cmd_tx.0 = None; // Drop the sender, which will cause the WS thread to stop
-                    }
-
-                    // Clear graph state for fresh connection
-                    graph.vertices.clear();
-                    graph.context_uri = None;
-                    graph.current_receiving_landmark = None;
-                    graph.landmark_vertices.clear();
-                    app_state.current_vertex = None;
-                    app_state.history.clear();
-                    app_state.requested_landmarks.clear();
-
-                    app_state.status = "Connecting...".to_string();
-                    let tx = net_events.0.clone();
-                    let url_clone = url.clone();
-                    // Create command channel for sending watch requests to the WS thread
-                    let (cmd_tx, cmd_rx) = unbounded::<WsCommand>();
-                    ws_cmd_tx.0 = Some(cmd_tx);
-                    thread::spawn(move || {
-                        match url::Url::parse(&url_clone) {
-                            Ok(parsed_url) => {
-                                if let Err(err) = run_ws(parsed_url, cmd_rx, tx.clone()) {
-                                    let _ = tx.send(ServerEvent::Error {
-                                        message: format!("{err:#}"),
-                                    });
-                                }
-                            }
-                            Err(e) => {
-                                let _ = tx.send(ServerEvent::Error {
-                                    message: format!("Invalid URL: {}", e),
-                                });
-                            }
-                        }
-                    });
-                }
+            if server_enter || landmark_enter {
+                should_connect = true;
             }
         });
         ui.add_space(4.0);
@@ -498,6 +527,132 @@ fn ui_system(
         });
         ui.add_space(8.0);
     });
+
+    // Server dropdown autocomplete logic
+    // Step 1: Build filtered list of servers (extract data to avoid borrow issues)
+    let dropdown_items: Vec<(usize, String, String)> = if app_state.server_bar_has_focus {
+        if let Some(ref services) = app_state.local_services {
+            let input_lower = app_state.server_input.to_lowercase();
+            let filtered: Vec<_> = services.servers
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| {
+                    input_lower.is_empty()
+                    || s.name.to_lowercase().contains(&input_lower)
+                    || s.url.to_lowercase().contains(&input_lower)
+                })
+                .take(8)
+                .map(|(i, s)| (i, s.name.clone(), s.url.clone()))
+                .collect();
+
+            // If nothing matches, show all servers as fallback
+            if filtered.is_empty() {
+                services.servers
+                    .iter()
+                    .enumerate()
+                    .take(8)
+                    .map(|(i, s)| (i, s.name.clone(), s.url.clone()))
+                    .collect()
+            } else {
+                filtered
+            }
+        } else {
+            vec![]
+        }
+    } else {
+        vec![]
+    };
+
+    // Step 2: Update filtered indices
+    if app_state.server_bar_has_focus {
+        app_state.server_dropdown.filtered_indices = dropdown_items.iter().map(|(i, _, _)| *i).collect();
+    } else {
+        app_state.server_dropdown.filtered_indices.clear();
+        app_state.server_dropdown.selected_index = 0;
+    }
+
+    // Step 3: Render dropdown (keyboard handled above before panel)
+    let mut clicked_server_url: Option<String> = None;
+    if app_state.server_bar_has_focus && !dropdown_items.is_empty() && !app_state.server_dropdown.filtered_indices.is_empty() {
+        if let Some(server_rect) = server_rect_for_dropdown {
+            let selected_index = app_state.server_dropdown.selected_index;
+
+            egui::Area::new(egui::Id::new("server_dropdown"))
+                .fixed_pos(egui::pos2(server_rect.left(), server_rect.bottom() + 2.0))
+                .order(egui::Order::Foreground)
+                .show(ctx, |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        for (i, (_, name, url)) in dropdown_items.iter().enumerate() {
+                            let selected = i == selected_index;
+                            let text = format!("{} - {}", name, url);
+                            if ui.selectable_label(selected, &text).clicked() {
+                                clicked_server_url = Some(url.clone());
+                            }
+                        }
+                    });
+                });
+        }
+    }
+
+    // Apply clicked selection (fills URL and triggers connect)
+    if let Some(url) = clicked_server_url {
+        app_state.server_input = url;
+        app_state.server_dropdown.filtered_indices.clear();
+        app_state.server_dropdown.selected_index = 0;
+        should_connect = true;
+    }
+
+    // Connect/refresh on button click, Enter, or GlobalRefresh command
+    if should_connect || cmd_refresh {
+        let server = app_state.server_input.trim().to_string();
+        let landmark = app_state.landmark_input.trim().to_string();
+        if server.is_empty() {
+            app_state.status = "Server is empty!".to_string();
+        } else if landmark.is_empty() {
+            app_state.status = "Landmark is empty!".to_string();
+        } else {
+            // Construct full URL from server and landmark
+            let url = ui::url_utils::construct_full_url(&server, &landmark);
+
+            // Disconnect existing connection first
+            if app_state.connected {
+                app_state.connected = false;
+                ws_cmd_tx.0 = None; // Drop the sender, which will cause the WS thread to stop
+            }
+
+            // Clear graph state for fresh connection
+            graph.vertices.clear();
+            graph.context_uri = None;
+            graph.current_receiving_landmark = None;
+            graph.landmark_vertices.clear();
+            app_state.current_vertex = None;
+            app_state.history.clear();
+            app_state.requested_landmarks.clear();
+
+            app_state.status = "Connecting...".to_string();
+            let tx = net_events.0.clone();
+            let url_clone = url.clone();
+            // Create command channel for sending watch requests to the WS thread
+            let (cmd_tx, cmd_rx) = unbounded::<WsCommand>();
+            ws_cmd_tx.0 = Some(cmd_tx);
+            thread::spawn(move || {
+                match url::Url::parse(&url_clone) {
+                    Ok(parsed_url) => {
+                        if let Err(err) = run_ws(parsed_url, cmd_rx, tx.clone()) {
+                            let _ = tx.send(ServerEvent::Error {
+                                message: format!("{err:#}"),
+                            });
+                        }
+                    }
+                    Err(e) => {
+                        let _ = tx.send(ServerEvent::Error {
+                            message: format!("Invalid URL: {}", e),
+                        });
+                    }
+                }
+            });
+        }
+    }
 
     // Bottom panel with navigation help
     egui::TopBottomPanel::bottom("help_panel").show(ctx, |ui| {
