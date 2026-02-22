@@ -55,6 +55,23 @@ Client to server
 9. Identification refused
    - Type: 1 byte = 0b1001 0001
    - Action id: 8 bytes (must match the request)
+10. Introduce elf
+   - Type: 1 byte = 0b1010 0000
+   - Action id: 8 bytes
+   - Elf URL: UTF-8 bytes, null-terminated (base URL of the elf service)
+   - Command: UTF-8 bytes, null-terminated (command name from elf manifest)
+   - Cursor landmark: UTF-8 bytes, null-terminated (landmark URI where cursor is)
+   - Cursor vertex: 8 bytes (vertex ID of current cursor position)
+   - Origin landmark: UTF-8 bytes, null-terminated (landmark URI for region origin)
+   - Origin vertex: 8 bytes (vertex ID for region origin)
+   - Allowed directions: 1 byte bitmask (bit 0=west, 1=east, 2=north, 3=south, 4=up, 5=down)
+   - Max depth: 4 bytes (big-endian int32, -1 for unlimited)
+   - Permissions: 1 byte bitmask (bit 0=read, 1=write, 2=create, 3=delete)
+   - Param count: 4 bytes (big-endian uint32)
+   - For each param:
+     - Key: UTF-8 bytes, null-terminated
+     - Value length: 4 bytes (big-endian uint32)
+     - Value: UTF-8 bytes (not null-terminated, uses length)
 
 Server to client
 1. Set context (tells the client which landmark the following messages are connected to)
@@ -85,6 +102,11 @@ Server to client
    - Nonce: 32 bytes (random, for replay protection)
    - Timestamp: 8 bytes (Unix seconds, big-endian)
    - Reason: UTF-8 bytes to end of message (human-readable explanation)
+6. Introduction token (response to Introduce elf)
+   - Type: 1 byte = 0b0010 0000
+   - Action id: 8 bytes (matches the Introduce elf request)
+   - Token: UTF-8 bytes, null-terminated (one-time authentication token for elf)
+   - Server WebSocket URL: UTF-8 bytes to end of message (URL for elf to connect to)
 
 Editability bitmask (server Set edges)
 - Bit 0 (LSB): vertex label editable
@@ -156,3 +178,56 @@ Identity storage:
 - Public key: /.gradesta/identity.pub on user's Nextcloud (shared publicly)
 - Private key: /.gradesta/identity.key on user's Nextcloud (encrypted)
 - Identity format: username@nextcloud-server.example.com
+
+Elves
+-----
+Elves are external services that can read and modify graph content. They operate as scoped clients, using the same protocol messages as browsers but with limited permissions.
+
+Summoning flow:
+1. Browser sends "Introduce elf" to server with region and permission constraints
+2. Server generates a token encoding the allowed region/permissions
+3. Server sends "Introduction token" to browser with token and server WebSocket URL
+4. Browser POSTs to elf's /summon endpoint:
+   {
+       "token": "<token from server>",
+       "server_ws_url": "wss://server.example/ws",
+       "command": "<command name>",
+       "params": {<key-value parameters>}
+   }
+5. Elf connects to server_ws_url via WebSocket, authenticating with the token
+6. Server validates token and grants elf access to the scoped region
+7. Elf uses standard protocol messages (Set vertex label, Set edges, etc.)
+8. Changes propagate to browser through normal protocol messages
+
+Elf manifest format (served at {elf_url}/manifest.json):
+{
+    "elf_id": "unique-identifier",
+    "name": "Human-Readable Name",
+    "description": "What this elf does",
+    "commands": [
+        {
+            "name": "command_name",
+            "description": "What this command does",
+            "inputs": ["cursor", "region", "prompt"]
+        }
+    ]
+}
+
+Input types:
+- cursor: Current cursor position (vertex)
+- region: A region of the graph defined by origin, directions, and depth
+- prompt: A text prompt from the user
+
+Direction bitmask (Introduce elf allowed_directions):
+- Bit 0: west
+- Bit 1: east
+- Bit 2: north
+- Bit 3: south
+- Bit 4: up
+- Bit 5: down
+
+Permission bitmask (Introduce elf permissions):
+- Bit 0: read
+- Bit 1: write
+- Bit 2: create
+- Bit 3: delete

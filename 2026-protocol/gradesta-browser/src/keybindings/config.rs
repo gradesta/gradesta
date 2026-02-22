@@ -45,6 +45,8 @@ pub struct KeybindingsConfig {
     pub nav_panel: HashMap<String, KeyBindingValue>,
     #[serde(default)]
     pub export: HashMap<String, KeyBindingValue>,
+    #[serde(default)]
+    pub elf: HashMap<String, KeyBindingValue>,
 }
 
 impl KeybindingsConfig {
@@ -88,6 +90,7 @@ impl KeybindingsConfig {
             && self.authentication.is_empty()
             && self.nav_panel.is_empty()
             && self.export.is_empty()
+            && self.elf.is_empty()
     }
 
     /// Get bindings for a context by name
@@ -101,6 +104,7 @@ impl KeybindingsConfig {
             "authentication" => Some(&self.authentication),
             "nav_panel" => Some(&self.nav_panel),
             "export" => Some(&self.export),
+            "elf" => Some(&self.elf),
             _ => None,
         }
     }
@@ -116,6 +120,7 @@ impl KeybindingsConfig {
             "authentication" => Some(&mut self.authentication),
             "nav_panel" => Some(&mut self.nav_panel),
             "export" => Some(&mut self.export),
+            "elf" => Some(&mut self.elf),
             _ => None,
         }
     }

@@ -248,19 +248,6 @@ fn render_task(ui: &mut egui::Ui, action_id: u64, task: &ElfTask) {
         ui.label(format!("Elf: {}", task.elf_url));
         ui.label(format!("Action ID: {}", action_id));
 
-        // Show output
-        if !task.output.is_empty() {
-            ui.label("Output:");
-            egui::ScrollArea::vertical()
-                .max_height(150.0)
-                .show(ui, |ui| {
-                    let text = task.get_text_output();
-                    ui.add(egui::TextEdit::multiline(&mut text.as_str())
-                        .font(egui::TextStyle::Monospace)
-                        .desired_width(f32::INFINITY));
-                });
-        }
-
         if let Some(ref msg) = task.message {
             ui.label(format!("Message: {}", msg));
         }

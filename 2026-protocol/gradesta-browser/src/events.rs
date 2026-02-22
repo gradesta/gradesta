@@ -73,6 +73,10 @@ pub fn ingest_server_events(
                     &mut app_state,
                 );
             }
+            ServerEvent::IntroductionToken { action_id, token, server_ws_url } => {
+                eprintln!("Received introduction token for action {}: {} at {}", action_id, token, server_ws_url);
+                // TODO: Forward token to elf system
+            }
         }
     }
 }

@@ -57,6 +57,7 @@ impl KeybindingResolver {
                     Context::Authentication => "auth",
                     Context::NavPanel => "nav_panel",
                     Context::Export => "export",
+                    Context::Elf => "elf",
                 };
                 let slug = format!("{}.{}", ctx_name, action);
 
@@ -83,6 +84,7 @@ impl KeybindingResolver {
         apply_context(self, Context::Recording, &config.recording);
         apply_context(self, Context::Authentication, &config.authentication);
         apply_context(self, Context::NavPanel, &config.nav_panel);
+        apply_context(self, Context::Elf, &config.elf);
     }
 
     /// Remove all bindings for a command
@@ -320,6 +322,7 @@ impl KeybindingResolver {
                 Context::Authentication => { config.authentication.insert(action, value); }
                 Context::NavPanel => { config.nav_panel.insert(action, value); }
                 Context::Export => { config.export.insert(action, value); }
+                Context::Elf => { config.elf.insert(action, value); }
             }
         }
 

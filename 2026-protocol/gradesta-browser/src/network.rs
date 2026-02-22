@@ -25,7 +25,6 @@ pub const MSG_SERVER_SET_VERTEX_LABEL: u8 = 0x05;
 pub const MSG_SERVER_LOG: u8 = 0x0F;
 pub const MSG_SERVER_REQUEST_IDENTIFICATION: u8 = 0x10;
 pub const MSG_SERVER_INTRODUCTION_TOKEN: u8 = 0x20;
-pub const MSG_SERVER_ELF_OUTPUT_FWD: u8 = 0x22;
 
 // Protocol message type constants - Client to Server
 pub const MSG_CLIENT_WATCH_LANDMARK: u8 = 0x81;
@@ -87,12 +86,6 @@ pub enum ServerEvent {
         action_id: u64,
         token: String,
         server_ws_url: String,
-    },
-    /// Elf output forwarded from server
-    ElfOutputFwd {
-        action_id: u64,
-        output_type: u8,
-        data: Vec<u8>,
     },
 }
 
@@ -418,17 +411,6 @@ pub fn parse_server_message(data: &[u8]) -> Result<ServerEvent> {
             eprintln!("RECV IntroductionToken action={} token={}... server_ws_url={}",
                 action_id, &token[..std::cmp::min(8, token.len())], server_ws_url);
             Ok(ServerEvent::IntroductionToken { action_id, token, server_ws_url })
-        }
-        MSG_SERVER_ELF_OUTPUT_FWD => {
-            if data.len() < 1 + 8 + 1 {
-                return Err(anyhow!("ElfOutputFwd message too short"));
-            }
-            let (action_id, rest) = read_u64(&data[1..])?;
-            let output_type = rest[0];
-            let output_data = rest[1..].to_vec();
-            eprintln!("RECV ElfOutputFwd action={} type={} {} bytes",
-                action_id, output_type, output_data.len());
-            Ok(ServerEvent::ElfOutputFwd { action_id, output_type, data: output_data })
         }
         other => {
             eprintln!("RECV Unknown message type: 0x{:02x}", other);
@@ -791,12 +773,6 @@ pub fn ingest_server_events(
                             }
                         }
                     });
-                }
-            }
-            ServerEvent::ElfOutputFwd { action_id, output_type, data } => {
-                // Add output to the active task
-                if let Some(task) = app_state.active_elf_tasks.get_mut(&action_id) {
-                    task.add_output(output_type, data);
                 }
             }
         }

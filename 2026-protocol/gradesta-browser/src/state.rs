@@ -87,8 +87,6 @@ pub struct ElfTask {
     pub elf_url: String,
     /// Command being executed
     pub command: String,
-    /// Output received so far
-    pub output: Vec<ElfTaskOutput>,
     /// Whether the task has completed
     pub completed: bool,
     /// Final status (if completed)
@@ -99,24 +97,12 @@ pub struct ElfTask {
     pub started: Instant,
 }
 
-/// Output from an elf task
-#[derive(Clone, Debug)]
-pub struct ElfTaskOutput {
-    /// Output type: 0=text, 1=binary
-    pub output_type: u8,
-    /// The output data
-    pub data: Vec<u8>,
-    /// When this output was received
-    pub received: Instant,
-}
-
 impl ElfTask {
     pub fn new(action_id: u64, elf_url: &str, command: &str) -> Self {
         Self {
             action_id,
             elf_url: elf_url.to_string(),
             command: command.to_string(),
-            output: Vec::new(),
             completed: false,
             status: None,
             message: None,
@@ -124,30 +110,11 @@ impl ElfTask {
         }
     }
 
-    /// Add output to the task
-    pub fn add_output(&mut self, output_type: u8, data: Vec<u8>) {
-        self.output.push(ElfTaskOutput {
-            output_type,
-            data,
-            received: Instant::now(),
-        });
-    }
-
     /// Mark the task as complete
     pub fn complete(&mut self, status: u32, message: String) {
         self.completed = true;
         self.status = Some(status);
         self.message = Some(message);
-    }
-
-    /// Get all text output as a string
-    pub fn get_text_output(&self) -> String {
-        self.output
-            .iter()
-            .filter(|o| o.output_type == 0)
-            .filter_map(|o| String::from_utf8(o.data.clone()).ok())
-            .collect::<Vec<_>>()
-            .join("")
     }
 }
 
