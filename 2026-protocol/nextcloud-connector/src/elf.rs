@@ -107,6 +107,20 @@ impl ElfRegistry {
             self.browser_connections.remove(&token);
         }
     }
+
+    /// Clean up all invitations associated with a browser connection
+    /// Called when a browser disconnects
+    pub fn cleanup_for_browser(&mut self, browser_conn_id: u64) {
+        let tokens_to_remove: Vec<String> = self.browser_connections.iter()
+            .filter(|(_, &id)| id == browser_conn_id)
+            .map(|(token, _)| token.clone())
+            .collect();
+
+        for token in tokens_to_remove {
+            self.invitations.remove(&token);
+            self.browser_connections.remove(&token);
+        }
+    }
 }
 
 /// Active elf connection state

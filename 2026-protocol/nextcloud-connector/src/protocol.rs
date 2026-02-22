@@ -489,20 +489,18 @@ pub fn parse_introduce_elf(msg: &[u8]) -> Result<(u64, String, String, String, u
 }
 
 /// Encode IntroductionToken message (Server→Browser)
-/// Format: [type:1][action_id:8][token\0][server_ws_url\0]
-pub fn encode_introduction_token(action_id: u64, token: &str, server_ws_url: &str) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(1 + 8 + token.len() + 1 + server_ws_url.len() + 1);
+/// Format: [type:1][action_id:8][token\0]
+pub fn encode_introduction_token(action_id: u64, token: &str) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(1 + 8 + token.len() + 1);
     buf.push(MSG_SERVER_INTRODUCTION_TOKEN);
     buf.extend_from_slice(&action_id.to_be_bytes());
     buf.extend_from_slice(token.as_bytes());
-    buf.push(0);
-    buf.extend_from_slice(server_ws_url.as_bytes());
     buf.push(0);
     buf
 }
 
 /// Parse IntroductionToken message
-pub fn parse_introduction_token(msg: &[u8]) -> Result<(u64, String, String)> {
+pub fn parse_introduction_token(msg: &[u8]) -> Result<(u64, String)> {
     if msg.len() < 1 + 8 {
         return Err(anyhow!("IntroductionToken message too short"));
     }
@@ -512,13 +510,8 @@ pub fn parse_introduction_token(msg: &[u8]) -> Result<(u64, String, String)> {
     let null_pos = rest.iter().position(|&b| b == 0)
         .ok_or_else(|| anyhow!("No null terminator in token"))?;
     let token = String::from_utf8(rest[..null_pos].to_vec())?;
-    let rest = &rest[null_pos + 1..];
 
-    let null_pos = rest.iter().position(|&b| b == 0)
-        .ok_or_else(|| anyhow!("No null terminator in server_ws_url"))?;
-    let server_ws_url = String::from_utf8(rest[..null_pos].to_vec())?;
-
-    Ok((action_id, token, server_ws_url))
+    Ok((action_id, token))
 }
 
 /// Encode ElfConnect message (Elf→Server)
@@ -543,11 +536,13 @@ pub fn parse_elf_connect(msg: &[u8]) -> Result<String> {
 }
 
 /// Encode ElfTask message (Server→Elf)
-/// Format: [type:1][command\0][cursor_landmark\0][cursor_vertex:8][region][params_count:2][params...]
+/// Format: [type:1][command\0][cursor_landmark\0][cursor_vertex:8][cursor_mime\0][cursor_content_len:4][cursor_content][region][params_count:2][params...]
 pub fn encode_elf_task(
     command: &str,
     cursor_landmark: &str,
     cursor_vertex: u64,
+    cursor_mime: &str,
+    cursor_content: &[u8],
     region: &RegionSpec,
     params: &HashMap<String, String>,
 ) -> Vec<u8> {
@@ -558,6 +553,11 @@ pub fn encode_elf_task(
     buf.extend_from_slice(cursor_landmark.as_bytes());
     buf.push(0);
     buf.extend_from_slice(&cursor_vertex.to_be_bytes());
+    // Include cursor vertex content so elf doesn't need to request it
+    buf.extend_from_slice(cursor_mime.as_bytes());
+    buf.push(0);
+    buf.extend_from_slice(&(cursor_content.len() as u32).to_be_bytes());
+    buf.extend_from_slice(cursor_content);
     buf.extend_from_slice(&region.encode());
     buf.extend_from_slice(&(params.len() as u16).to_be_bytes());
     for (k, v) in params {

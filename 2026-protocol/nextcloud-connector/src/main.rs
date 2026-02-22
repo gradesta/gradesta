@@ -1,6 +1,7 @@
 //! Nextcloud Connector - stores notes, calendar, and files on Nextcloud via WebDAV/CalDAV
 
 mod calendar;
+mod connection_manager;
 mod elf;
 mod files;
 mod http_stream;
@@ -29,7 +30,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
 
-use crate::elf::{ElfConnection, ElfRegistry, SharedElfRegistry};
+use crate::connection_manager::{SharedConnectionManager, new_shared_connection_manager};
+use crate::elf::{ElfConnection, SharedElfRegistry};
 use crate::http_stream::{JwtSecret, StreamState};
 use crate::identity::PendingAuth;
 use crate::nextcloud::NextcloudClient;
@@ -146,6 +148,8 @@ struct AppState {
     jwt_secret: Arc<JwtSecret>,
     port: u16,
     elf_registry: SharedElfRegistry,
+    /// Connection manager for forwarding messages between connections
+    connection_manager: SharedConnectionManager,
     /// If set, run in local mode with file-based storage at this path
     local_storage_path: Option<std::path::PathBuf>,
 }
@@ -201,6 +205,7 @@ async fn main() -> Result<()> {
         jwt_secret,
         port: args.port,
         elf_registry: elf::new_shared_registry(),
+        connection_manager: new_shared_connection_manager(),
         local_storage_path,
     };
 
@@ -234,6 +239,7 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
         app_state.jwt_secret,
         app_state.port,
         app_state.elf_registry,
+        app_state.connection_manager,
         app_state.local_storage_path,
     ).await {
         log::error!("Connection error: {}", e);
@@ -246,6 +252,7 @@ async fn handle_connection_axum(
     jwt_secret: Arc<JwtSecret>,
     port: u16,
     elf_registry: SharedElfRegistry,
+    connection_manager: SharedConnectionManager,
     local_storage_path: Option<std::path::PathBuf>,
 ) -> Result<()> {
     let (mut write, mut read) = socket.split();
@@ -255,6 +262,12 @@ async fn handle_connection_axum(
         server_port: port,
         ..ConnState::default()
     }));
+
+    // Get connection ID for later use
+    let conn_id = {
+        let s = state.lock().await;
+        s.conn_id
+    };
 
     // Wait for first message to determine connection type
     // If it's ELF_CONNECT, treat this as an elf connection
@@ -272,7 +285,16 @@ async fn handle_connection_axum(
     if !first_msg.is_empty() && first_msg[0] == MSG_ELF_CONNECT {
         // This is an elf connection
         log::info!("Elf connection detected");
-        return handle_elf_connection(first_msg, state, elf_registry, cred_store, &mut write, &mut read).await;
+        return handle_elf_connection(first_msg, state, elf_registry, connection_manager, cred_store, &mut write, &mut read).await;
+    }
+
+    // Create channel for receiving forwarded messages from elf handlers
+    let (fwd_tx, mut fwd_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+
+    // Register this browser connection with the connection manager
+    {
+        let mut cm = connection_manager.lock().await;
+        cm.register(conn_id, fwd_tx);
     }
 
     // Check if we're in local mode
@@ -334,6 +356,7 @@ async fn handle_connection_axum(
             &state,
             &cred_store,
             &elf_registry,
+            &connection_manager,
             port,
             &mut write,
         )
@@ -346,32 +369,78 @@ async fn handle_connection_axum(
         }
     }
 
-    // Message handling loop
-    while let Some(msg) = read.next().await {
-        let msg = msg?;
-        if let AxumWsMessage::Binary(data) = msg {
-            if data.is_empty() {
-                continue;
+    // Message handling loop - listen to both WebSocket messages and forwarded messages
+    loop {
+        tokio::select! {
+            // Handle incoming WebSocket messages
+            msg = read.next() => {
+                match msg {
+                    Some(Ok(AxumWsMessage::Binary(data))) => {
+                        if data.is_empty() {
+                            continue;
+                        }
+
+                        let msg_type = data[0];
+                        let result = handle_message(
+                            msg_type,
+                            &data,
+                            &state,
+                            &cred_store,
+                            &elf_registry,
+                            &connection_manager,
+                            port,
+                            &mut write,
+                        )
+                        .await;
+
+                        if let Err(e) = result {
+                            log::error!("Error handling message: {}", e);
+                            let log_msg = encode_log_message(0, 500, 0, &format!("Error: {}", e));
+                            let _ = write.send(AxumWsMessage::Binary(log_msg)).await;
+                        }
+                    }
+                    Some(Ok(_)) => {
+                        // Ignore non-binary messages
+                        continue;
+                    }
+                    Some(Err(e)) => {
+                        log::error!("WebSocket error: {}", e);
+                        break;
+                    }
+                    None => {
+                        // Connection closed
+                        break;
+                    }
+                }
             }
-
-            let msg_type = data[0];
-            let result = handle_message(
-                msg_type,
-                &data,
-                &state,
-                &cred_store,
-                &elf_registry,
-                port,
-                &mut write,
-            )
-            .await;
-
-            if let Err(e) = result {
-                log::error!("Error handling message: {}", e);
-                let log_msg = encode_log_message(0, 500, 0, &format!("Error: {}", e));
-                let _ = write.send(AxumWsMessage::Binary(log_msg)).await;
+            // Handle forwarded messages from elf handlers
+            fwd_msg = fwd_rx.recv() => {
+                match fwd_msg {
+                    Some(data) => {
+                        if let Err(e) = write.send(AxumWsMessage::Binary(data)).await {
+                            log::error!("Failed to forward message to browser: {:?}", e);
+                            break;
+                        }
+                    }
+                    None => {
+                        // Channel closed (shouldn't happen normally)
+                        log::warn!("Forward channel closed for conn_id={}", conn_id);
+                        break;
+                    }
+                }
             }
         }
+    }
+
+    // Clean up on disconnect
+    log::info!("Browser connection {} disconnected, cleaning up", conn_id);
+    {
+        let mut cm = connection_manager.lock().await;
+        cm.unregister(conn_id);
+    }
+    {
+        let mut registry = elf_registry.lock().await;
+        registry.cleanup_for_browser(conn_id);
     }
 
     Ok(())
@@ -382,6 +451,7 @@ async fn handle_elf_connection<W, R>(
     first_msg: Vec<u8>,
     state: Arc<Mutex<ConnState>>,
     elf_registry: SharedElfRegistry,
+    connection_manager: SharedConnectionManager,
     cred_store: Arc<Mutex<CredentialStore>>,
     write: &mut W,
     read: &mut R,
@@ -423,6 +493,36 @@ where
         (None, None)
     };
 
+    // Load cursor vertex content before setting up connection state
+    let cursor_vertex = invitation.region.origin_vertex;
+    let (cursor_mime, cursor_content) = if let (Some(ref nc_client), Some(ref idx)) = (&nc, &index) {
+        // Try to find and load cursor vertex content
+        if let Some(uuid) = notes::hash_to_uuid(idx, cursor_vertex) {
+            if let Some(vertex) = idx.get_vertex(uuid) {
+                log::info!("Loading cursor vertex content: uuid={}, file={}", uuid, vertex.file);
+                match nc_client.download(&vertex.file).await {
+                    Ok(content) => {
+                        log::info!("Loaded cursor content: {} bytes, mime={}", content.len(), vertex.mime);
+                        (vertex.mime.clone(), content)
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to load cursor content: {}", e);
+                        ("text/plain".to_string(), Vec::new())
+                    }
+                }
+            } else {
+                log::warn!("Cursor vertex {} not found in index", cursor_vertex);
+                ("text/plain".to_string(), Vec::new())
+            }
+        } else {
+            log::warn!("Cursor vertex hash {} not in notes index", cursor_vertex);
+            ("text/plain".to_string(), Vec::new())
+        }
+    } else {
+        log::warn!("No nextcloud client or index for cursor content");
+        ("text/plain".to_string(), Vec::new())
+    };
+
     // Set up elf connection state
     {
         let mut s = state.lock().await;
@@ -433,16 +533,18 @@ where
         s.elf_connection = Some(ElfConnection::new(invitation.clone(), browser_conn_id));
     }
 
-    // Send ELF_TASK to the elf
+    // Send ELF_TASK to the elf with cursor content included
     let task_msg = encode_elf_task(
         &invitation.command,
         &invitation.region.origin_landmark,
-        invitation.region.origin_vertex,
+        cursor_vertex,
+        &cursor_mime,
+        &cursor_content,
         &invitation.region,
         &invitation.params,
     );
     write.send(AxumWsMessage::Binary(task_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-    log::info!("Sent ELF_TASK to elf");
+    log::info!("Sent ELF_TASK to elf with {} bytes of cursor content", cursor_content.len());
 
     // Handle elf messages - reuse the same handlers as browser but with permission checks
     while let Some(msg) = read.next().await {
@@ -458,7 +560,13 @@ where
                     let (output_type, output_data) = parse_elf_output(&data)?;
                     log::info!("Elf output: type={}, {} bytes", output_type, output_data.len());
 
-                    // TODO: Forward to browser via a shared channel or stored connection
+                    // Forward output to browser
+                    let fwd_msg = encode_elf_output_fwd(0, output_type, &output_data);
+                    let cm = connection_manager.lock().await;
+                    if cm.send_to(browser_conn_id, fwd_msg).is_ok() {
+                        log::info!("Forwarded elf output to browser");
+                    }
+
                     if output_type == 0 {
                         if let Ok(text) = String::from_utf8(output_data.clone()) {
                             log::info!("Elf text: {}", text);
@@ -486,6 +594,9 @@ where
                     // Use existing handler
                     if let Err(e) = handle_set_vertex_label(&data, &state, write).await {
                         log::error!("Elf SetVertexLabel failed: {}", e);
+                    } else {
+                        // Forward the update to the browser and all watchers
+                        forward_vertex_update_to_browser(&state, &connection_manager, &data).await;
                     }
                 }
                 MSG_CLIENT_CLICK_VERTEX => {
@@ -522,6 +633,9 @@ where
                     // Use existing handler
                     if let Err(e) = handle_create_vertex(&data, &state, write).await {
                         log::error!("Elf CreateVertex failed: {}", e);
+                    } else {
+                        // Forward the update to the browser and all watchers
+                        forward_vertex_update_to_browser(&state, &connection_manager, &data).await;
                     }
                 }
                 MSG_CLIENT_DELETE_VERTEX => {
@@ -540,6 +654,9 @@ where
                     // Use existing handler
                     if let Err(e) = handle_delete_vertex(&data, &state, write).await {
                         log::error!("Elf DeleteVertex failed: {}", e);
+                    } else {
+                        // Forward the update to the browser and all watchers
+                        forward_vertex_update_to_browser(&state, &connection_manager, &data).await;
                     }
                 }
                 _ => {
@@ -565,7 +682,8 @@ async fn handle_message<W>(
     state: &Arc<Mutex<ConnState>>,
     cred_store: &Arc<Mutex<CredentialStore>>,
     elf_registry: &SharedElfRegistry,
-    server_port: u16,
+    connection_manager: &SharedConnectionManager,
+    _server_port: u16,
     write: &mut W,
 ) -> Result<()>
 where
@@ -589,7 +707,7 @@ where
                 return Ok(());
             }
             drop(s);
-            handle_watch_landmark(data, state, write).await
+            handle_watch_landmark(data, state, connection_manager, write).await
         }
         MSG_CLIENT_SET_VERTEX_LABEL => {
             handle_set_vertex_label(data, state, write).await
@@ -607,7 +725,7 @@ where
             handle_click_vertex(data, state, write).await
         }
         MSG_CLIENT_INTRODUCE_ELF => {
-            handle_introduce_elf(data, state, elf_registry, server_port, write).await
+            handle_introduce_elf(data, state, elf_registry, write).await
         }
         _ => {
             log::warn!("Unknown message type: 0x{:02x}", msg_type);
@@ -621,7 +739,6 @@ async fn handle_introduce_elf<W>(
     data: &[u8],
     state: &Arc<Mutex<ConnState>>,
     elf_registry: &SharedElfRegistry,
-    server_port: u16,
     write: &mut W,
 ) -> Result<()>
 where
@@ -662,12 +779,8 @@ where
 
     log::info!("Created elf invitation with token: {}...", &token[..std::cmp::min(8, token.len())]);
 
-    // Build WebSocket URL for elf to connect to
-    // Use ws://localhost for now - in production this would be configurable
-    let server_ws_url = format!("ws://localhost:{}/ws", server_port);
-
     // Send IntroductionToken back to browser
-    let token_msg = encode_introduction_token(action_id, &token, &server_ws_url);
+    let token_msg = encode_introduction_token(action_id, &token);
     write.send(AxumWsMessage::Binary(token_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
     log::info!("Sent IntroductionToken to browser");
@@ -866,6 +979,7 @@ async fn poll_for_auth(state: Arc<Mutex<ConnState>>, cred_store: Arc<Mutex<Crede
 async fn handle_watch_landmark<W>(
     data: &[u8],
     state: &Arc<Mutex<ConnState>>,
+    connection_manager: &SharedConnectionManager,
     write: &mut W,
 ) -> Result<()>
 where
@@ -875,9 +989,9 @@ where
     let (action_id, landmark) = parse_watch_landmark(data)?;
     log::info!("Watch landmark: {} (action={})", landmark, action_id);
 
-    let identity = {
+    let (identity, conn_id) = {
         let s = state.lock().await;
-        s.identity.clone().unwrap_or_default()
+        (s.identity.clone().unwrap_or_default(), s.conn_id)
     };
 
     // Parse landmark URL to route to appropriate handler
@@ -927,7 +1041,7 @@ where
                 "notes/"
             } else {
                 // Wrap in notes/ prefix for legacy support
-                return handle_notes_landmark(state, write, action_id, rest).await;
+                return handle_notes_landmark(state, connection_manager, conn_id, write, action_id, rest).await;
             }
         } else {
             "notes/"
@@ -946,7 +1060,7 @@ where
             if let Some(index) = &index {
                 if notes::hash_to_uuid(index, hash).is_some() {
                     // It's a note vertex
-                    return handle_notes_landmark(state, write, action_id, vertex_hash).await;
+                    return handle_notes_landmark(state, connection_manager, conn_id, write, action_id, vertex_hash).await;
                 }
             }
             // If not found in notes, it might be a calendar vertex
@@ -970,7 +1084,7 @@ where
         }
         p if p.starts_with("notes/") || p.starts_with("notes") => {
             let notes_path = p.strip_prefix("notes/").or_else(|| p.strip_prefix("notes")).unwrap_or("");
-            handle_notes_landmark(state, write, action_id, notes_path).await
+            handle_notes_landmark(state, connection_manager, conn_id, write, action_id, notes_path).await
         }
         p if p.starts_with("calendar/") || p.starts_with("calendar") => {
             let calendar_path = p.strip_prefix("calendar/").or_else(|| p.strip_prefix("calendar")).unwrap_or("");
@@ -1006,6 +1120,8 @@ where
 /// Handle notes-specific landmarks
 async fn handle_notes_landmark<W>(
     state: &Arc<Mutex<ConnState>>,
+    connection_manager: &SharedConnectionManager,
+    conn_id: u64,
     write: &mut W,
     action_id: u64,
     notes_path: &str,
@@ -1035,25 +1151,20 @@ where
     };
 
     log::info!("Notes landmark - start vertex: {:?}", start_vertex);
-    send_notes_from_vertex(state, write, action_id, start_vertex).await
+    send_notes_from_vertex(state, connection_manager, conn_id, write, action_id, start_vertex).await
 }
 
 /// Maximum vertices in a chain before creating a landmark boundary
 const MAX_CHAIN_LENGTH: usize = 20;
 
-async fn send_notes_listing<W>(state: &Arc<Mutex<ConnState>>, write: &mut W, action_id: u64) -> Result<()>
-where
-    W: SinkExt<AxumWsMessage> + Unpin,
-    W::Error: std::fmt::Debug,
-{
-    // Default: send from root vertex
-    send_notes_from_vertex(state, write, action_id, None).await
-}
+// Note: send_notes_listing is no longer used directly, handle_notes_landmark covers all cases
 
 /// Send notes starting from a specific vertex (or root if None)
 /// Only sends vertices within landmark boundaries (forks or every MAX_CHAIN_LENGTH vertices)
 async fn send_notes_from_vertex<W>(
     state: &Arc<Mutex<ConnState>>,
+    connection_manager: &SharedConnectionManager,
+    conn_id: u64,
     write: &mut W,
     action_id: u64,
     start_vertex: Option<uuid::Uuid>,
@@ -1134,6 +1245,9 @@ where
             start
         );
 
+        // Collect vertex IDs for registering watchers
+        let mut vertex_ids_to_watch: Vec<u64> = Vec::new();
+
         // Send each vertex
         for vertex_uuid in &vertices_to_send {
             let vertex = match index.get_vertex(*vertex_uuid) {
@@ -1143,6 +1257,9 @@ where
             let vertex_id = uuid_to_hash(vertex.id);
             let is_landmark = landmark_vertices.contains(vertex_uuid);
             let is_root = root_uuid == Some(vertex.id);
+
+            // Track vertex for watcher registration
+            vertex_ids_to_watch.push(vertex_id);
 
             // Load actual content for layer 0
             let (content, mime) = match nc.download(&vertex.file).await {
@@ -1195,10 +1312,100 @@ where
             );
             write.send(AxumWsMessage::Binary(edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
         }
+
+        // Register this connection as watching all sent vertices
+        if !vertex_ids_to_watch.is_empty() {
+            let mut cm = connection_manager.lock().await;
+            cm.add_vertex_watchers(conn_id, &vertex_ids_to_watch);
+            log::info!("Registered conn_id={} as watcher for {} vertices", conn_id, vertex_ids_to_watch.len());
+        }
     }
 
     log::info!("Sent {} notes (action={})", index.vertices.len(), action_id);
     Ok(())
+}
+
+/// Forward a vertex update from an elf to the originating browser and all watchers
+async fn forward_vertex_update_to_browser(
+    state: &Arc<Mutex<ConnState>>,
+    connection_manager: &SharedConnectionManager,
+    data: &[u8],
+) {
+    // Get the browser connection ID from the elf connection
+    let browser_conn_id = {
+        let s = state.lock().await;
+        s.elf_connection.as_ref().map(|ec| ec.browser_conn_id)
+    };
+
+    // Parse the message to construct proper server message
+    let msg_type = if !data.is_empty() { data[0] } else { return };
+
+    // Build appropriate server message based on message type
+    let (server_msg, vertex_id) = match msg_type {
+        MSG_CLIENT_SET_VERTEX_LABEL => {
+            // Parse: [type:1][action_id:8][vertex_id:8][layer:4][mime\0][content]
+            if let Ok((action_id, vertex_id, layer, mime, content)) = parse_client_set_vertex_label(data) {
+                let msg = encode_set_vertex_label_layer(action_id, vertex_id, layer, &mime, &content);
+                (msg, vertex_id)
+            } else {
+                return;
+            }
+        }
+        MSG_CLIENT_CREATE_VERTEX => {
+            // CreateVertex doesn't directly map to a server message for forwarding
+            // The server already sends SetVertexLabel and SetEdges responses
+            // We mainly need to ensure the browser gets notified
+            // Parse vertex_id from the response we just sent (action_id tells us)
+            if data.len() >= 17 {
+                let vertex_id = u64::from_be_bytes(data[9..17].try_into().unwrap_or([0; 8]));
+                // For create, we need to notify but the actual data will come from
+                // the handle_create_vertex response
+                (Vec::new(), vertex_id)
+            } else {
+                return;
+            }
+        }
+        MSG_CLIENT_DELETE_VERTEX => {
+            // Parse: [type:1][action_id:8][vertex_id:8]
+            if let Ok((action_id, vertex_id)) = parse_client_delete_vertex(data) {
+                // Send SetEdges with all zeros to indicate deletion
+                let msg = encode_set_edges(action_id, vertex_id, 0, 0, 0, 0, 0, 0, 0);
+                (msg, vertex_id)
+            } else {
+                return;
+            }
+        }
+        _ => return,
+    };
+
+    // Skip if no message to send (CreateVertex case)
+    if server_msg.is_empty() {
+        return;
+    }
+
+    let cm = connection_manager.lock().await;
+
+    // Forward to originating browser
+    if let Some(conn_id) = browser_conn_id {
+        if cm.send_to(conn_id, server_msg.clone()).is_ok() {
+            log::info!("Forwarded SetVertexLabel to browser conn_id={}", conn_id);
+        } else {
+            log::warn!("Failed to forward vertex update to browser conn_id={}", conn_id);
+        }
+    }
+
+    // Broadcast to all watchers of this vertex (excluding the originating browser)
+    let watchers = cm.get_vertex_watchers(vertex_id);
+    for watcher_conn_id in watchers {
+        // Skip if this is the originating browser (already sent)
+        if Some(watcher_conn_id) == browser_conn_id {
+            continue;
+        }
+
+        if cm.send_to(watcher_conn_id, server_msg.clone()).is_ok() {
+            log::info!("Broadcast vertex {} update to watcher conn_id={}", vertex_id, watcher_conn_id);
+        }
+    }
 }
 
 async fn handle_set_vertex_label<W>(
@@ -1719,13 +1926,14 @@ where
     log::info!("ClickVertex: action={}, vertex={}", action_id, vertex_id);
 
     // Check if this is a file entry click
-    let (file_path, nc, jwt_secret, server_port) = {
+    let (file_path, nc, jwt_secret, server_port, index) = {
         let s = state.lock().await;
         (
             s.file_entries.get(&vertex_id).cloned(),
             s.nextcloud.clone(),
             Arc::clone(&s.jwt_secret),
             s.server_port,
+            s.index.clone(),
         )
     };
 
@@ -1774,8 +1982,40 @@ where
                 }
             }
         }
+    } else if let (Some(index), Some(nc)) = (&index, &nc) {
+        // Check if this is a notes vertex
+        if let Some(uuid) = notes::hash_to_uuid(index, vertex_id) {
+            if let Some(vertex) = index.get_vertex(uuid) {
+                log::info!("Loading notes vertex content: uuid={}, file={}", uuid, vertex.file);
+
+                // Load content from Nextcloud
+                match nc.download(&vertex.file).await {
+                    Ok(content) => {
+                        log::info!("Loaded notes vertex {} ({} bytes, {})", vertex_id, content.len(), vertex.mime);
+                        // Send content as SetVertexLabel (layer 0)
+                        let msg = encode_set_vertex_label(action_id, vertex_id, &vertex.mime, &content);
+                        write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                    }
+                    Err(e) => {
+                        log::error!("Failed to load notes vertex {}: {}", vertex_id, e);
+                        let msg = encode_log_message(action_id, 500, vertex_id, &format!("Failed to load: {}", e));
+                        write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                    }
+                }
+            } else {
+                log::warn!("Notes vertex {} found in hash but not in index", vertex_id);
+                let msg = encode_log_message(action_id, 404, vertex_id, "Vertex not found in index");
+                write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            }
+        } else {
+            // Not a file entry and not a notes vertex - just acknowledge
+            log::info!("ClickVertex: vertex {} is not a file or notes vertex", vertex_id);
+            let msg = encode_log_message(action_id, 200, vertex_id, "Clicked");
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+        }
     } else {
-        // Not a file entry - just acknowledge
+        // No index/nextcloud client - just acknowledge
+        log::info!("ClickVertex: no index or nextcloud client available");
         let msg = encode_log_message(action_id, 200, vertex_id, "Clicked");
         write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
     }
