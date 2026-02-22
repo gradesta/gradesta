@@ -30,7 +30,15 @@ pub struct CredentialStore {
 
 impl CredentialStore {
     /// Get config directory path
+    /// Uses /data if available (Docker volume mount), otherwise falls back to user config dir
     fn get_config_dir() -> Result<PathBuf> {
+        // Check for Docker volume mount first
+        let data_dir = PathBuf::from("/data");
+        if data_dir.exists() {
+            return Ok(data_dir);
+        }
+
+        // Fall back to user config directory
         let home = dirs::config_dir().ok_or_else(|| anyhow!("No config directory"))?;
         Ok(home.join("gradesta").join("nextcloud-connector"))
     }
