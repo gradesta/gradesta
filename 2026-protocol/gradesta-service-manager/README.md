@@ -71,3 +71,24 @@ All services are on the `gradesta-local` Docker network with the alias `gradesta
 
 Caddy exposes port 19333 on the host and proxies requests to services:
 - `http://localhost:19333/<service-name>/` → `<service-name>:<internal-port>`
+
+## Development Workflow
+
+Each service has its own `shell.nix` for local development. To rebuild and redeploy a service after code changes:
+
+```bash
+# From the service-manager directory
+cd gradesta-service-manager
+nix-shell --run "cargo run -- redeploy <service-name>"
+
+# Examples:
+nix-shell --run "cargo run -- redeploy nextcloud-connector"
+nix-shell --run "cargo run -- redeploy pig-latin-elf"
+```
+
+This will:
+1. Rebuild the Docker image from the service's source directory
+2. Recreate the container with the new image
+3. Restart the service
+
+Note: Services are built inside Docker containers, not on the host. The Dockerfile in each service's directory controls the build process.

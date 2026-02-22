@@ -58,6 +58,7 @@ pub fn encode_elf_complete(status: u32, message: &str) -> Vec<u8> {
 }
 
 /// Parse ELF_TASK message
+/// Format: [type:1][command\0][cursor_landmark\0][cursor_vertex:8][cursor_mime\0][cursor_content_len:4][cursor_content][region][params_count:2][params...]
 pub fn parse_elf_task(data: &[u8]) -> Result<ElfTask> {
     if data.is_empty() || data[0] != MSG_SERVER_ELF_TASK {
         return Err(anyhow!("Not an ELF_TASK message"));
@@ -83,6 +84,24 @@ pub fn parse_elf_task(data: &[u8]) -> Result<ElfTask> {
     }
     let cursor_vertex = u64::from_be_bytes(rest[..8].try_into()?);
     rest = &rest[8..];
+
+    // Parse cursor_mime
+    let null_pos = rest.iter().position(|&b| b == 0)
+        .ok_or_else(|| anyhow!("No null terminator in cursor_mime"))?;
+    let cursor_mime = String::from_utf8(rest[..null_pos].to_vec())?;
+    rest = &rest[null_pos + 1..];
+
+    // Parse cursor_content
+    if rest.len() < 4 {
+        return Err(anyhow!("ElfTask message too short for cursor_content_len"));
+    }
+    let cursor_content_len = u32::from_be_bytes(rest[..4].try_into()?) as usize;
+    rest = &rest[4..];
+    if rest.len() < cursor_content_len {
+        return Err(anyhow!("ElfTask message too short for cursor_content"));
+    }
+    let cursor_content = rest[..cursor_content_len].to_vec();
+    rest = &rest[cursor_content_len..];
 
     // Parse region
     let (region, remaining) = parse_region_spec(rest)?;
@@ -114,6 +133,8 @@ pub fn parse_elf_task(data: &[u8]) -> Result<ElfTask> {
         command,
         cursor_landmark,
         cursor_vertex,
+        cursor_mime,
+        cursor_content,
         region,
         params,
     })

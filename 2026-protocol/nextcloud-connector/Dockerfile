@@ -16,4 +16,5 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/nextcloud-connector/target/release/nextcloud-connector /usr/local/bin/
 EXPOSE 8083
+ENV RUST_LOG=info
 CMD ["nextcloud-connector", "--port", "8083", "--bind", "0.0.0.0"]

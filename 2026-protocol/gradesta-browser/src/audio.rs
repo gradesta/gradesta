@@ -30,12 +30,12 @@ pub fn play_audio(data: &[u8], _mime: &str, vertex_id: u64, state: &AudioPlaybac
     use crate::media::calculate_audio_rms;
     use crate::tts;
 
-    // Stop any currently playing audio
+    // Stop any currently playing audio (non-blocking)
     if let Ok(mut stop) = state.should_stop.lock() {
         *stop = true;
     }
-    // Small delay to let the previous thread notice the stop signal
-    thread::sleep(Duration::from_millis(50));
+    // Note: Don't sleep here - previous playback thread will see the stop signal
+    // on its next 50ms poll cycle
 
     // Reset signal for new playback
     if let Ok(mut stop) = state.should_stop.lock() {

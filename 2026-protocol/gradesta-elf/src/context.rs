@@ -249,8 +249,9 @@ impl ElfContext {
     }
 
     /// Read the cursor vertex content
+    /// This returns the content that was sent with the task - no network request needed
     pub async fn read_cursor(&self) -> Result<(String, Vec<u8>)> {
-        self.read_vertex(self.task.cursor_vertex).await
+        Ok((self.task.cursor_mime.clone(), self.task.cursor_content.clone()))
     }
 
     /// Set the content of a vertex

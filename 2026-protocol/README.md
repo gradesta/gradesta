@@ -106,7 +106,6 @@ Server to client
    - Type: 1 byte = 0b0010 0000
    - Action id: 8 bytes (matches the Introduce elf request)
    - Token: UTF-8 bytes, null-terminated (one-time authentication token for elf)
-   - Server WebSocket URL: UTF-8 bytes to end of message (URL for elf to connect to)
 
 Editability bitmask (server Set edges)
 - Bit 0 (LSB): vertex label editable
@@ -186,11 +185,11 @@ Elves are external services that can read and modify graph content. They operate
 Summoning flow:
 1. Browser sends "Introduce elf" to server with region and permission constraints
 2. Server generates a token encoding the allowed region/permissions
-3. Server sends "Introduction token" to browser with token and server WebSocket URL
+3. Server sends "Introduction token" to browser with token
 4. Browser POSTs to elf's /summon endpoint:
    {
        "token": "<token from server>",
-       "server_ws_url": "wss://server.example/ws",
+       "server_ws_url": "<browser's connection URL>",
        "command": "<command name>",
        "params": {<key-value parameters>}
    }

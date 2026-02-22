@@ -76,6 +76,11 @@ static DEFAULTS: &[DefaultBinding] = &[
         bindings: &[(KeyCode::N, CTRL)],
     },
     DefaultBinding {
+        command: Command::GlobalToggleElfPanel,
+        context: Context::Global,
+        bindings: &[(KeyCode::E, CTRL)],
+    },
+    DefaultBinding {
         command: Command::GlobalCloseModal,
         context: Context::Global,
         bindings: &[(KeyCode::Escape, NONE)],

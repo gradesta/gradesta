@@ -122,6 +122,10 @@ pub struct ElfTask {
     pub cursor_landmark: String,
     /// Cursor vertex ID
     pub cursor_vertex: u64,
+    /// Cursor vertex MIME type
+    pub cursor_mime: String,
+    /// Cursor vertex content (provided by server, no need to request)
+    pub cursor_content: Vec<u8>,
     /// Region the elf can access
     pub region: RegionSpec,
     /// Task parameters

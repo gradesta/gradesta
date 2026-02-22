@@ -233,6 +233,7 @@ dependencies = [
  "gradesta-elf",
  "log",
  "serde",
+ "serde_json",
  "shell-escape",
  "thiserror",
  "tokio",
