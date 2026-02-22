@@ -1395,16 +1395,9 @@ async fn forward_vertex_update_to_browser(
     }
 
     // Broadcast to all watchers of this vertex (excluding the originating browser)
-    let watchers = cm.get_vertex_watchers(vertex_id);
-    for watcher_conn_id in watchers {
-        // Skip if this is the originating browser (already sent)
-        if Some(watcher_conn_id) == browser_conn_id {
-            continue;
-        }
-
-        if cm.send_to(watcher_conn_id, server_msg.clone()).is_ok() {
-            log::info!("Broadcast vertex {} update to watcher conn_id={}", vertex_id, watcher_conn_id);
-        }
+    let broadcast_count = cm.broadcast_to_vertex_watchers(vertex_id, &server_msg, browser_conn_id);
+    if broadcast_count > 0 {
+        log::info!("Broadcast vertex {} update to {} watchers", vertex_id, broadcast_count);
     }
 }
 

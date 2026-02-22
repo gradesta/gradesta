@@ -24,13 +24,6 @@ fn calendar_year_hash(identity: &str, year: i32) -> u64 {
     hasher.finish()
 }
 
-/// Generate hash for files root directory
-fn files_root_hash(identity: &str) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    format!("files:{}:path:", identity).hash(&mut hasher);
-    hasher.finish()
-}
-
 /// Send the router vertex with Notes, Calendar, and Files portals
 pub async fn send_router<W>(
     identity: &str,

@@ -31,14 +31,6 @@ pub const MSG_ELF_CONNECT: u8 = 0xB0;
 pub const MSG_ELF_OUTPUT: u8 = 0xB1;
 pub const MSG_ELF_COMPLETE: u8 = 0xB2;
 
-// Direction bitmask flags for RegionSpec
-pub const DIRECTION_WEST: u8 = 0x01;
-pub const DIRECTION_EAST: u8 = 0x02;
-pub const DIRECTION_NORTH: u8 = 0x04;
-pub const DIRECTION_SOUTH: u8 = 0x08;
-pub const DIRECTION_UP: u8 = 0x10;
-pub const DIRECTION_DOWN: u8 = 0x20;
-
 // Permission bitmask flags
 pub const PERM_READ: u8 = 0x01;
 pub const PERM_WRITE: u8 = 0x02;
@@ -286,6 +278,7 @@ pub struct RegionSpec {
 }
 
 impl RegionSpec {
+    #[allow(dead_code)] // Used in tests
     pub fn new(origin_landmark: &str, origin_vertex: u64, directions: u8, max_depth: i32) -> Self {
         Self {
             origin_landmark: origin_landmark.to_string(),
@@ -293,19 +286,6 @@ impl RegionSpec {
             allowed_directions: directions,
             max_depth,
         }
-    }
-
-    /// Check if a direction is allowed
-    pub fn allows_direction(&self, direction: Direction) -> bool {
-        let flag = match direction {
-            Direction::West => DIRECTION_WEST,
-            Direction::East => DIRECTION_EAST,
-            Direction::North => DIRECTION_NORTH,
-            Direction::South => DIRECTION_SOUTH,
-            Direction::Up => DIRECTION_UP,
-            Direction::Down => DIRECTION_DOWN,
-        };
-        (self.allowed_directions & flag) != 0
     }
 
     /// Encode to binary format
@@ -346,6 +326,7 @@ impl RegionSpec {
 
 /// Server-side invitation storing elf access permissions
 #[derive(Clone, Debug)]
+#[allow(dead_code)] // Fields used via Debug trait and in tests
 pub struct Invitation {
     /// Opaque token for elf to use
     pub token: String,
@@ -367,6 +348,7 @@ pub struct Invitation {
 
 impl Invitation {
     /// Check if the invitation has expired
+    #[allow(dead_code)] // Used by validate_token which is test-only
     pub fn is_expired(&self) -> bool {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -385,41 +367,7 @@ impl Invitation {
 // Elf Message Encoding
 // ============================================================================
 
-/// Encode IntroduceElf message (Browser→Server)
-/// Format: [type:1][action_id:8][elf_url\0][command\0][cursor_landmark\0][cursor_vertex:8][region][permissions:1][params_count:2][params...]
-pub fn encode_introduce_elf(
-    action_id: u64,
-    elf_url: &str,
-    command: &str,
-    cursor_landmark: &str,
-    cursor_vertex: u64,
-    region: &RegionSpec,
-    permissions: u8,
-    params: &HashMap<String, String>,
-) -> Vec<u8> {
-    let mut buf = Vec::new();
-    buf.push(MSG_CLIENT_INTRODUCE_ELF);
-    buf.extend_from_slice(&action_id.to_be_bytes());
-    buf.extend_from_slice(elf_url.as_bytes());
-    buf.push(0);
-    buf.extend_from_slice(command.as_bytes());
-    buf.push(0);
-    buf.extend_from_slice(cursor_landmark.as_bytes());
-    buf.push(0);
-    buf.extend_from_slice(&cursor_vertex.to_be_bytes());
-    buf.extend_from_slice(&region.encode());
-    buf.push(permissions);
-    buf.extend_from_slice(&(params.len() as u16).to_be_bytes());
-    for (k, v) in params {
-        buf.extend_from_slice(k.as_bytes());
-        buf.push(0);
-        buf.extend_from_slice(v.as_bytes());
-        buf.push(0);
-    }
-    buf
-}
-
-/// Parse IntroduceElf message
+/// Parse IntroduceElf message (Browser→Server)
 pub fn parse_introduce_elf(msg: &[u8]) -> Result<(u64, String, String, String, u64, RegionSpec, u8, HashMap<String, String>)> {
     if msg.len() < 1 + 8 {
         return Err(anyhow!("IntroduceElf message too short"));
@@ -499,32 +447,7 @@ pub fn encode_introduction_token(action_id: u64, token: &str) -> Vec<u8> {
     buf
 }
 
-/// Parse IntroductionToken message
-pub fn parse_introduction_token(msg: &[u8]) -> Result<(u64, String)> {
-    if msg.len() < 1 + 8 {
-        return Err(anyhow!("IntroductionToken message too short"));
-    }
-    let action_id = u64::from_be_bytes(msg[1..9].try_into()?);
-    let rest = &msg[9..];
-
-    let null_pos = rest.iter().position(|&b| b == 0)
-        .ok_or_else(|| anyhow!("No null terminator in token"))?;
-    let token = String::from_utf8(rest[..null_pos].to_vec())?;
-
-    Ok((action_id, token))
-}
-
-/// Encode ElfConnect message (Elf→Server)
-/// Format: [type:1][token\0]
-pub fn encode_elf_connect(token: &str) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(1 + token.len() + 1);
-    buf.push(MSG_ELF_CONNECT);
-    buf.extend_from_slice(token.as_bytes());
-    buf.push(0);
-    buf
-}
-
-/// Parse ElfConnect message
+/// Parse ElfConnect message (Elf→Server)
 pub fn parse_elf_connect(msg: &[u8]) -> Result<String> {
     if msg.len() < 2 {
         return Err(anyhow!("ElfConnect message too short"));
@@ -569,73 +492,7 @@ pub fn encode_elf_task(
     buf
 }
 
-/// Parse ElfTask message
-pub fn parse_elf_task(msg: &[u8]) -> Result<(String, String, u64, RegionSpec, HashMap<String, String>)> {
-    if msg.len() < 2 {
-        return Err(anyhow!("ElfTask message too short"));
-    }
-    let mut rest = &msg[1..];
-
-    // Parse command
-    let null_pos = rest.iter().position(|&b| b == 0)
-        .ok_or_else(|| anyhow!("No null terminator in command"))?;
-    let command = String::from_utf8(rest[..null_pos].to_vec())?;
-    rest = &rest[null_pos + 1..];
-
-    // Parse cursor_landmark
-    let null_pos = rest.iter().position(|&b| b == 0)
-        .ok_or_else(|| anyhow!("No null terminator in cursor_landmark"))?;
-    let cursor_landmark = String::from_utf8(rest[..null_pos].to_vec())?;
-    rest = &rest[null_pos + 1..];
-
-    // Parse cursor_vertex
-    if rest.len() < 8 {
-        return Err(anyhow!("ElfTask message too short for cursor_vertex"));
-    }
-    let cursor_vertex = u64::from_be_bytes(rest[..8].try_into()?);
-    rest = &rest[8..];
-
-    // Parse region
-    let (region, remaining) = RegionSpec::decode(rest)?;
-    rest = remaining;
-
-    // Parse params
-    if rest.len() < 2 {
-        return Err(anyhow!("ElfTask message too short for params count"));
-    }
-    let params_count = u16::from_be_bytes(rest[..2].try_into()?) as usize;
-    rest = &rest[2..];
-
-    let mut params = HashMap::new();
-    for _ in 0..params_count {
-        let null_pos = rest.iter().position(|&b| b == 0)
-            .ok_or_else(|| anyhow!("No null terminator in param key"))?;
-        let key = String::from_utf8(rest[..null_pos].to_vec())?;
-        rest = &rest[null_pos + 1..];
-
-        let null_pos = rest.iter().position(|&b| b == 0)
-            .ok_or_else(|| anyhow!("No null terminator in param value"))?;
-        let value = String::from_utf8(rest[..null_pos].to_vec())?;
-        rest = &rest[null_pos + 1..];
-
-        params.insert(key, value);
-    }
-
-    Ok((command, cursor_landmark, cursor_vertex, region, params))
-}
-
-/// Encode ElfOutput message (Elf→Server)
-/// Format: [type:1][output_type:1][data...]
-/// output_type: 0=text, 1=binary
-pub fn encode_elf_output(output_type: u8, data: &[u8]) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(2 + data.len());
-    buf.push(MSG_ELF_OUTPUT);
-    buf.push(output_type);
-    buf.extend_from_slice(data);
-    buf
-}
-
-/// Parse ElfOutput message
+/// Parse ElfOutput message (Elf→Server)
 pub fn parse_elf_output(msg: &[u8]) -> Result<(u8, Vec<u8>)> {
     if msg.len() < 2 {
         return Err(anyhow!("ElfOutput message too short"));
@@ -645,18 +502,7 @@ pub fn parse_elf_output(msg: &[u8]) -> Result<(u8, Vec<u8>)> {
     Ok((output_type, data))
 }
 
-/// Encode ElfComplete message (Elf→Server)
-/// Format: [type:1][status:4][message\0]
-pub fn encode_elf_complete(status: u32, message: &str) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(1 + 4 + message.len() + 1);
-    buf.push(MSG_ELF_COMPLETE);
-    buf.extend_from_slice(&status.to_be_bytes());
-    buf.extend_from_slice(message.as_bytes());
-    buf.push(0);
-    buf
-}
-
-/// Parse ElfComplete message
+/// Parse ElfComplete message (Elf→Server)
 pub fn parse_elf_complete(msg: &[u8]) -> Result<(u32, String)> {
     if msg.len() < 1 + 4 {
         return Err(anyhow!("ElfComplete message too short"));
@@ -677,15 +523,4 @@ pub fn encode_elf_output_fwd(action_id: u64, output_type: u8, data: &[u8]) -> Ve
     buf.push(output_type);
     buf.extend_from_slice(data);
     buf
-}
-
-/// Parse ElfOutputFwd message
-pub fn parse_elf_output_fwd(msg: &[u8]) -> Result<(u64, u8, Vec<u8>)> {
-    if msg.len() < 1 + 8 + 1 {
-        return Err(anyhow!("ElfOutputFwd message too short"));
-    }
-    let action_id = u64::from_be_bytes(msg[1..9].try_into()?);
-    let output_type = msg[9];
-    let data = msg[10..].to_vec();
-    Ok((action_id, output_type, data))
 }

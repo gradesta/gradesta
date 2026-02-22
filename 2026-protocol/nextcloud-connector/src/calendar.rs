@@ -35,14 +35,6 @@ fn router_portal_hash(identity: &str) -> u64 {
     hasher.finish()
 }
 
-/// Generate hash for main router (matches router.rs)
-fn router_main_hash(identity: &str) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    format!("router:{}:main", identity).hash(&mut hasher);
-    hasher.finish()
-}
-
-
 fn year_hash(identity: &str, year: i32) -> u64 {
     calendar_hash(identity, &format!("year:{}", year))
 }

@@ -83,12 +83,17 @@ impl ConnectionManager {
             .map_err(|_| ())
     }
 
-    /// Broadcast a message to all connections watching a specific vertex
+    /// Broadcast a message to all connections watching a specific vertex,
+    /// optionally excluding a specific connection (e.g., the originating browser)
     /// Returns the number of connections that received the message
-    pub fn broadcast_to_vertex_watchers(&self, vertex_id: u64, msg: &[u8]) -> usize {
+    pub fn broadcast_to_vertex_watchers(&self, vertex_id: u64, msg: &[u8], exclude: Option<u64>) -> usize {
         let mut sent_count = 0;
         if let Some(watchers) = self.vertex_watchers.get(&vertex_id) {
             for &conn_id in watchers {
+                // Skip excluded connection
+                if exclude == Some(conn_id) {
+                    continue;
+                }
                 if let Some(sender) = self.senders.get(&conn_id) {
                     if sender.send(msg.to_vec()).is_ok() {
                         sent_count += 1;
@@ -97,14 +102,6 @@ impl ConnectionManager {
             }
         }
         sent_count
-    }
-
-    /// Get all connection IDs watching a specific vertex
-    pub fn get_vertex_watchers(&self, vertex_id: u64) -> Vec<u64> {
-        self.vertex_watchers
-            .get(&vertex_id)
-            .map(|set| set.iter().copied().collect())
-            .unwrap_or_default()
     }
 }
 

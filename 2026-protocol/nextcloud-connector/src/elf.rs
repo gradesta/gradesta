@@ -69,6 +69,7 @@ impl ElfRegistry {
     }
 
     /// Validate and retrieve an invitation by token
+    #[allow(dead_code)] // Used in tests
     pub fn validate_token(&self, token: &str) -> Result<&Invitation> {
         let invitation = self.invitations.get(token)
             .ok_or_else(|| anyhow!("Invalid invitation token"))?;
@@ -96,6 +97,7 @@ impl ElfRegistry {
     }
 
     /// Clean up expired invitations
+    #[allow(dead_code)] // TODO: Call periodically
     pub fn cleanup_expired(&mut self) {
         let expired_tokens: Vec<String> = self.invitations.iter()
             .filter(|(_, inv)| inv.is_expired())
@@ -129,8 +131,6 @@ pub struct ElfConnection {
     pub invitation: Invitation,
     /// Browser connection ID to forward output to
     pub browser_conn_id: u64,
-    /// Set of vertices the elf has accessed (for scope validation)
-    pub accessed_vertices: std::collections::HashSet<u64>,
 }
 
 impl ElfConnection {
@@ -138,28 +138,7 @@ impl ElfConnection {
         Self {
             invitation,
             browser_conn_id,
-            accessed_vertices: std::collections::HashSet::new(),
         }
-    }
-
-    /// Check if the elf can access a vertex
-    /// For now, we just check if the vertex is in the allowed region
-    /// TODO: Implement proper graph traversal validation
-    pub fn can_access_vertex(&self, vertex_id: u64) -> bool {
-        // Origin vertex is always accessible
-        if vertex_id == self.invitation.region.origin_vertex {
-            return true;
-        }
-        // For now, allow access to any vertex that was previously accessed
-        // or if it's adjacent to an accessed vertex
-        // Full implementation would track graph traversal
-        self.accessed_vertices.contains(&vertex_id) ||
-            self.accessed_vertices.is_empty() // First access
-    }
-
-    /// Record that a vertex was accessed
-    pub fn record_access(&mut self, vertex_id: u64) {
-        self.accessed_vertices.insert(vertex_id);
     }
 
     /// Check read permission
