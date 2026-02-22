@@ -50,6 +50,8 @@ pub enum SidebarContentAction {
     ExportToggleDirection(crate::state::Direction),
     ExportConfirm,
     ExportCancel,
+    // Elf panel actions
+    ElfAction(sidebar::elf::ElfAction),
 }
 
 /// Render the sidebar content panel
@@ -91,6 +93,8 @@ pub fn render_sidebar_content(
         render_export_mode(ui, app_state)
     } else if app_state.show_debug_panel {
         render_debug_panel(ui, app_state)
+    } else if app_state.show_elf_panel {
+        render_elf_panel(ui, app_state, graph)
     } else {
         render_preview_mode(ui, ctx, app_state, graph, media_cache, playback_state)
     }
@@ -1106,5 +1110,20 @@ fn render_export_mode(ui: &mut egui::Ui, app_state: &AppState) -> SidebarContent
         sidebar::ExportAction::Confirm => SidebarContentAction::ExportConfirm,
         sidebar::ExportAction::Cancel => SidebarContentAction::ExportCancel,
         sidebar::ExportAction::None => SidebarContentAction::None,
+    }
+}
+
+fn render_elf_panel(
+    ui: &mut egui::Ui,
+    app_state: &mut AppState,
+    graph: &GraphState,
+) -> SidebarContentAction {
+    let current_vertex = app_state.current_vertex;
+    let current_landmark = graph.context_uri.as_deref().unwrap_or("");
+
+    if let Some(elf_action) = sidebar::elf::render_elf_panel(ui, app_state, current_vertex, current_landmark) {
+        SidebarContentAction::ElfAction(elf_action)
+    } else {
+        SidebarContentAction::None
     }
 }

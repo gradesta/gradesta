@@ -20,6 +20,7 @@ pub struct CapturedCommands {
     pub zoom_reset: bool,
     pub toggle_bag: bool,
     pub toggle_nav_panel: bool,
+    pub toggle_elf_panel: bool,
     pub open_command_bar: bool,
     pub open_keybindings: bool,
     pub toggle_tts: bool,
@@ -80,6 +81,7 @@ pub fn capture_keyboard_commands(
     cmds.zoom_reset = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GlobalZoomReset, i));
     cmds.toggle_bag = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GlobalToggleBag, i));
     cmds.toggle_nav_panel = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GlobalToggleNavPanel, i));
+    cmds.toggle_elf_panel = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GlobalToggleElfPanel, i));
     cmds.open_command_bar = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GlobalOpenCommandBar, i));
     cmds.open_keybindings = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GlobalOpenKeybindings, i));
     cmds.toggle_tts = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GlobalToggleTTS, i));
@@ -165,6 +167,7 @@ pub fn log_triggered_commands_to_debug(
     if cmds.zoom_reset { triggered.push(Command::GlobalZoomReset); }
     if cmds.toggle_bag { triggered.push(Command::GlobalToggleBag); }
     if cmds.toggle_nav_panel { triggered.push(Command::GlobalToggleNavPanel); }
+    if cmds.toggle_elf_panel { triggered.push(Command::GlobalToggleElfPanel); }
     if cmds.open_command_bar { triggered.push(Command::GlobalOpenCommandBar); }
     if cmds.open_keybindings { triggered.push(Command::GlobalOpenKeybindings); }
     if cmds.toggle_tts { triggered.push(Command::GlobalToggleTTS); }

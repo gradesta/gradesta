@@ -6,12 +6,14 @@ use std::thread;
 
 use bevy::prelude::*;
 
+use crate::elf_http;
 use crate::graph::{GraphState, LayerContent};
 use crate::media::{is_image_data, MediaCache};
 use crate::network::{NetEventsTx, NetRx, ServerEvent, WsCommand, WsCommandTx};
 use crate::state::{AppState, PendingIdentification};
 use crate::video_player::VideoPlayer;
 use crate::whisper;
+use crate::ElfHttpTx;
 
 /// Process all pending server events
 pub fn ingest_server_events(
@@ -21,6 +23,7 @@ pub fn ingest_server_events(
     net_tx: Res<NetEventsTx>,
     mut ws_cmd_tx: ResMut<WsCommandTx>,
     mut media_cache: ResMut<MediaCache>,
+    elf_http_tx: Res<ElfHttpTx>,
 ) {
     while let Ok(event) = rx.0.try_recv() {
         match event {
@@ -75,7 +78,34 @@ pub fn ingest_server_events(
             }
             ServerEvent::IntroductionToken { action_id, token, server_ws_url } => {
                 eprintln!("Received introduction token for action {}: {} at {}", action_id, token, server_ws_url);
-                // TODO: Forward token to elf system
+                // Look up the pending elf task and forward the token to the elf
+                if let Some(task) = app_state.active_elf_tasks.get(&action_id) {
+                    let elf_url = task.elf_url.clone();
+                    let command = task.command.clone();
+
+                    // For elves accessed via local service manager, translate localhost
+                    // to the Docker network alias so elves can reach services
+                    let elf_server_ws_url = if elf_url.contains("localhost:19333") {
+                        server_ws_url
+                            .replace("//localhost", "//gradesta-local-services")
+                            .replace("//127.0.0.1", "//gradesta-local-services")
+                    } else {
+                        server_ws_url
+                    };
+
+                    eprintln!("Summoning elf {} with ws_url: {}", elf_url, elf_server_ws_url);
+
+                    elf_http::summon_elf_async(
+                        elf_url,
+                        token,
+                        elf_server_ws_url,
+                        command,
+                        std::collections::HashMap::new(),
+                        elf_http_tx.0.clone(),
+                    );
+                } else {
+                    eprintln!("No pending elf task found for action {}", action_id);
+                }
             }
         }
     }

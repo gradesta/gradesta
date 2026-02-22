@@ -13,4 +13,4 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/pig-latin-elf/target/release/pig-latin-elf /usr/local/bin/
 EXPOSE 9001
-CMD ["pig-latin-elf", "--port", "9001", "--bind", "0.0.0.0"]
+CMD ["pig-latin-elf", "--port", "9001"]

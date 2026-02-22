@@ -116,6 +116,7 @@ pub fn execute_commands(
         app_state.show_bag_panel = !app_state.show_bag_panel;
         if app_state.show_bag_panel {
             app_state.show_nav_panel = false;
+            app_state.show_elf_panel = false;
         }
     }
 
@@ -125,6 +126,17 @@ pub fn execute_commands(
         app_state.show_nav_panel = !app_state.show_nav_panel;
         if app_state.show_nav_panel {
             app_state.show_bag_panel = false;
+            app_state.show_elf_panel = false;
+        }
+    }
+
+    // GlobalToggleElfPanel
+    if cmds.toggle_elf_panel {
+        results.any_command_processed = true;
+        app_state.show_elf_panel = !app_state.show_elf_panel;
+        if app_state.show_elf_panel {
+            app_state.show_bag_panel = false;
+            app_state.show_nav_panel = false;
         }
     }
 

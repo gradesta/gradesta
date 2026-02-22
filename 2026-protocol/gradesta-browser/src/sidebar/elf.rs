@@ -15,7 +15,7 @@ use crate::network::{
 use crate::state::{AppState, TrustedElf, ElfTask};
 
 /// Actions that can be taken from the elf panel
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ElfAction {
     /// Add a new trusted elf URL
     AddElf(String),
