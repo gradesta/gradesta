@@ -374,6 +374,9 @@ pub enum IdentificationAction {
 pub struct ServerDropdownState {
     pub selected_index: usize,
     pub filtered_indices: Vec<usize>,
+    /// True when user is actively navigating the dropdown (pressed arrow keys)
+    /// vs just having the dropdown visible
+    pub is_active: bool,
 }
 
 /// Main application state resource

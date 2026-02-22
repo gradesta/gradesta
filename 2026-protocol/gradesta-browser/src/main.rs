@@ -395,25 +395,34 @@ fn ui_system(
     // Pre-process dropdown keyboard navigation BEFORE TextEdit consumes the keys
     // We use the previous frame's dropdown state to decide if we should intercept
     let dropdown_has_items = !app_state.server_dropdown.filtered_indices.is_empty();
+    let dropdown_is_active = app_state.server_dropdown.is_active;
     let mut dropdown_selection_made: Option<String> = None;
 
     if app_state.server_bar_has_focus && dropdown_has_items {
-        // Consume arrow keys and Enter to prevent TextEdit from using them
+        // Always consume arrow keys when dropdown is visible (to navigate it)
         let arrow_down = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown));
         let arrow_up = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp));
-        let enter = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
+        // Only consume Enter if dropdown is actively being navigated
+        let enter = if dropdown_is_active {
+            ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter))
+        } else {
+            false
+        };
         let escape = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
 
         let max_idx = app_state.server_dropdown.filtered_indices.len().saturating_sub(1);
 
+        // Arrow keys activate the dropdown navigation
         if arrow_down {
+            app_state.server_dropdown.is_active = true;
             app_state.server_dropdown.selected_index = (app_state.server_dropdown.selected_index + 1).min(max_idx);
         }
         if arrow_up {
+            app_state.server_dropdown.is_active = true;
             app_state.server_dropdown.selected_index = app_state.server_dropdown.selected_index.saturating_sub(1);
         }
-        if enter {
-            // Get the URL from local_services using the filtered index
+        // Enter selects from dropdown only if dropdown is active
+        if enter && dropdown_is_active {
             if let Some(&server_idx) = app_state.server_dropdown.filtered_indices.get(app_state.server_dropdown.selected_index) {
                 if let Some(ref services) = app_state.local_services {
                     if let Some(server) = services.servers.get(server_idx) {
@@ -422,7 +431,9 @@ fn ui_system(
                 }
             }
         }
+        // Escape deactivates dropdown
         if escape {
+            app_state.server_dropdown.is_active = false;
             app_state.server_dropdown.filtered_indices.clear();
             app_state.server_dropdown.selected_index = 0;
         }
@@ -433,6 +444,7 @@ fn ui_system(
         app_state.server_input = url;
         app_state.server_dropdown.filtered_indices.clear();
         app_state.server_dropdown.selected_index = 0;
+        app_state.server_dropdown.is_active = false;
         should_connect = true;
     }
 
@@ -469,6 +481,12 @@ fn ui_system(
                     )));
                     state.store(ui.ctx(), server_bar_id);
                 }
+            }
+
+            // Reset dropdown active state when user types (input changes)
+            if server_response.changed() {
+                app_state.server_dropdown.is_active = false;
+                app_state.server_dropdown.selected_index = 0;
             }
 
             // Store rect for dropdown positioning
@@ -563,12 +581,14 @@ fn ui_system(
         vec![]
     };
 
-    // Step 2: Update filtered indices
+    // Step 2: Update filtered indices and reset active state when needed
     if app_state.server_bar_has_focus {
         app_state.server_dropdown.filtered_indices = dropdown_items.iter().map(|(i, _, _)| *i).collect();
     } else {
+        // Reset all dropdown state when losing focus
         app_state.server_dropdown.filtered_indices.clear();
         app_state.server_dropdown.selected_index = 0;
+        app_state.server_dropdown.is_active = false;
     }
 
     // Step 3: Render dropdown (keyboard handled above before panel)
@@ -576,14 +596,28 @@ fn ui_system(
     if app_state.server_bar_has_focus && !dropdown_items.is_empty() && !app_state.server_dropdown.filtered_indices.is_empty() {
         if let Some(server_rect) = server_rect_for_dropdown {
             let selected_index = app_state.server_dropdown.selected_index;
+            let is_active = app_state.server_dropdown.is_active;
 
             egui::Area::new(egui::Id::new("server_dropdown"))
                 .fixed_pos(egui::pos2(server_rect.left(), server_rect.bottom() + 2.0))
                 .order(egui::Order::Foreground)
                 .show(ctx, |ui| {
-                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    // Use different frame style based on active state
+                    let frame = if is_active {
+                        egui::Frame::popup(ui.style())
+                            .stroke(egui::Stroke::new(2.0, egui::Color32::from_rgb(100, 149, 237))) // Blue border when active
+                    } else {
+                        egui::Frame::popup(ui.style())
+                    };
+                    frame.show(ui, |ui| {
+                        // Show hint when not active
+                        if !is_active {
+                            ui.label(egui::RichText::new("↓ to navigate, Enter to select").small().weak());
+                            ui.separator();
+                        }
                         for (i, (_, name, url)) in dropdown_items.iter().enumerate() {
-                            let selected = i == selected_index;
+                            // Only highlight selection when dropdown is active
+                            let selected = is_active && i == selected_index;
                             let text = format!("{} - {}", name, url);
                             if ui.selectable_label(selected, &text).clicked() {
                                 clicked_server_url = Some(url.clone());
@@ -599,6 +633,7 @@ fn ui_system(
         app_state.server_input = url;
         app_state.server_dropdown.filtered_indices.clear();
         app_state.server_dropdown.selected_index = 0;
+        app_state.server_dropdown.is_active = false;
         should_connect = true;
     }
 
@@ -628,6 +663,13 @@ fn ui_system(
             app_state.current_vertex = None;
             app_state.history.clear();
             app_state.requested_landmarks.clear();
+
+            // Clear focus from URL bar so user can navigate the graph
+            ctx.memory_mut(|mem| mem.surrender_focus(egui::Id::new("server_bar")));
+            ctx.memory_mut(|mem| mem.surrender_focus(egui::Id::new("landmark_bar")));
+            app_state.server_bar_has_focus = false;
+            app_state.landmark_bar_has_focus = false;
+            app_state.url_bar_has_focus = false;
 
             app_state.status = "Connecting...".to_string();
             let tx = net_events.0.clone();
