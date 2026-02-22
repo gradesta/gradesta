@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
-use crossbeam_channel::unbounded;
+use crossbeam_channel::{unbounded, Sender, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -14,6 +14,7 @@ mod export;
 mod graph;
 mod identity;
 mod keybindings;
+mod local_services;
 mod media;
 mod network;
 mod rendering;
@@ -38,6 +39,14 @@ use state::{KEY_REPEAT_DELAY, KEY_REPEAT_RATE};
 // Existing module imports
 use commands::Command;
 use identity::Identity;
+
+/// Resource for sending elf HTTP events
+#[derive(Resource)]
+pub struct ElfHttpTx(pub Sender<elf_http::ElfHttpEvent>);
+
+/// Resource for receiving elf HTTP events
+#[derive(Resource)]
+pub struct ElfHttpRx(pub Receiver<elf_http::ElfHttpEvent>);
 
 /// Determine the current keybinding context from app state
 fn current_context(app_state: &AppState) -> commands::Context {
@@ -123,11 +132,20 @@ fn main() {
     app_state.debug_log_file = Some(debug_log_path);
 
     let (net_tx, net_rx) = unbounded::<ServerEvent>();
+    let (elf_tx, elf_rx) = unbounded::<elf_http::ElfHttpEvent>();
+
+    // Fetch manifests for all pre-loaded trusted elves
+    for elf in &app_state.trusted_elves {
+        eprintln!("Fetching manifest for pre-loaded elf: {}", elf.url);
+        elf_http::fetch_manifest_async(elf.url.clone(), elf_tx.clone());
+    }
 
     App::new()
         .insert_resource(NetRx(net_rx))
         .insert_resource(NetEventsTx(net_tx))
         .insert_resource(WsCommandTx(None))
+        .insert_resource(ElfHttpTx(elf_tx))
+        .insert_resource(ElfHttpRx(elf_rx))
         .insert_resource(GraphState::default())
         .insert_resource(app_state)
         .insert_resource(MediaCache::default())
@@ -146,6 +164,7 @@ fn main() {
         .add_systems(Update, (
             ui_system,
             events::ingest_server_events,
+            process_elf_http_events,
             handle_navigation,
             auto_play_audio_on_navigate,
             auto_expand_nearby_links,
@@ -258,6 +277,7 @@ fn ui_system(
     mut media_cache: ResMut<MediaCache>,
     audio_signal: Res<AudioRecordingSignal>,
     playback_state: Res<AudioPlaybackState>,
+    elf_http_tx: Res<ElfHttpTx>,
 ) {
     let ctx = contexts.ctx_mut();
 
@@ -513,6 +533,16 @@ fn ui_system(
                     ui.label(format!("{} id", id_count));
                 }
                 ui.separator();
+                // Elf button
+                let elf_label = if app_state.show_elf_panel { "🧝 Elves ON" } else { "🧝 Elves" };
+                if ui.button(elf_label).on_hover_text("Toggle elf panel (Ctrl+E)").clicked() {
+                    app_state.show_elf_panel = !app_state.show_elf_panel;
+                    if app_state.show_elf_panel {
+                        app_state.show_bag_panel = false;
+                        app_state.show_nav_panel = false;
+                    }
+                }
+                ui.separator();
                 // Export button
                 if ui.button("📤 Export").on_hover_text("Export graph section to HTML").clicked() {
                     app_state.sidebar.mode = sidebar::SidebarMode::Export;
@@ -726,6 +756,9 @@ fn ui_system(
             app_state.export_state = export::ExportState::new();
             app_state.status = "Export cancelled".to_string();
         }
+        ui::SidebarContentAction::ElfAction(elf_action) => {
+            handle_elf_action(elf_action, &mut app_state, &ws_cmd_tx, &graph, &elf_http_tx);
+        }
         ui::SidebarContentAction::None => {}
     }
 
@@ -809,21 +842,163 @@ fn ui_system(
     ui::render_grid_view(ctx, &mut app_state, &graph, &mut media_cache, &ws_cmd_tx);
 }
 
+/// Handle actions from the elf panel
+fn handle_elf_action(
+    action: sidebar::elf::ElfAction,
+    app_state: &mut AppState,
+    ws_cmd_tx: &WsCommandTx,
+    graph: &GraphState,
+    elf_http_tx: &ElfHttpTx,
+) {
+    use sidebar::elf::ElfAction;
+    use crate::state::{TrustedElf, ElfTask};
+
+    match action {
+        ElfAction::AddElf(url) => {
+            // Add new trusted elf
+            let elf = TrustedElf::new(&url);
+            app_state.trusted_elves.push(elf);
+            app_state.status = format!("Added elf: {}", url);
+            // Fetch manifest asynchronously
+            elf_http::fetch_manifest_async(url, elf_http_tx.0.clone());
+        }
+        ElfAction::RemoveElf(index) => {
+            if index < app_state.trusted_elves.len() {
+                let removed = app_state.trusted_elves.remove(index);
+                app_state.status = format!("Removed elf: {}", removed.url);
+                // Reset selection if needed
+                if app_state.elf_panel.selected_elf_index >= app_state.trusted_elves.len() {
+                    app_state.elf_panel.selected_elf_index = app_state.trusted_elves.len().saturating_sub(1);
+                }
+            }
+        }
+        ElfAction::RefreshManifest(index) => {
+            if let Some(elf) = app_state.trusted_elves.get(index) {
+                app_state.status = format!("Refreshing manifest for {}...", elf.url);
+                // Fetch manifest asynchronously
+                elf_http::fetch_manifest_async(elf.url.clone(), elf_http_tx.0.clone());
+            }
+        }
+        ElfAction::Summon { elf_index, command_index, directions, permissions } => {
+            // Get current vertex and landmark for summoning
+            let current_vertex = app_state.current_vertex;
+            let current_landmark = graph.context_uri.clone().unwrap_or_default();
+
+            if let (Some(vertex_id), Some(elf)) = (current_vertex, app_state.trusted_elves.get(elf_index)) {
+                if let Some(manifest) = &elf.manifest {
+                    if let Some(command) = manifest.commands.get(command_index) {
+                        // Send introduce elf request via WebSocket
+                        if let Some(ref tx) = ws_cmd_tx.0 {
+                            let action_id = app_state.next_action_id;
+                            app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+
+                            let _ = tx.send(WsCommand::IntroduceElf {
+                                action_id,
+                                elf_url: elf.url.clone(),
+                                command: command.name.clone(),
+                                cursor_landmark: current_landmark.clone(),
+                                cursor_vertex: vertex_id,
+                                origin_landmark: current_landmark.clone(),
+                                origin_vertex: vertex_id,
+                                allowed_directions: directions,
+                                max_depth: -1, // Unlimited depth
+                                permissions,
+                                params: std::collections::HashMap::new(),
+                            });
+
+                            // Track the task
+                            app_state.active_elf_tasks.insert(action_id, ElfTask::new(
+                                action_id,
+                                &elf.url,
+                                &command.name,
+                            ));
+
+                            app_state.status = format!("Summoning {}::{}...", manifest.name, command.name);
+                        } else {
+                            app_state.status = "Not connected to server".to_string();
+                        }
+                    }
+                }
+            } else {
+                app_state.status = "No vertex selected or elf not configured".to_string();
+            }
+        }
+        ElfAction::Close => {
+            app_state.show_elf_panel = false;
+        }
+    }
+}
+
+/// Process elf HTTP events (manifest fetches, summon responses)
+fn process_elf_http_events(
+    mut app_state: ResMut<AppState>,
+    elf_http_rx: Res<ElfHttpRx>,
+) {
+    // Process all pending elf HTTP events
+    while let Ok(event) = elf_http_rx.0.try_recv() {
+        match event {
+            elf_http::ElfHttpEvent::ManifestFetched { elf_url, manifest } => {
+                eprintln!("Manifest fetched for {}: {}", elf_url, manifest.name);
+                // Find the elf and update its manifest
+                for elf in &mut app_state.trusted_elves {
+                    if elf.url == elf_url {
+                        elf.manifest = Some(manifest.clone());
+                        elf.is_reachable = true;
+                        elf.last_fetched = Some(std::time::Instant::now());
+                        app_state.status = format!("Loaded elf: {}", manifest.name);
+                        break;
+                    }
+                }
+            }
+            elf_http::ElfHttpEvent::ManifestFetchFailed { elf_url, error } => {
+                eprintln!("Manifest fetch failed for {}: {}", elf_url, error);
+                // Mark the elf as unreachable
+                for elf in &mut app_state.trusted_elves {
+                    if elf.url == elf_url {
+                        elf.is_reachable = false;
+                        break;
+                    }
+                }
+                app_state.status = format!("Failed to load elf: {}", error);
+            }
+            elf_http::ElfHttpEvent::SummonAccepted { elf_url } => {
+                app_state.status = format!("Elf summoned: {}", elf_url);
+            }
+            elf_http::ElfHttpEvent::SummonFailed { elf_url, error } => {
+                app_state.status = format!("Elf summon failed: {}", error);
+            }
+        }
+    }
+}
+
 fn handle_navigation(
     mut app_state: ResMut<AppState>,
     graph: Res<GraphState>,
     keys: Res<ButtonInput<bevy::prelude::KeyCode>>,
     mut contexts: EguiContexts,
 ) {
-    // Don't handle navigation when egui wants keyboard input (e.g., URL bar focused)
-    let ctx = contexts.ctx_mut();
-    if ctx.wants_keyboard_input() {
+    // Don't handle navigation when URL bar has focus
+    if app_state.url_bar_has_focus {
         return;
     }
 
     // Don't handle navigation when in text input mode
     if matches!(app_state.input_mode, InputMode::TextInput { .. }) {
         return;
+    }
+
+    // Don't handle navigation when command bar is open
+    if app_state.show_command_bar {
+        return;
+    }
+
+    // Don't handle navigation when panels with text inputs are shown
+    // (elf panel, identity panel, identity setup)
+    if app_state.show_elf_panel || app_state.show_identity_panel || app_state.pending_identity_setup.is_some() {
+        let ctx = contexts.ctx_mut();
+        if ctx.wants_keyboard_input() {
+            return;
+        }
     }
 
     // Don't move when shift is held - shift+arrow only changes direction (handled in ui_system)

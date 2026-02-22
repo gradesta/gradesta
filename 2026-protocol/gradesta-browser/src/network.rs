@@ -85,7 +85,6 @@ pub enum ServerEvent {
     IntroductionToken {
         action_id: u64,
         token: String,
-        server_ws_url: String,
     },
 }
 
@@ -406,11 +405,10 @@ pub fn parse_server_message(data: &[u8]) -> Result<ServerEvent> {
                 return Err(anyhow!("IntroductionToken message too short"));
             }
             let (action_id, rest) = read_u64(&data[1..])?;
-            let (token, rest) = read_null_terminated(rest)?;
-            let (server_ws_url, _) = read_null_terminated(rest)?;
-            eprintln!("RECV IntroductionToken action={} token={}... server_ws_url={}",
-                action_id, &token[..std::cmp::min(8, token.len())], server_ws_url);
-            Ok(ServerEvent::IntroductionToken { action_id, token, server_ws_url })
+            let (token, _rest) = read_null_terminated(rest)?;
+            eprintln!("RECV IntroductionToken action={} token={}...",
+                action_id, &token[..std::cmp::min(8, token.len())]);
+            Ok(ServerEvent::IntroductionToken { action_id, token })
         }
         other => {
             eprintln!("RECV Unknown message type: 0x{:02x}", other);
@@ -731,49 +729,8 @@ pub fn ingest_server_events(
                     data,
                 });
             }
-            ServerEvent::IntroductionToken { action_id, token, server_ws_url } => {
-                eprintln!("IntroductionToken received: action={}, token={}..., server_ws_url={}",
-                    action_id, &token[..std::cmp::min(8, token.len())], server_ws_url);
-
-                // Find the elf task that requested this
-                if let Some(task) = app_state.active_elf_tasks.get(&action_id) {
-                    let elf_url = task.elf_url.clone();
-                    let summon_url = format!("{}/summon", elf_url.trim_end_matches('/'));
-
-                    // Spawn a thread to POST the summon request to the elf
-                    let token_clone = token.clone();
-                    let server_url_clone = server_ws_url.clone();
-                    let command = task.command.clone();
-
-                    thread::spawn(move || {
-                        eprintln!("Summoning elf at {} with token {}...", summon_url, &token_clone[..std::cmp::min(8, token_clone.len())]);
-
-                        // Build summon request JSON
-                        let body = serde_json::json!({
-                            "token": token_clone,
-                            "server_ws_url": server_url_clone,
-                            "command": command,
-                            "params": {}
-                        });
-
-                        match reqwest::blocking::Client::new()
-                            .post(&summon_url)
-                            .json(&body)
-                            .send()
-                        {
-                            Ok(response) => {
-                                if response.status().is_success() {
-                                    eprintln!("Elf summon request accepted");
-                                } else {
-                                    eprintln!("Elf summon failed: HTTP {}", response.status());
-                                }
-                            }
-                            Err(e) => {
-                                eprintln!("Failed to summon elf: {}", e);
-                            }
-                        }
-                    });
-                }
+            ServerEvent::IntroductionToken { .. } => {
+                // Handled by ingest_server_events in events.rs
             }
         }
     }

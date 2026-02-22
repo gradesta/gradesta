@@ -76,21 +76,33 @@ pub fn ingest_server_events(
                     &mut app_state,
                 );
             }
-            ServerEvent::IntroductionToken { action_id, token, server_ws_url } => {
-                eprintln!("Received introduction token for action {}: {} at {}", action_id, token, server_ws_url);
+            ServerEvent::IntroductionToken { action_id, token } => {
                 // Look up the pending elf task and forward the token to the elf
                 if let Some(task) = app_state.active_elf_tasks.get(&action_id) {
                     let elf_url = task.elf_url.clone();
                     let command = task.command.clone();
 
-                    // For elves accessed via local service manager, translate localhost
-                    // to the Docker network alias so elves can reach services
-                    let elf_server_ws_url = if elf_url.contains("localhost:19333") {
-                        server_ws_url
-                            .replace("//localhost", "//gradesta-local-services")
-                            .replace("//127.0.0.1", "//gradesta-local-services")
+                    eprintln!("RECV IntroductionToken action={} token={}...",
+                        action_id, &token[..std::cmp::min(8, token.len())]);
+                    eprintln!("  elf_url={}", elf_url);
+                    eprintln!("  command={}", command);
+
+                    // Use the browser's own connection URL, not what the server advertises
+                    // For elves via local service manager, translate localhost to Docker alias
+                    let elf_server_ws_url = if let Some(ref base_url) = app_state.base_ws_url {
+                        // Strip query params to get base WebSocket URL
+                        let base = base_url.split('?').next().unwrap_or(base_url);
+                        if elf_url.contains("localhost:19333") {
+                            // Elf is in Docker, use Docker network alias
+                            // Port 19333 on host maps to port 80 inside Docker
+                            base.replace("//localhost:19333", "//gradesta-local-services")
+                                .replace("//127.0.0.1:19333", "//gradesta-local-services")
+                        } else {
+                            base.to_string()
+                        }
                     } else {
-                        server_ws_url
+                        eprintln!("ERROR: No base_ws_url available for elf connection");
+                        return;
                     };
 
                     eprintln!("Summoning elf {} with ws_url: {}", elf_url, elf_server_ws_url);
@@ -104,7 +116,7 @@ pub fn ingest_server_events(
                         elf_http_tx.0.clone(),
                     );
                 } else {
-                    eprintln!("No pending elf task found for action {}", action_id);
+                    eprintln!("ERROR: No pending elf task found for action {}", action_id);
                 }
             }
         }

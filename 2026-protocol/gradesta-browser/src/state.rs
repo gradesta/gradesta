@@ -13,6 +13,7 @@ use bevy::prelude::*;
 use crate::export::ExportState;
 use crate::identity::IdentityConfig;
 use crate::keybindings::{KeybindingResolver, KeybindingsConfig};
+use crate::local_services::LocalServices;
 use crate::sidebar::{KeybindingsEditorState, SidebarState};
 
 // ============================================================================
@@ -477,12 +478,28 @@ pub struct AppState {
     pub show_elf_panel: bool,
     /// Elf panel UI state
     pub elf_panel: ElfPanelState,
+    /// Local services from gradesta-service-manager
+    pub local_services: Option<LocalServices>,
+    /// Currently selected local server index (for dropdown)
+    pub selected_local_server: usize,
 }
 
 impl Default for AppState {
     fn default() -> Self {
         // Try to load identity config
         let identity_config = IdentityConfig::load().unwrap_or_default();
+
+        // Load local services and auto-populate trusted elves
+        let local_services = LocalServices::load();
+        let trusted_elves: Vec<TrustedElf> = local_services
+            .as_ref()
+            .map(|ls| {
+                ls.elves
+                    .iter()
+                    .map(|elf| TrustedElf::new(&elf.url))
+                    .collect()
+            })
+            .unwrap_or_default();
 
         Self {
             server_input: "ws://localhost:8080".to_string(),
@@ -547,10 +564,12 @@ impl Default for AppState {
             debug_filter: DebugFilter::default(),
             debug_last_context: None,
             export_state: ExportState::new(),
-            trusted_elves: Vec::new(),
+            trusted_elves,
             active_elf_tasks: HashMap::new(),
             show_elf_panel: false,
             elf_panel: ElfPanelState::default(),
+            local_services,
+            selected_local_server: 0,
         }
     }
 }
