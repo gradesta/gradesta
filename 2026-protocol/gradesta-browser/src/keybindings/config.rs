@@ -79,49 +79,4 @@ impl KeybindingsConfig {
         std::fs::write(&path, content)?;
         Ok(())
     }
-
-    /// Check if config is empty (no user overrides)
-    pub fn is_empty(&self) -> bool {
-        self.global.is_empty()
-            && self.graph.is_empty()
-            && self.bag.is_empty()
-            && self.text_input.is_empty()
-            && self.recording.is_empty()
-            && self.authentication.is_empty()
-            && self.nav_panel.is_empty()
-            && self.export.is_empty()
-            && self.elf.is_empty()
-    }
-
-    /// Get bindings for a context by name
-    pub fn get_context(&self, name: &str) -> Option<&HashMap<String, KeyBindingValue>> {
-        match name {
-            "global" => Some(&self.global),
-            "graph" => Some(&self.graph),
-            "bag" => Some(&self.bag),
-            "text_input" => Some(&self.text_input),
-            "recording" => Some(&self.recording),
-            "authentication" => Some(&self.authentication),
-            "nav_panel" => Some(&self.nav_panel),
-            "export" => Some(&self.export),
-            "elf" => Some(&self.elf),
-            _ => None,
-        }
-    }
-
-    /// Get mutable bindings for a context by name
-    pub fn get_context_mut(&mut self, name: &str) -> Option<&mut HashMap<String, KeyBindingValue>> {
-        match name {
-            "global" => Some(&mut self.global),
-            "graph" => Some(&mut self.graph),
-            "bag" => Some(&mut self.bag),
-            "text_input" => Some(&mut self.text_input),
-            "recording" => Some(&mut self.recording),
-            "authentication" => Some(&mut self.authentication),
-            "nav_panel" => Some(&mut self.nav_panel),
-            "export" => Some(&mut self.export),
-            "elf" => Some(&mut self.elf),
-            _ => None,
-        }
-    }
 }

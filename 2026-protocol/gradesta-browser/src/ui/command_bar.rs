@@ -14,7 +14,6 @@ use crate::tts;
 #[derive(Clone, Debug)]
 pub enum CommandBarAction {
     None,
-    Close,
     Execute(Command),
 }
 

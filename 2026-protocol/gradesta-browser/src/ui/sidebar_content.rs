@@ -21,7 +21,6 @@ pub enum SidebarContentAction {
     None,
     CloseTextModal,
     CloseImageModal,
-    CloseVideoModal,
     StopVideo { vertex_id: u64 },
     CancelNextcloudLogin,
     CancelIdentitySetup,
@@ -649,7 +648,7 @@ fn render_nav_panel(
     app_state: &mut AppState,
     graph: &GraphState,
     media_cache: &mut MediaCache,
-    ws_cmd_tx: &WsCommandTx,
+    _ws_cmd_tx: &WsCommandTx,
 ) -> SidebarContentAction {
     let mut action = SidebarContentAction::None;
 

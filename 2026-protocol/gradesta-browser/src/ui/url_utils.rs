@@ -51,17 +51,6 @@ pub fn construct_full_url(server: &str, landmark: &str) -> String {
     format!("{}/ws?landmark={}", server, landmark)
 }
 
-/// Get clipboard text using arboard
-pub fn get_clipboard_text() -> Option<String> {
-    match arboard::Clipboard::new() {
-        Ok(mut clipboard) => match clipboard.get_text() {
-            Ok(text) => Some(text),
-            Err(_) => None,
-        },
-        Err(_) => None,
-    }
-}
-
 /// Set clipboard text using arboard
 pub fn set_clipboard_text(text: &str) -> bool {
     match arboard::Clipboard::new() {

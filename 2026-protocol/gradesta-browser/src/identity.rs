@@ -88,12 +88,6 @@ struct LoginFlowResult {
     app_password: String,
 }
 
-/// OCS response structure for share info
-#[derive(Debug, Deserialize)]
-struct OcsData<T> {
-    data: T,
-}
-
 /// Initiates Nextcloud Login Flow v2 and returns the URL to open in browser
 pub fn initiate_nextcloud_login(nextcloud_url: &str) -> Result<(String, String, String)> {
     let client = reqwest::blocking::Client::new();

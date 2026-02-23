@@ -56,16 +56,6 @@ fn get_tts() -> Arc<Mutex<Option<Tts>>> {
     }).clone()
 }
 
-/// Check if TTS is available on this system
-pub fn is_available() -> bool {
-    let tts_arc = get_tts();
-    let guard = match tts_arc.lock() {
-        Ok(g) => g,
-        Err(_) => return false,
-    };
-    guard.is_some()
-}
-
 /// Speak the given text
 ///
 /// This is non-blocking - speech happens asynchronously.
@@ -131,25 +121,4 @@ pub fn stop() {
             eprintln!("TTS stop failed: {:?}", e);
         }
     }
-}
-
-/// Check if the TTS engine is currently speaking
-pub fn is_speaking() -> bool {
-    let tts_arc = get_tts();
-    let guard = match tts_arc.lock() {
-        Ok(g) => g,
-        Err(_) => return false,
-    };
-    if let Some(ref tts_instance) = *guard {
-        return tts_instance.is_speaking().unwrap_or(false);
-    }
-    false
-}
-
-/// Initialize TTS in background (optional, for faster first speak)
-pub fn preload() {
-    std::thread::spawn(|| {
-        eprintln!("Preloading TTS in background...");
-        let _ = get_tts();
-    });
 }

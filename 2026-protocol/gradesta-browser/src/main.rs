@@ -782,9 +782,6 @@ fn ui_system(
         ui::SidebarContentAction::CloseImageModal => {
             app_state.show_image_modal = false;
         }
-        ui::SidebarContentAction::CloseVideoModal => {
-            app_state.show_video_modal = false;
-        }
         ui::SidebarContentAction::StopVideo { vertex_id } => {
             if let Some(player) = media_cache.video_players.get(&vertex_id) {
                 player.stop();
@@ -1105,7 +1102,6 @@ fn handle_elf_action(
 
                             // Track the task
                             app_state.active_elf_tasks.insert(action_id, ElfTask::new(
-                                action_id,
                                 &elf.url,
                                 &command.name,
                             ));
@@ -1161,7 +1157,7 @@ fn process_elf_http_events(
             elf_http::ElfHttpEvent::SummonAccepted { elf_url } => {
                 app_state.status = format!("Elf summoned: {}", elf_url);
             }
-            elf_http::ElfHttpEvent::SummonFailed { elf_url, error } => {
+            elf_http::ElfHttpEvent::SummonFailed { elf_url: _, error } => {
                 app_state.status = format!("Elf summon failed: {}", error);
             }
         }

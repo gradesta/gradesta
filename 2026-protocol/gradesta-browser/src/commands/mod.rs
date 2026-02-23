@@ -33,21 +33,6 @@ pub enum Context {
 }
 
 impl Context {
-    /// Human-readable display name
-    pub fn name(&self) -> &'static str {
-        match self {
-            Context::Global => "Global",
-            Context::Graph => "Graph",
-            Context::Bag => "Bag",
-            Context::TextInput => "Text Input",
-            Context::Recording => "Recording",
-            Context::Authentication => "Authentication",
-            Context::NavPanel => "Navigation Panel",
-            Context::Export => "Export",
-            Context::Elf => "Elf",
-        }
-    }
-
     /// Config/log name (snake_case, matches keybindings config sections)
     pub fn config_name(&self) -> &'static str {
         match self {
@@ -61,20 +46,6 @@ impl Context {
             Context::Export => "export",
             Context::Elf => "elf",
         }
-    }
-
-    pub fn all() -> &'static [Context] {
-        &[
-            Context::Global,
-            Context::Graph,
-            Context::Bag,
-            Context::TextInput,
-            Context::Recording,
-            Context::Authentication,
-            Context::NavPanel,
-            Context::Export,
-            Context::Elf,
-        ]
     }
 }
 
@@ -706,14 +677,6 @@ impl Command {
             Command::ElfToggleUp,
             Command::ElfToggleDown,
         ]
-    }
-
-    /// Get all commands for a specific context
-    pub fn for_context(ctx: Context) -> Vec<Command> {
-        Command::all()
-            .into_iter()
-            .filter(|c| c.context() == ctx)
-            .collect()
     }
 
     /// Fuzzy match this command's slug against a query

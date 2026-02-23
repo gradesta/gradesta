@@ -12,7 +12,7 @@ use crate::network::{
     DIRECTION_WEST, DIRECTION_EAST, DIRECTION_NORTH, DIRECTION_SOUTH,
     DIRECTION_UP, DIRECTION_DOWN, PERM_READ, PERM_WRITE, PERM_CREATE, PERM_DELETE,
 };
-use crate::state::{AppState, TrustedElf, ElfTask};
+use crate::state::{AppState, ElfTask};
 
 /// Actions that can be taken from the elf panel
 #[derive(Clone, Debug)]

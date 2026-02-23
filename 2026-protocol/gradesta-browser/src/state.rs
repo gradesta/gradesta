@@ -82,8 +82,6 @@ impl TrustedElf {
 /// Active elf task state
 #[derive(Clone, Debug)]
 pub struct ElfTask {
-    /// Action ID for this task
-    pub action_id: u64,
     /// Elf URL
     pub elf_url: String,
     /// Command being executed
@@ -94,28 +92,17 @@ pub struct ElfTask {
     pub status: Option<u32>,
     /// Final message (if completed)
     pub message: Option<String>,
-    /// When the task started
-    pub started: Instant,
 }
 
 impl ElfTask {
-    pub fn new(action_id: u64, elf_url: &str, command: &str) -> Self {
+    pub fn new(elf_url: &str, command: &str) -> Self {
         Self {
-            action_id,
             elf_url: elf_url.to_string(),
             command: command.to_string(),
             completed: false,
             status: None,
             message: None,
-            started: Instant::now(),
         }
-    }
-
-    /// Mark the task as complete
-    pub fn complete(&mut self, status: u32, message: String) {
-        self.completed = true;
-        self.status = Some(status);
-        self.message = Some(message);
     }
 }
 
@@ -188,18 +175,6 @@ pub enum DebugFilter {
     Execution,
 }
 
-impl DebugFilter {
-    pub fn matches(&self, category: DebugCategory) -> bool {
-        match self {
-            DebugFilter::All => true,
-            DebugFilter::Context => category == DebugCategory::Context,
-            DebugFilter::Keypress => category == DebugCategory::Keypress,
-            DebugFilter::Command => category == DebugCategory::Command,
-            DebugFilter::Execution => category == DebugCategory::Execution,
-        }
-    }
-}
-
 /// Direction edge constants
 pub const EDGE_WEST: usize = 0;
 pub const EDGE_EAST: usize = 1;
@@ -232,19 +207,6 @@ impl Direction {
         }
     }
 
-    /// Create from edge index
-    pub fn from_edge_index(index: usize) -> Option<Self> {
-        match index {
-            EDGE_WEST => Some(Direction::West),
-            EDGE_EAST => Some(Direction::East),
-            EDGE_NORTH => Some(Direction::North),
-            EDGE_SOUTH => Some(Direction::South),
-            EDGE_UP => Some(Direction::Up),
-            EDGE_DOWN => Some(Direction::Down),
-            _ => None,
-        }
-    }
-
     /// Human-readable name
     pub fn name(self) -> &'static str {
         match self {
@@ -266,18 +228,6 @@ impl Direction {
             Direction::South => "↓",
             Direction::Up => "⬆",
             Direction::Down => "⬇",
-        }
-    }
-
-    /// Get the opposite direction
-    pub fn opposite(self) -> Direction {
-        match self {
-            Direction::West => Direction::East,
-            Direction::East => Direction::West,
-            Direction::North => Direction::South,
-            Direction::South => Direction::North,
-            Direction::Up => Direction::Down,
-            Direction::Down => Direction::Up,
         }
     }
 
@@ -440,7 +390,6 @@ pub struct AppState {
     pub text_redo_stack: Vec<String>,
     // Audio recording state
     pub audio_samples: Arc<Mutex<Vec<f32>>>,
-    pub audio_sample_rate: u32,
     pub recording_start: Option<Instant>,
     /// Action ID counter (counts down from MAX to avoid collision with server IDs)
     pub next_action_id: u64,
@@ -490,8 +439,6 @@ pub struct AppState {
     pub elf_panel: ElfPanelState,
     /// Local services from gradesta-service-manager
     pub local_services: Option<LocalServices>,
-    /// Currently selected local server index (for dropdown)
-    pub selected_local_server: usize,
     /// Server bar autocomplete dropdown state
     pub server_dropdown: ServerDropdownState,
 }
@@ -553,7 +500,6 @@ impl Default for AppState {
             text_undo_stack: Vec::new(),
             text_redo_stack: Vec::new(),
             audio_samples: Arc::new(Mutex::new(Vec::new())),
-            audio_sample_rate: 44100,
             recording_start: None,
             next_action_id: u64::MAX,
             pending_creations: HashMap::new(),
@@ -581,7 +527,6 @@ impl Default for AppState {
             show_elf_panel: false,
             elf_panel: ElfPanelState::default(),
             local_services,
-            selected_local_server: 0,
             server_dropdown: ServerDropdownState::default(),
         }
     }

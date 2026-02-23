@@ -15,7 +15,7 @@ use crate::state::{EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_W
 #[derive(Clone, Debug)]
 pub enum GridAction {
     None,
-    ClickVertex { vertex_id: u64 },
+    ClickVertex,
 }
 
 /// Render the central grid view
@@ -159,7 +159,7 @@ pub fn render_grid_view(
                             let _ = tx.send(WsCommand::ClickVertex { action_id, vertex_id });
                             app_state.status = format!("Clicked vertex {}", vertex_id);
                         }
-                        action = GridAction::ClickVertex { vertex_id };
+                        action = GridAction::ClickVertex;
                     }
                 }
             }

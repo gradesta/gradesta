@@ -15,8 +15,6 @@ pub struct KeybindingsEditorState {
     pub filter: String,
     /// Currently selected context filter
     pub context_filter: Option<Context>,
-    /// Recording new key binding
-    pub recording: bool,
     /// Pending preset to apply (for confirmation)
     pub pending_preset: Option<Preset>,
 }
@@ -28,7 +26,6 @@ impl Default for KeybindingsEditorState {
             new_binding_input: String::new(),
             filter: String::new(),
             context_filter: None,
-            recording: false,
             pending_preset: None,
         }
     }

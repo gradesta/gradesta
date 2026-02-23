@@ -114,12 +114,6 @@ pub fn download_model_with_progress(progress: Arc<DownloadProgress>) -> Result<(
     Ok(())
 }
 
-/// Download the Whisper model if not present (simple version for CLI)
-pub fn download_model() -> Result<()> {
-    let progress = Arc::new(DownloadProgress::default());
-    download_model_with_progress(progress)
-}
-
 /// Initialize the Whisper context (call once at startup or on first use)
 fn get_or_init_context() -> Option<&'static WhisperContext> {
     WHISPER_CTX.get_or_init(|| {

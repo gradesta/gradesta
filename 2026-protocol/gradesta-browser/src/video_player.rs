@@ -16,7 +16,6 @@ pub struct VideoFrame {
     pub width: u32,
     pub height: u32,
     pub rgba: Vec<u8>,
-    pub pts: Duration, // Presentation timestamp
 }
 
 /// Commands sent to the video player thread
@@ -26,15 +25,6 @@ pub enum VideoPlayerCommand {
     Pause,
     Seek(Duration),
     Stop,
-}
-
-/// Current state of the video player
-#[derive(Clone, Debug, PartialEq)]
-pub enum VideoPlayerState {
-    Stopped,
-    Playing,
-    Paused,
-    Finished,
 }
 
 /// Video player that decodes video and audio in background threads
@@ -51,11 +41,6 @@ pub struct VideoPlayer {
     position_ms: Arc<AtomicU64>,
     /// Playing state
     is_playing: Arc<AtomicBool>,
-    /// Video dimensions
-    pub width: u32,
-    pub height: u32,
-    /// Frames per second
-    pub fps: f64,
 }
 
 impl VideoPlayer {
@@ -149,9 +134,6 @@ impl VideoPlayer {
             duration,
             position_ms,
             is_playing,
-            width,
-            height,
-            fps,
         })
     }
 
@@ -192,10 +174,6 @@ impl VideoPlayer {
 
     pub fn get_position(&self) -> Duration {
         Duration::from_millis(self.position_ms.load(Ordering::SeqCst))
-    }
-
-    pub fn set_position(&self, pos: Duration) {
-        self.position_ms.store(pos.as_millis() as u64, Ordering::SeqCst);
     }
 }
 
@@ -383,7 +361,6 @@ fn decode_video(
                     width: w as u32,
                     height: h as u32,
                     rgba,
-                    pts,
                 }) {
                     Ok(()) => {}
                     Err(crossbeam_channel::TrySendError::Full(_)) => {}
@@ -510,7 +487,7 @@ fn decode_and_play_audio(
                     }
                 }
                 VideoPlayerCommand::Stop => {
-                    sink = None;
+                    drop(sink);
                     return Ok(());
                 }
                 VideoPlayerCommand::Seek(target) => {
@@ -566,7 +543,7 @@ fn decode_and_play_audio(
                                 eprintln!("VideoPlayer: Audio paused at {:?}", current_position);
                             }
                             VideoPlayerCommand::Stop => {
-                                sink = None;
+                                drop(sink);
                                 return Ok(());
                             }
                             VideoPlayerCommand::Seek(target) => {

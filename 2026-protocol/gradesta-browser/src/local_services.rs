@@ -16,7 +16,6 @@ pub struct LocalService {
 /// Local services configuration loaded from browser-services.json
 #[derive(Debug, Clone, Deserialize)]
 pub struct LocalServices {
-    pub caddy_url: String,
     pub servers: Vec<LocalService>,
     pub elves: Vec<LocalService>,
 }
@@ -41,15 +40,5 @@ impl LocalServices {
 
         let content = std::fs::read_to_string(path).ok()?;
         serde_json::from_str(&content).ok()
-    }
-
-    /// Get a server URL by index
-    pub fn get_server_url(&self, index: usize) -> Option<&str> {
-        self.servers.get(index).map(|s| s.url.as_str())
-    }
-
-    /// Get an elf URL by index
-    pub fn get_elf_url(&self, index: usize) -> Option<&str> {
-        self.elves.get(index).map(|e| e.url.as_str())
     }
 }

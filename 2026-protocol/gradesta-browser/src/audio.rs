@@ -259,53 +259,6 @@ pub fn encode_ogg_vorbis(samples: &[f32], sample_rate: u32, transcript: Option<&
     Ok(output)
 }
 
-/// Parse WAV header to get duration in seconds
-pub fn parse_wav_duration(data: &[u8]) -> Option<f32> {
-    if data.len() < 44 {
-        return None;
-    }
-    // Check RIFF header
-    if &data[0..4] != b"RIFF" || &data[8..12] != b"WAVE" {
-        return None;
-    }
-    // Find fmt chunk
-    let mut pos = 12;
-    while pos + 8 < data.len() {
-        let chunk_id = &data[pos..pos+4];
-        let chunk_size = u32::from_le_bytes(data[pos+4..pos+8].try_into().ok()?) as usize;
-
-        if chunk_id == b"fmt " && chunk_size >= 16 {
-            let channels = u16::from_le_bytes(data[pos+10..pos+12].try_into().ok()?) as u32;
-            let sample_rate = u32::from_le_bytes(data[pos+12..pos+16].try_into().ok()?);
-            let bits_per_sample = u16::from_le_bytes(data[pos+22..pos+24].try_into().ok()?) as u32;
-
-            // Find data chunk
-            pos += 8 + chunk_size;
-            while pos + 8 < data.len() {
-                let data_chunk_id = &data[pos..pos+4];
-                let data_size = u32::from_le_bytes(data[pos+4..pos+8].try_into().ok()?);
-
-                if data_chunk_id == b"data" {
-                    let bytes_per_sample = (bits_per_sample / 8) * channels;
-                    if bytes_per_sample > 0 && sample_rate > 0 {
-                        let num_samples = data_size / bytes_per_sample;
-                        return Some(num_samples as f32 / sample_rate as f32);
-                    }
-                }
-                pos += 8 + data_size as usize;
-                if data_size % 2 == 1 {
-                    pos += 1; // Pad to even
-                }
-            }
-        }
-        pos += 8 + chunk_size;
-        if chunk_size % 2 == 1 {
-            pos += 1; // Pad to even
-        }
-    }
-    None
-}
-
 /// Extract transcript from audio data (OGG Vorbis comments or WAV 'trns' chunk)
 pub fn extract_transcript(data: &[u8], mime: &str) -> Option<String> {
     if mime == "audio/ogg" || (data.len() >= 4 && &data[0..4] == b"OggS") {

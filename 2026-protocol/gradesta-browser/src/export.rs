@@ -52,8 +52,6 @@ pub struct ExportData {
 
 /// A vertex prepared for export
 pub struct ExportVertex {
-    pub id: u64,
-    pub position: (i32, i32, i32),
     pub content: ExportContent,
     /// Edges to adjacent vertices (by position, not id)
     pub edges: [Option<(i32, i32, i32)>; 6],
@@ -135,8 +133,6 @@ pub fn collect_vertices_for_export(
             }
 
             vertices.insert(pos, ExportVertex {
-                id: vertex_id,
-                position: pos,
                 content,
                 edges,
             });

@@ -8,7 +8,6 @@ mod commands;
 mod fullscreen;
 mod grid;
 mod input;
-mod panels;
 mod processing;
 mod sidebar_content;
 mod text_edit;
@@ -22,38 +21,3 @@ pub use input::{capture_keyboard_commands, log_triggered_commands_to_debug};
 pub use processing::{process_identification, process_recording_cancel, process_text_input};
 pub use sidebar_content::{render_sidebar_content, SidebarContentAction};
 pub use text_edit::{consume_text_edit_events, handle_url_bar_copy_shortcut, handle_url_bar_smart_paste, process_text_edit_commands, sync_copy_to_system_clipboard};
-
-/// Result of a zoom operation
-#[derive(Clone, Debug, Default)]
-pub struct ZoomResult {
-    pub zoom_changed: bool,
-    pub new_zoom: f32,
-}
-
-/// Common action types used across UI components
-#[derive(Clone, Debug, PartialEq)]
-pub enum NavigationAction {
-    None,
-    Navigate { direction: usize },
-    ClickVertex,
-    GoToBagTop,
-}
-
-/// Result of connection/URL operations
-#[derive(Clone, Debug)]
-pub enum ConnectionAction {
-    None,
-    Connect { url: String },
-    Disconnect,
-    Refresh,
-}
-
-/// Actions for media playback control
-#[derive(Clone, Debug, PartialEq)]
-pub enum PlaybackAction {
-    None,
-    Play,
-    Pause,
-    Stop,
-    Toggle,
-}

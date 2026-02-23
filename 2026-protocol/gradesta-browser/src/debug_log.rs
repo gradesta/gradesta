@@ -80,25 +80,6 @@ pub fn log_command_triggered(app_state: &mut AppState, command_name: &str, key_i
     log_entry(app_state, DebugCategory::Command, message);
 }
 
-/// Log command execution result
-pub fn log_command_executed(app_state: &mut AppState, command_name: &str, result: &str) {
-    log_entry(
-        app_state,
-        DebugCategory::Execution,
-        format!("{}: {}", command_name, result),
-    );
-}
-
-/// Log a raw keypress event
-pub fn log_keypress(app_state: &mut AppState, key: &str, modifiers: &str, context: &str) {
-    let message = if modifiers.is_empty() {
-        format!("{} (context: {})", key, context)
-    } else {
-        format!("{}+{} (context: {})", modifiers, key, context)
-    };
-    log_entry(app_state, DebugCategory::Keypress, message);
-}
-
 /// Get context name as string (matches keybindings config section names)
 pub fn context_name(ctx: Context) -> &'static str {
     ctx.config_name()

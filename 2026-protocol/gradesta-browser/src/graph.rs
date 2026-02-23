@@ -48,8 +48,6 @@ pub struct GraphState {
 
 /// Information about a stack of vertices connected via up/down edges
 pub struct StackInfo {
-    /// All vertices in the stack (top to bottom)
-    pub vertices: Vec<u64>,
     /// Current position in the stack (0-indexed)
     pub current_index: usize,
     /// Total number of vertices in the stack
@@ -103,7 +101,6 @@ pub fn compute_stack(graph: &GraphState, vertex_id: u64) -> StackInfo {
 
     StackInfo {
         total: stack.len(),
-        vertices: stack,
         current_index,
     }
 }
@@ -113,10 +110,6 @@ pub fn compute_stack(graph: &GraphState, vertex_id: u64) -> StackInfo {
 pub struct GhostEdge {
     /// The direction of the edge (EDGE_WEST, EDGE_EAST, etc.)
     pub direction: usize,
-    /// The target vertex id (which exists elsewhere in the grid)
-    pub target_id: u64,
-    /// The position where the target vertex actually is in the grid
-    pub target_pos: (i32, i32),
 }
 
 /// 2D grid layout of the graph
@@ -172,8 +165,6 @@ pub fn detect_ghost_edges(graph: &GraphState, grid: &GridView) -> HashMap<u64, V
                     if neighbor_pos != expected {
                         ghost_edges.entry(vertex_id).or_default().push(GhostEdge {
                             direction,
-                            target_id: neighbor_id,
-                            target_pos: neighbor_pos,
                         });
                     }
                 }

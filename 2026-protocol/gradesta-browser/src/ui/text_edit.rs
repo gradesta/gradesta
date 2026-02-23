@@ -408,9 +408,3 @@ pub fn reset_text_edit_state(app_state: &mut AppState) {
     app_state.text_undo_stack.clear();
     app_state.text_redo_stack.clear();
 }
-
-/// Select all text (call when entering text input mode for edit)
-pub fn select_all(app_state: &mut AppState) {
-    app_state.text_selection_start = Some(0);
-    app_state.text_cursor_pos = app_state.text_input_buffer.len();
-}

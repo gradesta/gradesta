@@ -6,6 +6,8 @@
 //! - Context-aware resolution (global fallback)
 //! - Presets (Normal, Vim, Emacs)
 
+#![allow(dead_code)]
+
 pub mod config;
 pub mod defaults;
 pub mod key;

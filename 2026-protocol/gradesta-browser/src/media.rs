@@ -93,7 +93,7 @@ pub fn is_image_data(data: &[u8]) -> bool {
 pub fn get_or_load_texture<'a>(
     vertex_id: u64,
     data: &[u8],
-    mime: &str,
+    _mime: &str,
     media_cache: &'a mut MediaCache,
     ctx: &egui::Context,
 ) -> Option<&'a egui::TextureHandle> {
