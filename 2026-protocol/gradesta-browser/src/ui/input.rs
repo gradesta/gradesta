@@ -1,4 +1,4 @@
-//! Keyboard input capture for UI system
+//! Keyboard and gamepad input capture for UI system
 //!
 //! Pre-computes which commands were triggered this frame.
 
@@ -6,6 +6,7 @@ use bevy_egui::egui;
 
 use crate::commands::{Command, Context as CmdContext};
 use crate::debug_log;
+use crate::gamepad::GamepadSnapshot;
 use crate::keybindings::KeybindingResolver;
 use crate::state::AppState;
 
@@ -24,6 +25,7 @@ pub struct CapturedCommands {
     pub open_command_bar: bool,
     pub open_keybindings: bool,
     pub toggle_tts: bool,
+    pub toggle_gamepad_help: bool,
     pub refresh: bool,
     pub copy_url: bool,
     pub focus_url_down: bool,
@@ -63,6 +65,15 @@ pub struct CapturedCommands {
     // Mouse/touch zoom (not from keybindings)
     pub scroll_zoom: Option<f32>,
     pub pinch_zoom: Option<f32>,
+
+    // Navigation commands (for gamepad support)
+    pub nav_north: bool,
+    pub nav_south: bool,
+    pub nav_east: bool,
+    pub nav_west: bool,
+    pub nav_up: bool,
+    pub nav_down: bool,
+    pub history_back: bool,
 }
 
 /// Capture all keyboard commands for the current frame
@@ -85,6 +96,7 @@ pub fn capture_keyboard_commands(
     cmds.open_command_bar = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GlobalOpenCommandBar, i));
     cmds.open_keybindings = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GlobalOpenKeybindings, i));
     cmds.toggle_tts = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GlobalToggleTTS, i));
+    cmds.toggle_gamepad_help = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GlobalToggleGamepadHelp, i));
     cmds.refresh = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GlobalRefresh, i));
     cmds.copy_url = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GlobalCopyUrl, i));
     cmds.focus_url_down = ctx.input(|i| keybindings.command_down(kb_context, &Command::GlobalFocusUrl, i));
@@ -139,6 +151,38 @@ pub fn capture_keyboard_commands(
     cmds.pinch_zoom = pinch_zoom;
 
     cmds
+}
+
+/// Merge gamepad commands into captured commands
+/// Call this after capture_keyboard_commands to add gamepad input
+pub fn capture_gamepad_commands(
+    cmds: &mut CapturedCommands,
+    gamepad: &Option<GamepadSnapshot>,
+    keybindings: &KeybindingResolver,
+) {
+    let Some(gp) = gamepad else { return };
+
+    // Navigation
+    cmds.nav_north |= keybindings.command_pressed_gamepad(&Command::GraphNavigateNorth, gp);
+    cmds.nav_south |= keybindings.command_pressed_gamepad(&Command::GraphNavigateSouth, gp);
+    cmds.nav_east |= keybindings.command_pressed_gamepad(&Command::GraphNavigateEast, gp);
+    cmds.nav_west |= keybindings.command_pressed_gamepad(&Command::GraphNavigateWest, gp);
+    cmds.nav_up |= keybindings.command_pressed_gamepad(&Command::GraphNavigateUp, gp);
+    cmds.nav_down |= keybindings.command_pressed_gamepad(&Command::GraphNavigateDown, gp);
+    cmds.history_back |= keybindings.command_pressed_gamepad(&Command::GraphHistoryBack, gp);
+
+    // Actions
+    cmds.click_vertex |= keybindings.command_pressed_gamepad(&Command::GraphClickVertex, gp);
+    cmds.delete_vertex |= keybindings.command_pressed_gamepad(&Command::GraphDeleteVertex, gp);
+    cmds.edit_text |= keybindings.command_pressed_gamepad(&Command::GraphEditText, gp);
+    cmds.new_text_vertex |= keybindings.command_pressed_gamepad(&Command::GraphNewTextVertex, gp);
+    cmds.yank |= keybindings.command_pressed_gamepad(&Command::GraphYank, gp);
+    cmds.toggle_bag |= keybindings.command_pressed_gamepad(&Command::GlobalToggleBag, gp);
+    cmds.toggle_gamepad_help |= keybindings.command_pressed_gamepad(&Command::GlobalToggleGamepadHelp, gp);
+
+    // Recording - R2 hold to record, release to save (matches keyboard Space behavior)
+    cmds.start_recording |= keybindings.command_pressed_gamepad(&Command::GraphStartRecording, gp);
+    cmds.recording_save |= keybindings.command_released_gamepad(&Command::RecordingSave, gp);
 }
 
 /// Log triggered commands to the debug log

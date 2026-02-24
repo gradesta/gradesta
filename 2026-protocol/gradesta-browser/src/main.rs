@@ -11,6 +11,7 @@ mod debug_log;
 mod elf_http;
 mod events;
 mod export;
+mod gamepad;
 mod graph;
 mod identity;
 mod keybindings;
@@ -130,6 +131,9 @@ fn main() {
     let debug_log_path = debug_log::init_debug_log();
     eprintln!("Debug log: {}", debug_log_path.display());
     app_state.debug_log_file = Some(debug_log_path);
+
+    // Initialize gamepad support
+    gamepad::init_global_gamepad();
 
     let (net_tx, net_rx) = unbounded::<ServerEvent>();
     let (elf_tx, elf_rx) = unbounded::<elf_http::ElfHttpEvent>();
@@ -336,7 +340,17 @@ fn ui_system(
         app_state.debug_last_context = Some(context_name.to_string());
     }
 
-    let cmds = ui::capture_keyboard_commands(ctx, &app_state.keybindings, kb_context);
+    // Update gamepad state
+    gamepad::update_global_gamepad();
+    let gamepad_snapshot = gamepad::get_gamepad_snapshot();
+
+    let mut cmds = ui::capture_keyboard_commands(ctx, &app_state.keybindings, kb_context);
+
+    // Merge gamepad commands (only in graph context, not during text input)
+    if kb_context == commands::Context::Graph || kb_context == commands::Context::Recording {
+        ui::capture_gamepad_commands(&mut cmds, &gamepad_snapshot, &app_state.keybindings);
+    }
+
     // Log triggered commands to debug log (separated to avoid borrow conflicts)
     ui::log_triggered_commands_to_debug(&cmds, &mut app_state);
     let cmd_refresh = cmds.refresh;  // Used later for refresh logic
@@ -700,7 +714,11 @@ fn ui_system(
     egui::TopBottomPanel::bottom("help_panel").show(ctx, |ui| {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.label("↑↓←→ Nav | Enter=Click | Space=Record | I=Edit | Y=Yank | Ctrl+K=Keybindings");
+            let mut help_text = "↑↓←→ Nav | Enter=Click | Space=Record | I=Edit | Y=Yank | Ctrl+K=Keybindings".to_string();
+            if gamepad::is_gamepad_connected() {
+                help_text.push_str(" | L3=Gamepad Help");
+            }
+            ui.label(help_text);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 // TTS mode indicator
                 let tts_label = if app_state.tts_mode { "🔊 TTS ON" } else { "🔇 TTS" };
@@ -1034,6 +1052,11 @@ fn ui_system(
 
     // Central panel showing grid view
     ui::render_grid_view(ctx, &mut app_state, &graph, &mut media_cache, &ws_cmd_tx);
+
+    // Gamepad help overlay (rendered last so it's on top)
+    if app_state.show_gamepad_help {
+        ui::render_gamepad_help_overlay(ctx);
+    }
 }
 
 /// Handle actions from the elf panel
@@ -1207,7 +1230,52 @@ fn handle_navigation(
     let context = commands::Context::Graph;
     let resolver = &app_state.keybindings;
 
-    // Check which navigation key is held (if any)
+    // Get gamepad snapshot for navigation
+    let gp_snapshot = gamepad::get_gamepad_snapshot();
+
+    // Check gamepad navigation (pressed this frame = just pressed for gamepad)
+    let gamepad_edge: Option<usize> = if let Some(ref gp) = gp_snapshot {
+        if resolver.command_pressed_gamepad(&Command::GraphNavigateNorth, gp) {
+            Some(EDGE_NORTH)
+        } else if resolver.command_pressed_gamepad(&Command::GraphNavigateSouth, gp) {
+            Some(EDGE_SOUTH)
+        } else if resolver.command_pressed_gamepad(&Command::GraphNavigateWest, gp) {
+            Some(EDGE_WEST)
+        } else if resolver.command_pressed_gamepad(&Command::GraphNavigateEast, gp) {
+            Some(EDGE_EAST)
+        } else if resolver.command_pressed_gamepad(&Command::GraphNavigateUp, gp) {
+            Some(EDGE_UP)
+        } else if resolver.command_pressed_gamepad(&Command::GraphNavigateDown, gp) {
+            Some(EDGE_DOWN)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Check gamepad held (for key repeat)
+    let gamepad_held: Option<usize> = if let Some(ref gp) = gp_snapshot {
+        if resolver.command_held_gamepad(&Command::GraphNavigateNorth, gp) {
+            Some(EDGE_NORTH)
+        } else if resolver.command_held_gamepad(&Command::GraphNavigateSouth, gp) {
+            Some(EDGE_SOUTH)
+        } else if resolver.command_held_gamepad(&Command::GraphNavigateWest, gp) {
+            Some(EDGE_WEST)
+        } else if resolver.command_held_gamepad(&Command::GraphNavigateEast, gp) {
+            Some(EDGE_EAST)
+        } else if resolver.command_held_gamepad(&Command::GraphNavigateUp, gp) {
+            Some(EDGE_UP)
+        } else if resolver.command_held_gamepad(&Command::GraphNavigateDown, gp) {
+            Some(EDGE_DOWN)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Check which navigation key is held (if any) - keyboard
     let held_edge: Option<usize> = if resolver.command_pressed_bevy(context, &Command::GraphNavigateNorth, &keys) {
         Some(EDGE_NORTH)
     } else if resolver.command_pressed_bevy(context, &Command::GraphNavigateSouth, &keys) {
@@ -1221,10 +1289,10 @@ fn handle_navigation(
     } else if resolver.command_pressed_bevy(context, &Command::GraphNavigateDown, &keys) {
         Some(EDGE_DOWN)
     } else {
-        None
+        gamepad_held // Fall back to gamepad held
     };
 
-    // Check for just pressed (initial press)
+    // Check for just pressed (initial press) - keyboard
     let just_pressed_edge: Option<usize> = if resolver.command_just_pressed_bevy(context, &Command::GraphNavigateNorth, &keys) {
         Some(EDGE_NORTH)
     } else if resolver.command_just_pressed_bevy(context, &Command::GraphNavigateSouth, &keys) {
@@ -1238,15 +1306,25 @@ fn handle_navigation(
     } else if resolver.command_just_pressed_bevy(context, &Command::GraphNavigateDown, &keys) {
         Some(EDGE_DOWN)
     } else {
-        None
+        gamepad_edge // Fall back to gamepad pressed
     };
 
-    // Check for history back command
+    // Check for history back command (keyboard)
     if resolver.command_just_pressed_bevy(context, &Command::GraphHistoryBack, &keys) {
         if let Some(prev_id) = app_state.history.pop() {
             app_state.current_vertex = Some(prev_id);
         }
         return;
+    }
+
+    // Check for history back command (gamepad)
+    if let Some(ref gp) = gp_snapshot {
+        if resolver.command_pressed_gamepad(&Command::GraphHistoryBack, gp) {
+            if let Some(prev_id) = app_state.history.pop() {
+                app_state.current_vertex = Some(prev_id);
+            }
+            return;
+        }
     }
 
     // Determine if we should move

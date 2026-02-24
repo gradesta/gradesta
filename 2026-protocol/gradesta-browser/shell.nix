@@ -29,6 +29,8 @@ pkgs.mkShell {
     mpv
     # Text-to-speech (Speech Dispatcher)
     speechd
+    # Gamepad support (gilrs requires libudev)
+    udev
     # Vulkan SDK for GPU-accelerated whisper (optional: build with --features gpu-vulkan)
     vulkan-headers
     shaderc        # provides glslc shader compiler

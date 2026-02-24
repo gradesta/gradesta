@@ -441,6 +441,8 @@ pub struct AppState {
     pub local_services: Option<LocalServices>,
     /// Server bar autocomplete dropdown state
     pub server_dropdown: ServerDropdownState,
+    /// Show gamepad help overlay
+    pub show_gamepad_help: bool,
 }
 
 impl Default for AppState {
@@ -528,6 +530,7 @@ impl Default for AppState {
             elf_panel: ElfPanelState::default(),
             local_services,
             server_dropdown: ServerDropdownState::default(),
+            show_gamepad_help: false,
         }
     }
 }

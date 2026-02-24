@@ -26,6 +26,92 @@ pub enum KeyCode {
     Quote, Backtick,
 }
 
+/// Gamepad button codes (PS2-style naming)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum GamepadKey {
+    // Face buttons (PS2 naming)
+    South,      // Cross (X)
+    East,       // Circle
+    West,       // Square
+    North,      // Triangle
+    // Shoulder buttons
+    LeftBumper,   // L1
+    RightBumper,  // R1
+    LeftTrigger,  // L2
+    RightTrigger, // R2
+    // Stick presses
+    LeftStick,    // L3
+    RightStick,   // R3
+    // Special
+    Start,
+    Select,
+    // D-pad
+    DPadUp,
+    DPadDown,
+    DPadLeft,
+    DPadRight,
+    // Analog stick directions (virtual buttons from stick position)
+    LeftStickUp,
+    LeftStickDown,
+    LeftStickLeft,
+    LeftStickRight,
+}
+
+impl GamepadKey {
+    /// Parse a gamepad key from string
+    pub fn from_str(s: &str) -> Result<Self, String> {
+        match s.to_lowercase().as_str() {
+            "south" | "cross" | "x" => Ok(GamepadKey::South),
+            "east" | "circle" | "o" => Ok(GamepadKey::East),
+            "west" | "square" => Ok(GamepadKey::West),
+            "north" | "triangle" => Ok(GamepadKey::North),
+            "l1" | "leftbumper" => Ok(GamepadKey::LeftBumper),
+            "r1" | "rightbumper" => Ok(GamepadKey::RightBumper),
+            "l2" | "lefttrigger" => Ok(GamepadKey::LeftTrigger),
+            "r2" | "righttrigger" => Ok(GamepadKey::RightTrigger),
+            "l3" | "leftstick" => Ok(GamepadKey::LeftStick),
+            "r3" | "rightstick" => Ok(GamepadKey::RightStick),
+            "start" => Ok(GamepadKey::Start),
+            "select" | "back" => Ok(GamepadKey::Select),
+            "dpadup" => Ok(GamepadKey::DPadUp),
+            "dpaddown" => Ok(GamepadKey::DPadDown),
+            "dpadleft" => Ok(GamepadKey::DPadLeft),
+            "dpadright" => Ok(GamepadKey::DPadRight),
+            "leftstickup" => Ok(GamepadKey::LeftStickUp),
+            "leftstickdown" => Ok(GamepadKey::LeftStickDown),
+            "leftstickleft" => Ok(GamepadKey::LeftStickLeft),
+            "leftstickright" => Ok(GamepadKey::LeftStickRight),
+            _ => Err(format!("Unknown gamepad key: {}", s)),
+        }
+    }
+
+    /// Get the display string for this key
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            GamepadKey::South => "Cross",
+            GamepadKey::East => "Circle",
+            GamepadKey::West => "Square",
+            GamepadKey::North => "Triangle",
+            GamepadKey::LeftBumper => "L1",
+            GamepadKey::RightBumper => "R1",
+            GamepadKey::LeftTrigger => "L2",
+            GamepadKey::RightTrigger => "R2",
+            GamepadKey::LeftStick => "L3",
+            GamepadKey::RightStick => "R3",
+            GamepadKey::Start => "Start",
+            GamepadKey::Select => "Select",
+            GamepadKey::DPadUp => "D-Up",
+            GamepadKey::DPadDown => "D-Down",
+            GamepadKey::DPadLeft => "D-Left",
+            GamepadKey::DPadRight => "D-Right",
+            GamepadKey::LeftStickUp => "LS-Up",
+            GamepadKey::LeftStickDown => "LS-Down",
+            GamepadKey::LeftStickLeft => "LS-Left",
+            GamepadKey::LeftStickRight => "LS-Right",
+        }
+    }
+}
+
 impl KeyCode {
     /// Parse a key code from string
     pub fn from_str(s: &str) -> Result<Self, String> {

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::commands::{Command, Context};
 use crate::keybindings::config::KeybindingsConfig;
 use crate::keybindings::defaults;
-use crate::keybindings::key::KeyBinding;
+use crate::keybindings::key::{GamepadKey, KeyBinding};
 
 /// Resolves keybindings from user config + defaults
 pub struct KeybindingResolver {
@@ -13,6 +13,8 @@ pub struct KeybindingResolver {
     bindings: HashMap<(Context, KeyBinding), Command>,
     /// Reverse map: command -> list of bindings (for display)
     reverse: HashMap<Command, Vec<KeyBinding>>,
+    /// Gamepad bindings: command -> list of gamepad keys
+    gamepad_bindings: HashMap<Command, Vec<GamepadKey>>,
 }
 
 impl Default for KeybindingResolver {
@@ -33,13 +35,19 @@ impl KeybindingResolver {
     fn with_defaults() -> Self {
         let mut bindings = HashMap::new();
         let mut reverse: HashMap<Command, Vec<KeyBinding>> = HashMap::new();
+        let mut gamepad_bindings: HashMap<Command, Vec<GamepadKey>> = HashMap::new();
 
         for (command, context, binding) in defaults::all_defaults() {
             bindings.insert((context, binding.clone()), command.clone());
             reverse.entry(command).or_default().push(binding);
         }
 
-        Self { bindings, reverse }
+        // Load default gamepad bindings
+        for (command, gamepad_key) in defaults::GAMEPAD_DEFAULTS {
+            gamepad_bindings.entry(command.clone()).or_default().push(*gamepad_key);
+        }
+
+        Self { bindings, reverse, gamepad_bindings }
     }
 
     /// Apply user config overrides
@@ -166,10 +174,16 @@ impl KeybindingResolver {
     pub fn reset_all_to_defaults(&mut self) {
         self.bindings.clear();
         self.reverse.clear();
+        self.gamepad_bindings.clear();
 
         for (command, context, binding) in defaults::all_defaults() {
             self.bindings.insert((context, binding.clone()), command.clone());
             self.reverse.entry(command).or_default().push(binding);
+        }
+
+        // Reset gamepad bindings
+        for (command, gamepad_key) in defaults::GAMEPAD_DEFAULTS {
+            self.gamepad_bindings.entry(command.clone()).or_default().push(*gamepad_key);
         }
     }
 
@@ -272,6 +286,54 @@ impl KeybindingResolver {
                             return true;
                         }
                     }
+                }
+            }
+        }
+        false
+    }
+
+    /// Check if a gamepad button for a command was just pressed
+    pub fn command_pressed_gamepad(
+        &self,
+        command: &Command,
+        gamepad: &crate::gamepad::GamepadSnapshot,
+    ) -> bool {
+        if let Some(keys) = self.gamepad_bindings.get(command) {
+            for key in keys {
+                if gamepad.is_pressed(*key) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Check if a gamepad button for a command was just released
+    pub fn command_released_gamepad(
+        &self,
+        command: &Command,
+        gamepad: &crate::gamepad::GamepadSnapshot,
+    ) -> bool {
+        if let Some(keys) = self.gamepad_bindings.get(command) {
+            for key in keys {
+                if gamepad.is_released(*key) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Check if a gamepad button for a command is currently held
+    pub fn command_held_gamepad(
+        &self,
+        command: &Command,
+        gamepad: &crate::gamepad::GamepadSnapshot,
+    ) -> bool {
+        if let Some(keys) = self.gamepad_bindings.get(command) {
+            for key in keys {
+                if gamepad.is_held(*key) {
+                    return true;
                 }
             }
         }

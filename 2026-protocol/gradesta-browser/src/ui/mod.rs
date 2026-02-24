@@ -6,6 +6,7 @@
 mod command_bar;
 mod commands;
 mod fullscreen;
+mod gamepad_help;
 mod grid;
 mod input;
 mod processing;
@@ -16,8 +17,9 @@ pub mod url_utils;
 pub use command_bar::{execute_command_bar_command, render_command_bar, CommandBarAction};
 pub use commands::{execute_commands, finalize_recording};
 pub use fullscreen::{render_fullscreen_content, FullscreenAction};
+pub use gamepad_help::render_gamepad_help_overlay;
 pub use grid::render_grid_view;
-pub use input::{capture_keyboard_commands, log_triggered_commands_to_debug};
+pub use input::{capture_gamepad_commands, capture_keyboard_commands, log_triggered_commands_to_debug};
 pub use processing::{process_identification, process_recording_cancel, process_text_input};
 pub use sidebar_content::{render_sidebar_content, SidebarContentAction};
 pub use text_edit::{consume_text_edit_events, handle_url_bar_copy_shortcut, handle_url_bar_smart_paste, process_text_edit_commands, sync_copy_to_system_clipboard};

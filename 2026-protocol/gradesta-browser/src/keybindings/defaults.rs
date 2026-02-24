@@ -1,7 +1,7 @@
 //! Default keybindings
 
 use crate::commands::{Command, Context};
-use crate::keybindings::key::{KeyBinding, KeyCode, Modifiers};
+use crate::keybindings::key::{GamepadKey, KeyBinding, KeyCode, Modifiers};
 
 /// A default keybinding definition
 pub struct DefaultBinding {
@@ -114,6 +114,11 @@ static DEFAULTS: &[DefaultBinding] = &[
         command: Command::GlobalToggleTTS,
         context: Context::Global,
         bindings: &[(KeyCode::T, CTRL)],
+    },
+    DefaultBinding {
+        command: Command::GlobalToggleGamepadHelp,
+        context: Context::Global,
+        bindings: &[(KeyCode::G, CTRL)],
     },
     DefaultBinding {
         command: Command::GlobalTTSSpeedUp,
@@ -329,4 +334,41 @@ static DEFAULTS: &[DefaultBinding] = &[
         context: Context::Authentication,
         bindings: &[(KeyCode::Escape, NONE)],
     },
+];
+
+/// Default gamepad bindings
+pub static GAMEPAD_DEFAULTS: &[(Command, GamepadKey)] = &[
+    // Navigation - D-pad
+    (Command::GraphNavigateNorth, GamepadKey::DPadUp),
+    (Command::GraphNavigateSouth, GamepadKey::DPadDown),
+    (Command::GraphNavigateWest, GamepadKey::DPadLeft),
+    (Command::GraphNavigateEast, GamepadKey::DPadRight),
+    // Navigation - Left stick
+    (Command::GraphNavigateNorth, GamepadKey::LeftStickUp),
+    (Command::GraphNavigateSouth, GamepadKey::LeftStickDown),
+    (Command::GraphNavigateWest, GamepadKey::LeftStickLeft),
+    (Command::GraphNavigateEast, GamepadKey::LeftStickRight),
+    // Layer navigation
+    (Command::GraphNavigateUp, GamepadKey::LeftBumper),
+    (Command::GraphNavigateDown, GamepadKey::RightBumper),
+
+    // Actions - Face buttons
+    (Command::GraphDeleteVertex, GamepadKey::South),     // Cross = Delete
+    (Command::GraphClickVertex, GamepadKey::East),       // Circle = Click/Enter
+    (Command::GraphEditText, GamepadKey::West),          // Square = Edit text
+    (Command::GraphNewTextVertex, GamepadKey::North),    // Triangle = New text
+
+    // Recording - R2 (hold to record, release to save)
+    (Command::GraphStartRecording, GamepadKey::RightTrigger),
+    (Command::RecordingSave, GamepadKey::RightTrigger),  // Same button - release triggers save
+
+    // Yank/Paste - L2
+    (Command::GraphYank, GamepadKey::LeftTrigger),
+
+    // UI toggles
+    (Command::GlobalToggleBag, GamepadKey::Start),
+    (Command::GraphHistoryBack, GamepadKey::Select),
+
+    // Help overlay - L3 (left stick press)
+    (Command::GlobalToggleGamepadHelp, GamepadKey::LeftStick),
 ];

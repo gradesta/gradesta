@@ -275,6 +275,12 @@ pub fn execute_commands(
         }
     }
 
+    // GlobalToggleGamepadHelp - Toggle gamepad help overlay
+    if cmds.toggle_gamepad_help {
+        results.any_command_processed = true;
+        app_state.show_gamepad_help = !app_state.show_gamepad_help;
+    }
+
     // Handle URL focus key - focuses the server bar
     let server_bar_id = bevy_egui::egui::Id::new("server_bar");
     if cmds.focus_url_down {

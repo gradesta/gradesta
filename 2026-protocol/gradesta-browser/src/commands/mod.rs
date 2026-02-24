@@ -83,6 +83,8 @@ pub enum Command {
     GlobalTTSSpeedUp,
     /// Decrease TTS playback speed
     GlobalTTSSpeedDown,
+    /// Toggle gamepad help overlay
+    GlobalToggleGamepadHelp,
 
     // === Graph Context Commands ===
     /// Navigate north in the graph
@@ -243,6 +245,7 @@ impl Command {
             Command::GlobalToggleTTS => "global.toggle_tts",
             Command::GlobalTTSSpeedUp => "global.tts_speed_up",
             Command::GlobalTTSSpeedDown => "global.tts_speed_down",
+            Command::GlobalToggleGamepadHelp => "global.toggle_gamepad_help",
             // Graph
             Command::GraphNavigateNorth => "graph.navigate_north",
             Command::GraphNavigateSouth => "graph.navigate_south",
@@ -334,6 +337,7 @@ impl Command {
             "global.toggle_tts" => Some(Command::GlobalToggleTTS),
             "global.tts_speed_up" => Some(Command::GlobalTTSSpeedUp),
             "global.tts_speed_down" => Some(Command::GlobalTTSSpeedDown),
+            "global.toggle_gamepad_help" => Some(Command::GlobalToggleGamepadHelp),
             // Graph
             "graph.navigate_north" => Some(Command::GraphNavigateNorth),
             "graph.navigate_south" => Some(Command::GraphNavigateSouth),
@@ -426,6 +430,7 @@ impl Command {
             Command::GlobalToggleTTS => "Toggle text-to-speech mode",
             Command::GlobalTTSSpeedUp => "Increase TTS speed",
             Command::GlobalTTSSpeedDown => "Decrease TTS speed",
+            Command::GlobalToggleGamepadHelp => "Toggle gamepad help overlay",
             // Graph
             Command::GraphNavigateNorth => "Navigate north in the graph",
             Command::GraphNavigateSouth => "Navigate south in the graph",
@@ -515,7 +520,8 @@ impl Command {
             | Command::GlobalOpenKeybindings
             | Command::GlobalToggleTTS
             | Command::GlobalTTSSpeedUp
-            | Command::GlobalTTSSpeedDown => Context::Global,
+            | Command::GlobalTTSSpeedDown
+            | Command::GlobalToggleGamepadHelp => Context::Global,
 
             Command::GraphNavigateNorth
             | Command::GraphNavigateSouth
@@ -607,6 +613,7 @@ impl Command {
             Command::GlobalToggleTTS,
             Command::GlobalTTSSpeedUp,
             Command::GlobalTTSSpeedDown,
+            Command::GlobalToggleGamepadHelp,
             // Graph
             Command::GraphNavigateNorth,
             Command::GraphNavigateSouth,
