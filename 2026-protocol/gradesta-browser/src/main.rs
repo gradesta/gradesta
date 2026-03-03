@@ -27,8 +27,8 @@ mod video_player;
 mod whisper;
 
 // Imports from refactored modules
-use audio::{AudioPlaybackState, AudioRecordingSignal};
-use audio::{play_audio, stop_audio};
+use audio::{AudioPlaybackState, AudioPreloadCache, AudioRecordingSignal};
+use audio::{play_audio_fast, predecode_audio_async, stop_audio};
 use graph::GraphState;
 use media::MediaCache;
 use network::{run_ws, NetEventsTx, NetRx, ServerEvent, WsCommand, WsCommandTx};
@@ -138,6 +138,10 @@ fn main() {
     let (net_tx, net_rx) = unbounded::<ServerEvent>();
     let (elf_tx, elf_rx) = unbounded::<elf_http::ElfHttpEvent>();
 
+    // Create audio resources with shared playing_vertex
+    let audio_playback_state = AudioPlaybackState::default();
+    let audio_preload_cache = AudioPreloadCache::new(audio_playback_state.playing_vertex.clone());
+
     // Fetch manifests for all pre-loaded trusted elves
     for elf in &app_state.trusted_elves {
         eprintln!("Fetching manifest for pre-loaded elf: {}", elf.url);
@@ -154,7 +158,8 @@ fn main() {
         .insert_resource(app_state)
         .insert_resource(MediaCache::default())
         .insert_resource(AudioRecordingSignal::default())
-        .insert_resource(AudioPlaybackState::default())
+        .insert_resource(audio_playback_state)
+        .insert_resource(audio_preload_cache)
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Gradesta Browser".to_string(),
@@ -169,9 +174,9 @@ fn main() {
             ui_system,
             events::ingest_server_events,
             process_elf_http_events,
-            handle_navigation,
-            auto_play_audio_on_navigate,
+            (handle_navigation, auto_play_audio_on_navigate).chain(),
             auto_expand_nearby_links,
+            preload_nearby_audio,
         ))
         .run();
 }
@@ -1392,11 +1397,11 @@ fn handle_navigation(
 }
 
 /// Auto-play audio when navigating to an audio cell, stop when leaving
-/// Auto-play audio when navigating to an audio cell, stop when leaving
 fn auto_play_audio_on_navigate(
     mut app_state: ResMut<AppState>,
     graph: Res<GraphState>,
     playback_state: Res<AudioPlaybackState>,
+    preload_cache: Res<AudioPreloadCache>,
 ) {
     let current_id = app_state.current_vertex;
     let last_id = app_state.last_vertex;
@@ -1419,8 +1424,8 @@ fn auto_play_audio_on_navigate(
             if let Some(vertex) = graph.vertices.get(&vertex_id) {
                 if let Some(mime) = &vertex.mime {
                     if mime.starts_with("audio/") && !vertex.label.is_empty() {
-                        // Auto-play the audio
-                        play_audio(&vertex.label, mime, vertex_id, &playback_state);
+                        // Auto-play the audio using fast path with preload cache
+                        play_audio_fast(vertex_id, &vertex.label, mime, &preload_cache, &playback_state);
                     } else if app_state.tts_mode
                         && mime.starts_with("text/")
                         && mime != "text/gradesta-url"
@@ -1644,4 +1649,86 @@ fn auto_expand_nearby_links(
             }
         }
     }
+}
+
+/// Preload audio for neighboring cells to enable instant playback
+fn preload_nearby_audio(
+    app_state: Res<AppState>,
+    graph: Res<GraphState>,
+    mut preload_cache: ResMut<AudioPreloadCache>,
+) {
+    let Some(current_id) = app_state.current_vertex else { return };
+    let Some(current) = graph.vertices.get(&current_id) else { return };
+
+    // Process any completed pre-decodes
+    while let Ok((vertex_id, decoded)) = preload_cache.decoded_rx.try_recv() {
+        preload_cache.cache.insert(vertex_id, decoded);
+        preload_cache.pending.remove(&vertex_id);
+    }
+
+    // LRU eviction: keep max 12 entries
+    if preload_cache.cache.len() > 12 {
+        let to_remove: Vec<_> = preload_cache.cache.keys()
+            .filter(|&&id| id != current_id)
+            .take(preload_cache.cache.len() - 8)
+            .copied()
+            .collect();
+        for id in to_remove {
+            preload_cache.cache.remove(&id);
+        }
+    }
+
+    // Preload 1-step neighbors
+    for edge in current.edges.iter() {
+        if *edge == 0 { continue; }
+        if preload_audio_if_needed(*edge, &graph, &mut preload_cache) {
+            return; // One per frame
+        }
+    }
+
+    // Preload 2-step neighbors
+    for edge1 in current.edges.iter() {
+        if *edge1 == 0 { continue; }
+        if let Some(neighbor) = graph.vertices.get(edge1) {
+            for edge2 in neighbor.edges.iter() {
+                if *edge2 != 0 && *edge2 != current_id {
+                    if preload_audio_if_needed(*edge2, &graph, &mut preload_cache) {
+                        return; // One per frame
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Check if a vertex has audio and start pre-decoding if needed
+fn preload_audio_if_needed(
+    vertex_id: u64,
+    graph: &GraphState,
+    cache: &mut AudioPreloadCache,
+) -> bool {
+    // Skip if already cached or pending
+    if cache.cache.contains_key(&vertex_id) || cache.pending.contains(&vertex_id) {
+        return false;
+    }
+
+    if let Some(vertex) = graph.vertices.get(&vertex_id) {
+        if let Some(ref mime) = vertex.mime {
+            if mime.starts_with("audio/") && !vertex.label.is_empty() {
+                // Skip large files (>5MB) to avoid memory bloat
+                if vertex.label.len() > 5_000_000 {
+                    return false;
+                }
+
+                cache.pending.insert(vertex_id);
+                predecode_audio_async(
+                    vertex_id,
+                    vertex.label.clone(),
+                    cache.decoded_tx.clone(),
+                );
+                return true;
+            }
+        }
+    }
+    false
 }

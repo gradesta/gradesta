@@ -3,6 +3,7 @@
 //! This module handles microphone recording, audio playback via rodio,
 //! and encoding to OGG Vorbis format.
 
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -10,6 +11,8 @@ use std::time::Duration;
 use anyhow::{anyhow, Context, Result};
 use bevy::prelude::*;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use crossbeam_channel::{Receiver, Sender};
+use rodio::{OutputStream, Sink, Source};
 
 /// Signal to stop audio recording and communicate sample rate
 #[derive(Resource, Default)]
@@ -18,29 +21,181 @@ pub struct AudioRecordingSignal {
     pub actual_sample_rate: Arc<Mutex<u32>>,
 }
 
-/// Signal to control audio playback
+/// Signal to control audio playback.
+/// Uses `playing_vertex` as the sole control mechanism - threads check if they're
+/// still the one that should be playing, eliminating race conditions.
 #[derive(Resource, Clone, Default)]
 pub struct AudioPlaybackState {
-    pub should_stop: Arc<Mutex<bool>>,
     pub playing_vertex: Arc<Mutex<Option<u64>>>,
 }
 
-/// Play audio data using rodio with stop signal support
+/// Pre-decoded audio ready for instant playback
+#[derive(Clone)]
+pub struct PredecodedAudio {
+    pub samples: Vec<i16>,
+    pub sample_rate: u32,
+    pub channels: u16,
+}
+
+/// Command sent to the persistent audio thread
+#[allow(dead_code)]
+enum AudioThreadCommand {
+    /// Play pre-decoded audio for a vertex
+    PlayPreloaded { vertex_id: u64, audio: PredecodedAudio },
+    /// Play audio that needs decoding first
+    PlayRaw { vertex_id: u64, data: Vec<u8> },
+    /// Stop current playback (currently unused - stop via playing_vertex instead)
+    Stop,
+}
+
+/// Cache for pre-decoded audio with persistent audio thread
+#[derive(Resource)]
+pub struct AudioPreloadCache {
+    /// Pre-decoded PCM: vertex_id -> audio data
+    pub cache: HashMap<u64, PredecodedAudio>,
+
+    /// Currently pending pre-decodes
+    pub pending: HashSet<u64>,
+
+    /// Channel for receiving decoded audio from background threads
+    pub decoded_tx: Sender<(u64, PredecodedAudio)>,
+    pub decoded_rx: Receiver<(u64, PredecodedAudio)>,
+
+    /// Channel for sending commands to the persistent audio thread
+    audio_cmd_tx: Sender<AudioThreadCommand>,
+}
+
+impl AudioPreloadCache {
+    /// Create a new AudioPreloadCache with persistent audio thread
+    pub fn new(playing_vertex: Arc<Mutex<Option<u64>>>) -> Self {
+        let (decoded_tx, decoded_rx) = crossbeam_channel::unbounded();
+        let (audio_cmd_tx, audio_cmd_rx) = crossbeam_channel::unbounded::<AudioThreadCommand>();
+
+        // Spawn persistent audio thread that owns the OutputStream
+        thread::spawn(move || {
+            let (stream, handle) = OutputStream::try_default()
+                .expect("Failed to create persistent audio output stream");
+            // Keep stream alive
+            let _stream = stream;
+
+            let mut current_sink: Option<Sink> = None;
+            let mut current_vertex_id: Option<u64> = None;
+
+            loop {
+                // Check for new commands (non-blocking)
+                match audio_cmd_rx.try_recv() {
+                    Ok(AudioThreadCommand::PlayPreloaded { vertex_id, audio }) => {
+                        // Stop current playback
+                        if let Some(sink) = current_sink.take() {
+                            sink.stop();
+                        }
+
+                        let sink = Sink::try_new(&handle)
+                            .expect("Failed to create audio sink");
+                        let buffer = rodio::buffer::SamplesBuffer::new(
+                            audio.channels,
+                            audio.sample_rate,
+                            audio.samples,
+                        );
+                        sink.append(buffer);
+                        current_sink = Some(sink);
+                        current_vertex_id = Some(vertex_id);
+                    }
+                    Ok(AudioThreadCommand::PlayRaw { vertex_id, data }) => {
+                        // Stop current playback
+                        if let Some(sink) = current_sink.take() {
+                            sink.stop();
+                        }
+
+                        // Decode and play
+                        if let Some(decoded) = predecode_audio(&data) {
+                            let sink = Sink::try_new(&handle)
+                                .expect("Failed to create audio sink");
+                            let buffer = rodio::buffer::SamplesBuffer::new(
+                                decoded.channels,
+                                decoded.sample_rate,
+                                decoded.samples,
+                            );
+                            sink.append(buffer);
+                            current_sink = Some(sink);
+                            current_vertex_id = Some(vertex_id);
+                        }
+                    }
+                    Ok(AudioThreadCommand::Stop) => {
+                        if let Some(sink) = current_sink.take() {
+                            sink.stop();
+                        }
+                        current_vertex_id = None;
+                    }
+                    Err(crossbeam_channel::TryRecvError::Empty) => {}
+                    Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                        // Main thread dropped the sender, exit
+                        break;
+                    }
+                }
+
+                // Check if playback finished
+                if let Some(ref sink) = current_sink {
+                    if sink.empty() {
+                        current_sink = None;
+                        // Clear playing state
+                        if let Ok(mut playing) = playing_vertex.lock() {
+                            if *playing == current_vertex_id {
+                                *playing = None;
+                            }
+                        }
+                        current_vertex_id = None;
+                    } else {
+                        // Check if we should stop (another vertex started playing)
+                        if let Ok(playing) = playing_vertex.lock() {
+                            if *playing != current_vertex_id {
+                                sink.stop();
+                                current_sink = None;
+                                current_vertex_id = None;
+                            }
+                        }
+                    }
+                }
+
+                thread::sleep(Duration::from_millis(10));
+            }
+        });
+
+        Self {
+            cache: HashMap::new(),
+            pending: HashSet::new(),
+            decoded_tx,
+            decoded_rx,
+            audio_cmd_tx,
+        }
+    }
+
+    /// Send a play command to the audio thread
+    pub fn play_preloaded(&self, vertex_id: u64, audio: PredecodedAudio) {
+        let _ = self.audio_cmd_tx.send(AudioThreadCommand::PlayPreloaded { vertex_id, audio });
+    }
+
+    /// Send a play raw command to the audio thread (decode on audio thread)
+    pub fn play_raw(&self, vertex_id: u64, data: Vec<u8>) {
+        let _ = self.audio_cmd_tx.send(AudioThreadCommand::PlayRaw { vertex_id, data });
+    }
+
+    /// Send a stop command to the audio thread (currently unused - stop via playing_vertex)
+    #[allow(dead_code)]
+    pub fn stop(&self) {
+        let _ = self.audio_cmd_tx.send(AudioThreadCommand::Stop);
+    }
+}
+
+/// Play audio data using rodio.
+/// Uses `playing_vertex` to track which vertex should be playing - threads check
+/// if they're still the active one and stop if not, eliminating race conditions.
 pub fn play_audio(data: &[u8], _mime: &str, vertex_id: u64, state: &AudioPlaybackState) {
     use crate::media::calculate_audio_rms;
     use crate::tts;
 
-    // Stop any currently playing audio (non-blocking)
-    if let Ok(mut stop) = state.should_stop.lock() {
-        *stop = true;
-    }
-    // Note: Don't sleep here - previous playback thread will see the stop signal
-    // on its next 50ms poll cycle
-
-    // Reset signal for new playback
-    if let Ok(mut stop) = state.should_stop.lock() {
-        *stop = false;
-    }
+    // Set this vertex as the one that should be playing.
+    // Any previous playback thread will see it's no longer active and stop.
     if let Ok(mut playing) = state.playing_vertex.lock() {
         *playing = Some(vertex_id);
     }
@@ -51,7 +206,6 @@ pub fn play_audio(data: &[u8], _mime: &str, vertex_id: u64, state: &AudioPlaybac
     }
 
     let data_vec = data.to_vec();
-    let stop_signal = state.should_stop.clone();
     let playing_vertex = state.playing_vertex.clone();
 
     thread::spawn(move || {
@@ -66,11 +220,11 @@ pub fn play_audio(data: &[u8], _mime: &str, vertex_id: u64, state: &AudioPlaybac
                         match Decoder::new(cursor) {
                             Ok(source) => {
                                 sink.append(source);
-                                // Poll for stop signal - when signaled, drop sink to stop audio
+                                // Poll to check if we're still the active playback
                                 while !sink.empty() {
-                                    if let Ok(stop) = stop_signal.lock() {
-                                        if *stop {
-                                            // Drop sink and stream to stop audio immediately
+                                    if let Ok(playing) = playing_vertex.lock() {
+                                        if *playing != Some(vertex_id) {
+                                            // Another vertex is now playing, or playback was stopped
                                             drop(sink);
                                             return;
                                         }
@@ -87,18 +241,86 @@ pub fn play_audio(data: &[u8], _mime: &str, vertex_id: u64, state: &AudioPlaybac
             Err(e) => eprintln!("Failed to get audio output: {}", e),
         }
 
-        // Clear playing state when done
+        // Clear playing state when done (only if we're still the active one)
         if let Ok(mut playing) = playing_vertex.lock() {
-            *playing = None;
+            if *playing == Some(vertex_id) {
+                *playing = None;
+            }
+        }
+    });
+}
+
+/// Decode audio to PCM samples synchronously
+fn predecode_audio(data: &[u8]) -> Option<PredecodedAudio> {
+    use rodio::Decoder;
+    use std::io::Cursor;
+
+    let cursor = Cursor::new(data.to_vec());
+    let decoder = Decoder::new(cursor).ok()?;
+
+    let sample_rate = decoder.sample_rate();
+    let channels = decoder.channels();
+
+    // Collect all samples
+    let samples: Vec<i16> = decoder.collect();
+
+    Some(PredecodedAudio {
+        samples,
+        sample_rate,
+        channels,
+    })
+}
+
+/// Decode audio to PCM in background thread
+pub fn predecode_audio_async(
+    vertex_id: u64,
+    data: Vec<u8>,
+    tx: Sender<(u64, PredecodedAudio)>,
+) {
+    thread::spawn(move || {
+        if let Some(decoded) = predecode_audio(&data) {
+            let _ = tx.send((vertex_id, decoded));
         }
     });
 }
 
 /// Stop any currently playing audio
+/// The audio thread monitors playing_vertex and will stop when it becomes None
 pub fn stop_audio(state: &AudioPlaybackState) {
-    if let Ok(mut stop) = state.should_stop.lock() {
-        *stop = true;
+    if let Ok(mut playing) = state.playing_vertex.lock() {
+        *playing = None;
     }
+}
+
+/// Play audio using preloaded cache - instant playback via SamplesBuffer
+pub fn play_audio_fast(
+    vertex_id: u64,
+    data: &[u8],
+    _mime: &str,
+    preload_cache: &AudioPreloadCache,
+    playback_state: &AudioPlaybackState,
+) {
+    use crate::media::calculate_audio_rms;
+    use crate::tts;
+
+    // Update playing state
+    if let Ok(mut playing) = playback_state.playing_vertex.lock() {
+        *playing = Some(vertex_id);
+    }
+
+    // Calculate RMS of audio for TTS volume calibration
+    if let Some(rms) = calculate_audio_rms(data) {
+        tts::set_reference_audio_level(rms);
+    }
+
+    // Try to use preloaded audio first
+    if let Some(preloaded) = preload_cache.cache.get(&vertex_id) {
+        preload_cache.play_preloaded(vertex_id, preloaded.clone());
+        return;
+    }
+
+    // Not in cache - send raw data to audio thread for decoding
+    preload_cache.play_raw(vertex_id, data.to_vec());
 }
 
 /// Run audio recording from the default input device
