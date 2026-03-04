@@ -903,7 +903,7 @@ fn ui_system(
                 }
                 ui.separator();
                 // Voice settings button
-                if ui.button("🎤 Voice").on_hover_text("Voice command settings").clicked() {
+                if ui.button("⚙ Settings").on_hover_text("Configure API keys and LLM model").clicked() {
                     app_state.show_voice_settings = true;
                     // Trigger model fetch if not already loaded
                     if app_state.model_fetch_state.models.is_empty() && !app_state.model_fetch_state.loading {

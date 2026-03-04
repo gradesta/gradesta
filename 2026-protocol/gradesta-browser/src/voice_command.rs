@@ -39,6 +39,12 @@ pub struct VoiceCommandConfig {
     pub model: String,
     /// Speech-to-text provider (placeholder for future use)
     pub stt_provider: String,
+    /// Requesty.ai API key (optional - falls back to file if not set)
+    #[serde(default)]
+    pub requesty_api_key: String,
+    /// Soniox API key (optional - falls back to file if not set)
+    #[serde(default)]
+    pub soniox_api_key: String,
 }
 
 impl Default for VoiceCommandConfig {
@@ -46,6 +52,8 @@ impl Default for VoiceCommandConfig {
         Self {
             model: "anthropic/claude-3-haiku".to_string(),
             stt_provider: "soniox".to_string(),
+            requesty_api_key: String::new(),
+            soniox_api_key: String::new(),
         }
     }
 }
@@ -308,14 +316,28 @@ impl Default for VoiceCommandChannel {
 // ============================================================================
 
 /// Load the API key for LLM requests (Requesty.ai)
+/// Checks config first, falls back to file
 pub fn load_api_key() -> Option<String> {
+    // Check config first
+    let config = VoiceCommandConfig::load();
+    if !config.requesty_api_key.is_empty() {
+        return Some(config.requesty_api_key);
+    }
+    // Fall back to file
     let home = dirs::home_dir()?;
     let key_path = home.join(".config/gradesta/elves/simple-llm/requesty.ai/secret.key");
     fs::read_to_string(&key_path).ok().map(|s| s.trim().to_string())
 }
 
 /// Load the Soniox API key for speech-to-text
+/// Checks config first, falls back to file
 pub fn load_soniox_api_key() -> Option<String> {
+    // Check config first
+    let config = VoiceCommandConfig::load();
+    if !config.soniox_api_key.is_empty() {
+        return Some(config.soniox_api_key);
+    }
+    // Fall back to file
     let home = dirs::home_dir()?;
     let key_path = home.join(".config/gradesta/elves/simple-llm/soniox.com/secret.key");
     fs::read_to_string(&key_path).ok().map(|s| s.trim().to_string())

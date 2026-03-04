@@ -496,7 +496,7 @@ impl PartialEq for VoiceSettingsAction {
     }
 }
 
-/// Render the voice settings dialog
+/// Render the settings dialog
 /// Returns the action to take
 pub fn render_voice_settings_dialog(
     ctx: &egui::Context,
@@ -509,7 +509,7 @@ pub fn render_voice_settings_dialog(
     #[allow(deprecated)]
     let screen_rect = ctx.screen_rect();
 
-    egui::Area::new("voice_settings_dialog".into())
+    egui::Area::new("settings_dialog".into())
         .fixed_pos(egui::pos2(0.0, 0.0))
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {
@@ -524,7 +524,7 @@ pub fn render_voice_settings_dialog(
             // Center the dialog
             let center = screen_rect.center();
             let panel_width = 600.0;
-            let panel_height = 500.0;
+            let panel_height = 600.0;
 
             let panel_rect = egui::Rect::from_center_size(
                 center,
@@ -550,170 +550,194 @@ pub fn render_voice_settings_dialog(
 
             #[allow(deprecated)]
             ui.allocate_new_ui(ui_builder, |ui| {
-                ui.vertical(|ui| {
-                    // Title
-                    ui.horizontal(|ui| {
-                        ui.heading(
-                            egui::RichText::new("Voice Command Settings")
-                                .color(egui::Color32::WHITE),
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        // Title
+                        ui.horizontal(|ui| {
+                            ui.heading(
+                                egui::RichText::new("Settings")
+                                    .color(egui::Color32::WHITE),
+                            );
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.button("✕").clicked() {
+                                    action = VoiceSettingsAction::Close;
+                                }
+                            });
+                        });
+                        ui.add_space(15.0);
+                        ui.separator();
+                        ui.add_space(10.0);
+
+                        // API Keys Section
+                        ui.label(
+                            egui::RichText::new("API Keys")
+                                .color(egui::Color32::WHITE)
+                                .strong()
+                                .size(16.0),
                         );
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("✕").clicked() {
+                        ui.add_space(10.0);
+
+                        // Requesty API Key
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new("Requesty.ai:")
+                                    .color(egui::Color32::GRAY),
+                            );
+                        });
+                        ui.add(
+                            egui::TextEdit::singleline(&mut config.requesty_api_key)
+                                .password(true)
+                                .desired_width(400.0)
+                                .hint_text("Enter Requesty API key...")
+                        );
+                        ui.label(
+                            egui::RichText::new("Used for LLM voice command interpretation")
+                                .size(11.0)
+                                .color(egui::Color32::DARK_GRAY),
+                        );
+                        ui.add_space(10.0);
+
+                        // Soniox API Key
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new("Soniox:")
+                                    .color(egui::Color32::GRAY),
+                            );
+                        });
+                        ui.add(
+                            egui::TextEdit::singleline(&mut config.soniox_api_key)
+                                .password(true)
+                                .desired_width(400.0)
+                                .hint_text("Enter Soniox API key...")
+                        );
+                        ui.label(
+                            egui::RichText::new("Used for real-time speech-to-text")
+                                .size(11.0)
+                                .color(egui::Color32::DARK_GRAY),
+                        );
+                        ui.add_space(15.0);
+                        ui.separator();
+                        ui.add_space(10.0);
+
+                        // LLM Model Section
+                        ui.label(
+                            egui::RichText::new("LLM Model")
+                                .color(egui::Color32::WHITE)
+                                .strong()
+                                .size(16.0),
+                        );
+                        ui.add_space(5.0);
+
+                        // Current model display
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new("Current:")
+                                    .color(egui::Color32::GRAY),
+                            );
+                            ui.label(
+                                egui::RichText::new(&config.model)
+                                    .color(egui::Color32::WHITE)
+                                    .strong(),
+                            );
+                        });
+                        ui.add_space(10.0);
+
+                        // Search filter and refresh
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("Filter:").color(egui::Color32::GRAY));
+                            ui.add(
+                                egui::TextEdit::singleline(filter)
+                                    .desired_width(200.0)
+                                    .hint_text("Search models...")
+                            );
+
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.button("Refresh").clicked() {
+                                    action = VoiceSettingsAction::FetchModels;
+                                }
+                            });
+                        });
+                        ui.add_space(5.0);
+
+                        // Model list
+                        if model_state.loading {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label(
+                                    egui::RichText::new("Loading models from Requesty.ai...")
+                                        .color(egui::Color32::LIGHT_GRAY),
+                                );
+                            });
+                        } else if let Some(ref error) = model_state.error {
+                            ui.label(
+                                egui::RichText::new(format!("Error: {}", error))
+                                    .color(egui::Color32::from_rgb(255, 100, 100)),
+                            );
+                            if ui.button("Retry").clicked() {
+                                action = VoiceSettingsAction::FetchModels;
+                            }
+                        } else if model_state.models.is_empty() {
+                            ui.label(
+                                egui::RichText::new("No models loaded. Click Refresh to fetch.")
+                                    .color(egui::Color32::YELLOW),
+                            );
+                        } else {
+                            // Filter models
+                            let filter_lower = filter.to_lowercase();
+                            let filtered_models: Vec<&LlmModelInfo> = model_state.models.iter()
+                                .filter(|m| {
+                                    filter_lower.is_empty() ||
+                                    m.id.to_lowercase().contains(&filter_lower) ||
+                                    m.owned_by.to_lowercase().contains(&filter_lower)
+                                })
+                                .collect();
+
+                            ui.label(
+                                egui::RichText::new(format!("{} models", filtered_models.len()))
+                                    .size(12.0)
+                                    .color(egui::Color32::GRAY),
+                            );
+
+                            egui::ScrollArea::vertical()
+                                .id_salt("model_list")
+                                .max_height(180.0)
+                                .show(ui, |ui| {
+                                    for model in filtered_models {
+                                        let is_selected = config.model == model.id;
+
+                                        // Create a selectable row
+                                        let text = if model.owned_by.is_empty() {
+                                            model.id.clone()
+                                        } else {
+                                            format!("{} ({})", model.id, model.owned_by)
+                                        };
+
+                                        if ui.selectable_label(is_selected, &text).clicked() {
+                                            config.model = model.id.clone();
+                                        }
+                                    }
+                                });
+                        }
+
+                        ui.add_space(15.0);
+                        ui.separator();
+                        ui.add_space(10.0);
+
+                        // Save/Cancel buttons
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Max), |ui| {
+                            if ui
+                                .button(
+                                    egui::RichText::new("Save")
+                                        .color(egui::Color32::WHITE),
+                                )
+                                .clicked()
+                            {
+                                action = VoiceSettingsAction::Save(config.clone());
+                            }
+                            if ui.button("Cancel").clicked() {
                                 action = VoiceSettingsAction::Close;
                             }
                         });
-                    });
-                    ui.add_space(15.0);
-                    ui.separator();
-                    ui.add_space(10.0);
-
-                    // Current model display
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            egui::RichText::new("Current Model:")
-                                .color(egui::Color32::GRAY),
-                        );
-                        ui.label(
-                            egui::RichText::new(&config.model)
-                                .color(egui::Color32::WHITE)
-                                .strong(),
-                        );
-                    });
-                    ui.add_space(10.0);
-
-                    // Model selection
-                    ui.label(
-                        egui::RichText::new("Select LLM Model")
-                            .color(egui::Color32::WHITE)
-                            .strong(),
-                    );
-                    ui.add_space(5.0);
-
-                    // Search filter
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Filter:").color(egui::Color32::GRAY));
-                        let response = ui.add(
-                            egui::TextEdit::singleline(filter)
-                                .desired_width(200.0)
-                                .hint_text("Search models...")
-                        );
-                        if response.changed() {
-                            // Filter will be applied below
-                        }
-
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("Refresh").clicked() {
-                                action = VoiceSettingsAction::FetchModels;
-                            }
-                        });
-                    });
-                    ui.add_space(5.0);
-
-                    // Model list
-                    if model_state.loading {
-                        ui.horizontal(|ui| {
-                            ui.spinner();
-                            ui.label(
-                                egui::RichText::new("Loading models from Requesty.ai...")
-                                    .color(egui::Color32::LIGHT_GRAY),
-                            );
-                        });
-                    } else if let Some(ref error) = model_state.error {
-                        ui.label(
-                            egui::RichText::new(format!("Error: {}", error))
-                                .color(egui::Color32::from_rgb(255, 100, 100)),
-                        );
-                        if ui.button("Retry").clicked() {
-                            action = VoiceSettingsAction::FetchModels;
-                        }
-                    } else if model_state.models.is_empty() {
-                        ui.label(
-                            egui::RichText::new("No models loaded. Click Refresh to fetch.")
-                                .color(egui::Color32::YELLOW),
-                        );
-                    } else {
-                        // Filter models
-                        let filter_lower = filter.to_lowercase();
-                        let filtered_models: Vec<&LlmModelInfo> = model_state.models.iter()
-                            .filter(|m| {
-                                filter_lower.is_empty() ||
-                                m.id.to_lowercase().contains(&filter_lower) ||
-                                m.owned_by.to_lowercase().contains(&filter_lower)
-                            })
-                            .collect();
-
-                        ui.label(
-                            egui::RichText::new(format!("{} models", filtered_models.len()))
-                                .size(12.0)
-                                .color(egui::Color32::GRAY),
-                        );
-
-                        egui::ScrollArea::vertical()
-                            .max_height(250.0)
-                            .show(ui, |ui| {
-                                for model in filtered_models {
-                                    let is_selected = config.model == model.id;
-                                    let bg_color = if is_selected {
-                                        egui::Color32::from_rgb(60, 80, 120)
-                                    } else {
-                                        egui::Color32::TRANSPARENT
-                                    };
-
-                                    let response = egui::Frame::new()
-                                        .fill(bg_color)
-                                        .corner_radius(4.0)
-                                        .inner_margin(egui::Margin::symmetric(8, 4))
-                                        .show(ui, |ui| {
-                                            ui.horizontal(|ui| {
-                                                // Selection indicator
-                                                if is_selected {
-                                                    ui.label(egui::RichText::new("●").color(egui::Color32::GREEN));
-                                                } else {
-                                                    ui.label(egui::RichText::new("○").color(egui::Color32::DARK_GRAY));
-                                                }
-
-                                                ui.vertical(|ui| {
-                                                    ui.label(
-                                                        egui::RichText::new(&model.id)
-                                                            .color(egui::Color32::WHITE),
-                                                    );
-                                                    if !model.owned_by.is_empty() {
-                                                        ui.label(
-                                                            egui::RichText::new(&model.owned_by)
-                                                                .size(11.0)
-                                                                .color(egui::Color32::GRAY),
-                                                        );
-                                                    }
-                                                });
-                                            });
-                                        });
-
-                                    if response.response.interact(egui::Sense::click()).clicked() {
-                                        config.model = model.id.clone();
-                                    }
-                                    ui.add_space(1.0);
-                                }
-                            });
-                    }
-
-                    ui.add_space(15.0);
-                    ui.separator();
-                    ui.add_space(10.0);
-
-                    // Save button
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Max), |ui| {
-                        if ui
-                            .button(
-                                egui::RichText::new("Save")
-                                    .color(egui::Color32::WHITE),
-                            )
-                            .clicked()
-                        {
-                            action = VoiceSettingsAction::Save(config.clone());
-                        }
-                        if ui.button("Cancel").clicked() {
-                            action = VoiceSettingsAction::Close;
-                        }
                     });
                 });
             });
