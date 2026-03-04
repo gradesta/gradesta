@@ -362,6 +362,17 @@ pub fn execute_commands(
         app_state.voice_refresh_pending = true;
     }
 
+    // TextInputSubmit - submit text input or URL bar
+    if cmds.has(Command::TextInputSubmit) {
+        results.any_command_processed = true;
+        // If URL bar was just focused/set, trigger refresh to connect
+        if app_state.focus_url_bar_next_frame || app_state.url_bar_has_focus {
+            app_state.voice_refresh_pending = true;
+            app_state.focus_url_bar_next_frame = false;
+        }
+        // TODO: handle text input mode submission
+    }
+
     // GlobalPlaybackSpeedBoost - Boost playback speed for TTS and audio
     if cmds.has(Command::GlobalPlaybackSpeedBoost) {
         results.any_command_processed = true;
