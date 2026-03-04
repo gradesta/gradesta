@@ -168,14 +168,9 @@ pub fn capture_gamepad_commands(
         }
     };
 
-    // Navigation
-    check(Command::GraphNavigateNorth);
-    check(Command::GraphNavigateSouth);
-    check(Command::GraphNavigateEast);
-    check(Command::GraphNavigateWest);
-    check(Command::GraphNavigateUp);
-    check(Command::GraphNavigateDown);
-    check(Command::GraphHistoryBack);
+    // Note: Navigation commands (GraphNavigate*, GraphHistoryBack) are NOT captured here.
+    // Gamepad navigation is handled by `handle_navigation` in main.rs which has proper
+    // key repeat logic. Voice commands can still use navigation via scripts.
 
     // Actions
     check(Command::GraphClickVertex);
