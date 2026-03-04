@@ -679,17 +679,13 @@ Commands: navigate_{{north|south|east|west|up|down}}, yank, paste, delete_vertex
 
 Tools: get_commands(category), request_view(targets, reason)
 
-Respond with JSON array.
-- For content like "add a cell with X", use insert_text with target=new_cell
-- For "connect to X", use insert_text with target=url_bar and content=ws://localhost:8080 (nextcloud, local services)
-- If no match, return: [{{"type": "none", "confidence": 1.0, "explanation": "Could not find matching command"}}]
+Respond with JSON array. For content requests like "add a cell with X", use insert_text.
+If no matching action, return: [{{"type": "none", "confidence": 1.0, "explanation": "Could not find matching command"}}]
 
 Action types:
 - command: {{"type": "command", "slug": "graph.X", "confidence": 0.9, "explanation": "..."}}
-- insert_text: {{"type": "insert_text", "target": "url_bar|new_cell", "direction": "{direction}", "content": "...", "confidence": 0.9, "explanation": "..."}}
-- none: {{"type": "none", "confidence": 1.0, "explanation": "..."}}
-
-Known services: nextcloud=ws://localhost:8080
+- insert_text: {{"type": "insert_text", "target": "new_cell", "direction": "{direction}", "content": "...", "confidence": 0.9, "explanation": "..."}}
+- none: {{"type": "none", "confidence": 1.0, "explanation": "Could not find matching command"}}
 
 Context: {context} | MIME: {mime_type} | Direction: {direction}
 "#, context = context, mime_type = mime_type, direction = direction)
