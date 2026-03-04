@@ -14,6 +14,8 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::{Receiver, Sender};
 use rodio::{OutputStream, Sink, Source};
 
+use crate::state::PendingAudioStatus;
+
 /// Signal to stop audio recording and communicate sample rate
 #[derive(Resource, Default)]
 pub struct AudioRecordingSignal {
@@ -534,4 +536,104 @@ fn extract_wav_transcript(data: &[u8]) -> Option<String> {
         }
     }
     None
+}
+
+// ============================================================================
+// Background Audio Processing
+// ============================================================================
+
+/// Result from background audio processing
+#[derive(Debug)]
+pub enum AudioProcessingResult {
+    /// Audio encoding completed successfully
+    Encoded {
+        local_id: u64,
+        ogg_data: Vec<u8>,
+        samples: Vec<f32>,
+        sample_rate: u32,
+    },
+    /// Audio encoding failed
+    EncodingFailed {
+        local_id: u64,
+        error: String,
+    },
+    /// Status update (for UI feedback)
+    StatusUpdate {
+        local_id: u64,
+        status: PendingAudioStatus,
+    },
+}
+
+/// Channel for receiving audio processing results in the main thread
+#[derive(Resource)]
+pub struct AudioProcessingChannel {
+    pub tx: Sender<AudioProcessingResult>,
+    pub rx: Receiver<AudioProcessingResult>,
+}
+
+impl Default for AudioProcessingChannel {
+    fn default() -> Self {
+        let (tx, rx) = crossbeam_channel::unbounded();
+        Self { tx, rx }
+    }
+}
+
+/// Generate a waveform preview from raw samples for visualization
+/// Downsamples to num_points amplitude values (RMS of each chunk)
+pub fn generate_waveform_preview(samples: &[f32], num_points: usize) -> Vec<f32> {
+    if samples.is_empty() || num_points == 0 {
+        return vec![0.0; num_points.max(1)];
+    }
+
+    let chunk_size = (samples.len() / num_points).max(1);
+    samples
+        .chunks(chunk_size)
+        .take(num_points)
+        .map(|chunk| {
+            // RMS (root mean square) gives a better visual than peak
+            let sum_sq: f32 = chunk.iter().map(|s| s * s).sum();
+            (sum_sq / chunk.len() as f32).sqrt()
+        })
+        .collect()
+}
+
+/// Spawn a background task to encode audio and send results back via channel
+pub fn spawn_audio_encoding_task(
+    local_id: u64,
+    samples: Vec<f32>,
+    sample_rate: u32,
+    result_tx: Sender<AudioProcessingResult>,
+) {
+    thread::spawn(move || {
+        // Send status update - encoding
+        let _ = result_tx.send(AudioProcessingResult::StatusUpdate {
+            local_id,
+            status: PendingAudioStatus::Encoding,
+        });
+
+        // Encode to OGG Vorbis
+        match encode_ogg_vorbis(&samples, sample_rate, None) {
+            Ok(ogg_data) => {
+                eprintln!(
+                    "Background encoding complete: local_id={} {} samples -> {} bytes",
+                    local_id,
+                    samples.len(),
+                    ogg_data.len()
+                );
+                let _ = result_tx.send(AudioProcessingResult::Encoded {
+                    local_id,
+                    ogg_data,
+                    samples,
+                    sample_rate,
+                });
+            }
+            Err(e) => {
+                eprintln!("Background encoding failed: local_id={} error={}", local_id, e);
+                let _ = result_tx.send(AudioProcessingResult::EncodingFailed {
+                    local_id,
+                    error: e.to_string(),
+                });
+            }
+        }
+    });
 }

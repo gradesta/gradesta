@@ -6,11 +6,12 @@ use std::thread;
 
 use bevy::prelude::*;
 
+use crate::audio::{AudioProcessingChannel, AudioProcessingResult};
 use crate::elf_http;
 use crate::graph::{GraphState, LayerContent};
 use crate::media::{is_image_data, MediaCache};
 use crate::network::{NetEventsTx, NetRx, ServerEvent, WsCommand, WsCommandTx};
-use crate::state::{AppState, PendingIdentification};
+use crate::state::{AppState, PendingAudioStatus, PendingIdentification, PendingVertexCreation};
 use crate::video_player::VideoPlayer;
 use crate::whisper;
 use crate::ElfHttpTx;
@@ -288,6 +289,30 @@ fn handle_log(
         eprintln!("Edit acknowledged: action={} vertex={} status={}", action_id, vertex_id, status);
 
         if let Some(pending) = app_state.pending_creations.remove(&action_id) {
+            // If this was an async audio recording, update/remove the placeholder cell
+            if let Some(local_id) = pending.local_placeholder_id {
+                eprintln!(
+                    "Mapping local_id={} to server vertex_id={}",
+                    local_id, vertex_id
+                );
+
+                // Update pending cell status and server ID
+                if let Some(pending_cell) = app_state.pending_audio_cells.get_mut(&local_id) {
+                    pending_cell.server_vertex_id = Some(vertex_id);
+                    pending_cell.status = PendingAudioStatus::Transcribing;
+                }
+
+                // The placeholder cell will be removed after transcription completes
+                // or we can remove it now since the real vertex will appear
+                // Let's remove it immediately since the server vertex is now created
+                app_state.pending_audio_cells.remove(&local_id);
+
+                // Clear recording_placeholder_id if it was pointing to this placeholder
+                if app_state.recording_placeholder_id == Some(local_id) {
+                    app_state.recording_placeholder_id = None;
+                }
+            }
+
             if vertex_id != 0 {
                 if let Some(current) = app_state.current_vertex {
                     if current != vertex_id {
@@ -339,7 +364,18 @@ fn handle_log(
         }
     } else {
         eprintln!("Edit failed: action={} vertex={} status={} msg={}", action_id, vertex_id, status, message);
-        app_state.pending_creations.remove(&action_id);
+
+        // If this was an async audio recording that failed, remove the placeholder
+        if let Some(pending) = app_state.pending_creations.remove(&action_id) {
+            if let Some(local_id) = pending.local_placeholder_id {
+                app_state.pending_audio_cells.remove(&local_id);
+                // Clear recording_placeholder_id if it was pointing to this placeholder
+                if app_state.recording_placeholder_id == Some(local_id) {
+                    app_state.recording_placeholder_id = None;
+                }
+                app_state.status = format!("Audio upload failed: {}", message);
+            }
+        }
     }
 }
 
@@ -497,5 +533,128 @@ fn handle_request_identification(
             server_url,
         });
         app_state.status = "Server requests identification".to_string();
+    }
+}
+
+/// Update audio level in recording placeholder cells (for live visualization)
+pub fn update_recording_audio_levels(
+    mut app_state: ResMut<AppState>,
+) {
+    // Find any cells in Recording status and update their audio level
+    let samples_arc = app_state.audio_samples.clone();
+
+    for cell in app_state.pending_audio_cells.values_mut() {
+        if cell.status == PendingAudioStatus::Recording {
+            // Calculate RMS of recent samples (last ~100ms worth at 44100Hz = ~4410 samples)
+            if let Ok(samples) = samples_arc.lock() {
+                let recent_count = 4410.min(samples.len());
+                if recent_count > 0 {
+                    let start = samples.len() - recent_count;
+                    let sum_sq: f32 = samples[start..].iter().map(|s| s * s).sum();
+                    let rms = (sum_sq / recent_count as f32).sqrt();
+                    // Normalize to 0-1 range (typical voice RMS is 0.01-0.3)
+                    cell.current_audio_level = (rms * 5.0).min(1.0);
+                }
+            }
+        }
+    }
+}
+
+/// Process audio encoding results from background threads
+pub fn process_audio_results(
+    mut app_state: ResMut<AppState>,
+    audio_processing: Res<AudioProcessingChannel>,
+    ws_cmd_tx: Res<WsCommandTx>,
+) {
+    while let Ok(result) = audio_processing.rx.try_recv() {
+        match result {
+            AudioProcessingResult::StatusUpdate { local_id, status } => {
+                if let Some(pending) = app_state.pending_audio_cells.get_mut(&local_id) {
+                    pending.status = status;
+                }
+            }
+            AudioProcessingResult::Encoded {
+                local_id,
+                ogg_data,
+                samples,
+                sample_rate,
+            } => {
+                eprintln!(
+                    "Audio encoding complete: local_id={} size={} bytes",
+                    local_id,
+                    ogg_data.len()
+                );
+
+                // Get the pending cell info
+                let pending_info = app_state.pending_audio_cells.get(&local_id).cloned();
+
+                if let Some(pending_cell) = pending_info {
+                    // Update status to uploading
+                    if let Some(cell) = app_state.pending_audio_cells.get_mut(&local_id) {
+                        cell.status = PendingAudioStatus::Uploading;
+                    }
+
+                    // Allocate action_id for the CreateVertex
+                    let action_id = app_state.next_action_id;
+                    app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+
+                    // Store the action_id in the pending cell
+                    if let Some(cell) = app_state.pending_audio_cells.get_mut(&local_id) {
+                        cell.action_id = Some(action_id);
+                    }
+
+                    // Convert direction to protocol byte
+                    let dir_byte = match pending_cell.direction {
+                        crate::state::EDGE_WEST => 0,
+                        crate::state::EDGE_EAST => 1,
+                        crate::state::EDGE_NORTH => 2,
+                        crate::state::EDGE_SOUTH => 3,
+                        crate::state::EDGE_UP => 4,
+                        crate::state::EDGE_DOWN => 5,
+                        _ => 3, // default south
+                    };
+
+                    // Send to server
+                    if let Some(ref tx) = ws_cmd_tx.0 {
+                        let _ = tx.send(WsCommand::CreateVertex {
+                            action_id,
+                            from_vertex: pending_cell.from_vertex,
+                            direction: dir_byte,
+                            layer: 0,
+                            mime: "audio/ogg".to_string(),
+                            data: ogg_data.clone(),
+                        });
+
+                        // Store in pending_creations for when server responds
+                        app_state.pending_creations.insert(
+                            action_id,
+                            PendingVertexCreation {
+                                samples,
+                                sample_rate,
+                                data: ogg_data,
+                                mime: "audio/ogg".to_string(),
+                                local_placeholder_id: Some(local_id),
+                            },
+                        );
+
+                        eprintln!(
+                            "Sent CreateVertex to server: action_id={} local_id={} from_vertex={} direction={}",
+                            action_id, local_id, pending_cell.from_vertex, dir_byte
+                        );
+                    }
+                }
+            }
+            AudioProcessingResult::EncodingFailed { local_id, error } => {
+                eprintln!("Audio encoding failed: local_id={} error={}", local_id, error);
+
+                // Remove the failed pending cell
+                app_state.pending_audio_cells.remove(&local_id);
+                // Clear recording_placeholder_id if it was pointing to this placeholder
+                if app_state.recording_placeholder_id == Some(local_id) {
+                    app_state.recording_placeholder_id = None;
+                }
+                app_state.status = format!("Audio encoding failed: {}", error);
+            }
+        }
     }
 }

@@ -287,6 +287,46 @@ pub struct PendingVertexCreation {
     pub data: Vec<u8>,
     /// MIME type of the data
     pub mime: String,
+    /// Local placeholder ID (if this was an async audio cell)
+    pub local_placeholder_id: Option<u64>,
+}
+
+/// Status of a pending audio cell being processed in the background
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PendingAudioStatus {
+    /// Currently recording audio (shows live microphone level)
+    Recording,
+    /// Audio is being encoded to OGG Vorbis
+    Encoding,
+    /// Encoded audio is being uploaded to server
+    Uploading,
+    /// Audio is being transcribed by Whisper
+    Transcribing,
+    /// All processing complete
+    Complete,
+}
+
+/// A pending audio cell shown as a placeholder while processing happens in background
+#[derive(Clone, Debug)]
+pub struct PendingAudioCell {
+    /// Temporary local ID (high bits set to distinguish from server IDs)
+    pub local_id: u64,
+    /// Direction from current vertex where this cell will be created
+    pub direction: usize,
+    /// Vertex ID this cell is connected from
+    pub from_vertex: u64,
+    /// When recording started
+    pub created_at: Instant,
+    /// Current processing status
+    pub status: PendingAudioStatus,
+    /// Waveform preview data (downsampled amplitudes for visualization)
+    pub waveform: Vec<f32>,
+    /// Current audio level (0.0-1.0) for live recording visualization
+    pub current_audio_level: f32,
+    /// Server-assigned vertex ID once creation is acknowledged (None until then)
+    pub server_vertex_id: Option<u64>,
+    /// Action ID used for CreateVertex (to match Log response)
+    pub action_id: Option<u64>,
 }
 
 /// Pending identification request from a server
@@ -397,8 +437,14 @@ pub struct AppState {
     pub recording_start: Option<Instant>,
     /// Action ID counter (counts down from MAX to avoid collision with server IDs)
     pub next_action_id: u64,
+    /// Local ID counter for placeholder cells (counts down from MAX-1000000 to avoid collision)
+    pub next_local_id: u64,
     /// Pending vertex creations: maps action_id -> data for populating vertex locally on ack
     pub pending_creations: HashMap<u64, PendingVertexCreation>,
+    /// Pending audio cells being processed in background: maps local_id -> cell
+    pub pending_audio_cells: HashMap<u64, PendingAudioCell>,
+    /// Currently recording placeholder ID (selected/focused during recording)
+    pub recording_placeholder_id: Option<u64>,
     /// Skip auto-play for this vertex (set after recording to avoid immediate playback)
     pub skip_autoplay_vertex: Option<u64>,
     /// Last navigation direction (used to determine where new vertices are created)
@@ -508,7 +554,10 @@ impl Default for AppState {
             audio_samples: Arc::new(Mutex::new(Vec::new())),
             recording_start: None,
             next_action_id: u64::MAX,
+            next_local_id: u64::MAX - 1_000_000, // Reserve top range for action IDs
             pending_creations: HashMap::new(),
+            pending_audio_cells: HashMap::new(),
+            recording_placeholder_id: None,
             skip_autoplay_vertex: None,
             last_nav_direction: EDGE_SOUTH, // Default to south
             focus_url_bar_next_frame: false,

@@ -5,14 +5,17 @@
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::audio::{encode_ogg_vorbis, run_audio_recording, stop_audio, AudioPlaybackState, AudioRecordingSignal};
+use crate::audio::{
+    generate_waveform_preview, run_audio_recording, spawn_audio_encoding_task,
+    stop_audio, AudioPlaybackState, AudioProcessingChannel, AudioRecordingSignal,
+};
 use crate::commands::Command;
 use crate::debug_log;
 use crate::graph::GraphState;
 use crate::media::MediaCache;
 use crate::network::{WsCommand, WsCommandTx};
 use crate::sidebar::SidebarMode;
-use crate::state::{AppState, InputMode, PendingVertexCreation};
+use crate::state::{AppState, InputMode, PendingAudioCell, PendingAudioStatus};
 use crate::state::{EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
 use crate::state::{ZOOM_MAX, ZOOM_MIN, ZOOM_STEP};
 use crate::tts;
@@ -306,10 +309,16 @@ pub fn execute_commands(
 }
 
 /// Finalize recording after space key was released
+///
+/// This function:
+/// 1. Finds the existing placeholder cell (created on recording start)
+/// 2. Generates a waveform preview for visualization
+/// 3. Updates status to Encoding and spawns background encoding task
+/// 4. Returns to Normal mode instantly
 pub fn finalize_recording(
     app_state: &mut AppState,
     audio_signal: &AudioRecordingSignal,
-    ws_cmd_tx: &WsCommandTx,
+    audio_processing: &AudioProcessingChannel,
 ) {
     // Signal to stop recording
     if let Ok(mut stop) = audio_signal.should_stop.lock() {
@@ -319,7 +328,7 @@ pub fn finalize_recording(
     thread::sleep(Duration::from_millis(50));
 
     if let InputMode::Recording { direction } = app_state.input_mode.clone() {
-        // Get samples and encode
+        // Get samples
         let samples = if let Ok(s) = app_state.audio_samples.lock() {
             s.clone()
         } else {
@@ -327,65 +336,68 @@ pub fn finalize_recording(
         };
 
         // Get actual sample rate from recording
-        let sample_rate = audio_signal.actual_sample_rate.lock()
+        let sample_rate = audio_signal
+            .actual_sample_rate
+            .lock()
             .map(|sr| *sr)
             .unwrap_or(44100);
 
-        eprintln!("Recording finished: {} samples at {} Hz", samples.len(), sample_rate);
+        eprintln!(
+            "Recording finished: {} samples at {} Hz",
+            samples.len(),
+            sample_rate
+        );
 
-        if samples.len() > 1000 { // At least some audio
+        // Find the existing placeholder cell (in Recording status)
+        let recording_cell_id = app_state
+            .pending_audio_cells
+            .iter()
+            .find(|(_, cell)| {
+                cell.status == PendingAudioStatus::Recording && cell.direction == direction
+            })
+            .map(|(id, _)| *id);
+
+        if samples.len() > 1000 {
+            // At least some audio
             let duration_secs = samples.len() as f32 / sample_rate as f32;
 
-            let current_id = app_state.current_vertex;
-            let dir_byte = match direction {
-                EDGE_WEST => 0,
-                EDGE_EAST => 1,
-                EDGE_NORTH => 2,
-                EDGE_SOUTH => 3,
-                EDGE_UP => 4,
-                EDGE_DOWN => 5,
-                _ => 3, // default south
-            };
+            if let Some(local_id) = recording_cell_id {
+                // Generate waveform preview for visualization (50 points)
+                let waveform = generate_waveform_preview(&samples, 50);
 
-            // Allocate action_id for the CreateVertex
-            let action_id = app_state.next_action_id;
-            app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
-
-            // Encode audio immediately (no transcript in audio - that goes to layer 1)
-            match encode_ogg_vorbis(&samples, sample_rate, None) {
-                Ok(audio_data) => {
-                    // Send audio to server immediately (layer 0)
-                    if let (Some(current_id), Some(ref tx)) = (current_id, &ws_cmd_tx.0) {
-                        let _ = tx.send(WsCommand::CreateVertex {
-                            action_id,
-                            from_vertex: current_id,
-                            direction: dir_byte,
-                            layer: 0,
-                            mime: "audio/ogg".to_string(),
-                            data: audio_data.clone(),
-                        });
-
-                        // Store samples and encoded data - will be processed when we get the 200 response
-                        app_state.pending_creations.insert(action_id, PendingVertexCreation {
-                            samples: samples.clone(),
-                            sample_rate,
-                            data: audio_data,
-                            mime: "audio/ogg".to_string(),
-                        });
-                    }
-                    app_state.status = format!("Saving audio ({:.1}s)...", duration_secs);
+                // Update existing placeholder cell
+                if let Some(cell) = app_state.pending_audio_cells.get_mut(&local_id) {
+                    cell.status = PendingAudioStatus::Encoding;
+                    cell.waveform = waveform;
+                    cell.current_audio_level = 0.0;
                 }
-                Err(e) => {
-                    eprintln!("Failed to encode audio: {}", e);
-                    app_state.status = format!("Audio encode failed: {}", e);
-                }
+
+                app_state.status = format!("Recording saved ({:.1}s) - encoding...", duration_secs);
+
+                eprintln!(
+                    "Updated placeholder to encoding: local_id={} direction={}",
+                    local_id, direction
+                );
+
+                // Spawn background encoding task
+                spawn_audio_encoding_task(
+                    local_id,
+                    samples,
+                    sample_rate,
+                    audio_processing.tx.clone(),
+                );
             }
         } else {
+            // Recording too short - remove the placeholder
+            if let Some(local_id) = recording_cell_id {
+                app_state.pending_audio_cells.remove(&local_id);
+            }
             app_state.status = "Recording too short (hold Space longer)".to_string();
         }
 
         app_state.input_mode = InputMode::Normal;
         app_state.recording_start = None;
+        // Keep recording_placeholder_id set - placeholder stays selected until server responds
     }
 }
 
@@ -637,6 +649,31 @@ fn execute_start_recording(
     }
     if let Ok(mut stop) = audio_signal.should_stop.lock() {
         *stop = false;
+    }
+
+    // Create placeholder cell immediately when recording starts
+    if let Some(current_id) = app_state.current_vertex {
+        let local_id = app_state.next_local_id;
+        app_state.next_local_id = app_state.next_local_id.wrapping_sub(1);
+
+        let pending_cell = PendingAudioCell {
+            local_id,
+            direction,
+            from_vertex: current_id,
+            created_at: Instant::now(),
+            status: PendingAudioStatus::Recording,
+            waveform: Vec::new(),
+            current_audio_level: 0.0,
+            server_vertex_id: None,
+            action_id: None,
+        };
+
+        app_state.pending_audio_cells.insert(local_id, pending_cell);
+        app_state.recording_placeholder_id = Some(local_id);
+        eprintln!(
+            "Created recording placeholder: local_id={} direction={} from_vertex={}",
+            local_id, direction, current_id
+        );
     }
 
     // Start audio recording in a separate thread

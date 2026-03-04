@@ -4,11 +4,11 @@
 
 use bevy_egui::egui;
 
-use crate::graph::{build_grid_view, GraphState};
+use crate::graph::{build_grid_view, GraphState, PlaceholderCell};
 use crate::media::MediaCache;
 use crate::network::{WsCommand, WsCommandTx};
 use crate::rendering::render_vertex_card;
-use crate::state::AppState;
+use crate::state::{AppState, PendingAudioStatus};
 use crate::state::{EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
 
 /// Action from grid rendering
@@ -50,7 +50,7 @@ pub fn render_grid_view(
             return;
         };
 
-        let grid = build_grid_view(graph, Some(current_id));
+        let grid = build_grid_view(graph, Some(current_id), &app_state.pending_audio_cells);
 
         let zoom = app_state.zoom_level;
         let cell_width = 160.0f32 * zoom;
@@ -61,16 +61,18 @@ pub fn render_grid_view(
         let available = ui.available_size();
         let panel_min = ui.min_rect().min;
 
-        // Find the position of the current vertex in the grid
-        let current_pos = grid.positions.get(&current_id).copied().unwrap_or((0, 0));
+        // Determine which cell is "current" - either the recording placeholder or current_vertex
+        // Placeholders are added to grid.positions so the same lookup works for both
+        let effective_current_id = app_state.recording_placeholder_id.unwrap_or(current_id);
+        let selected_pos = grid.positions.get(&effective_current_id).copied().unwrap_or((0, 0));
 
-        // Calculate where the current cell would be in grid-local coordinates
-        let current_cell_x = (current_pos.0 - grid.min_x) as f32 * (cell_width + padding) + cell_width / 2.0;
-        let current_cell_y = (current_pos.1 - grid.min_y) as f32 * (cell_height + padding) + cell_height / 2.0;
+        // Calculate where the selected cell would be in grid-local coordinates
+        let selected_cell_x = (selected_pos.0 - grid.min_x) as f32 * (cell_width + padding) + cell_width / 2.0;
+        let selected_cell_y = (selected_pos.1 - grid.min_y) as f32 * (cell_height + padding) + cell_height / 2.0;
 
-        // Calculate offset to center the current cell in the available space
-        let offset_x = available.x / 2.0 - current_cell_x;
-        let offset_y = available.y / 2.0 - current_cell_y;
+        // Calculate offset to center the selected cell in the available space
+        let offset_x = available.x / 2.0 - selected_cell_x;
+        let offset_y = available.y / 2.0 - selected_cell_y;
 
         // Get the actual CentralPanel bounds - ui.max_rect() is the panel's allocated area
         // ui.clip_rect() returns the full content_rect which includes other panels
@@ -129,12 +131,13 @@ pub fn render_grid_view(
                         egui::vec2(cell_width, cell_height),
                     );
 
-                    let is_current = vertex_id == current_id;
+                    // Same is_current logic for all cells
+                    let is_current = vertex_id == effective_current_id;
 
                     if let Some(vertex) = graph.vertices.get(&vertex_id) {
                         render_vertex_card(&painter, vertex, vertex_id, rect, is_current, zoom, font_size, media_cache, ctx, graph);
 
-                        // Draw direction arrow indicator on current cell
+                        // Draw direction arrow on current cell
                         if is_current {
                             draw_direction_arrow(&painter, rect, app_state.last_nav_direction, zoom);
                         }
@@ -162,6 +165,28 @@ pub fn render_grid_view(
                         action = GridAction::ClickVertex;
                     }
                 }
+            }
+        }
+
+        // Draw placeholder cells for pending audio recordings
+        for placeholder in &grid.placeholder_cells {
+            let (x, y) = placeholder.position;
+            let cell_x = (x - grid.min_x) as f32 * (cell_width + padding);
+            let cell_y = (y - grid.min_y) as f32 * (cell_height + padding);
+
+            let rect = egui::Rect::from_min_size(
+                base_pos + egui::vec2(cell_x, cell_y),
+                egui::vec2(cell_width, cell_height),
+            );
+
+            // Same is_current logic for all cells
+            let is_current = placeholder.local_id == effective_current_id;
+
+            render_placeholder_cell(&painter, rect, placeholder, zoom, font_size, is_current);
+
+            // Draw direction arrow on current cell (same as regular vertices)
+            if is_current {
+                draw_direction_arrow(&painter, rect, app_state.last_nav_direction, zoom);
             }
         }
     });
@@ -256,5 +281,187 @@ fn draw_ghost_indicators(painter: &egui::Painter, rect: egui::Rect, ghosts: &[cr
             egui::FontId::proportional(ghost_size * 0.8),
             ghost_color,
         );
+    }
+}
+
+/// Render a placeholder cell for a pending audio recording
+fn render_placeholder_cell(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    placeholder: &PlaceholderCell,
+    zoom: f32,
+    font_size: f32,
+    is_current: bool,
+) {
+    let corner_radius = 8.0 * zoom;
+    let is_recording = placeholder.pending_cell.status == PendingAudioStatus::Recording;
+
+    // Background color based on status
+    let bg_color = match placeholder.pending_cell.status {
+        PendingAudioStatus::Recording => egui::Color32::from_rgba_unmultiplied(80, 40, 40, 230),
+        PendingAudioStatus::Encoding => egui::Color32::from_rgba_unmultiplied(60, 60, 80, 220),
+        PendingAudioStatus::Uploading => egui::Color32::from_rgba_unmultiplied(60, 80, 60, 220),
+        PendingAudioStatus::Transcribing => egui::Color32::from_rgba_unmultiplied(80, 60, 80, 220),
+        PendingAudioStatus::Complete => egui::Color32::from_rgba_unmultiplied(60, 80, 80, 220),
+    };
+
+    // Border color - current cell gets highlight, recording pulses red
+    let elapsed = placeholder.pending_cell.created_at.elapsed().as_secs_f32();
+    let pulse = ((elapsed * 3.0).sin() * 0.5 + 0.5) as u8;
+    let border_color = if is_recording {
+        egui::Color32::from_rgba_unmultiplied(220 + pulse / 8, 100 + pulse / 2, 100, 255)
+    } else if is_current {
+        egui::Color32::from_rgb(100, 200, 255) // Same highlight as current vertex cells
+    } else {
+        egui::Color32::from_rgba_unmultiplied(100 + pulse / 2, 150 + pulse / 2, 200, 200)
+    };
+
+    // Border thickness - thicker when current (same as vertex cards)
+    let border_thickness = if is_current { 3.0 } else { 2.0 };
+
+    // Draw background
+    painter.rect_filled(rect, corner_radius, bg_color);
+    painter.rect_stroke(
+        rect,
+        corner_radius,
+        egui::Stroke::new(border_thickness * zoom, border_color),
+        egui::StrokeKind::Outside,
+    );
+
+    if is_recording {
+        // Draw live audio level meter for recording
+        draw_audio_level_meter(
+            painter,
+            rect,
+            placeholder.pending_cell.current_audio_level,
+            zoom,
+        );
+    } else {
+        // Draw waveform visualization for processing states
+        let waveform = &placeholder.pending_cell.waveform;
+        if !waveform.is_empty() {
+            let waveform_rect = egui::Rect::from_min_size(
+                rect.min + egui::vec2(8.0 * zoom, rect.height() * 0.3),
+                egui::vec2(rect.width() - 16.0 * zoom, rect.height() * 0.4),
+            );
+            draw_waveform(painter, waveform_rect, waveform, zoom, border_color);
+        }
+    }
+
+    // Draw status text
+    let status_text = match placeholder.pending_cell.status {
+        PendingAudioStatus::Recording => "🔴 Recording...",
+        PendingAudioStatus::Encoding => "Encoding...",
+        PendingAudioStatus::Uploading => "Uploading...",
+        PendingAudioStatus::Transcribing => "Transcribing...",
+        PendingAudioStatus::Complete => "Complete",
+    };
+
+    let status_pos = egui::pos2(rect.center().x, rect.max.y - 12.0 * zoom);
+    let status_color = if is_recording {
+        egui::Color32::from_rgb(255, 150, 150)
+    } else {
+        egui::Color32::from_rgb(180, 180, 200)
+    };
+    painter.text(
+        status_pos,
+        egui::Align2::CENTER_CENTER,
+        status_text,
+        egui::FontId::proportional(font_size * 0.85),
+        status_color,
+    );
+
+    // Draw audio icon at top
+    let icon_pos = egui::pos2(rect.center().x, rect.min.y + 16.0 * zoom);
+    painter.text(
+        icon_pos,
+        egui::Align2::CENTER_CENTER,
+        "🎤",
+        egui::FontId::proportional(font_size * 1.2),
+        egui::Color32::WHITE,
+    );
+}
+
+/// Draw a live audio level meter (vertical bar that responds to microphone input)
+fn draw_audio_level_meter(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    level: f32,
+    zoom: f32,
+) {
+    let meter_width = 30.0 * zoom;
+    let meter_height = rect.height() * 0.5;
+    let meter_rect = egui::Rect::from_center_size(
+        egui::pos2(rect.center().x, rect.center().y - 5.0 * zoom),
+        egui::vec2(meter_width, meter_height),
+    );
+
+    // Background
+    painter.rect_filled(
+        meter_rect,
+        4.0 * zoom,
+        egui::Color32::from_rgb(40, 40, 50),
+    );
+
+    // Level bar (grows from bottom)
+    let level_height = meter_height * level.clamp(0.0, 1.0);
+    if level_height > 0.0 {
+        let level_rect = egui::Rect::from_min_max(
+            egui::pos2(meter_rect.min.x, meter_rect.max.y - level_height),
+            meter_rect.max,
+        );
+
+        // Color gradient based on level (green -> yellow -> red)
+        let color = if level < 0.5 {
+            egui::Color32::from_rgb(80, 200, 80)
+        } else if level < 0.8 {
+            egui::Color32::from_rgb(200, 200, 80)
+        } else {
+            egui::Color32::from_rgb(200, 80, 80)
+        };
+
+        painter.rect_filled(level_rect, 4.0 * zoom, color);
+    }
+
+    // Border
+    painter.rect_stroke(
+        meter_rect,
+        4.0 * zoom,
+        egui::Stroke::new(1.0 * zoom, egui::Color32::from_rgb(100, 100, 120)),
+        egui::StrokeKind::Outside,
+    );
+}
+
+/// Draw a waveform visualization from amplitude data
+fn draw_waveform(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    waveform: &[f32],
+    zoom: f32,
+    color: egui::Color32,
+) {
+    if waveform.is_empty() {
+        return;
+    }
+
+    let bar_width = rect.width() / waveform.len() as f32;
+    let center_y = rect.center().y;
+    let max_height = rect.height() / 2.0;
+
+    // Find max amplitude for normalization
+    let max_amp = waveform.iter().cloned().fold(0.0f32, f32::max).max(0.01);
+
+    for (i, &amp) in waveform.iter().enumerate() {
+        let x = rect.min.x + (i as f32 + 0.5) * bar_width;
+        let normalized = (amp / max_amp).min(1.0);
+        let height = normalized * max_height;
+
+        // Draw symmetric bar around center
+        let bar_rect = egui::Rect::from_center_size(
+            egui::pos2(x, center_y),
+            egui::vec2(bar_width * 0.7, height * 2.0),
+        );
+
+        painter.rect_filled(bar_rect, 1.0 * zoom, color);
     }
 }

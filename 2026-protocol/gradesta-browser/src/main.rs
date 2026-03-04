@@ -28,7 +28,7 @@ mod video_player;
 mod whisper;
 
 // Imports from refactored modules
-use audio::{AudioPlaybackState, AudioPreloadCache, AudioRecordingSignal};
+use audio::{AudioPlaybackState, AudioPreloadCache, AudioProcessingChannel, AudioRecordingSignal};
 use audio::{play_audio_fast, predecode_audio_async, stop_audio};
 use graph::GraphState;
 use media::MediaCache;
@@ -161,6 +161,7 @@ fn main() {
         .insert_resource(AudioRecordingSignal::default())
         .insert_resource(audio_playback_state)
         .insert_resource(audio_preload_cache)
+        .insert_resource(AudioProcessingChannel::default())
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Gradesta Browser".to_string(),
@@ -175,6 +176,8 @@ fn main() {
         .add_systems(EguiPrimaryContextPass, ui_system)
         .add_systems(Update, (
             events::ingest_server_events,
+            events::process_audio_results,
+            events::update_recording_audio_levels,
             process_elf_http_events,
             (handle_navigation, auto_play_audio_on_navigate).chain(),
             auto_expand_nearby_links,
@@ -306,6 +309,7 @@ fn ui_system(
     audio_signal: Res<AudioRecordingSignal>,
     playback_state: Res<AudioPlaybackState>,
     elf_http_tx: Res<ElfHttpTx>,
+    audio_processing: Res<AudioProcessingChannel>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
 
@@ -425,7 +429,7 @@ fn ui_system(
 
     // Finalize recording if needed
     if cmd_results.should_finalize_recording {
-        ui::finalize_recording(&mut app_state, &audio_signal, &ws_cmd_tx);
+        ui::finalize_recording(&mut app_state, &audio_signal, &audio_processing);
     }
 
     // Apply zoom by scaling the UI - we do this manually in rendering instead of using pixels_per_point

@@ -100,6 +100,7 @@ fn submit_new_vertex(
         sample_rate: 0,
         data: text_bytes,
         mime: "text/plain".to_string(),
+        local_placeholder_id: None,
     });
     app_state.status = "Creating new note...".to_string();
 }

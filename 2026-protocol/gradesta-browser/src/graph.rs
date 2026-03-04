@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
 
-use crate::state::{EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
+use crate::state::{PendingAudioCell, EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
 
 /// Layer content for a vertex - each layer has its own MIME type and data
 #[derive(Clone, Debug, Default)]
@@ -112,6 +112,17 @@ pub struct GhostEdge {
     pub direction: usize,
 }
 
+/// A placeholder cell for a pending audio recording
+#[derive(Clone, Debug)]
+pub struct PlaceholderCell {
+    /// The local ID of the pending audio cell
+    pub local_id: u64,
+    /// Grid position
+    pub position: (i32, i32),
+    /// Reference to the pending cell data (cloned for rendering)
+    pub pending_cell: PendingAudioCell,
+}
+
 /// 2D grid layout of the graph
 #[derive(Default, Clone)]
 pub struct GridView {
@@ -123,6 +134,8 @@ pub struct GridView {
     pub distances: HashMap<(i32, i32), u32>,
     /// Ghost edges: vertex_id -> list of ghost edges from that vertex
     pub ghost_edges: HashMap<u64, Vec<GhostEdge>>,
+    /// Placeholder cells for pending audio recordings
+    pub placeholder_cells: Vec<PlaceholderCell>,
     pub min_x: i32,
     pub max_x: i32,
     pub min_y: i32,
@@ -242,7 +255,13 @@ fn collect_island(graph: &GraphState, start: u64, visited: &mut HashSet<u64>) ->
 ///
 /// This prevents unrelated subgraphs from appearing in the view while still
 /// allowing navigation to connected vertices.
-pub fn build_grid_view(graph: &GraphState, current_vertex: Option<u64>) -> GridView {
+///
+/// Also includes pending audio cells as placeholder cells in the appropriate positions.
+pub fn build_grid_view(
+    graph: &GraphState,
+    current_vertex: Option<u64>,
+    pending_audio_cells: &HashMap<u64, PendingAudioCell>,
+) -> GridView {
     let mut grid = GridView::default();
     let mut visited = HashSet::new();
 
@@ -321,6 +340,34 @@ pub fn build_grid_view(graph: &GraphState, current_vertex: Option<u64>) -> GridV
             }
             if v.edges[EDGE_EAST] != 0 && !visited.contains(&v.edges[EDGE_EAST]) {
                 expand_column_horizontal(&mut grid, graph, v.edges[EDGE_EAST], 1, y, base_dist + 1, &mut visited);
+            }
+        }
+    }
+
+    // Add placeholder cells for pending audio recordings
+    for (local_id, pending_cell) in pending_audio_cells {
+        // Only show placeholders for cells connected to vertices currently in the grid
+        if let Some(&from_pos) = grid.positions.get(&pending_cell.from_vertex) {
+            // Calculate the position where this pending cell should appear
+            let offset = DIR_OFFSETS[pending_cell.direction];
+            let placeholder_pos = (from_pos.0 + offset.0, from_pos.1 + offset.1);
+
+            // Always add to positions map so centering works (even if cell can't be shown)
+            grid.positions.insert(*local_id, placeholder_pos);
+
+            // Only add visible placeholder if the position is not already occupied
+            if !grid.cells.contains_key(&placeholder_pos) {
+                grid.placeholder_cells.push(PlaceholderCell {
+                    local_id: *local_id,
+                    position: placeholder_pos,
+                    pending_cell: pending_cell.clone(),
+                });
+
+                // Update grid bounds
+                grid.min_x = grid.min_x.min(placeholder_pos.0);
+                grid.max_x = grid.max_x.max(placeholder_pos.0);
+                grid.min_y = grid.min_y.min(placeholder_pos.1);
+                grid.max_y = grid.max_y.max(placeholder_pos.1);
             }
         }
     }
