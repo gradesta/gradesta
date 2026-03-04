@@ -26,6 +26,7 @@ mod state;
 mod tts;
 mod ui;
 mod video_player;
+mod voice_command;
 mod whisper;
 
 // Imports from refactored modules
@@ -39,6 +40,7 @@ use state::{AppState, InputMode, NextcloudLoginState, PlaybackBoostState};
 use state::PendingIdentitySetup;
 use state::{EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
 use state::{KEY_REPEAT_DELAY, KEY_REPEAT_RATE};
+use voice_command::{VoiceCommandChannel, VoiceCommandConfig, VoiceCommandConfigRes, VoiceCommandState};
 
 // Existing module imports
 use commands::Command;
@@ -57,6 +59,7 @@ fn current_context(app_state: &AppState) -> commands::Context {
     match app_state.input_mode {
         InputMode::TextInput { .. } => commands::Context::TextInput,
         InputMode::Recording { .. } => commands::Context::Recording,
+        InputMode::VoiceCommand(_) => commands::Context::Global, // Voice command has its own handling
         InputMode::Normal => {
             if app_state.focus_url_bar_next_frame || app_state.url_bar_has_focus {
                 // URL bar is focused - treat as text input context
@@ -165,6 +168,8 @@ fn main() {
         .insert_resource(audio_preload_cache)
         .insert_resource(AudioProcessingChannel::default())
         .insert_resource(PlaybackBoostState::default())
+        .insert_resource(VoiceCommandChannel::default())
+        .insert_resource(VoiceCommandConfigRes(VoiceCommandConfig::load()))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Gradesta Browser".to_string(),
@@ -315,6 +320,8 @@ fn ui_system(
     elf_http_tx: Res<ElfHttpTx>,
     audio_processing: Res<AudioProcessingChannel>,
     mut boost_state: ResMut<PlaybackBoostState>,
+    voice_channel: Res<VoiceCommandChannel>,
+    mut voice_config: ResMut<VoiceCommandConfigRes>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
 
@@ -397,10 +404,16 @@ fn ui_system(
 
     let mut cmds = ui::capture_keyboard_commands(ctx, &app_state.keybindings, kb_context);
 
+    // Check if we're in voice command mode for gamepad handling
+    let is_in_voice_command_mode = matches!(app_state.input_mode, InputMode::VoiceCommand(_));
+
     // Merge gamepad commands (only in graph context, not during text input)
-    if kb_context == commands::Context::Graph || kb_context == commands::Context::Recording {
+    if kb_context == commands::Context::Graph || kb_context == commands::Context::Recording || is_in_voice_command_mode {
         ui::capture_gamepad_commands(&mut cmds, &gamepad_snapshot, &app_state.keybindings);
     }
+
+    // Capture voice command specific gamepad inputs (L2 hold for voice, right stick for selection)
+    ui::capture_voice_command_gamepad(&mut cmds, &gamepad_snapshot, is_in_voice_command_mode, &mut app_state.l2_press_start);
 
     // Log triggered commands to debug log (separated to avoid borrow conflicts)
     ui::log_triggered_commands_to_debug(&cmds, &mut app_state);
@@ -427,6 +440,7 @@ fn ui_system(
         &audio_signal,
         &playback_state,
         &mut boost_state,
+        &voice_channel,
         ctx,
     );
 
@@ -436,6 +450,29 @@ fn ui_system(
     // Finalize recording if needed
     if cmd_results.should_finalize_recording {
         ui::finalize_recording(&mut app_state, &audio_signal, &audio_processing);
+    }
+
+    // Finalize voice command recording if needed
+    if cmd_results.should_finalize_voice_recording {
+        ui::finalize_voice_recording(&mut app_state, &voice_channel, &voice_config.0);
+    }
+
+    // Process voice command events from async operations
+    ui::process_voice_command_events(&mut app_state, &graph, &voice_channel, &voice_config.0);
+
+    // Handle voice command confirm/action execution
+    if cmds.voice_confirm {
+        if let InputMode::VoiceCommand(ref state) = app_state.input_mode {
+            match state {
+                VoiceCommandState::Selecting { .. } => {
+                    ui::execute_voice_action(&mut app_state, &mut graph, &ws_cmd_tx);
+                }
+                VoiceCommandState::AwaitingPermission { .. } => {
+                    ui::grant_voice_permission(&mut app_state, &graph, &voice_channel, &voice_config.0);
+                }
+                _ => {}
+            }
+        }
     }
 
     // Apply zoom by scaling the UI - we do this manually in rendering instead of using pixels_per_point
@@ -1141,9 +1178,35 @@ fn ui_system(
     // Central panel showing grid view
     ui::render_grid_view(ctx, &mut app_state, &graph, &mut media_cache, &ws_cmd_tx);
 
+    // Voice command overlay (rendered on top of everything except gamepad help)
+    if let InputMode::VoiceCommand(ref state) = app_state.input_mode {
+        ui::render_voice_command_overlay(ctx, state, app_state.recording_start);
+    }
+
     // Gamepad help overlay (rendered last so it's on top)
     if app_state.show_gamepad_help {
         ui::render_gamepad_help_overlay(ctx);
+    }
+
+    // Voice settings dialog (modal, rendered on top of everything)
+    if app_state.show_voice_settings {
+        let mut config = voice_config.0.clone();
+        let action = ui::render_voice_settings_dialog(ctx, &mut config);
+        match action {
+            ui::VoiceSettingsAction::Close => {
+                app_state.show_voice_settings = false;
+            }
+            ui::VoiceSettingsAction::Save(new_config) => {
+                if let Err(e) = new_config.save() {
+                    app_state.status = format!("Failed to save voice settings: {}", e);
+                } else {
+                    app_state.status = "Voice settings saved".to_string();
+                }
+                voice_config.0 = new_config;
+                app_state.show_voice_settings = false;
+            }
+            ui::VoiceSettingsAction::None => {}
+        }
     }
 
     Ok(())

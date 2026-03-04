@@ -15,6 +15,7 @@ use crate::identity::IdentityConfig;
 use crate::keybindings::{KeybindingResolver, KeybindingsConfig};
 use crate::local_services::LocalServices;
 use crate::sidebar::{KeybindingsEditorState, SidebarState};
+use crate::voice_command::VoiceCommandState;
 
 // ============================================================================
 // Elf System Types
@@ -276,6 +277,8 @@ pub enum InputMode {
     TextInput { direction: Option<usize> },
     /// Recording audio to create new vertex in the given direction
     Recording { direction: usize },
+    /// Voice command mode (L2+R2 held on gamepad)
+    VoiceCommand(VoiceCommandState),
 }
 
 /// Pending vertex creation data - waiting for server acknowledgment
@@ -510,6 +513,10 @@ pub struct AppState {
     pub server_dropdown: ServerDropdownState,
     /// Show gamepad help overlay
     pub show_gamepad_help: bool,
+    /// Show voice command settings dialog
+    pub show_voice_settings: bool,
+    /// When L2 trigger was first pressed (for tap vs hold detection)
+    pub l2_press_start: Option<Instant>,
 }
 
 /// Playback speed boost state for TTS and audio playback
@@ -687,6 +694,8 @@ impl Default for AppState {
             local_services,
             server_dropdown: ServerDropdownState::default(),
             show_gamepad_help: false,
+            show_voice_settings: false,
+            l2_press_start: None,
         }
     }
 }

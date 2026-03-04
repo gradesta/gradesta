@@ -7,6 +7,7 @@ use bevy_egui::egui;
 use crate::commands::{Command, Context as CmdContext};
 use crate::debug_log;
 use crate::gamepad::GamepadSnapshot;
+use crate::keybindings::key::GamepadKey;
 use crate::keybindings::KeybindingResolver;
 use crate::state::AppState;
 
@@ -26,6 +27,7 @@ pub struct CapturedCommands {
     pub open_keybindings: bool,
     pub toggle_tts: bool,
     pub toggle_gamepad_help: bool,
+    pub toggle_voice_settings: bool,
     pub refresh: bool,
     pub copy_url: bool,
     pub focus_url_down: bool,
@@ -77,6 +79,14 @@ pub struct CapturedCommands {
     pub nav_up: bool,
     pub nav_down: bool,
     pub history_back: bool,
+
+    // Voice command inputs (gamepad L2+R2)
+    pub voice_command_start: bool,  // L2+R2 both pressed this frame
+    pub voice_command_stop: bool,   // L2 or R2 released while in voice command mode
+    pub voice_select_up: bool,      // Right stick up
+    pub voice_select_down: bool,    // Right stick down
+    pub voice_confirm: bool,        // Right stick right (or A button)
+    pub voice_cancel: bool,         // Right stick left (or B button)
 }
 
 /// Capture all keyboard commands for the current frame
@@ -100,6 +110,7 @@ pub fn capture_keyboard_commands(
     cmds.open_keybindings = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GlobalOpenKeybindings, i));
     cmds.toggle_tts = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GlobalToggleTTS, i));
     cmds.toggle_gamepad_help = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GlobalToggleGamepadHelp, i));
+    cmds.toggle_voice_settings = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GlobalToggleVoiceSettings, i));
     cmds.refresh = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GlobalRefresh, i));
     cmds.copy_url = ctx.input(|i| keybindings.command_pressed(kb_context, &Command::GlobalCopyUrl, i));
     cmds.focus_url_down = ctx.input(|i| keybindings.command_down(kb_context, &Command::GlobalFocusUrl, i));
@@ -187,8 +198,77 @@ pub fn capture_gamepad_commands(
     cmds.start_recording |= keybindings.command_pressed_gamepad(&Command::GraphStartRecording, gp);
     cmds.recording_save |= keybindings.command_released_gamepad(&Command::RecordingSave, gp);
 
-    // Playback speed boost - L2
-    cmds.playback_speed_boost |= keybindings.command_pressed_gamepad(&Command::GlobalPlaybackSpeedBoost, gp);
+    // Note: Playback speed boost (L2) is handled in capture_voice_command_gamepad
+    // because L2 is dual-purpose: tap = boost, hold = voice command
+}
+
+use std::time::{Duration, Instant};
+
+/// Duration L2 must be held before voice command mode activates
+const L2_HOLD_THRESHOLD: Duration = Duration::from_millis(100);
+
+/// Capture voice command gamepad inputs (L2 hold for voice command mode)
+/// L2 tap = playback speed boost, L2 hold (100ms+) = voice command
+/// This needs to be called separately with access to the current input mode
+pub fn capture_voice_command_gamepad(
+    cmds: &mut CapturedCommands,
+    gamepad: &Option<GamepadSnapshot>,
+    is_in_voice_command_mode: bool,
+    l2_press_start: &mut Option<Instant>,
+) {
+    let Some(gp) = gamepad else { return };
+
+    let l2_held = gp.is_held(GamepadKey::LeftTrigger);
+    let l2_pressed = gp.is_pressed(GamepadKey::LeftTrigger);
+    let l2_released = gp.is_released(GamepadKey::LeftTrigger);
+
+    // Track when L2 was first pressed
+    if l2_pressed {
+        *l2_press_start = Some(Instant::now());
+    }
+
+    // Check if L2 has been held long enough for voice command
+    // Once triggered, clear l2_press_start to avoid triggering every frame
+    if l2_held && !is_in_voice_command_mode {
+        if let Some(start) = *l2_press_start {
+            if start.elapsed() >= L2_HOLD_THRESHOLD {
+                cmds.voice_command_start = true;
+                // Clear to prevent re-triggering every frame
+                *l2_press_start = None;
+            }
+        }
+    }
+
+    // When L2 is released
+    if l2_released {
+        if is_in_voice_command_mode {
+            // In voice command mode: stop recording
+            cmds.voice_command_stop = true;
+        } else if let Some(start) = *l2_press_start {
+            // Not in voice command mode: check if it was a quick tap
+            if start.elapsed() < L2_HOLD_THRESHOLD {
+                // Quick tap = playback speed boost
+                cmds.playback_speed_boost = true;
+            }
+        }
+        *l2_press_start = None;
+    }
+
+    // Right stick for selection (during voice command mode)
+    const STICK_DEADZONE: f32 = 0.5;
+    let (rx, ry) = gp.right_stick;
+
+    // Y axis: negative = up, positive = down
+    cmds.voice_select_up = ry < -STICK_DEADZONE;
+    cmds.voice_select_down = ry > STICK_DEADZONE;
+
+    // X axis: positive = right (confirm), negative = left (cancel)
+    cmds.voice_confirm = rx > STICK_DEADZONE;
+    cmds.voice_cancel = rx < -STICK_DEADZONE;
+
+    // Also allow A button for confirm and B button for cancel
+    cmds.voice_confirm |= gp.is_pressed(GamepadKey::South); // A / Cross
+    cmds.voice_cancel |= gp.is_pressed(GamepadKey::East);   // B / Circle
 }
 
 /// Log triggered commands to the debug log
@@ -221,6 +301,7 @@ pub fn log_triggered_commands_to_debug(
     if cmds.open_command_bar { triggered.push(Command::GlobalOpenCommandBar); }
     if cmds.open_keybindings { triggered.push(Command::GlobalOpenKeybindings); }
     if cmds.toggle_tts { triggered.push(Command::GlobalToggleTTS); }
+    if cmds.toggle_voice_settings { triggered.push(Command::GlobalToggleVoiceSettings); }
     if cmds.refresh { triggered.push(Command::GlobalRefresh); }
     if cmds.copy_url { triggered.push(Command::GlobalCopyUrl); }
     // focus_url_down is logged only on first press, not while held

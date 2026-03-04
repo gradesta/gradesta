@@ -87,6 +87,8 @@ pub enum Command {
     GlobalToggleGamepadHelp,
     /// Boost playback speed for TTS and audio
     GlobalPlaybackSpeedBoost,
+    /// Toggle voice command settings dialog
+    GlobalToggleVoiceSettings,
 
     // === Graph Context Commands ===
     /// Navigate north in the graph
@@ -249,6 +251,7 @@ impl Command {
             Command::GlobalTTSSpeedDown => "global.tts_speed_down",
             Command::GlobalToggleGamepadHelp => "global.toggle_gamepad_help",
             Command::GlobalPlaybackSpeedBoost => "global.playback_speed_boost",
+            Command::GlobalToggleVoiceSettings => "global.toggle_voice_settings",
             // Graph
             Command::GraphNavigateNorth => "graph.navigate_north",
             Command::GraphNavigateSouth => "graph.navigate_south",
@@ -342,6 +345,7 @@ impl Command {
             "global.tts_speed_down" => Some(Command::GlobalTTSSpeedDown),
             "global.toggle_gamepad_help" => Some(Command::GlobalToggleGamepadHelp),
             "global.playback_speed_boost" => Some(Command::GlobalPlaybackSpeedBoost),
+            "global.toggle_voice_settings" => Some(Command::GlobalToggleVoiceSettings),
             // Graph
             "graph.navigate_north" => Some(Command::GraphNavigateNorth),
             "graph.navigate_south" => Some(Command::GraphNavigateSouth),
@@ -436,6 +440,7 @@ impl Command {
             Command::GlobalTTSSpeedDown => "Decrease TTS speed",
             Command::GlobalToggleGamepadHelp => "Toggle gamepad help overlay",
             Command::GlobalPlaybackSpeedBoost => "Boost playback speed",
+            Command::GlobalToggleVoiceSettings => "Voice command settings",
             // Graph
             Command::GraphNavigateNorth => "Navigate north in the graph",
             Command::GraphNavigateSouth => "Navigate south in the graph",
@@ -527,7 +532,8 @@ impl Command {
             | Command::GlobalTTSSpeedUp
             | Command::GlobalTTSSpeedDown
             | Command::GlobalToggleGamepadHelp
-            | Command::GlobalPlaybackSpeedBoost => Context::Global,
+            | Command::GlobalPlaybackSpeedBoost
+            | Command::GlobalToggleVoiceSettings => Context::Global,
 
             Command::GraphNavigateNorth
             | Command::GraphNavigateSouth
@@ -621,6 +627,7 @@ impl Command {
             Command::GlobalTTSSpeedDown,
             Command::GlobalToggleGamepadHelp,
             Command::GlobalPlaybackSpeedBoost,
+            Command::GlobalToggleVoiceSettings,
             // Graph
             Command::GraphNavigateNorth,
             Command::GraphNavigateSouth,
@@ -710,6 +717,106 @@ impl Command {
             }
         }
         query_chars.peek().is_none()
+    }
+
+    /// Get common voice trigger phrases for this command
+    /// Used by the LLM voice command system for better recognition
+    pub fn voice_phrases(&self) -> &'static [&'static str] {
+        match self {
+            // Navigation
+            Command::GraphNavigateNorth => &["go north", "up", "move up", "north"],
+            Command::GraphNavigateSouth => &["go south", "down", "move down", "south"],
+            Command::GraphNavigateEast => &["go east", "right", "move right", "east"],
+            Command::GraphNavigateWest => &["go west", "left", "move left", "west"],
+            Command::GraphNavigateUp => &["go up stack", "stack up", "layer up"],
+            Command::GraphNavigateDown => &["go down stack", "stack down", "layer down"],
+            Command::GraphHistoryBack => &["go back", "back", "previous", "undo navigation"],
+
+            // Graph actions
+            Command::GraphClickVertex => &["click", "activate", "open", "enter"],
+            Command::GraphEditText => &["edit", "modify", "change text", "edit text"],
+            Command::GraphNewTextVertex => &["new note", "create text", "add note", "new cell"],
+            Command::GraphStartRecording => &["record", "start recording", "voice note"],
+            Command::GraphYank => &["yank", "copy", "grab", "pick up"],
+            Command::GraphPaste => &["paste", "put", "drop", "place"],
+            Command::GraphCutEdge => &["cut", "disconnect", "sever", "unlink"],
+            Command::GraphDeleteVertex => &["delete", "remove", "trash", "destroy"],
+            Command::GraphGoToBagTop => &["go to bag", "jump to bag", "bag top"],
+
+            // Direction setting
+            Command::GraphSetDirectionNorth => &["set north", "face north", "direction north"],
+            Command::GraphSetDirectionSouth => &["set south", "face south", "direction south"],
+            Command::GraphSetDirectionEast => &["set east", "face east", "direction east"],
+            Command::GraphSetDirectionWest => &["set west", "face west", "direction west"],
+            Command::GraphSetDirectionUp => &["set up", "face up", "direction up"],
+            Command::GraphSetDirectionDown => &["set down", "face down", "direction down"],
+
+            // Bag
+            Command::BagPop => &["pop", "remove from bag", "discard top"],
+            Command::BagClear => &["clear bag", "empty bag", "clear clipboard"],
+
+            // UI toggles
+            Command::GlobalToggleBag => &["show bag", "open clipboard", "toggle bag", "bag panel"],
+            Command::GlobalToggleNavPanel => &["show nav", "navigation panel", "toggle nav"],
+            Command::GlobalToggleElfPanel => &["show elves", "elf panel", "toggle elves"],
+            Command::GlobalToggleTTS => &["toggle speech", "text to speech", "toggle tts", "read aloud"],
+            Command::GlobalToggleFullscreen => &["fullscreen", "expand", "maximize"],
+            Command::GlobalToggleGamepadHelp => &["gamepad help", "controller help"],
+            Command::GlobalToggleVoiceSettings => &["voice settings", "voice config", "configure voice"],
+            Command::GlobalZoomIn => &["zoom in", "bigger", "magnify"],
+            Command::GlobalZoomOut => &["zoom out", "smaller", "shrink"],
+            Command::GlobalZoomReset => &["reset zoom", "normal zoom", "zoom 100"],
+
+            // Other global
+            Command::GlobalFocusUrl => &["focus url", "url bar", "address bar"],
+            Command::GlobalCloseModal => &["close", "dismiss", "escape"],
+            Command::GlobalCopyUrl => &["copy url", "copy link", "copy address"],
+            Command::GlobalRefresh => &["refresh", "reload", "update"],
+            Command::GlobalOpenCommandBar => &["command bar", "open commands", "command palette"],
+            Command::GlobalOpenKeybindings => &["keybindings", "shortcuts", "key settings"],
+            Command::GlobalTTSSpeedUp => &["faster speech", "speed up"],
+            Command::GlobalTTSSpeedDown => &["slower speech", "slow down"],
+            Command::GlobalPlaybackSpeedBoost => &["boost speed", "speed boost"],
+
+            // Text input
+            Command::TextInputSubmit => &["submit", "save", "done", "confirm"],
+            Command::TextInputCancel => &["cancel", "abort", "discard"],
+            Command::TextInputCopy => &["copy text"],
+            Command::TextInputCut => &["cut text"],
+            Command::TextInputPaste => &["paste text"],
+            Command::TextInputSelectAll => &["select all"],
+            Command::TextInputUndo => &["undo"],
+            Command::TextInputRedo => &["redo"],
+
+            // Recording
+            Command::RecordingSave => &["save recording", "stop recording", "finish recording"],
+            Command::RecordingCancel => &["cancel recording", "discard recording"],
+
+            // Auth
+            Command::AuthCycleIdentity => &["cycle identity", "next identity", "switch identity"],
+            Command::AuthAccept => &["accept", "allow", "yes"],
+            Command::AuthAcceptRemember => &["accept and remember", "always allow"],
+            Command::AuthRefuse => &["refuse", "deny", "no"],
+
+            // Export
+            Command::GlobalExportHtml => &["export", "export html", "save as html"],
+            Command::ExportConfirm => &["confirm export"],
+            Command::ExportCancel => &["cancel export"],
+            Command::ExportToggleEast | Command::ExportToggleWest |
+            Command::ExportToggleNorth | Command::ExportToggleSouth |
+            Command::ExportToggleUp | Command::ExportToggleDown => &[],
+
+            // Elf
+            Command::ElfSummon => &["summon elf", "call elf", "invoke elf"],
+            Command::ElfAddUrl => &["add elf", "new elf"],
+            Command::ElfRemove => &["remove elf", "delete elf"],
+            Command::ElfRefresh => &["refresh elf", "reload elf"],
+            Command::ElfNextElf | Command::ElfPrevElf |
+            Command::ElfNextCommand | Command::ElfPrevCommand |
+            Command::ElfToggleWest | Command::ElfToggleEast |
+            Command::ElfToggleNorth | Command::ElfToggleSouth |
+            Command::ElfToggleUp | Command::ElfToggleDown => &[],
+        }
     }
 }
 

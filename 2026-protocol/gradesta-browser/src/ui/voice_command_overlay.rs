@@ -1,0 +1,667 @@
+//! Voice command overlay UI
+//!
+//! Renders the voice command interface including:
+//! - Recording indicator (pulsing red dot)
+//! - Processing spinner
+//! - Interpretation menu with selection highlight
+//! - Permission prompt display
+//! - Joystick hint at bottom
+//! - Voice settings dialog
+
+use bevy_egui::egui;
+use std::time::Instant;
+
+use crate::voice_command::{
+    available_models, AgentAction, AgentInterpretation, InsertTarget, VoiceCommandConfig,
+    VoiceCommandState,
+};
+
+/// Render the voice command overlay
+/// Returns true if the overlay consumed input (modal behavior)
+pub fn render_voice_command_overlay(
+    ctx: &egui::Context,
+    state: &VoiceCommandState,
+    start_time: Option<Instant>,
+) -> bool {
+    // Semi-transparent background overlay
+    #[allow(deprecated)]
+    let screen_rect = ctx.screen_rect();
+
+    egui::Area::new("voice_command_overlay".into())
+        .fixed_pos(egui::pos2(0.0, 0.0))
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            // Dark overlay background
+            let painter = ui.painter();
+            painter.rect_filled(
+                screen_rect,
+                0.0,
+                egui::Color32::from_rgba_unmultiplied(0, 0, 0, 180),
+            );
+
+            // Center the content
+            let center = screen_rect.center();
+            let panel_width = 500.0;
+            let panel_height = match state {
+                VoiceCommandState::Recording { ref live_transcript, .. } => {
+                    // Base height plus extra for transcript display
+                    let transcript_len = live_transcript
+                        .lock()
+                        .map(|t| t.len())
+                        .unwrap_or(0);
+                    if transcript_len > 0 { 220.0 } else { 150.0 }
+                }
+                VoiceCommandState::Transcribing => 120.0,
+                VoiceCommandState::Interpreting { .. } => 120.0,
+                VoiceCommandState::AwaitingPermission { .. } => 200.0,
+                VoiceCommandState::Selecting { interpretations, .. } => {
+                    100.0 + (interpretations.len() as f32 * 50.0).min(250.0)
+                }
+            };
+
+            let panel_rect = egui::Rect::from_center_size(
+                center,
+                egui::vec2(panel_width, panel_height),
+            );
+
+            // Panel background
+            painter.rect_filled(
+                panel_rect,
+                12.0,
+                egui::Color32::from_rgb(30, 30, 40),
+            );
+            painter.rect_stroke(
+                panel_rect,
+                12.0,
+                egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 80, 120)),
+                egui::StrokeKind::Outside,
+            );
+
+            // Content area
+            let content_rect = panel_rect.shrink(20.0);
+            let ui_builder = egui::UiBuilder::new().max_rect(content_rect);
+
+            #[allow(deprecated)]
+            ui.allocate_new_ui(ui_builder, |ui| {
+                ui.vertical_centered(|ui| {
+                    match state {
+                        VoiceCommandState::Recording { live_transcript, audio_level, .. } => {
+                            let transcript_text = live_transcript
+                                .lock()
+                                .map(|t| t.clone())
+                                .unwrap_or_default();
+                            let level = audio_level
+                                .lock()
+                                .map(|l| *l)
+                                .unwrap_or(0.0);
+                            render_recording_indicator(ui, start_time, &transcript_text, level);
+                        }
+                        VoiceCommandState::Transcribing => {
+                            render_transcribing_indicator(ui);
+                        }
+                        VoiceCommandState::Interpreting { transcript, .. } => {
+                            render_interpreting_indicator(ui, transcript);
+                        }
+                        VoiceCommandState::AwaitingPermission { transcript, requested_targets, reason } => {
+                            render_permission_prompt(ui, transcript, requested_targets, reason);
+                        }
+                        VoiceCommandState::Selecting { transcript, interpretations, selected } => {
+                            render_selection_menu(ui, transcript, interpretations, *selected);
+                        }
+                    }
+                });
+            });
+        });
+
+    // Request repaint for animations
+    ctx.request_repaint();
+
+    true // Overlay is modal
+}
+
+fn render_recording_indicator(ui: &mut egui::Ui, start_time: Option<Instant>, live_transcript: &str, audio_level: f32) {
+    ui.add_space(10.0);
+
+    // Title
+    ui.heading(egui::RichText::new("Voice Command").color(egui::Color32::WHITE));
+    ui.add_space(10.0);
+
+    // Pulsing red recording dot and duration
+    let elapsed = start_time
+        .map(|t| t.elapsed().as_secs_f32())
+        .unwrap_or(0.0);
+    let pulse = ((elapsed * 3.0).sin() * 0.5 + 0.5) as f32;
+    let dot_color = egui::Color32::from_rgba_unmultiplied(
+        220 + (pulse * 35.0) as u8,
+        (50.0 + pulse * 50.0) as u8,
+        (50.0 + pulse * 50.0) as u8,
+        255,
+    );
+
+    ui.horizontal(|ui| {
+        let (response, painter) = ui.allocate_painter(egui::vec2(24.0, 24.0), egui::Sense::hover());
+        let center = response.rect.center();
+        let radius = 10.0 + pulse * 2.0;
+        painter.circle_filled(center, radius, dot_color);
+
+        ui.add_space(8.0);
+
+        // Duration display
+        if let Some(start) = start_time {
+            let duration = start.elapsed().as_secs_f32();
+            ui.label(
+                egui::RichText::new(format!("{:.1}s", duration))
+                    .size(16.0)
+                    .color(egui::Color32::LIGHT_GRAY),
+            );
+        }
+    });
+
+    ui.add_space(10.0);
+
+    // Audio level meter
+    ui.horizontal(|ui| {
+        ui.label(
+            egui::RichText::new("Mic:")
+                .size(14.0)
+                .color(egui::Color32::GRAY),
+        );
+        ui.add_space(8.0);
+
+        // Draw level bar
+        let bar_width = 200.0;
+        let bar_height = 16.0;
+        let (response, painter) = ui.allocate_painter(egui::vec2(bar_width, bar_height), egui::Sense::hover());
+        let rect = response.rect;
+
+        // Background
+        painter.rect_filled(rect, 4.0, egui::Color32::from_rgb(40, 40, 50));
+
+        // Level fill
+        let fill_width = rect.width() * audio_level;
+        if fill_width > 0.0 {
+            let fill_rect = egui::Rect::from_min_size(
+                rect.min,
+                egui::vec2(fill_width, rect.height()),
+            );
+            // Color based on level: green -> yellow -> red
+            let color = if audio_level < 0.5 {
+                egui::Color32::from_rgb(80, 200, 80)
+            } else if audio_level < 0.8 {
+                egui::Color32::from_rgb(200, 200, 80)
+            } else {
+                egui::Color32::from_rgb(200, 80, 80)
+            };
+            painter.rect_filled(fill_rect, 4.0, color);
+        }
+
+        // Border
+        painter.rect_stroke(rect, 4.0, egui::Stroke::new(1.0, egui::Color32::from_rgb(80, 80, 100)), egui::StrokeKind::Inside);
+    });
+
+    ui.add_space(10.0);
+
+    // Live transcript display
+    if !live_transcript.is_empty() {
+        egui::Frame::new()
+            .fill(egui::Color32::from_rgb(20, 25, 35))
+            .corner_radius(6.0)
+            .inner_margin(egui::Margin::symmetric(12, 10))
+            .show(ui, |ui| {
+                ui.label(
+                    egui::RichText::new(live_transcript)
+                        .size(18.0)
+                        .color(egui::Color32::WHITE),
+                );
+            });
+        ui.add_space(10.0);
+    } else {
+        // Show placeholder when no transcript yet
+        ui.label(
+            egui::RichText::new("Listening...")
+                .size(16.0)
+                .italics()
+                .color(egui::Color32::from_rgb(100, 100, 120)),
+        );
+        ui.add_space(10.0);
+    }
+
+    ui.label(
+        egui::RichText::new("Release trigger to stop")
+            .size(14.0)
+            .color(egui::Color32::GRAY),
+    );
+}
+
+fn render_transcribing_indicator(ui: &mut egui::Ui) {
+    ui.add_space(15.0);
+    ui.heading(egui::RichText::new("Voice Command").color(egui::Color32::WHITE));
+    ui.add_space(20.0);
+
+    ui.spinner();
+    ui.add_space(10.0);
+    ui.label(
+        egui::RichText::new("Transcribing...")
+            .size(16.0)
+            .color(egui::Color32::LIGHT_GRAY),
+    );
+}
+
+fn render_interpreting_indicator(ui: &mut egui::Ui, transcript: &str) {
+    ui.add_space(10.0);
+    ui.heading(egui::RichText::new("Voice Command").color(egui::Color32::WHITE));
+    ui.add_space(10.0);
+
+    // Show transcript
+    ui.label(
+        egui::RichText::new(format!("\"{}\"", transcript))
+            .size(14.0)
+            .italics()
+            .color(egui::Color32::LIGHT_GRAY),
+    );
+    ui.add_space(15.0);
+
+    ui.spinner();
+    ui.add_space(5.0);
+    ui.label(
+        egui::RichText::new("Interpreting...")
+            .size(16.0)
+            .color(egui::Color32::LIGHT_GRAY),
+    );
+}
+
+fn render_permission_prompt(
+    ui: &mut egui::Ui,
+    transcript: &str,
+    requested_targets: &[String],
+    reason: &str,
+) {
+    ui.add_space(5.0);
+    ui.heading(egui::RichText::new("Permission Required").color(egui::Color32::YELLOW));
+    ui.add_space(10.0);
+
+    // Show transcript
+    ui.label(
+        egui::RichText::new(format!("\"{}\"", transcript))
+            .size(14.0)
+            .italics()
+            .color(egui::Color32::LIGHT_GRAY),
+    );
+    ui.add_space(10.0);
+
+    // Permission request
+    let targets_str = requested_targets.join(", ");
+    ui.label(
+        egui::RichText::new(format!("Agent wants to view: {}", targets_str))
+            .size(15.0)
+            .color(egui::Color32::WHITE),
+    );
+
+    if !reason.is_empty() {
+        ui.label(
+            egui::RichText::new(format!("Reason: {}", reason))
+                .size(13.0)
+                .color(egui::Color32::GRAY),
+        );
+    }
+
+    ui.add_space(15.0);
+
+    // Joystick hints
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("→ Allow").color(egui::Color32::GREEN));
+        ui.add_space(30.0);
+        ui.label(egui::RichText::new("← Deny").color(egui::Color32::from_rgb(255, 100, 100)));
+    });
+}
+
+fn render_selection_menu(
+    ui: &mut egui::Ui,
+    transcript: &str,
+    interpretations: &[AgentInterpretation],
+    selected: usize,
+) {
+    ui.add_space(5.0);
+    ui.heading(egui::RichText::new("Voice Command").color(egui::Color32::WHITE));
+    ui.add_space(5.0);
+
+    // Show transcript
+    ui.label(
+        egui::RichText::new(format!("\"{}\"", transcript))
+            .size(14.0)
+            .italics()
+            .color(egui::Color32::LIGHT_GRAY),
+    );
+    ui.add_space(10.0);
+
+    // Interpretation options
+    egui::ScrollArea::vertical()
+        .max_height(200.0)
+        .show(ui, |ui| {
+            for (i, interp) in interpretations.iter().enumerate() {
+                let is_selected = i == selected;
+
+                let bg_color = if is_selected {
+                    egui::Color32::from_rgb(60, 80, 120)
+                } else {
+                    egui::Color32::TRANSPARENT
+                };
+
+                let text_color = if is_selected {
+                    egui::Color32::WHITE
+                } else {
+                    egui::Color32::LIGHT_GRAY
+                };
+
+                egui::Frame::new()
+                    .fill(bg_color)
+                    .corner_radius(6.0)
+                    .inner_margin(egui::Margin::symmetric(10, 8))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            // Selection indicator
+                            if is_selected {
+                                ui.label(egui::RichText::new("▶").color(egui::Color32::WHITE));
+                            } else {
+                                ui.add_space(14.0);
+                            }
+
+                            // Confidence percentage
+                            let confidence_pct = (interp.confidence * 100.0) as u32;
+                            let confidence_color = confidence_to_color(interp.confidence);
+                            ui.label(
+                                egui::RichText::new(format!("[{}%]", confidence_pct))
+                                    .size(13.0)
+                                    .color(confidence_color),
+                            );
+
+                            // Action description
+                            let action_text = format_action(&interp.action);
+                            ui.label(
+                                egui::RichText::new(action_text)
+                                    .size(14.0)
+                                    .color(text_color),
+                            );
+                        });
+
+                        // Explanation (smaller, below)
+                        if !interp.explanation.is_empty() {
+                            ui.horizontal(|ui| {
+                                ui.add_space(28.0);
+                                ui.label(
+                                    egui::RichText::new(&interp.explanation)
+                                        .size(12.0)
+                                        .color(egui::Color32::GRAY),
+                                );
+                            });
+                        }
+                    });
+
+                ui.add_space(2.0);
+            }
+        });
+
+    ui.add_space(10.0);
+
+    // Joystick hints
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("← Cancel").color(egui::Color32::from_rgb(200, 100, 100)));
+        ui.add_space(15.0);
+        ui.label(egui::RichText::new("↑↓ Navigate").color(egui::Color32::GRAY));
+        ui.add_space(15.0);
+        ui.label(egui::RichText::new("→ Confirm").color(egui::Color32::GREEN));
+    });
+}
+
+fn confidence_to_color(confidence: f32) -> egui::Color32 {
+    if confidence >= 0.9 {
+        egui::Color32::from_rgb(100, 200, 100) // Green
+    } else if confidence >= 0.7 {
+        egui::Color32::from_rgb(200, 200, 100) // Yellow
+    } else if confidence >= 0.5 {
+        egui::Color32::from_rgb(200, 150, 100) // Orange
+    } else {
+        egui::Color32::from_rgb(200, 100, 100) // Red
+    }
+}
+
+fn format_action(action: &AgentAction) -> String {
+    match action {
+        AgentAction::Command { slug } => {
+            // Convert slug to readable format
+            slug.replace('.', " → ").replace('_', " ")
+        }
+        AgentAction::InsertText { target, direction, content } => {
+            let target_str = match target {
+                InsertTarget::UrlBar => "URL bar",
+                InsertTarget::LandmarkBar => "landmark bar",
+                InsertTarget::CurrentCell => "current cell",
+                InsertTarget::NewCell => {
+                    if let Some(dir) = direction {
+                        return format!("New cell {}: \"{}\"", dir, truncate_string(content, 30));
+                    }
+                    "new cell"
+                }
+            };
+            format!("Insert in {}: \"{}\"", target_str, truncate_string(content, 30))
+        }
+        AgentAction::SummonElf { elf_url, target, direction, .. } => {
+            let elf_name = elf_url.split('/').last().unwrap_or(elf_url);
+            let target_str = match target {
+                InsertTarget::NewCell if direction.is_some() => {
+                    format!("new cell {}", direction.as_ref().unwrap())
+                }
+                _ => "cell".to_string(),
+            };
+            format!("Summon {} → {}", elf_name, target_str)
+        }
+        AgentAction::RequestView { targets, .. } => {
+            format!("View cells: {}", targets.join(", "))
+        }
+    }
+}
+
+fn truncate_string(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len.saturating_sub(3)])
+    }
+}
+
+// ============================================================================
+// Voice Settings Dialog
+// ============================================================================
+
+/// Actions returned from the voice settings dialog
+#[derive(Debug, Clone, PartialEq)]
+pub enum VoiceSettingsAction {
+    None,
+    Close,
+    Save(VoiceCommandConfig),
+}
+
+/// Render the voice settings dialog
+/// Returns the action to take
+pub fn render_voice_settings_dialog(
+    ctx: &egui::Context,
+    config: &mut VoiceCommandConfig,
+) -> VoiceSettingsAction {
+    let mut action = VoiceSettingsAction::None;
+
+    #[allow(deprecated)]
+    let screen_rect = ctx.screen_rect();
+
+    egui::Area::new("voice_settings_dialog".into())
+        .fixed_pos(egui::pos2(0.0, 0.0))
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            // Dark overlay background
+            let painter = ui.painter();
+            painter.rect_filled(
+                screen_rect,
+                0.0,
+                egui::Color32::from_rgba_unmultiplied(0, 0, 0, 180),
+            );
+
+            // Center the dialog
+            let center = screen_rect.center();
+            let panel_width = 500.0;
+            let panel_height = 400.0;
+
+            let panel_rect = egui::Rect::from_center_size(
+                center,
+                egui::vec2(panel_width, panel_height),
+            );
+
+            // Panel background
+            painter.rect_filled(
+                panel_rect,
+                12.0,
+                egui::Color32::from_rgb(30, 30, 40),
+            );
+            painter.rect_stroke(
+                panel_rect,
+                12.0,
+                egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 80, 120)),
+                egui::StrokeKind::Outside,
+            );
+
+            // Content area
+            let content_rect = panel_rect.shrink(20.0);
+            let ui_builder = egui::UiBuilder::new().max_rect(content_rect);
+
+            #[allow(deprecated)]
+            ui.allocate_new_ui(ui_builder, |ui| {
+                ui.vertical(|ui| {
+                    // Title
+                    ui.horizontal(|ui| {
+                        ui.heading(
+                            egui::RichText::new("Voice Command Settings")
+                                .color(egui::Color32::WHITE),
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("✕").clicked() {
+                                action = VoiceSettingsAction::Close;
+                            }
+                        });
+                    });
+                    ui.add_space(15.0);
+                    ui.separator();
+                    ui.add_space(10.0);
+
+                    // EU Only checkbox
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut config.eu_only, "");
+                        ui.label(
+                            egui::RichText::new("EU-hosted models only")
+                                .color(egui::Color32::WHITE),
+                        );
+                    });
+                    ui.label(
+                        egui::RichText::new("Only show models hosted in European data centers")
+                            .size(12.0)
+                            .color(egui::Color32::GRAY),
+                    );
+                    ui.add_space(15.0);
+
+                    // Model selection
+                    ui.label(
+                        egui::RichText::new("LLM Model")
+                            .color(egui::Color32::WHITE)
+                            .strong(),
+                    );
+                    ui.add_space(5.0);
+
+                    let models = available_models();
+                    let filtered_models: Vec<_> = if config.eu_only {
+                        models.iter().filter(|m| m.eu_hosted).collect()
+                    } else {
+                        models.iter().collect()
+                    };
+
+                    egui::ScrollArea::vertical()
+                        .max_height(180.0)
+                        .show(ui, |ui| {
+                            for model in filtered_models {
+                                let is_selected = config.model == model.id;
+                                let bg_color = if is_selected {
+                                    egui::Color32::from_rgb(60, 80, 120)
+                                } else {
+                                    egui::Color32::TRANSPARENT
+                                };
+
+                                egui::Frame::new()
+                                    .fill(bg_color)
+                                    .corner_radius(4.0)
+                                    .inner_margin(egui::Margin::symmetric(8, 6))
+                                    .show(ui, |ui| {
+                                        let response = ui.horizontal(|ui| {
+                                            ui.vertical(|ui| {
+                                                ui.horizontal(|ui| {
+                                                    ui.label(
+                                                        egui::RichText::new(&model.name)
+                                                            .color(egui::Color32::WHITE),
+                                                    );
+                                                    if model.eu_hosted {
+                                                        ui.label(
+                                                            egui::RichText::new("🇪🇺")
+                                                                .size(12.0),
+                                                        );
+                                                    }
+                                                });
+                                                ui.label(
+                                                    egui::RichText::new(&model.provider)
+                                                        .size(11.0)
+                                                        .color(egui::Color32::GRAY),
+                                                );
+                                            });
+                                        });
+
+                                        if response.response.interact(egui::Sense::click()).clicked() {
+                                            config.model = model.id.clone();
+                                        }
+                                    });
+                                ui.add_space(2.0);
+                            }
+                        });
+
+                    ui.add_space(15.0);
+                    ui.separator();
+                    ui.add_space(10.0);
+
+                    // Speech-to-text provider (placeholder)
+                    ui.label(
+                        egui::RichText::new("Speech-to-Text Provider")
+                            .color(egui::Color32::WHITE)
+                            .strong(),
+                    );
+                    ui.label(
+                        egui::RichText::new("Coming soon - please configure a provider")
+                            .size(12.0)
+                            .color(egui::Color32::YELLOW),
+                    );
+
+                    ui.add_space(15.0);
+
+                    // Save button
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Max), |ui| {
+                        if ui
+                            .button(
+                                egui::RichText::new("Save")
+                                    .color(egui::Color32::WHITE),
+                            )
+                            .clicked()
+                        {
+                            action = VoiceSettingsAction::Save(config.clone());
+                        }
+                        if ui.button("Cancel").clicked() {
+                            action = VoiceSettingsAction::Close;
+                        }
+                    });
+                });
+            });
+        });
+
+    action
+}

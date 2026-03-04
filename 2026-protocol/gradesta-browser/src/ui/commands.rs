@@ -2,6 +2,7 @@
 //!
 //! Executes captured keyboard commands and returns the results.
 
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -19,6 +20,10 @@ use crate::state::{AppState, InputMode, PendingAudioCell, PendingAudioStatus, Pl
 use crate::state::{EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
 use crate::state::{ZOOM_MAX, ZOOM_MIN, ZOOM_STEP};
 use crate::tts;
+use crate::voice_command::{
+    self, AgentAction, CellContext, InsertTarget, VoiceCommandChannel,
+    VoiceCommandEvent, VoiceCommandState,
+};
 
 use super::input::CapturedCommands;
 
@@ -29,6 +34,8 @@ pub struct CommandResults {
     pub any_command_processed: bool,
     /// Whether we should finalize recording this frame
     pub should_finalize_recording: bool,
+    /// Whether voice command recording should be finalized
+    pub should_finalize_voice_recording: bool,
 }
 
 /// Execute all captured commands and update state accordingly
@@ -45,6 +52,7 @@ pub fn execute_commands(
     audio_signal: &AudioRecordingSignal,
     playback_state: &AudioPlaybackState,
     boost_state: &mut PlaybackBoostState,
+    voice_channel: &VoiceCommandChannel,
     _ctx: &bevy_egui::egui::Context,
 ) -> CommandResults {
     let mut results = CommandResults::default();
@@ -285,6 +293,12 @@ pub fn execute_commands(
         app_state.show_gamepad_help = !app_state.show_gamepad_help;
     }
 
+    // GlobalToggleVoiceSettings - Toggle voice command settings dialog
+    if cmds.toggle_voice_settings {
+        results.any_command_processed = true;
+        app_state.show_voice_settings = !app_state.show_voice_settings;
+    }
+
     // Handle URL focus key - sets flag for main.rs to handle after TextEdit is rendered
     // (Focus must be requested AFTER the widget is rendered to ensure it's in used_ids)
     if cmds.focus_url_down {
@@ -315,6 +329,67 @@ pub fn execute_commands(
     } else {
         false
     };
+
+    // Voice command mode handling
+    // Start voice command when L2 held for 100ms+
+    // Note: Does not require connection - voice commands can toggle UI, navigate locally, etc.
+    if cmds.voice_command_start && app_state.input_mode == InputMode::Normal {
+        results.any_command_processed = true;
+        start_voice_command(app_state, playback_state, voice_channel);
+    }
+
+    // Handle voice command state machine
+    if let InputMode::VoiceCommand(ref state) = app_state.input_mode.clone() {
+        // Voice command stop - triggers transition from Recording to Transcribing
+        if cmds.voice_command_stop {
+            if let VoiceCommandState::Recording { ref stop_signal, .. } = state {
+                results.any_command_processed = true;
+                if let Ok(mut stop) = stop_signal.lock() {
+                    *stop = true;
+                }
+                results.should_finalize_voice_recording = true;
+            }
+        }
+
+        // Selection navigation in Selecting state
+        if let VoiceCommandState::Selecting { ref interpretations, selected, .. } = state {
+            let max_idx = interpretations.len().saturating_sub(1);
+
+            if cmds.voice_select_up {
+                results.any_command_processed = true;
+                let new_selected = selected.saturating_sub(1);
+                if let InputMode::VoiceCommand(VoiceCommandState::Selecting { ref mut selected, .. }) = app_state.input_mode {
+                    *selected = new_selected;
+                }
+            }
+
+            if cmds.voice_select_down {
+                results.any_command_processed = true;
+                let new_selected = (selected + 1).min(max_idx);
+                if let InputMode::VoiceCommand(VoiceCommandState::Selecting { ref mut selected, .. }) = app_state.input_mode {
+                    *selected = new_selected;
+                }
+            }
+
+            if cmds.voice_cancel {
+                results.any_command_processed = true;
+                app_state.input_mode = InputMode::Normal;
+                app_state.status = "Voice command cancelled".to_string();
+            }
+        }
+
+        // Permission response in AwaitingPermission state
+        if let VoiceCommandState::AwaitingPermission { .. } = state {
+            if cmds.voice_cancel {
+                results.any_command_processed = true;
+                // User denied - cancel voice command
+                app_state.input_mode = InputMode::Normal;
+                app_state.status = "Permission denied, voice command cancelled".to_string();
+            }
+            // Note: voice_confirm for granting permission is handled in main.rs
+            // where we have access to VoiceCommandChannel to re-query the LLM
+        }
+    }
 
     results
 }
@@ -700,4 +775,606 @@ fn execute_start_recording(
     app_state.recording_start = Some(Instant::now());
     app_state.input_mode = InputMode::Recording { direction };
     app_state.status = "🔴 Recording... (release key to save)".to_string();
+}
+
+// ============================================================================
+// Voice Command Functions
+// ============================================================================
+
+/// Start voice command recording with real-time transcription (L2+R2 held)
+fn start_voice_command(
+    app_state: &mut AppState,
+    playback_state: &AudioPlaybackState,
+    voice_channel: &VoiceCommandChannel,
+) {
+    // Stop any currently playing audio
+    stop_audio(playback_state);
+
+    // Create shared state for recording
+    let samples = Arc::new(Mutex::new(Vec::new()));
+    let stop_signal = Arc::new(Mutex::new(false));
+    let live_transcript = Arc::new(Mutex::new(String::new()));
+    let audio_level = Arc::new(Mutex::new(0.0f32));
+
+    // Start real-time transcription WebSocket
+    let ws_audio_tx = voice_command::start_realtime_transcription(
+        live_transcript.clone(),
+        voice_channel.tx.clone(),
+    );
+
+    if ws_audio_tx.is_none() {
+        app_state.status = "No Soniox API key found. Add key to ~/.config/gradesta/elves/simple-llm/soniox.com/secret.key".to_string();
+        return;
+    }
+
+    let ws_audio_tx_for_thread = ws_audio_tx.clone();
+    let audio_level_for_thread = audio_level.clone();
+
+    // Start recording in background thread, streaming to WebSocket
+    let samples_clone = samples.clone();
+    let stop_clone = stop_signal.clone();
+    thread::spawn(move || {
+        // Record audio and stream chunks to WebSocket for real-time transcription
+        let sample_rate_out = Arc::new(Mutex::new(16000u32)); // Target sample rate for speech
+        if let Err(e) = run_voice_recording_with_streaming(
+            samples_clone,
+            stop_clone,
+            sample_rate_out,
+            ws_audio_tx_for_thread,
+            audio_level_for_thread,
+        ) {
+            eprintln!("Voice command recording error: {}", e);
+        }
+    });
+
+    app_state.recording_start = Some(Instant::now());
+    app_state.input_mode = InputMode::VoiceCommand(VoiceCommandState::Recording {
+        samples,
+        stop_signal,
+        live_transcript,
+        ws_audio_tx,
+        audio_level,
+    });
+    app_state.status = "🎤 Voice command... (release triggers to stop)".to_string();
+}
+
+/// Record audio and stream chunks to WebSocket for real-time transcription
+fn run_voice_recording_with_streaming(
+    samples: Arc<Mutex<Vec<f32>>>,
+    stop_signal: Arc<Mutex<bool>>,
+    sample_rate_out: Arc<Mutex<u32>>,
+    ws_audio_tx: Option<crossbeam_channel::Sender<Vec<u8>>>,
+    audio_level: Arc<Mutex<f32>>,
+) -> Result<(), String> {
+    use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+
+    let host = cpal::default_host();
+    let device = host.default_input_device()
+        .ok_or("No input device available")?;
+
+    // Request 16kHz mono for speech recognition
+    let config = cpal::StreamConfig {
+        channels: 1,
+        sample_rate: cpal::SampleRate(16000),
+        buffer_size: cpal::BufferSize::Default,
+    };
+
+    if let Ok(mut sr) = sample_rate_out.lock() {
+        *sr = 16000;
+    }
+
+    let samples_for_callback = samples.clone();
+    let stop_for_callback = stop_signal.clone();
+    let ws_tx = ws_audio_tx.clone();
+    let audio_level_for_callback = audio_level.clone();
+
+    // Buffer for accumulating samples before sending (send every ~100ms = 1600 samples at 16kHz)
+    let chunk_buffer = Arc::new(Mutex::new(Vec::<f32>::with_capacity(1600)));
+    let chunk_buffer_for_callback = chunk_buffer.clone();
+
+    let stream = device.build_input_stream(
+        &config,
+        move |data: &[f32], _: &cpal::InputCallbackInfo| {
+            // Check if we should stop
+            if let Ok(stop) = stop_for_callback.lock() {
+                if *stop {
+                    return;
+                }
+            }
+
+            // Calculate RMS audio level for the meter
+            if !data.is_empty() {
+                let sum_sq: f32 = data.iter().map(|&s| s * s).sum();
+                let rms = (sum_sq / data.len() as f32).sqrt();
+                // Scale to 0-1 range (typical speech is around 0.1-0.3 RMS)
+                let level = (rms * 5.0).min(1.0);
+                if let Ok(mut lvl) = audio_level_for_callback.lock() {
+                    // Smooth the level a bit
+                    *lvl = *lvl * 0.7 + level * 0.3;
+                }
+            }
+
+            // Accumulate samples
+            if let Ok(mut s) = samples_for_callback.lock() {
+                s.extend_from_slice(data);
+            }
+
+            // Also buffer for WebSocket streaming
+            if let Ok(mut buf) = chunk_buffer_for_callback.lock() {
+                buf.extend_from_slice(data);
+
+                // Send chunk when we have enough samples (~100ms of audio)
+                if buf.len() >= 1600 {
+                    if let Some(ref tx) = ws_tx {
+                        // Convert f32 samples to s16le bytes
+                        let pcm: Vec<u8> = buf.iter()
+                            .flat_map(|&s| {
+                                let sample = (s * 32767.0).clamp(-32768.0, 32767.0) as i16;
+                                sample.to_le_bytes()
+                            })
+                            .collect();
+                        let _ = tx.send(pcm);
+                    }
+                    buf.clear();
+                }
+            }
+        },
+        |err| {
+            eprintln!("Audio stream error: {}", err);
+        },
+        None,
+    ).map_err(|e| format!("Failed to build input stream: {}", e))?;
+
+    stream.play().map_err(|e| format!("Failed to start recording: {}", e))?;
+
+    // Wait for stop signal
+    loop {
+        if let Ok(stop) = stop_signal.lock() {
+            if *stop {
+                break;
+            }
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    // Send any remaining buffered samples
+    if let Some(ref tx) = ws_audio_tx {
+        if let Ok(buf) = chunk_buffer.lock() {
+            if !buf.is_empty() {
+                let pcm: Vec<u8> = buf.iter()
+                    .flat_map(|&s| {
+                        let sample = (s * 32767.0).clamp(-32768.0, 32767.0) as i16;
+                        sample.to_le_bytes()
+                    })
+                    .collect();
+                let _ = tx.send(pcm);
+            }
+        }
+    }
+
+    // Drop the stream to stop recording
+    drop(stream);
+
+    Ok(())
+}
+
+/// Finalize voice command recording - signals stop and waits for WebSocket to complete
+pub fn finalize_voice_recording(
+    app_state: &mut AppState,
+    _voice_channel: &VoiceCommandChannel,
+    _voice_config: &voice_command::VoiceCommandConfig,
+) {
+    if let InputMode::VoiceCommand(VoiceCommandState::Recording {
+        ref samples,
+        ref stop_signal,
+        ref live_transcript,
+        ..
+    }) = app_state.input_mode {
+        // Signal recording to stop - this will close the audio channel
+        // which will cause the WebSocket thread to finish and send TranscriptionComplete
+        if let Ok(mut stop) = stop_signal.lock() {
+            *stop = true;
+        }
+
+        // Get the current live transcript
+        let current_transcript = if let Ok(t) = live_transcript.lock() {
+            t.clone()
+        } else {
+            String::new()
+        };
+
+        // Small delay to let recording thread finish
+        thread::sleep(Duration::from_millis(100));
+
+        // Get recorded samples count for logging
+        let sample_count = if let Ok(s) = samples.lock() {
+            s.len()
+        } else {
+            0
+        };
+
+        eprintln!("Voice recording finished: {} samples, transcript so far: \"{}\"", sample_count, current_transcript);
+
+        if sample_count < 1000 {
+            // Too short
+            app_state.input_mode = InputMode::Normal;
+            app_state.status = "Voice command too short".to_string();
+            return;
+        }
+
+        // Transition to Transcribing state while WebSocket finalizes
+        // The TranscriptionComplete event will arrive shortly via the channel
+        app_state.input_mode = InputMode::VoiceCommand(VoiceCommandState::Transcribing);
+        app_state.status = format!("Finalizing: \"{}\"", current_transcript);
+    }
+}
+
+/// Process voice command events from the channel
+pub fn process_voice_command_events(
+    app_state: &mut AppState,
+    graph: &GraphState,
+    voice_channel: &VoiceCommandChannel,
+    voice_config: &voice_command::VoiceCommandConfig,
+) {
+    while let Ok(event) = voice_channel.rx.try_recv() {
+        match event {
+            VoiceCommandEvent::TranscriptionComplete { transcript } => {
+                eprintln!("Transcription complete: \"{}\"", transcript);
+
+                if transcript.is_empty() {
+                    app_state.input_mode = InputMode::Normal;
+                    app_state.status = "No speech detected".to_string();
+                    continue;
+                }
+
+                // Start LLM interpretation
+                app_state.input_mode = InputMode::VoiceCommand(VoiceCommandState::Interpreting {
+                    transcript: transcript.clone(),
+                    cell_context: None,
+                });
+                app_state.status = "Interpreting command...".to_string();
+
+                // Query LLM
+                if let Some(api_key) = voice_command::load_api_key() {
+                    let context = "Normal";
+                    let mime_type = get_current_cell_mime(app_state, graph);
+                    let direction = direction_name(app_state.last_nav_direction);
+
+                    voice_command::query_llm(
+                        &transcript,
+                        context,
+                        &mime_type,
+                        direction,
+                        None,
+                        &api_key,
+                        voice_config,
+                        voice_channel.tx.clone(),
+                    );
+                } else {
+                    app_state.input_mode = InputMode::Normal;
+                    app_state.status = "API key not found. Place key at ~/.config/gradesta/elves/simple-llm/requesty.ai/secret.key".to_string();
+                }
+            }
+
+            VoiceCommandEvent::TranscriptionFailed { error } => {
+                eprintln!("Transcription failed: {}", error);
+                // Only exit recording if we're not still holding the trigger
+                // If still in Recording state, just update status but stay in that state
+                // so the user can see what's happening
+                if !matches!(app_state.input_mode, InputMode::VoiceCommand(VoiceCommandState::Recording { .. })) {
+                    app_state.input_mode = InputMode::Normal;
+                }
+                app_state.status = format!("Transcription failed: {}", error);
+            }
+
+            VoiceCommandEvent::TranscriptUpdate { text, is_final: _ } => {
+                // Real-time transcript updates are handled via the Arc<Mutex<String>> in the state
+                // This event is just for logging/debugging
+                eprintln!("Live transcript update: \"{}\"", text);
+            }
+
+            VoiceCommandEvent::LlmResponse { interpretations } => {
+                eprintln!("LLM response: {} interpretations", interpretations.len());
+
+                if interpretations.is_empty() {
+                    app_state.input_mode = InputMode::Normal;
+                    app_state.status = "Could not interpret command".to_string();
+                    continue;
+                }
+
+                // Get the transcript from current state
+                let transcript = if let InputMode::VoiceCommand(VoiceCommandState::Interpreting { ref transcript, .. }) = app_state.input_mode {
+                    transcript.clone()
+                } else {
+                    "".to_string()
+                };
+
+                // Show selection menu
+                app_state.input_mode = InputMode::VoiceCommand(VoiceCommandState::Selecting {
+                    transcript,
+                    interpretations,
+                    selected: 0,
+                });
+                app_state.status = "Select action with joystick".to_string();
+            }
+
+            VoiceCommandEvent::LlmRequestsView { targets, reason } => {
+                eprintln!("LLM requests view: {:?} - {}", targets, reason);
+
+                // Get the transcript from current state
+                let transcript = if let InputMode::VoiceCommand(VoiceCommandState::Interpreting { ref transcript, .. }) = app_state.input_mode {
+                    transcript.clone()
+                } else {
+                    "".to_string()
+                };
+
+                // Show permission prompt
+                app_state.input_mode = InputMode::VoiceCommand(VoiceCommandState::AwaitingPermission {
+                    transcript,
+                    requested_targets: targets,
+                    reason,
+                });
+                app_state.status = "Agent requests permission".to_string();
+            }
+
+            VoiceCommandEvent::LlmFailed { error } => {
+                eprintln!("LLM failed: {}", error);
+                app_state.input_mode = InputMode::Normal;
+                app_state.status = format!("Interpretation failed: {}", error);
+            }
+        }
+    }
+}
+
+/// Grant permission for LLM to view cell content and re-query
+pub fn grant_voice_permission(
+    app_state: &mut AppState,
+    graph: &GraphState,
+    voice_channel: &VoiceCommandChannel,
+    voice_config: &voice_command::VoiceCommandConfig,
+) {
+    if let InputMode::VoiceCommand(VoiceCommandState::AwaitingPermission {
+        ref transcript,
+        ref requested_targets,
+        ..
+    }) = app_state.input_mode
+    {
+        // Build cell context
+        let mut cell_context = CellContext::default();
+
+        for target in requested_targets {
+            let content = match target.as_str() {
+                "current" => get_cell_content_at(app_state, graph, None),
+                "north" => get_cell_content_at(app_state, graph, Some(EDGE_NORTH)),
+                "south" => get_cell_content_at(app_state, graph, Some(EDGE_SOUTH)),
+                "east" => get_cell_content_at(app_state, graph, Some(EDGE_EAST)),
+                "west" => get_cell_content_at(app_state, graph, Some(EDGE_WEST)),
+                "up" => get_cell_content_at(app_state, graph, Some(EDGE_UP)),
+                "down" => get_cell_content_at(app_state, graph, Some(EDGE_DOWN)),
+                _ => None,
+            };
+
+            if target == "current" {
+                cell_context.current = content;
+            } else if let Some(c) = content {
+                cell_context.directions.insert(target.clone(), c);
+            }
+        }
+
+        let transcript = transcript.clone();
+
+        // Transition back to interpreting with context
+        app_state.input_mode = InputMode::VoiceCommand(VoiceCommandState::Interpreting {
+            transcript: transcript.clone(),
+            cell_context: Some(cell_context.clone()),
+        });
+        app_state.status = "Re-interpreting with cell data...".to_string();
+
+        // Re-query LLM with cell context
+        if let Some(api_key) = voice_command::load_api_key() {
+            let context = "Normal";
+            let mime_type = get_current_cell_mime(app_state, graph);
+            let direction = direction_name(app_state.last_nav_direction);
+
+            voice_command::query_llm(
+                &transcript,
+                context,
+                &mime_type,
+                direction,
+                Some(&cell_context),
+                &api_key,
+                voice_config,
+                voice_channel.tx.clone(),
+            );
+        }
+    }
+}
+
+/// Execute the selected voice command action
+pub fn execute_voice_action(
+    app_state: &mut AppState,
+    graph: &mut GraphState,
+    ws_cmd_tx: &WsCommandTx,
+) {
+    if let InputMode::VoiceCommand(VoiceCommandState::Selecting {
+        ref interpretations,
+        selected,
+        ..
+    }) = app_state.input_mode
+    {
+        if let Some(interp) = interpretations.get(selected) {
+            let action = interp.action.clone();
+            let explanation = interp.explanation.clone();
+
+            // Execute the action
+            match action {
+                AgentAction::Command { slug } => {
+                    if let Some(cmd) = Command::from_slug(&slug) {
+                        // Execute the command
+                        execute_voice_command(app_state, graph, ws_cmd_tx, &cmd);
+                        app_state.status = format!("Executed: {}", explanation);
+                    } else {
+                        app_state.status = format!("Unknown command: {}", slug);
+                    }
+                }
+
+                AgentAction::InsertText { target, direction, content } => {
+                    match target {
+                        InsertTarget::UrlBar => {
+                            app_state.server_input = content.clone();
+                            app_state.status = format!("Set URL: {}", content);
+                        }
+                        InsertTarget::LandmarkBar => {
+                            app_state.landmark_input = content.clone();
+                            app_state.status = format!("Set landmark: {}", content);
+                        }
+                        InsertTarget::CurrentCell => {
+                            // Edit current cell
+                            app_state.text_input_buffer = content.clone();
+                            super::text_edit::reset_text_edit_state(app_state);
+                            app_state.input_mode = InputMode::TextInput { direction: None };
+                            app_state.status = format!("Editing: {}", content);
+                            return; // Don't reset to Normal
+                        }
+                        InsertTarget::NewCell => {
+                            // Create new cell in direction
+                            let dir = direction
+                                .as_ref()
+                                .map(|d| parse_direction(d))
+                                .flatten()
+                                .unwrap_or(app_state.last_nav_direction);
+                            app_state.text_input_buffer = content.clone();
+                            super::text_edit::reset_text_edit_state(app_state);
+                            app_state.input_mode = InputMode::TextInput { direction: Some(dir) };
+                            app_state.status = format!("New cell {}: {}", direction_name(dir), content);
+                            return; // Don't reset to Normal
+                        }
+                    }
+                }
+
+                AgentAction::SummonElf { elf_url, params: _, target: _, direction: _ } => {
+                    // TODO: Implement elf summoning
+                    app_state.status = format!("Elf summoning not yet implemented: {}", elf_url);
+                }
+
+                AgentAction::RequestView { .. } => {
+                    // This shouldn't happen in Selecting state
+                    app_state.status = "Unexpected request_view action".to_string();
+                }
+            }
+
+            app_state.input_mode = InputMode::Normal;
+        }
+    }
+}
+
+/// Execute a command from voice
+fn execute_voice_command(
+    app_state: &mut AppState,
+    graph: &mut GraphState,
+    ws_cmd_tx: &WsCommandTx,
+    cmd: &Command,
+) {
+    match cmd {
+        // Navigation commands
+        Command::GraphNavigateNorth => navigate_direction(app_state, graph, EDGE_NORTH),
+        Command::GraphNavigateSouth => navigate_direction(app_state, graph, EDGE_SOUTH),
+        Command::GraphNavigateEast => navigate_direction(app_state, graph, EDGE_EAST),
+        Command::GraphNavigateWest => navigate_direction(app_state, graph, EDGE_WEST),
+        Command::GraphNavigateUp => navigate_direction(app_state, graph, EDGE_UP),
+        Command::GraphNavigateDown => navigate_direction(app_state, graph, EDGE_DOWN),
+
+        Command::GraphHistoryBack => {
+            if let Some(prev_id) = app_state.history.pop() {
+                app_state.current_vertex = Some(prev_id);
+            }
+        }
+
+        // Yank
+        Command::GraphYank => {
+            if let Some(current_id) = app_state.current_vertex {
+                if app_state.bag.last() != Some(&current_id) {
+                    app_state.bag.push(current_id);
+                }
+            }
+        }
+
+        // Delete
+        Command::GraphDeleteVertex => {
+            execute_delete_vertex(app_state, graph, ws_cmd_tx);
+        }
+
+        // Toggle commands
+        Command::GlobalToggleBag => {
+            app_state.show_bag_panel = !app_state.show_bag_panel;
+        }
+        Command::GlobalToggleNavPanel => {
+            app_state.show_nav_panel = !app_state.show_nav_panel;
+        }
+        Command::GlobalToggleTTS => {
+            app_state.tts_mode = !app_state.tts_mode;
+            if !app_state.tts_mode {
+                tts::stop();
+            }
+        }
+
+        _ => {
+            eprintln!("Voice command not implemented: {:?}", cmd);
+        }
+    }
+}
+
+fn navigate_direction(app_state: &mut AppState, graph: &GraphState, direction: usize) {
+    if let Some(current_id) = app_state.current_vertex {
+        if let Some(vertex) = graph.vertices.get(&current_id) {
+            let target_id = vertex.edges[direction];
+            if target_id != 0 && graph.vertices.contains_key(&target_id) {
+                app_state.history.push(current_id);
+                app_state.current_vertex = Some(target_id);
+                app_state.last_nav_direction = direction;
+            }
+        }
+    }
+}
+
+fn get_current_cell_mime(app_state: &AppState, graph: &GraphState) -> String {
+    app_state
+        .current_vertex
+        .and_then(|id| graph.vertices.get(&id))
+        .and_then(|v| v.mime.clone())
+        .unwrap_or_else(|| "text/plain".to_string())
+}
+
+fn get_cell_content_at(app_state: &AppState, graph: &GraphState, direction: Option<usize>) -> Option<String> {
+    let vertex_id = if let Some(dir) = direction {
+        app_state
+            .current_vertex
+            .and_then(|id| graph.vertices.get(&id))
+            .map(|v| v.edges[dir])
+            .filter(|&id| id != 0)?
+    } else {
+        app_state.current_vertex?
+    };
+
+    let vertex = graph.vertices.get(&vertex_id)?;
+    let mime = vertex.mime.as_deref().unwrap_or("");
+
+    // Only return text content
+    if mime.starts_with("text/") && mime != "text/gradesta-url" {
+        Some(String::from_utf8_lossy(&vertex.label).to_string())
+    } else {
+        None
+    }
+}
+
+fn parse_direction(s: &str) -> Option<usize> {
+    match s.to_lowercase().as_str() {
+        "north" | "up" => Some(EDGE_NORTH),
+        "south" | "down" => Some(EDGE_SOUTH),
+        "east" | "right" => Some(EDGE_EAST),
+        "west" | "left" => Some(EDGE_WEST),
+        "stack_up" => Some(EDGE_UP),
+        "stack_down" => Some(EDGE_DOWN),
+        _ => None,
+    }
 }
