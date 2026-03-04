@@ -397,6 +397,8 @@ fn render_selection_menu(
                         // Script content (monospace, indented)
                         match &interp.action {
                             AgentAction::Script(script) => {
+                                // Use indent + vertical layout for multiline script
+                                ui.add_space(4.0);
                                 ui.horizontal(|ui| {
                                     ui.add_space(28.0);
                                     // Show script in a code-style frame
@@ -405,14 +407,16 @@ fn render_selection_menu(
                                         .corner_radius(4.0)
                                         .inner_margin(egui::Margin::symmetric(8, 4))
                                         .show(ui, |ui| {
-                                            for line in script.lines() {
-                                                ui.label(
-                                                    egui::RichText::new(line)
-                                                        .size(12.0)
-                                                        .family(egui::FontFamily::Monospace)
-                                                        .color(egui::Color32::from_rgb(180, 200, 180)),
-                                                );
-                                            }
+                                            ui.vertical(|ui| {
+                                                for line in script.lines() {
+                                                    ui.label(
+                                                        egui::RichText::new(line)
+                                                            .size(12.0)
+                                                            .family(egui::FontFamily::Monospace)
+                                                            .color(egui::Color32::from_rgb(180, 200, 180)),
+                                                    );
+                                                }
+                                            });
                                         });
                                 });
                             }

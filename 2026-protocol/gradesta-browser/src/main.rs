@@ -792,8 +792,12 @@ fn ui_system(
         should_connect = true;
     }
 
-    // Connect/refresh on button click, Enter, or GlobalRefresh command
-    if should_connect || cmd_refresh {
+    // Connect/refresh on button click, Enter, GlobalRefresh command, or voice command
+    let voice_refresh = app_state.voice_refresh_pending;
+    if voice_refresh {
+        app_state.voice_refresh_pending = false;
+    }
+    if should_connect || cmd_refresh || voice_refresh {
         let server = app_state.server_input.trim().to_string();
         let landmark = app_state.landmark_input.trim().to_string();
         if server.is_empty() {

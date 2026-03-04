@@ -342,7 +342,8 @@ pub fn execute_commands(
 
     // Handle URL focus key - sets flag for main.rs to handle after TextEdit is rendered
     // (Focus must be requested AFTER the widget is rendered to ensure it's in used_ids)
-    if cmds.focus_url_down {
+    // Check both the special field (keyboard) and the command set (voice commands)
+    if cmds.focus_url_down || cmds.has(Command::GlobalFocusUrl) {
         // Log only on first press (when transitioning from not pressed)
         if !app_state.focus_url_bar_next_frame {
             let key_info = app_state.keybindings.get_bindings(&Command::GlobalFocusUrl)
@@ -353,6 +354,13 @@ pub fn execute_commands(
         app_state.focus_url_bar_next_frame = true;
     }
     // Note: focus_url_bar_next_frame is cleared in main.rs after focus is successfully applied
+
+    // GlobalRefresh - trigger refresh (for voice commands; keyboard handled in main.rs)
+    if cmds.has(Command::GlobalRefresh) {
+        results.any_command_processed = true;
+        // Set a flag that main.rs will check
+        app_state.voice_refresh_pending = true;
+    }
 
     // GlobalPlaybackSpeedBoost - Boost playback speed for TTS and audio
     if cmds.has(Command::GlobalPlaybackSpeedBoost) {
@@ -1280,9 +1288,14 @@ pub fn execute_voice_action(
                                 );
                             }
                             ScriptInstruction::InsertText(content) => {
-                                // Set text buffer for the next text input command
-                                app_state.text_input_buffer = content;
-                                super::text_edit::reset_text_edit_state(app_state);
+                                // If URL bar is focused/pending focus, set server input
+                                // Otherwise set text input buffer for text mode
+                                if app_state.focus_url_bar_next_frame || app_state.url_bar_has_focus {
+                                    app_state.server_input = content;
+                                } else {
+                                    app_state.text_input_buffer = content;
+                                    super::text_edit::reset_text_edit_state(app_state);
+                                }
                             }
                         }
                     }

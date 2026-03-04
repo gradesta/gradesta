@@ -471,6 +471,8 @@ pub struct AppState {
     pub last_nav_direction: usize,
     /// Focus URL bar on next frame (to avoid 'l' being typed when pressing Ctrl+L)
     pub focus_url_bar_next_frame: bool,
+    /// Refresh pending from voice command (checked in main.rs)
+    pub voice_refresh_pending: bool,
     /// True when URL bar currently has focus (from click or Ctrl+L)
     pub url_bar_has_focus: bool,
     // Video player state
@@ -675,6 +677,7 @@ impl Default for AppState {
             skip_autoplay_vertex: None,
             last_nav_direction: EDGE_SOUTH, // Default to south
             focus_url_bar_next_frame: false,
+            voice_refresh_pending: false,
             url_bar_has_focus: false,
             show_video_modal: false,
             video_modal_vertex_id: None,
