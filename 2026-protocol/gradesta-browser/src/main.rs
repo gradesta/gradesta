@@ -1229,6 +1229,8 @@ fn ui_system(
             &mut filter,
         );
         app_state.model_filter = filter;
+        // Always update config so changes persist across frames (before Save)
+        voice_config.0 = config;
         match action {
             ui::VoiceSettingsAction::Close => {
                 app_state.show_voice_settings = false;
