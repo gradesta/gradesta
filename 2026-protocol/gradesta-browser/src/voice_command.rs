@@ -677,15 +677,20 @@ fn build_system_prompt(context: &str, mime_type: &str, direction: &str) -> Strin
 
 Commands: navigate_{{north|south|east|west|up|down}}, yank, paste, delete_vertex, edit_text, new_text_vertex
 
-Tools: get_commands(category), request_view(targets, reason)
+Tools:
+- get_commands(category): Get available commands
+- get_services(): Get available local servers and elves to connect to
+- request_view(targets, reason): Request to view cell content
 
-Respond with JSON array. For content requests like "add a cell with X", use insert_text.
-If no matching action, return: [{{"type": "none", "confidence": 1.0, "explanation": "Could not find matching command"}}]
+Respond with JSON array.
+- For content like "add a cell with X", use insert_text with target=new_cell
+- For "connect to X", call get_services() to find the URL, then insert_text with target=url_bar
+- If no match: [{{"type": "none", "confidence": 1.0, "explanation": "..."}}]
 
 Action types:
 - command: {{"type": "command", "slug": "graph.X", "confidence": 0.9, "explanation": "..."}}
-- insert_text: {{"type": "insert_text", "target": "new_cell", "direction": "{direction}", "content": "...", "confidence": 0.9, "explanation": "..."}}
-- none: {{"type": "none", "confidence": 1.0, "explanation": "Could not find matching command"}}
+- insert_text: {{"type": "insert_text", "target": "url_bar|new_cell", "direction": "{direction}", "content": "...", "confidence": 0.9, "explanation": "..."}}
+- none: {{"type": "none", "confidence": 1.0, "explanation": "..."}}
 
 Context: {context} | MIME: {mime_type} | Direction: {direction}
 "#, context = context, mime_type = mime_type, direction = direction)
@@ -709,6 +714,18 @@ fn build_tools() -> Vec<LlmTool> {
                         }
                     },
                     "required": ["category"]
+                }),
+            },
+        },
+        LlmTool {
+            tool_type: "function".to_string(),
+            function: LlmToolDefinition {
+                name: "get_services".to_string(),
+                description: "Get available local services (servers and elves) that can be connected to".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
                 }),
             },
         },
@@ -805,6 +822,40 @@ fn get_commands_for_category(category: &str) -> serde_json::Value {
             })
         }).collect::<Vec<_>>()
     })
+}
+
+/// Get available local services (servers and elves)
+fn get_available_services() -> serde_json::Value {
+    use crate::local_services::LocalServices;
+
+    let services = LocalServices::load();
+
+    match services {
+        Some(ls) => {
+            serde_json::json!({
+                "servers": ls.servers.iter().map(|s| {
+                    serde_json::json!({
+                        "name": s.name,
+                        "url": s.url
+                    })
+                }).collect::<Vec<_>>(),
+                "elves": ls.elves.iter().map(|e| {
+                    serde_json::json!({
+                        "name": e.name,
+                        "url": e.url
+                    })
+                }).collect::<Vec<_>>(),
+                "instructions": "To connect to a server, use insert_text with target='url_bar' and content=<server url>"
+            })
+        }
+        None => {
+            serde_json::json!({
+                "servers": [],
+                "elves": [],
+                "error": "No local services configuration found"
+            })
+        }
+    }
 }
 
 /// Query the LLM with the voice command transcript
@@ -947,6 +998,15 @@ fn query_llm_sync(
                     "get_commands" => {
                         let category = args["category"].as_str().unwrap_or("");
                         let result = get_commands_for_category(category);
+                        messages.push(LlmMessage {
+                            role: "tool".to_string(),
+                            content: result.to_string(),
+                            tool_calls: None,
+                            tool_call_id: Some(tool_call.id),
+                        });
+                    }
+                    "get_services" => {
+                        let result = get_available_services();
                         messages.push(LlmMessage {
                             role: "tool".to_string(),
                             content: result.to_string(),
