@@ -22,13 +22,14 @@ use crate::commands::Command;
 // Configuration
 // ============================================================================
 
-/// Available LLM models with their metadata
+/// Available LLM models with their metadata (fetched from Requesty API)
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LlmModelInfo {
     pub id: String,
-    pub name: String,
-    pub provider: String,
-    pub eu_hosted: bool,
+    #[serde(default)]
+    pub owned_by: String,
+    #[serde(default)]
+    pub created: i64,
 }
 
 /// Voice command configuration
@@ -36,8 +37,6 @@ pub struct LlmModelInfo {
 pub struct VoiceCommandConfig {
     /// Selected LLM model ID (e.g., "anthropic/claude-3-haiku")
     pub model: String,
-    /// Only show EU-hosted models
-    pub eu_only: bool,
     /// Speech-to-text provider (placeholder for future use)
     pub stt_provider: String,
 }
@@ -45,11 +44,66 @@ pub struct VoiceCommandConfig {
 impl Default for VoiceCommandConfig {
     fn default() -> Self {
         Self {
-            model: "mistralai/mistral-small-3.1-24b-instruct".to_string(), // EU-hosted by default
-            eu_only: true,
-            stt_provider: "none".to_string(),
+            model: "anthropic/claude-3-haiku".to_string(),
+            stt_provider: "soniox".to_string(),
         }
     }
+}
+
+/// State for fetching models from Requesty API
+#[derive(Clone, Debug, Default)]
+pub struct ModelFetchState {
+    pub models: Vec<LlmModelInfo>,
+    pub loading: bool,
+    pub error: Option<String>,
+    pub filter: String,
+}
+
+/// Fetch available models from Requesty API
+pub fn fetch_models_from_requesty(
+    result_tx: Sender<Result<Vec<LlmModelInfo>, String>>,
+) {
+    let api_key = match load_api_key() {
+        Some(key) => key,
+        None => {
+            let _ = result_tx.send(Err("No Requesty API key found".to_string()));
+            return;
+        }
+    };
+
+    thread::spawn(move || {
+        let client = reqwest::blocking::Client::new();
+        let response = client
+            .get("https://router.requesty.ai/v1/models")
+            .header("Authorization", format!("Bearer {}", api_key))
+            .send();
+
+        match response {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    match resp.json::<ModelsResponse>() {
+                        Ok(models_resp) => {
+                            let _ = result_tx.send(Ok(models_resp.data));
+                        }
+                        Err(e) => {
+                            let _ = result_tx.send(Err(format!("Failed to parse models: {}", e)));
+                        }
+                    }
+                } else {
+                    let error_text = resp.text().unwrap_or_default();
+                    let _ = result_tx.send(Err(format!("API error: {}", error_text)));
+                }
+            }
+            Err(e) => {
+                let _ = result_tx.send(Err(format!("Request failed: {}", e)));
+            }
+        }
+    });
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelsResponse {
+    data: Vec<LlmModelInfo>,
 }
 
 impl VoiceCommandConfig {
@@ -76,71 +130,23 @@ impl VoiceCommandConfig {
     }
 }
 
-/// Get list of available models
-pub fn available_models() -> Vec<LlmModelInfo> {
-    vec![
-        // EU-hosted models (Mistral is French, HuggingFace hosts in EU)
-        LlmModelInfo {
-            id: "mistralai/mistral-small-3.1-24b-instruct".to_string(),
-            name: "Mistral Small 3.1 24B".to_string(),
-            provider: "Mistral AI".to_string(),
-            eu_hosted: true,
-        },
-        LlmModelInfo {
-            id: "mistralai/mistral-large-2411".to_string(),
-            name: "Mistral Large".to_string(),
-            provider: "Mistral AI".to_string(),
-            eu_hosted: true,
-        },
-        LlmModelInfo {
-            id: "mistralai/mistral-nemo".to_string(),
-            name: "Mistral Nemo".to_string(),
-            provider: "Mistral AI".to_string(),
-            eu_hosted: true,
-        },
-        LlmModelInfo {
-            id: "mistralai/codestral-latest".to_string(),
-            name: "Codestral".to_string(),
-            provider: "Mistral AI".to_string(),
-            eu_hosted: true,
-        },
-        // Non-EU models (US-hosted)
-        LlmModelInfo {
-            id: "anthropic/claude-3-haiku".to_string(),
-            name: "Claude 3 Haiku".to_string(),
-            provider: "Anthropic".to_string(),
-            eu_hosted: false,
-        },
-        LlmModelInfo {
-            id: "anthropic/claude-3.5-sonnet".to_string(),
-            name: "Claude 3.5 Sonnet".to_string(),
-            provider: "Anthropic".to_string(),
-            eu_hosted: false,
-        },
-        LlmModelInfo {
-            id: "openai/gpt-4o-mini".to_string(),
-            name: "GPT-4o Mini".to_string(),
-            provider: "OpenAI".to_string(),
-            eu_hosted: false,
-        },
-        LlmModelInfo {
-            id: "openai/gpt-4o".to_string(),
-            name: "GPT-4o".to_string(),
-            provider: "OpenAI".to_string(),
-            eu_hosted: false,
-        },
-        LlmModelInfo {
-            id: "google/gemini-flash-1.5".to_string(),
-            name: "Gemini 1.5 Flash".to_string(),
-            provider: "Google".to_string(),
-            eu_hosted: false,
-        },
-    ]
-}
-
 /// Bevy resource holding the voice command config
 #[derive(Resource)]
 pub struct VoiceCommandConfigRes(pub VoiceCommandConfig);
+
+/// Channel for receiving model fetch results
+#[derive(Resource)]
+pub struct ModelFetchChannel {
+    pub tx: Sender<Result<Vec<LlmModelInfo>, String>>,
+    pub rx: Receiver<Result<Vec<LlmModelInfo>, String>>,
+}
+
+impl Default for ModelFetchChannel {
+    fn default() -> Self {
+        let (tx, rx) = unbounded();
+        Self { tx, rx }
+    }
+}
 
 // ============================================================================
 // State Types

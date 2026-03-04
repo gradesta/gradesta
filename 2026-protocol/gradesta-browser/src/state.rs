@@ -517,6 +517,10 @@ pub struct AppState {
     pub show_voice_settings: bool,
     /// When L2 trigger was first pressed (for tap vs hold detection)
     pub l2_press_start: Option<Instant>,
+    /// Model fetch state for voice settings
+    pub model_fetch_state: crate::voice_command::ModelFetchState,
+    /// Filter text for model search
+    pub model_filter: String,
 }
 
 /// Playback speed boost state for TTS and audio playback
@@ -696,6 +700,8 @@ impl Default for AppState {
             show_gamepad_help: false,
             show_voice_settings: false,
             l2_press_start: None,
+            model_fetch_state: crate::voice_command::ModelFetchState::default(),
+            model_filter: String::new(),
         }
     }
 }

@@ -12,7 +12,7 @@ use bevy_egui::egui;
 use std::time::Instant;
 
 use crate::voice_command::{
-    available_models, AgentAction, AgentInterpretation, InsertTarget, VoiceCommandConfig,
+    AgentAction, AgentInterpretation, InsertTarget, VoiceCommandConfig,
     VoiceCommandState,
 };
 
@@ -473,12 +473,27 @@ fn truncate_string(s: &str, max_len: usize) -> String {
 // Voice Settings Dialog
 // ============================================================================
 
+use crate::voice_command::{LlmModelInfo, ModelFetchState};
+
 /// Actions returned from the voice settings dialog
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum VoiceSettingsAction {
     None,
     Close,
     Save(VoiceCommandConfig),
+    FetchModels,
+}
+
+impl PartialEq for VoiceSettingsAction {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (VoiceSettingsAction::None, VoiceSettingsAction::None) => true,
+            (VoiceSettingsAction::Close, VoiceSettingsAction::Close) => true,
+            (VoiceSettingsAction::FetchModels, VoiceSettingsAction::FetchModels) => true,
+            (VoiceSettingsAction::Save(a), VoiceSettingsAction::Save(b)) => a == b,
+            _ => false,
+        }
+    }
 }
 
 /// Render the voice settings dialog
@@ -486,6 +501,8 @@ pub enum VoiceSettingsAction {
 pub fn render_voice_settings_dialog(
     ctx: &egui::Context,
     config: &mut VoiceCommandConfig,
+    model_state: &ModelFetchState,
+    filter: &mut String,
 ) -> VoiceSettingsAction {
     let mut action = VoiceSettingsAction::None;
 
@@ -506,8 +523,8 @@ pub fn render_voice_settings_dialog(
 
             // Center the dialog
             let center = screen_rect.center();
-            let panel_width = 500.0;
-            let panel_height = 400.0;
+            let panel_width = 600.0;
+            let panel_height = 500.0;
 
             let panel_rect = egui::Rect::from_center_size(
                 center,
@@ -550,99 +567,138 @@ pub fn render_voice_settings_dialog(
                     ui.separator();
                     ui.add_space(10.0);
 
-                    // EU Only checkbox
+                    // Current model display
                     ui.horizontal(|ui| {
-                        ui.checkbox(&mut config.eu_only, "");
                         ui.label(
-                            egui::RichText::new("EU-hosted models only")
-                                .color(egui::Color32::WHITE),
+                            egui::RichText::new("Current Model:")
+                                .color(egui::Color32::GRAY),
+                        );
+                        ui.label(
+                            egui::RichText::new(&config.model)
+                                .color(egui::Color32::WHITE)
+                                .strong(),
                         );
                     });
-                    ui.label(
-                        egui::RichText::new("Only show models hosted in European data centers")
-                            .size(12.0)
-                            .color(egui::Color32::GRAY),
-                    );
-                    ui.add_space(15.0);
+                    ui.add_space(10.0);
 
                     // Model selection
                     ui.label(
-                        egui::RichText::new("LLM Model")
+                        egui::RichText::new("Select LLM Model")
                             .color(egui::Color32::WHITE)
                             .strong(),
                     );
                     ui.add_space(5.0);
 
-                    let models = available_models();
-                    let filtered_models: Vec<_> = if config.eu_only {
-                        models.iter().filter(|m| m.eu_hosted).collect()
+                    // Search filter
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Filter:").color(egui::Color32::GRAY));
+                        let response = ui.add(
+                            egui::TextEdit::singleline(filter)
+                                .desired_width(200.0)
+                                .hint_text("Search models...")
+                        );
+                        if response.changed() {
+                            // Filter will be applied below
+                        }
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("Refresh").clicked() {
+                                action = VoiceSettingsAction::FetchModels;
+                            }
+                        });
+                    });
+                    ui.add_space(5.0);
+
+                    // Model list
+                    if model_state.loading {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label(
+                                egui::RichText::new("Loading models from Requesty.ai...")
+                                    .color(egui::Color32::LIGHT_GRAY),
+                            );
+                        });
+                    } else if let Some(ref error) = model_state.error {
+                        ui.label(
+                            egui::RichText::new(format!("Error: {}", error))
+                                .color(egui::Color32::from_rgb(255, 100, 100)),
+                        );
+                        if ui.button("Retry").clicked() {
+                            action = VoiceSettingsAction::FetchModels;
+                        }
+                    } else if model_state.models.is_empty() {
+                        ui.label(
+                            egui::RichText::new("No models loaded. Click Refresh to fetch.")
+                                .color(egui::Color32::YELLOW),
+                        );
                     } else {
-                        models.iter().collect()
-                    };
+                        // Filter models
+                        let filter_lower = filter.to_lowercase();
+                        let filtered_models: Vec<&LlmModelInfo> = model_state.models.iter()
+                            .filter(|m| {
+                                filter_lower.is_empty() ||
+                                m.id.to_lowercase().contains(&filter_lower) ||
+                                m.owned_by.to_lowercase().contains(&filter_lower)
+                            })
+                            .collect();
 
-                    egui::ScrollArea::vertical()
-                        .max_height(180.0)
-                        .show(ui, |ui| {
-                            for model in filtered_models {
-                                let is_selected = config.model == model.id;
-                                let bg_color = if is_selected {
-                                    egui::Color32::from_rgb(60, 80, 120)
-                                } else {
-                                    egui::Color32::TRANSPARENT
-                                };
+                        ui.label(
+                            egui::RichText::new(format!("{} models", filtered_models.len()))
+                                .size(12.0)
+                                .color(egui::Color32::GRAY),
+                        );
 
-                                egui::Frame::new()
-                                    .fill(bg_color)
-                                    .corner_radius(4.0)
-                                    .inner_margin(egui::Margin::symmetric(8, 6))
-                                    .show(ui, |ui| {
-                                        let response = ui.horizontal(|ui| {
-                                            ui.vertical(|ui| {
-                                                ui.horizontal(|ui| {
+                        egui::ScrollArea::vertical()
+                            .max_height(250.0)
+                            .show(ui, |ui| {
+                                for model in filtered_models {
+                                    let is_selected = config.model == model.id;
+                                    let bg_color = if is_selected {
+                                        egui::Color32::from_rgb(60, 80, 120)
+                                    } else {
+                                        egui::Color32::TRANSPARENT
+                                    };
+
+                                    let response = egui::Frame::new()
+                                        .fill(bg_color)
+                                        .corner_radius(4.0)
+                                        .inner_margin(egui::Margin::symmetric(8, 4))
+                                        .show(ui, |ui| {
+                                            ui.horizontal(|ui| {
+                                                // Selection indicator
+                                                if is_selected {
+                                                    ui.label(egui::RichText::new("●").color(egui::Color32::GREEN));
+                                                } else {
+                                                    ui.label(egui::RichText::new("○").color(egui::Color32::DARK_GRAY));
+                                                }
+
+                                                ui.vertical(|ui| {
                                                     ui.label(
-                                                        egui::RichText::new(&model.name)
+                                                        egui::RichText::new(&model.id)
                                                             .color(egui::Color32::WHITE),
                                                     );
-                                                    if model.eu_hosted {
+                                                    if !model.owned_by.is_empty() {
                                                         ui.label(
-                                                            egui::RichText::new("🇪🇺")
-                                                                .size(12.0),
+                                                            egui::RichText::new(&model.owned_by)
+                                                                .size(11.0)
+                                                                .color(egui::Color32::GRAY),
                                                         );
                                                     }
                                                 });
-                                                ui.label(
-                                                    egui::RichText::new(&model.provider)
-                                                        .size(11.0)
-                                                        .color(egui::Color32::GRAY),
-                                                );
                                             });
                                         });
 
-                                        if response.response.interact(egui::Sense::click()).clicked() {
-                                            config.model = model.id.clone();
-                                        }
-                                    });
-                                ui.add_space(2.0);
-                            }
-                        });
+                                    if response.response.interact(egui::Sense::click()).clicked() {
+                                        config.model = model.id.clone();
+                                    }
+                                    ui.add_space(1.0);
+                                }
+                            });
+                    }
 
                     ui.add_space(15.0);
                     ui.separator();
                     ui.add_space(10.0);
-
-                    // Speech-to-text provider (placeholder)
-                    ui.label(
-                        egui::RichText::new("Speech-to-Text Provider")
-                            .color(egui::Color32::WHITE)
-                            .strong(),
-                    );
-                    ui.label(
-                        egui::RichText::new("Coming soon - please configure a provider")
-                            .size(12.0)
-                            .color(egui::Color32::YELLOW),
-                    );
-
-                    ui.add_space(15.0);
 
                     // Save button
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Max), |ui| {

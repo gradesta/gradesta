@@ -40,7 +40,7 @@ use state::{AppState, InputMode, NextcloudLoginState, PlaybackBoostState};
 use state::PendingIdentitySetup;
 use state::{EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
 use state::{KEY_REPEAT_DELAY, KEY_REPEAT_RATE};
-use voice_command::{VoiceCommandChannel, VoiceCommandConfig, VoiceCommandConfigRes, VoiceCommandState};
+use voice_command::{ModelFetchChannel, VoiceCommandChannel, VoiceCommandConfig, VoiceCommandConfigRes, VoiceCommandState};
 
 // Existing module imports
 use commands::Command;
@@ -170,6 +170,7 @@ fn main() {
         .insert_resource(PlaybackBoostState::default())
         .insert_resource(VoiceCommandChannel::default())
         .insert_resource(VoiceCommandConfigRes(VoiceCommandConfig::load()))
+        .insert_resource(ModelFetchChannel::default())
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Gradesta Browser".to_string(),
@@ -322,8 +323,26 @@ fn ui_system(
     mut boost_state: ResMut<PlaybackBoostState>,
     voice_channel: Res<VoiceCommandChannel>,
     mut voice_config: ResMut<VoiceCommandConfigRes>,
+    model_fetch_channel: Res<ModelFetchChannel>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
+
+    // Clone the model fetch tx for use in button handlers
+    let model_fetch_tx = model_fetch_channel.tx.clone();
+
+    // Process model fetch results
+    while let Ok(result) = model_fetch_channel.rx.try_recv() {
+        app_state.model_fetch_state.loading = false;
+        match result {
+            Ok(models) => {
+                app_state.model_fetch_state.models = models;
+                app_state.model_fetch_state.error = None;
+            }
+            Err(e) => {
+                app_state.model_fetch_state.error = Some(e);
+            }
+        }
+    }
 
     // Debug: check input state periodically and on pointer activity
     static DEBUG_FRAME: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
@@ -883,6 +902,16 @@ fn ui_system(
                     }
                 }
                 ui.separator();
+                // Voice settings button
+                if ui.button("🎤 Voice").on_hover_text("Voice command settings").clicked() {
+                    app_state.show_voice_settings = true;
+                    // Trigger model fetch if not already loaded
+                    if app_state.model_fetch_state.models.is_empty() && !app_state.model_fetch_state.loading {
+                        app_state.model_fetch_state.loading = true;
+                        voice_command::fetch_models_from_requesty(model_fetch_tx.clone());
+                    }
+                }
+                ui.separator();
                 // Export button
                 if ui.button("📤 Export").on_hover_text("Export graph section to HTML").clicked() {
                     app_state.sidebar.mode = sidebar::SidebarMode::Export;
@@ -1191,7 +1220,15 @@ fn ui_system(
     // Voice settings dialog (modal, rendered on top of everything)
     if app_state.show_voice_settings {
         let mut config = voice_config.0.clone();
-        let action = ui::render_voice_settings_dialog(ctx, &mut config);
+        let model_state = app_state.model_fetch_state.clone();
+        let mut filter = app_state.model_filter.clone();
+        let action = ui::render_voice_settings_dialog(
+            ctx,
+            &mut config,
+            &model_state,
+            &mut filter,
+        );
+        app_state.model_filter = filter;
         match action {
             ui::VoiceSettingsAction::Close => {
                 app_state.show_voice_settings = false;
@@ -1204,6 +1241,13 @@ fn ui_system(
                 }
                 voice_config.0 = new_config;
                 app_state.show_voice_settings = false;
+            }
+            ui::VoiceSettingsAction::FetchModels => {
+                if !app_state.model_fetch_state.loading {
+                    app_state.model_fetch_state.loading = true;
+                    app_state.model_fetch_state.error = None;
+                    voice_command::fetch_models_from_requesty(model_fetch_tx.clone());
+                }
             }
             ui::VoiceSettingsAction::None => {}
         }
