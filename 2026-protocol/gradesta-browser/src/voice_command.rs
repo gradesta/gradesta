@@ -659,13 +659,30 @@ fn build_system_prompt(context: &str, mime_type: &str, direction: &str) -> Strin
 - request_view(targets, reason): Ask permission to view cell content
 
 ## Response Format
-JSON array sorted by confidence:
+Return ONLY a raw JSON array (no markdown, no code blocks). Sorted by confidence:
 [{{"script": "command.slug\nanother.command", "confidence": 0.9, "explanation": "Brief description"}}]
 
 ## Script Syntax
 - Newline-separated command slugs (use \n in JSON)
 - Use EXACT slugs from get_commands() output
-- Special: `insert_text "content"` sets text buffer before text input commands
+- Special: `insert_text "content"` sets the text buffer
+
+## IMPORTANT: Command Order
+Commands execute in order. Some commands clear buffers, so order matters!
+- graph.new_text_vertex CLEARS the text buffer, then enters text input mode
+- insert_text sets the text buffer
+- text_input.submit submits the current buffer
+
+Example: "create a note saying hello to the east"
+CORRECT order:
+graph.set_direction_east
+graph.new_text_vertex
+insert_text "hello"
+text_input.submit
+
+WRONG order (buffer gets cleared):
+insert_text "hello"
+graph.new_text_vertex  <-- this clears the buffer!
 
 If no match: {{"script": "", "confidence": 1.0, "explanation": "Could not understand"}}
 
