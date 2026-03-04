@@ -258,9 +258,9 @@ pub fn capture_voice_command_gamepad(
     const STICK_DEADZONE: f32 = 0.5;
     let (_rx, ry) = gp.right_stick;
 
-    // Y axis: negative = up, positive = down
-    cmds.voice_select_up = ry < -STICK_DEADZONE;
-    cmds.voice_select_down = ry > STICK_DEADZONE;
+    // Y axis: positive = up (move selection up), negative = down (move selection down)
+    cmds.voice_select_up = ry > STICK_DEADZONE;
+    cmds.voice_select_down = ry < -STICK_DEADZONE;
 
     // R3 (right stick click) or A button to confirm selection
     cmds.voice_confirm = gp.is_pressed(GamepadKey::RightStick); // R3
