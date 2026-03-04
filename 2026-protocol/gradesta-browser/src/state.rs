@@ -6,7 +6,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
 
@@ -512,6 +512,90 @@ pub struct AppState {
     pub show_gamepad_help: bool,
 }
 
+/// Playback speed boost state for TTS and audio playback
+/// Activated by left trigger on gamepad
+#[derive(Resource)]
+pub struct PlaybackBoostState {
+    /// Current speed multiplier (1.0 = normal)
+    pub speed: f32,
+    /// When the first boost was applied (to track 3-second window)
+    pub first_boost_time: Option<Instant>,
+    /// When the last boost was applied (for 10-second timeout)
+    pub last_boost_time: Option<Instant>,
+}
+
+impl Default for PlaybackBoostState {
+    fn default() -> Self {
+        Self {
+            speed: 1.0,
+            first_boost_time: None,
+            last_boost_time: None,
+        }
+    }
+}
+
+impl PlaybackBoostState {
+    /// Duration after which boost expires
+    pub const BOOST_TIMEOUT: Duration = Duration::from_secs(10);
+
+    /// Window after first boost during which speed can still increase
+    pub const SPEED_INCREASE_WINDOW: Duration = Duration::from_secs(3);
+
+    /// Maximum speed multiplier
+    pub const MAX_SPEED: f32 = 4.0;
+
+    /// Speed increment per boost press
+    pub const SPEED_INCREMENT: f32 = 0.5;
+
+    /// Check if the boost has expired
+    pub fn is_expired(&self) -> bool {
+        match self.last_boost_time {
+            Some(t) => t.elapsed() >= Self::BOOST_TIMEOUT,
+            None => true,
+        }
+    }
+
+    /// Check if we're still in the window where speed can increase
+    pub fn can_increase_speed(&self) -> bool {
+        match self.first_boost_time {
+            Some(t) => t.elapsed() < Self::SPEED_INCREASE_WINDOW && self.speed < Self::MAX_SPEED,
+            None => true, // First boost can always increase
+        }
+    }
+
+    /// Apply a boost (called on trigger press)
+    /// Returns the new speed
+    pub fn apply_boost(&mut self) -> f32 {
+        let now = Instant::now();
+
+        // Reset if expired
+        if self.is_expired() {
+            self.speed = 1.0;
+            self.first_boost_time = None;
+        }
+
+        // Check if we can increase speed
+        if self.can_increase_speed() {
+            if self.first_boost_time.is_none() {
+                self.first_boost_time = Some(now);
+            }
+            self.speed = (self.speed + Self::SPEED_INCREMENT).min(Self::MAX_SPEED);
+        }
+
+        // Always extend the timeout
+        self.last_boost_time = Some(now);
+
+        self.speed
+    }
+
+    /// Reset boost to normal speed
+    pub fn reset(&mut self) {
+        self.speed = 1.0;
+        self.first_boost_time = None;
+        self.last_boost_time = None;
+    }
+}
+
 impl Default for AppState {
     fn default() -> Self {
         // Try to load identity config
@@ -585,7 +669,7 @@ impl Default for AppState {
             video_modal_vertex_id: None,
             sidebar: SidebarState::default(),
             keybindings: KeybindingResolver::new(&KeybindingsConfig::load().unwrap_or_default()),
-            tts_mode: false,
+            tts_mode: true,
             show_command_bar: false,
             command_bar_input: String::new(),
             command_bar_selected: 0,

@@ -14,7 +14,41 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::{Receiver, Sender};
 use rodio::{OutputStream, Sink, Source};
 
+use crate::audio_processing::{get_audio_speed, TimeStretcher};
 use crate::state::PendingAudioStatus;
+
+// Re-export speed control functions from audio_processing
+pub use crate::audio_processing::{normalize_audio, set_audio_speed};
+
+/// Pre-computed speed levels for burst playback (0.5 increments from 1.5 to 4.0)
+pub const BURST_SPEEDS: [f32; 6] = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0];
+
+/// Time-stretch samples to a target speed using OLA algorithm
+fn stretch_samples(samples: &[i16], sample_rate: u32, channels: u16, speed: f32) -> Vec<i16> {
+    let mut stretcher = TimeStretcher::new(sample_rate, channels);
+    stretcher.set_speed(speed);
+    stretcher.write(samples);
+    stretcher.flush();
+
+    // Estimate output size (input / speed) with some buffer
+    let estimated = ((samples.len() as f32) / speed * 1.5) as usize;
+    let mut output = vec![0i16; estimated.max(8192)];
+    let mut total = 0;
+
+    loop {
+        if total >= output.len() {
+            output.resize(output.len() * 2, 0);
+        }
+        let n = stretcher.read(&mut output[total..]);
+        if n == 0 {
+            break;
+        }
+        total += n;
+    }
+
+    output.truncate(total);
+    output
+}
 
 /// Signal to stop audio recording and communicate sample rate
 #[derive(Resource, Default)]
@@ -31,12 +65,159 @@ pub struct AudioPlaybackState {
     pub playing_vertex: Arc<Mutex<Option<u64>>>,
 }
 
-/// Pre-decoded audio ready for instant playback
+/// Pre-decoded audio ready for instant playback with pre-stretched burst versions
 #[derive(Clone)]
 pub struct PredecodedAudio {
+    /// Normal speed samples (1x)
     pub samples: Vec<i16>,
+    /// Pre-stretched versions for burst speeds (1.5x, 2.0x, 2.5x, 3.0x, 3.5x, 4.0x)
+    /// Index 0 = 1.5x, Index 1 = 2.0x, etc.
+    pub burst_samples: Vec<Vec<i16>>,
     pub sample_rate: u32,
     pub channels: u16,
+}
+
+impl PredecodedAudio {
+    /// Get the appropriate samples for the given speed.
+    /// Returns (samples, playback_rate) where playback_rate adjusts for exact speed.
+    pub fn samples_for_speed(&self, speed: f32) -> (&[i16], f32) {
+        if speed <= 1.01 {
+            // Normal speed
+            return (&self.samples, 1.0);
+        }
+
+        // Find the closest pre-stretched version
+        // We want the pre-stretched version that's <= target speed if possible
+        // Then adjust playback rate to hit exact speed
+        for (i, &burst_speed) in BURST_SPEEDS.iter().enumerate() {
+            if i < self.burst_samples.len() && !self.burst_samples[i].is_empty() {
+                if (burst_speed - speed).abs() < 0.01 {
+                    // Exact match
+                    return (&self.burst_samples[i], 1.0);
+                } else if burst_speed > speed && i > 0 {
+                    // Use previous (slower) burst and speed up playback
+                    let prev_speed = BURST_SPEEDS[i - 1];
+                    let playback_rate = speed / prev_speed;
+                    return (&self.burst_samples[i - 1], playback_rate);
+                }
+            }
+        }
+
+        // Use highest available burst speed
+        if let Some(last_burst) = self.burst_samples.last() {
+            if !last_burst.is_empty() {
+                let playback_rate = speed / BURST_SPEEDS[self.burst_samples.len() - 1];
+                return (last_burst, playback_rate);
+            }
+        }
+
+        // Fallback to normal samples with speed adjustment (will change pitch)
+        (&self.samples, speed)
+    }
+}
+
+/// A rodio Source that uses pre-stretched buffers for speed changes.
+/// Monitors the global speed atomic and returns samples from the appropriate buffer.
+pub struct BurstAwareSource {
+    audio: PredecodedAudio,
+    /// Current position in whichever buffer we're using
+    position: usize,
+    /// Index of current buffer: None = normal, Some(i) = burst_samples[i]
+    current_buffer_idx: Option<usize>,
+    /// Last speed we selected a buffer for
+    last_speed: f32,
+}
+
+impl BurstAwareSource {
+    pub fn new(audio: PredecodedAudio) -> Self {
+        let speed = get_audio_speed();
+        let buffer_idx = Self::buffer_index_for_speed(speed);
+        Self {
+            audio,
+            position: 0,
+            current_buffer_idx: buffer_idx,
+            last_speed: speed,
+        }
+    }
+
+    fn buffer_index_for_speed(speed: f32) -> Option<usize> {
+        if speed <= 1.01 {
+            return None; // Normal buffer
+        }
+        // Find the closest burst buffer
+        for (i, &burst_speed) in BURST_SPEEDS.iter().enumerate() {
+            if speed <= burst_speed + 0.01 {
+                return Some(i);
+            }
+        }
+        // Use highest burst
+        Some(BURST_SPEEDS.len() - 1)
+    }
+
+    fn current_samples(&self) -> &[i16] {
+        match self.current_buffer_idx {
+            None => &self.audio.samples,
+            Some(i) if i < self.audio.burst_samples.len() => &self.audio.burst_samples[i],
+            _ => &self.audio.samples,
+        }
+    }
+}
+
+impl Iterator for BurstAwareSource {
+    type Item = i16;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Check if speed changed significantly every ~1000 samples
+        if self.position % 1000 == 0 {
+            let current_speed = get_audio_speed();
+            let new_idx = Self::buffer_index_for_speed(current_speed);
+
+            if new_idx != self.current_buffer_idx {
+                // Speed changed, switch buffers
+                // Map position from old buffer to new buffer
+                let old_samples = self.current_samples();
+                let old_progress = if old_samples.is_empty() {
+                    0.0
+                } else {
+                    self.position as f64 / old_samples.len() as f64
+                };
+
+                self.current_buffer_idx = new_idx;
+                let new_samples = self.current_samples();
+                self.position = ((old_progress * new_samples.len() as f64) as usize)
+                    .min(new_samples.len().saturating_sub(1));
+                self.last_speed = current_speed;
+            }
+        }
+
+        let samples = self.current_samples();
+        if self.position >= samples.len() {
+            return None;
+        }
+
+        let sample = samples[self.position];
+        self.position += 1;
+        Some(sample)
+    }
+}
+
+impl Source for BurstAwareSource {
+    fn current_frame_len(&self) -> Option<usize> {
+        let samples = self.current_samples();
+        Some(samples.len() - self.position)
+    }
+
+    fn channels(&self) -> u16 {
+        self.audio.channels
+    }
+
+    fn sample_rate(&self) -> u32 {
+        self.audio.sample_rate
+    }
+
+    fn total_duration(&self) -> Option<std::time::Duration> {
+        None // Can change based on speed
+    }
 }
 
 /// Command sent to the persistent audio thread
@@ -94,12 +275,9 @@ impl AudioPreloadCache {
 
                         let sink = Sink::try_new(&handle)
                             .expect("Failed to create audio sink");
-                        let buffer = rodio::buffer::SamplesBuffer::new(
-                            audio.channels,
-                            audio.sample_rate,
-                            audio.samples,
-                        );
-                        sink.append(buffer);
+                        // Use burst-aware source with pre-stretched buffers
+                        let source = BurstAwareSource::new(audio);
+                        sink.append(source);
                         current_sink = Some(sink);
                         current_vertex_id = Some(vertex_id);
                     }
@@ -109,16 +287,13 @@ impl AudioPreloadCache {
                             sink.stop();
                         }
 
-                        // Decode and play
+                        // Decode and play (includes pre-stretching)
                         if let Some(decoded) = predecode_audio(&data) {
                             let sink = Sink::try_new(&handle)
                                 .expect("Failed to create audio sink");
-                            let buffer = rodio::buffer::SamplesBuffer::new(
-                                decoded.channels,
-                                decoded.sample_rate,
-                                decoded.samples,
-                            );
-                            sink.append(buffer);
+                            // Use burst-aware source with pre-stretched buffers
+                            let source = BurstAwareSource::new(decoded);
+                            sink.append(source);
                             current_sink = Some(sink);
                             current_vertex_id = Some(vertex_id);
                         }
@@ -137,9 +312,12 @@ impl AudioPreloadCache {
                 }
 
                 // Check if playback finished
+                let mut should_clear_sink = false;
+                let mut should_stop_sink = false;
+
                 if let Some(ref sink) = current_sink {
                     if sink.empty() {
-                        current_sink = None;
+                        should_clear_sink = true;
                         // Clear playing state
                         if let Ok(mut playing) = playing_vertex.lock() {
                             if *playing == current_vertex_id {
@@ -151,12 +329,22 @@ impl AudioPreloadCache {
                         // Check if we should stop (another vertex started playing)
                         if let Ok(playing) = playing_vertex.lock() {
                             if *playing != current_vertex_id {
-                                sink.stop();
-                                current_sink = None;
+                                should_stop_sink = true;
                                 current_vertex_id = None;
                             }
                         }
+                        // Note: Speed changes are handled by PitchPreservingSource
+                        // which checks the atomic speed and adjusts sonic in real-time
                     }
+                }
+
+                // Handle sink cleanup outside the borrow
+                if should_stop_sink {
+                    if let Some(sink) = current_sink.take() {
+                        sink.stop();
+                    }
+                } else if should_clear_sink {
+                    current_sink = None;
                 }
 
                 thread::sleep(Duration::from_millis(10));
@@ -252,7 +440,7 @@ pub fn play_audio(data: &[u8], _mime: &str, vertex_id: u64, state: &AudioPlaybac
     });
 }
 
-/// Decode audio to PCM samples synchronously
+/// Decode audio to PCM samples and pre-stretch to all burst speeds (in parallel)
 fn predecode_audio(data: &[u8]) -> Option<PredecodedAudio> {
     use rodio::Decoder;
     use std::io::Cursor;
@@ -266,8 +454,27 @@ fn predecode_audio(data: &[u8]) -> Option<PredecodedAudio> {
     // Collect all samples
     let samples: Vec<i16> = decoder.collect();
 
+    // Pre-stretch to all burst speeds in parallel
+    let samples_arc = std::sync::Arc::new(samples.clone());
+    let handles: Vec<_> = BURST_SPEEDS
+        .iter()
+        .map(|&speed| {
+            let samples_clone = samples_arc.clone();
+            let sr = sample_rate;
+            let ch = channels;
+            thread::spawn(move || stretch_samples(&samples_clone, sr, ch, speed))
+        })
+        .collect();
+
+    // Collect results
+    let burst_samples: Vec<Vec<i16>> = handles
+        .into_iter()
+        .map(|h| h.join().unwrap_or_default())
+        .collect();
+
     Some(PredecodedAudio {
         samples,
+        burst_samples,
         sample_rate,
         channels,
     })
@@ -536,82 +743,6 @@ fn extract_wav_transcript(data: &[u8]) -> Option<String> {
         }
     }
     None
-}
-
-// ============================================================================
-// Audio Normalization
-// ============================================================================
-
-/// Target RMS level in dB (relative to full scale)
-/// -20 dBFS leaves headroom for peaks while being audible
-const TARGET_RMS_DB: f32 = -20.0;
-
-/// Below this RMS, audio is considered silent and normalization is skipped
-const SILENCE_THRESHOLD: f32 = 1e-6;
-
-/// Maximum gain boost in dB (prevents amplifying noise too much)
-const MAX_GAIN_DB: f32 = 40.0;
-
-/// Minimum gain (maximum attenuation) in dB
-const MIN_GAIN_DB: f32 = -20.0;
-
-/// Threshold above which soft limiting kicks in
-const LIMITER_THRESHOLD: f32 = 0.9;
-
-/// Normalize audio to consistent loudness with soft limiting for ear protection.
-///
-/// Uses RMS (root mean square) normalization which correlates well with perceived
-/// loudness for voice. After normalization, applies soft limiting to any peaks
-/// above 0.9 to prevent clipping and ear-damaging loud pops.
-///
-/// Returns the gain applied (1.0 = no change).
-pub fn normalize_audio(samples: &mut [f32]) -> f32 {
-    if samples.is_empty() {
-        return 1.0;
-    }
-
-    // Stage 1: Calculate RMS
-    let sum_sq: f32 = samples.iter().map(|s| s * s).sum();
-    let rms = (sum_sq / samples.len() as f32).sqrt();
-
-    // Skip normalization for silent audio
-    if rms < SILENCE_THRESHOLD {
-        return 1.0;
-    }
-
-    // Calculate target RMS in linear scale
-    // dB to linear: 10^(dB/20)
-    let target_rms = 10.0_f32.powf(TARGET_RMS_DB / 20.0);
-
-    // Calculate gain needed
-    let mut gain = target_rms / rms;
-
-    // Limit gain to prevent excessive amplification or attenuation
-    let max_gain = 10.0_f32.powf(MAX_GAIN_DB / 20.0);
-    let min_gain = 10.0_f32.powf(MIN_GAIN_DB / 20.0);
-    gain = gain.clamp(min_gain, max_gain);
-
-    // Apply gain
-    for sample in samples.iter_mut() {
-        *sample *= gain;
-    }
-
-    // Stage 2: Soft limiting for ear protection
-    // Uses tanh-based soft curve for samples above threshold
-    for sample in samples.iter_mut() {
-        let abs_val = sample.abs();
-        if abs_val > LIMITER_THRESHOLD {
-            // Soft curve: map [threshold, infinity) -> [threshold, 1.0)
-            // Using tanh to smoothly compress peaks
-            let excess = abs_val - LIMITER_THRESHOLD;
-            let compressed = LIMITER_THRESHOLD + (1.0 - LIMITER_THRESHOLD) * (excess / (1.0 + excess)).tanh();
-            // Ensure we never exceed 0.99 (ear protection)
-            let limited = compressed.min(0.99);
-            *sample = sample.signum() * limited;
-        }
-    }
-
-    gain
 }
 
 // ============================================================================

@@ -46,6 +46,9 @@ pub struct CapturedCommands {
     // Recording commands
     pub recording_save: bool,
 
+    // Playback speed boost
+    pub playback_speed_boost: bool,
+
     // Text input commands
     pub text_copy: bool,
     pub text_cut: bool,
@@ -183,6 +186,9 @@ pub fn capture_gamepad_commands(
     // Recording - R2 hold to record, release to save (matches keyboard Space behavior)
     cmds.start_recording |= keybindings.command_pressed_gamepad(&Command::GraphStartRecording, gp);
     cmds.recording_save |= keybindings.command_released_gamepad(&Command::RecordingSave, gp);
+
+    // Playback speed boost - L2
+    cmds.playback_speed_boost |= keybindings.command_pressed_gamepad(&Command::GlobalPlaybackSpeedBoost, gp);
 }
 
 /// Log triggered commands to the debug log
@@ -242,6 +248,7 @@ pub fn log_triggered_commands_to_debug(
     if cmds.set_dir_west { triggered.push(Command::GraphSetDirectionWest); }
     if cmds.set_dir_up { triggered.push(Command::GraphSetDirectionUp); }
     if cmds.set_dir_down { triggered.push(Command::GraphSetDirectionDown); }
+    if cmds.playback_speed_boost { triggered.push(Command::GlobalPlaybackSpeedBoost); }
 
     // Collect slug and key info before mutating app_state
     let to_log: Vec<(&str, Option<String>)> = triggered

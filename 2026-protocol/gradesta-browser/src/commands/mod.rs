@@ -85,6 +85,8 @@ pub enum Command {
     GlobalTTSSpeedDown,
     /// Toggle gamepad help overlay
     GlobalToggleGamepadHelp,
+    /// Boost playback speed for TTS and audio
+    GlobalPlaybackSpeedBoost,
 
     // === Graph Context Commands ===
     /// Navigate north in the graph
@@ -246,6 +248,7 @@ impl Command {
             Command::GlobalTTSSpeedUp => "global.tts_speed_up",
             Command::GlobalTTSSpeedDown => "global.tts_speed_down",
             Command::GlobalToggleGamepadHelp => "global.toggle_gamepad_help",
+            Command::GlobalPlaybackSpeedBoost => "global.playback_speed_boost",
             // Graph
             Command::GraphNavigateNorth => "graph.navigate_north",
             Command::GraphNavigateSouth => "graph.navigate_south",
@@ -338,6 +341,7 @@ impl Command {
             "global.tts_speed_up" => Some(Command::GlobalTTSSpeedUp),
             "global.tts_speed_down" => Some(Command::GlobalTTSSpeedDown),
             "global.toggle_gamepad_help" => Some(Command::GlobalToggleGamepadHelp),
+            "global.playback_speed_boost" => Some(Command::GlobalPlaybackSpeedBoost),
             // Graph
             "graph.navigate_north" => Some(Command::GraphNavigateNorth),
             "graph.navigate_south" => Some(Command::GraphNavigateSouth),
@@ -431,6 +435,7 @@ impl Command {
             Command::GlobalTTSSpeedUp => "Increase TTS speed",
             Command::GlobalTTSSpeedDown => "Decrease TTS speed",
             Command::GlobalToggleGamepadHelp => "Toggle gamepad help overlay",
+            Command::GlobalPlaybackSpeedBoost => "Boost playback speed",
             // Graph
             Command::GraphNavigateNorth => "Navigate north in the graph",
             Command::GraphNavigateSouth => "Navigate south in the graph",
@@ -521,7 +526,8 @@ impl Command {
             | Command::GlobalToggleTTS
             | Command::GlobalTTSSpeedUp
             | Command::GlobalTTSSpeedDown
-            | Command::GlobalToggleGamepadHelp => Context::Global,
+            | Command::GlobalToggleGamepadHelp
+            | Command::GlobalPlaybackSpeedBoost => Context::Global,
 
             Command::GraphNavigateNorth
             | Command::GraphNavigateSouth
@@ -614,6 +620,7 @@ impl Command {
             Command::GlobalTTSSpeedUp,
             Command::GlobalTTSSpeedDown,
             Command::GlobalToggleGamepadHelp,
+            Command::GlobalPlaybackSpeedBoost,
             // Graph
             Command::GraphNavigateNorth,
             Command::GraphNavigateSouth,

@@ -6,7 +6,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::audio::{
-    generate_waveform_preview, run_audio_recording, spawn_audio_encoding_task,
+    generate_waveform_preview, run_audio_recording, set_audio_speed, spawn_audio_encoding_task,
     stop_audio, AudioPlaybackState, AudioProcessingChannel, AudioRecordingSignal,
 };
 use crate::commands::Command;
@@ -15,7 +15,7 @@ use crate::graph::GraphState;
 use crate::media::MediaCache;
 use crate::network::{WsCommand, WsCommandTx};
 use crate::sidebar::SidebarMode;
-use crate::state::{AppState, InputMode, PendingAudioCell, PendingAudioStatus};
+use crate::state::{AppState, InputMode, PendingAudioCell, PendingAudioStatus, PlaybackBoostState};
 use crate::state::{EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
 use crate::state::{ZOOM_MAX, ZOOM_MIN, ZOOM_STEP};
 use crate::tts;
@@ -44,6 +44,7 @@ pub fn execute_commands(
     media_cache: &mut MediaCache,
     audio_signal: &AudioRecordingSignal,
     playback_state: &AudioPlaybackState,
+    boost_state: &mut PlaybackBoostState,
     _ctx: &bevy_egui::egui::Context,
 ) -> CommandResults {
     let mut results = CommandResults::default();
@@ -297,6 +298,16 @@ pub fn execute_commands(
         app_state.focus_url_bar_next_frame = true;
     }
     // Note: focus_url_bar_next_frame is cleared in main.rs after focus is successfully applied
+
+    // GlobalPlaybackSpeedBoost - Boost playback speed for TTS and audio
+    if cmds.playback_speed_boost {
+        results.any_command_processed = true;
+        let new_speed = boost_state.apply_boost();
+        // Apply speed to both TTS and audio
+        tts::set_rate(new_speed);
+        set_audio_speed(new_speed);
+        app_state.status = format!("Playback speed: {:.1}x", new_speed);
+    }
 
     // Check if we should finalize recording (space was released)
     results.should_finalize_recording = if let InputMode::Recording { .. } = &app_state.input_mode {

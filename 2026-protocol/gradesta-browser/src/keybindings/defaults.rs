@@ -362,8 +362,8 @@ pub static GAMEPAD_DEFAULTS: &[(Command, GamepadKey)] = &[
     (Command::GraphStartRecording, GamepadKey::RightTrigger),
     (Command::RecordingSave, GamepadKey::RightTrigger),  // Same button - release triggers save
 
-    // Yank/Paste - L2
-    (Command::GraphYank, GamepadKey::LeftTrigger),
+    // Speed boost - L2
+    (Command::GlobalPlaybackSpeedBoost, GamepadKey::LeftTrigger),
 
     // UI toggles
     (Command::GlobalToggleBag, GamepadKey::Start),

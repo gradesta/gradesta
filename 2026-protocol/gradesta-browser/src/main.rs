@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 // Core modules
 mod audio;
+mod audio_processing;
 mod commands;
 mod debug_log;
 mod elf_http;
@@ -30,10 +31,11 @@ mod whisper;
 // Imports from refactored modules
 use audio::{AudioPlaybackState, AudioPreloadCache, AudioProcessingChannel, AudioRecordingSignal};
 use audio::{play_audio_fast, predecode_audio_async, stop_audio};
+use audio_processing::set_audio_speed;
 use graph::GraphState;
 use media::MediaCache;
 use network::{run_ws, NetEventsTx, NetRx, ServerEvent, WsCommand, WsCommandTx};
-use state::{AppState, InputMode, NextcloudLoginState};
+use state::{AppState, InputMode, NextcloudLoginState, PlaybackBoostState};
 use state::PendingIdentitySetup;
 use state::{EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
 use state::{KEY_REPEAT_DELAY, KEY_REPEAT_RATE};
@@ -162,6 +164,7 @@ fn main() {
         .insert_resource(audio_playback_state)
         .insert_resource(audio_preload_cache)
         .insert_resource(AudioProcessingChannel::default())
+        .insert_resource(PlaybackBoostState::default())
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Gradesta Browser".to_string(),
@@ -182,6 +185,7 @@ fn main() {
             (handle_navigation, auto_play_audio_on_navigate).chain(),
             auto_expand_nearby_links,
             preload_nearby_audio,
+            playback_boost_decay,
         ))
         .run();
 }
@@ -310,6 +314,7 @@ fn ui_system(
     playback_state: Res<AudioPlaybackState>,
     elf_http_tx: Res<ElfHttpTx>,
     audio_processing: Res<AudioProcessingChannel>,
+    mut boost_state: ResMut<PlaybackBoostState>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
 
@@ -421,6 +426,7 @@ fn ui_system(
         &mut media_cache,
         &audio_signal,
         &playback_state,
+        &mut boost_state,
         ctx,
     );
 
@@ -1829,4 +1835,17 @@ fn preload_audio_if_needed(
         }
     }
     false
+}
+
+/// Reset playback speed boost when it expires (10 seconds after last boost)
+fn playback_boost_decay(
+    mut boost_state: ResMut<PlaybackBoostState>,
+) {
+    // Only check if there's an active boost
+    if boost_state.last_boost_time.is_some() && boost_state.is_expired() {
+        boost_state.reset();
+        // Reset both TTS and audio speed to normal
+        tts::set_rate(1.0);
+        set_audio_speed(1.0);
+    }
 }
