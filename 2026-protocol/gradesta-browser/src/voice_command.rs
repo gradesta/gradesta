@@ -673,48 +673,21 @@ struct LlmChoice {
 
 /// Build the system prompt for the LLM
 fn build_system_prompt(context: &str, mime_type: &str, direction: &str) -> String {
-    format!(r#"You are a voice command interpreter for Gradesta Browser, a spatial graph editor.
+    format!(r#"Voice command interpreter for Gradesta Browser (spatial graph editor).
 
-## Core Commands (always available)
-- graph.navigate_{{north|south|east|west|up|down}}: Move in direction
-- graph.yank: Copy current cell to bag
-- graph.paste: Paste from bag
-- graph.delete_vertex: Delete current cell
-- graph.edit_text: Edit current cell text
-- graph.new_text_vertex: Create new text cell
+Commands: navigate_{{north|south|east|west|up|down}}, yank, paste, delete_vertex, edit_text, new_text_vertex
 
-## Tools Available
-Use these tools to get more commands or information:
+Tools: get_commands(category), request_view(targets, reason)
 
-1. get_commands(category): Get commands for a category
-   Categories: navigation, editing, clipboard, ui, text_input, recording, export, elf
+Respond with JSON array. For content requests like "add a cell with X", use insert_text.
+If no matching action, return: [{{"type": "none", "confidence": 1.0, "explanation": "Could not find matching command"}}]
 
-2. request_view(targets, reason): Ask user permission to view cell content
-   targets: array of ["current", "north", "south", "east", "west", "up", "down"]
-   reason: Why you need to see the content
+Action types:
+- command: {{"type": "command", "slug": "graph.X", "confidence": 0.9, "explanation": "..."}}
+- insert_text: {{"type": "insert_text", "target": "new_cell", "direction": "{direction}", "content": "...", "confidence": 0.9, "explanation": "..."}}
+- none: {{"type": "none", "confidence": 1.0, "explanation": "Could not find matching command"}}
 
-## Response Format
-After gathering information, respond with a JSON array of actions:
-```json
-[
-  {{"type": "command", "slug": "graph.navigate_north", "confidence": 0.95, "explanation": "Move north"}},
-  {{"type": "insert_text", "target": "new_cell", "direction": "east", "content": "Hello", "confidence": 0.8, "explanation": "Create note"}}
-]
-```
-
-## Action Types
-- command: Execute a command by slug
-- insert_text: Insert text (target: url_bar|landmark_bar|current_cell|new_cell, direction optional for new_cell, content)
-- summon_elf: Call another agent (elf_url, params, target, direction)
-
-## Guidelines
-- Prefer creating NEW cells over overwriting current cell
-- Place new content in user's last navigation direction by default
-- Always include confidence (0.0-1.0) and brief explanation
-- Return 2-4 action options when reasonable
-
-## Context
-Mode: {context} | MIME: {mime_type} | Last Direction: {direction}
+Context: {context} | MIME: {mime_type} | Direction: {direction}
 "#, context = context, mime_type = mime_type, direction = direction)
 }
 
@@ -1013,6 +986,16 @@ fn query_llm_sync(
 }
 
 fn parse_llm_response(content: &str) -> Result<LlmResult, String> {
+    // Handle empty content
+    if content.trim().is_empty() {
+        eprintln!("LLM returned empty response, returning 'no match' interpretation");
+        return Ok(LlmResult::Interpretations(vec![AgentInterpretation {
+            action: AgentAction::Cancel,
+            confidence: 1.0,
+            explanation: "LLM returned empty response - try rephrasing your command".to_string(),
+        }]));
+    }
+
     // Try to find JSON array in the response
     let json_start = content.find('[');
     let json_end = content.rfind(']');
@@ -1065,6 +1048,8 @@ fn parse_llm_response(content: &str) -> Result<LlmResult, String> {
                             },
                             direction: v["direction"].as_str().map(String::from),
                         }),
+                        // Handle "none" type for when LLM can't find a match
+                        "none" => Some(AgentAction::Cancel),
                         _ => None,
                     }?;
 
@@ -1077,14 +1062,25 @@ fn parse_llm_response(content: &str) -> Result<LlmResult, String> {
                 .collect();
 
             if interpretations.is_empty() {
-                return Err("No valid actions in LLM response".to_string());
+                // Return a "no match" interpretation instead of error
+                return Ok(LlmResult::Interpretations(vec![AgentInterpretation {
+                    action: AgentAction::Cancel,
+                    confidence: 1.0,
+                    explanation: "Could not parse any actions from LLM response".to_string(),
+                }]));
             }
 
             return Ok(LlmResult::Interpretations(interpretations));
         }
     }
 
-    Err(format!("Could not find JSON array in LLM response: {}", content))
+    // Return a "no match" interpretation instead of error for missing JSON
+    eprintln!("Could not find JSON array in LLM response: {}", content);
+    Ok(LlmResult::Interpretations(vec![AgentInterpretation {
+        action: AgentAction::Cancel,
+        confidence: 1.0,
+        explanation: "Could not understand response - try rephrasing your command".to_string(),
+    }]))
 }
 
 // ============================================================================
