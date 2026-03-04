@@ -4,7 +4,7 @@
 
 use bevy_egui::egui;
 
-use crate::graph::{build_grid_view, GraphState, PlaceholderCell};
+use crate::graph::{build_grid_view, GraphState, PlaceholderCell, PortalShadow};
 use crate::media::MediaCache;
 use crate::network::{WsCommand, WsCommandTx};
 use crate::rendering::render_vertex_card;
@@ -147,11 +147,6 @@ pub fn render_grid_view(
                         if let Some(ghosts) = grid.ghost_edges.get(&vertex_id) {
                             draw_ghost_indicators(&painter, rect, ghosts, zoom);
                         }
-
-                        // Draw loading spinner if this is a portal being loaded
-                        if app_state.loading_portal_vertex == Some(vertex_id) {
-                            draw_loading_spinner(&painter, rect, zoom, ctx);
-                        }
                     } else {
                         // No vertex data - just draw empty cell
                         let corner_radius = 4.0 * zoom;
@@ -196,9 +191,9 @@ pub fn render_grid_view(
             }
         }
 
-        // Draw loading portal placeholder
-        if let Some(ref loading) = grid.loading_portal {
-            let (x, y) = loading.position;
+        // Draw portal shadow cells (unloaded portal destinations)
+        for shadow in &grid.portal_shadows {
+            let (x, y) = shadow.position;
             let cell_x = (x - grid.min_x) as f32 * (cell_width + padding);
             let cell_y = (y - grid.min_y) as f32 * (cell_height + padding);
 
@@ -207,7 +202,7 @@ pub fn render_grid_view(
                 egui::vec2(cell_width, cell_height),
             );
 
-            render_loading_portal_cell(&painter, rect, zoom, font_size, ctx);
+            render_portal_shadow(&painter, rect, shadow, zoom, font_size, ctx);
         }
     });
 
@@ -305,106 +300,89 @@ fn draw_ghost_indicators(painter: &egui::Painter, rect: egui::Rect, ghosts: &[cr
 }
 
 /// Draw a loading spinner overlay on a cell (for portal loading)
-fn draw_loading_spinner(painter: &egui::Painter, rect: egui::Rect, zoom: f32, ctx: &egui::Context) {
-    // Request continuous repaint for animation
-    ctx.request_repaint();
-
-    let center = rect.center();
-    let radius = 20.0 * zoom;
-    let thickness = 3.0 * zoom;
-
-    // Semi-transparent overlay
-    let corner_radius = 8.0 * zoom;
-    painter.rect_filled(
-        rect,
-        corner_radius,
-        egui::Color32::from_rgba_unmultiplied(0, 0, 0, 150),
-    );
-
-    // Animated spinner using time
-    let time = ctx.input(|i| i.time);
-    let angle = (time * 3.0) as f32; // Rotate 3 radians per second
-
-    // Draw arc segments
-    let segments = 8;
-    for i in 0..segments {
-        let seg_angle = angle + (i as f32 * std::f32::consts::TAU / segments as f32);
-        let alpha = ((i as f32 / segments as f32) * 200.0) as u8 + 55;
-        let color = egui::Color32::from_rgba_unmultiplied(100, 180, 255, alpha);
-
-        let start = center + egui::vec2(seg_angle.cos(), seg_angle.sin()) * (radius - thickness);
-        let end = center + egui::vec2(seg_angle.cos(), seg_angle.sin()) * radius;
-
-        painter.line_segment([start, end], egui::Stroke::new(thickness, color));
-    }
-
-    // "Loading..." text
-    painter.text(
-        center + egui::vec2(0.0, radius + 12.0 * zoom),
-        egui::Align2::CENTER_CENTER,
-        "Loading...",
-        egui::FontId::proportional(11.0 * zoom),
-        egui::Color32::from_rgb(180, 180, 200),
-    );
-}
-
-/// Render a loading portal placeholder cell
-fn render_loading_portal_cell(
+/// Render a portal shadow cell (unloaded portal destination)
+fn render_portal_shadow(
     painter: &egui::Painter,
     rect: egui::Rect,
+    shadow: &PortalShadow,
     zoom: f32,
     _font_size: f32,
     ctx: &egui::Context,
 ) {
-    // Request continuous repaint for animation
-    ctx.request_repaint();
-
     let corner_radius = 8.0 * zoom;
 
-    // Background
-    painter.rect_filled(
-        rect,
-        corner_radius,
-        egui::Color32::from_rgba_unmultiplied(40, 50, 70, 220),
-    );
+    if shadow.is_loading {
+        // Loading state - animated spinner
+        ctx.request_repaint();
 
-    // Border
-    painter.rect_stroke(
-        rect,
-        corner_radius,
-        egui::Stroke::new(2.0 * zoom, egui::Color32::from_rgb(80, 120, 180)),
-        egui::StrokeKind::Outside,
-    );
+        // Slightly brighter background for loading
+        painter.rect_filled(
+            rect,
+            corner_radius,
+            egui::Color32::from_rgba_unmultiplied(40, 50, 70, 200),
+        );
 
-    let center = rect.center();
-    let radius = 18.0 * zoom;
-    let thickness = 3.0 * zoom;
+        // Animated border
+        painter.rect_stroke(
+            rect,
+            corner_radius,
+            egui::Stroke::new(2.0 * zoom, egui::Color32::from_rgb(80, 140, 200)),
+            egui::StrokeKind::Outside,
+        );
 
-    // Animated spinner using time
-    let time = ctx.input(|i| i.time);
-    let angle = (time * 4.0) as f32; // Rotate 4 radians per second
+        let center = rect.center();
+        let radius = 18.0 * zoom;
+        let thickness = 3.0 * zoom;
 
-    // Draw spinning arc segments
-    let segments = 8;
-    for i in 0..segments {
-        let seg_angle = angle + (i as f32 * std::f32::consts::TAU / segments as f32);
-        let alpha = ((i as f32 / segments as f32) * 180.0) as u8 + 75;
-        let color = egui::Color32::from_rgba_unmultiplied(100, 160, 255, alpha);
+        // Animated spinner
+        let time = ctx.input(|i| i.time);
+        let angle = (time * 4.0) as f32;
 
-        let inner = center + egui::vec2(seg_angle.cos(), seg_angle.sin()) * (radius - thickness);
-        let outer = center + egui::vec2(seg_angle.cos(), seg_angle.sin()) * radius;
+        let segments = 8;
+        for i in 0..segments {
+            let seg_angle = angle + (i as f32 * std::f32::consts::TAU / segments as f32);
+            let alpha = ((i as f32 / segments as f32) * 180.0) as u8 + 75;
+            let color = egui::Color32::from_rgba_unmultiplied(100, 160, 255, alpha);
 
-        painter.line_segment([inner, outer], egui::Stroke::new(thickness * 0.8, color));
+            let inner = center + egui::vec2(seg_angle.cos(), seg_angle.sin()) * (radius - thickness);
+            let outer = center + egui::vec2(seg_angle.cos(), seg_angle.sin()) * radius;
+
+            painter.line_segment([inner, outer], egui::Stroke::new(thickness * 0.8, color));
+        }
+
+        painter.text(
+            egui::pos2(center.x, rect.max.y - 14.0 * zoom),
+            egui::Align2::CENTER_CENTER,
+            "Loading...",
+            egui::FontId::proportional(10.0 * zoom),
+            egui::Color32::from_rgb(150, 170, 200),
+        );
+    } else {
+        // Shadow state - dimmed placeholder
+        painter.rect_filled(
+            rect,
+            corner_radius,
+            egui::Color32::from_rgba_unmultiplied(30, 35, 45, 150),
+        );
+
+        // Dashed-style border (using dotted pattern)
+        painter.rect_stroke(
+            rect,
+            corner_radius,
+            egui::Stroke::new(1.5 * zoom, egui::Color32::from_rgba_unmultiplied(80, 90, 110, 150)),
+            egui::StrokeKind::Outside,
+        );
+
+        // Question mark or ellipsis to indicate unknown content
+        let center = rect.center();
+        painter.text(
+            center,
+            egui::Align2::CENTER_CENTER,
+            "?",
+            egui::FontId::proportional(24.0 * zoom),
+            egui::Color32::from_rgba_unmultiplied(100, 110, 130, 180),
+        );
     }
-
-    // "Loading..." text below spinner
-    painter.text(
-        egui::pos2(center.x, rect.max.y - 14.0 * zoom),
-        egui::Align2::CENTER_CENTER,
-        "Loading...",
-        egui::FontId::proportional(10.0 * zoom),
-        egui::Color32::from_rgb(150, 170, 200),
-    );
 }
 
 /// Render a placeholder cell for a pending audio recording

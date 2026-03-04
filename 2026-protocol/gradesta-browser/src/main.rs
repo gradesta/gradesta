@@ -1277,7 +1277,6 @@ fn handle_navigation(
     keys: Res<ButtonInput<bevy::prelude::KeyCode>>,
     mut contexts: EguiContexts,
     mut frames_to_skip: Local<u8>,
-    ws_cmd_tx: Res<WsCommandTx>,
 ) {
     // bevy_egui 0.39 requires a few frames for initialization (see ui_system for details)
     if *frames_to_skip < 2 {
@@ -1468,61 +1467,17 @@ fn handle_navigation(
     if should_move {
         if let Some(edge_idx) = target_edge {
             let target_id = vertex.edges[edge_idx];
-            if target_id != 0 {
-                // Check if target is a portal that needs loading
-                // A portal needs loading if:
-                // 1. It's a portal (mime == text/gradesta-url)
-                // 2. The landmark has no non-portal vertices loaded yet
-                let is_unloaded_portal = graph.vertices.get(&target_id)
-                    .filter(|v| v.mime.as_deref() == Some("text/gradesta-url"))
-                    .map(|v| {
-                        let landmark_url = String::from_utf8_lossy(&v.label).to_string();
-                        // Check if landmark has any non-portal vertices
-                        let has_content = graph.landmark_vertices
-                            .get(&landmark_url)
-                            .map(|vertices| {
-                                vertices.iter().any(|&vid| {
-                                    graph.vertices.get(&vid)
-                                        .map(|v| v.mime.as_deref() != Some("text/gradesta-url"))
-                                        .unwrap_or(false)
-                                })
-                            })
-                            .unwrap_or(false);
-                        !has_content
-                    })
-                    .unwrap_or(false);
-
-                if is_unloaded_portal {
-                    // Don't navigate to the portal - create a loading placeholder instead
-                    let landmark_url = graph.vertices.get(&target_id)
-                        .map(|v| String::from_utf8_lossy(&v.label).to_string())
-                        .unwrap_or_default();
-
-                    // Request the landmark if not already requested
-                    if !app_state.requested_landmarks.contains(&landmark_url) {
-                        app_state.requested_landmarks.insert(landmark_url.clone());
-                        let action_id = app_state.next_action_id;
-                        app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
-                        if let Some(ref tx) = ws_cmd_tx.0 {
-                            let _ = tx.send(WsCommand::WatchLandmark { action_id, landmark: landmark_url.clone() });
-                        }
-                    }
-
-                    app_state.loading_portal_cell = Some(state::LoadingPortalCell {
-                        direction: edge_idx,
-                        from_vertex: current_id,
-                        created_at: Instant::now(),
-                        landmark_url: landmark_url.clone(),
-                    });
-                    app_state.loading_portal_vertex = Some(target_id);
-                    app_state.following_portal = Some(landmark_url);
-                    // Don't update current_vertex - stay where we are
-                } else {
-                    // Move cursor to target normally
-                    app_state.history.push(current_id);
-                    app_state.current_vertex = Some(target_id);
-                }
+            if target_id != 0 && graph.vertices.contains_key(&target_id) {
+                // Move cursor to target normally
+                // (Only if target vertex actually exists in the graph)
+                app_state.history.push(current_id);
+                app_state.current_vertex = Some(target_id);
+            } else if target_id != 0 {
+                // Edge points to a vertex that doesn't exist in the graph
+                // This means it's unloaded content - show status
+                app_state.status = "Loading...".to_string();
             } else {
+                // target_id == 0: no edge in this direction
                 // Provide feedback for up/down navigation at stack edges
                 if edge_idx == EDGE_UP {
                     app_state.status = "Top of stack".to_string();

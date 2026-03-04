@@ -123,13 +123,15 @@ pub struct PlaceholderCell {
     pub pending_cell: PendingAudioCell,
 }
 
-/// A placeholder cell for a loading portal
+/// A shadow cell representing an unloaded portal destination
 #[derive(Clone, Debug)]
-pub struct LoadingPortalPlaceholder {
+pub struct PortalShadow {
     /// Grid position
     pub position: (i32, i32),
-    /// When loading started (for animation)
-    pub created_at: std::time::Instant,
+    /// The portal vertex this shadow is for
+    pub portal_vertex_id: u64,
+    /// Whether this landmark is currently being loaded
+    pub is_loading: bool,
 }
 
 /// 2D grid layout of the graph
@@ -145,8 +147,8 @@ pub struct GridView {
     pub ghost_edges: HashMap<u64, Vec<GhostEdge>>,
     /// Placeholder cells for pending audio recordings
     pub placeholder_cells: Vec<PlaceholderCell>,
-    /// Placeholder for loading portal (if any)
-    pub loading_portal: Option<LoadingPortalPlaceholder>,
+    /// Shadow cells for unloaded portal destinations
+    pub portal_shadows: Vec<PortalShadow>,
     pub min_x: i32,
     pub max_x: i32,
     pub min_y: i32,
@@ -398,24 +400,93 @@ pub fn build_grid_view(
         }
     }
 
-    // Add loading portal placeholder if present
-    if let Some(loading_cell) = loading_portal_cell {
-        if let Some(&from_pos) = grid.positions.get(&loading_cell.from_vertex) {
-            let offset = DIR_OFFSETS[loading_cell.direction];
-            let placeholder_pos = (from_pos.0 + offset.0, from_pos.1 + offset.1);
+    // Add shadow cells for all portals pointing to unloaded landmarks
+    // Collect portal info first to avoid borrow issues
+    // Check both layer 0 portals (mime == text/gradesta-url) and layer 1 portals
+    let portal_info: Vec<(u64, (i32, i32), String)> = grid.positions.iter()
+        .filter_map(|(&vertex_id, &pos)| {
+            let vertex = graph.vertices.get(&vertex_id)?;
+            // Layer 0 portal: primary mime is text/gradesta-url
+            if vertex.mime.as_deref() == Some("text/gradesta-url") {
+                let landmark_url = String::from_utf8_lossy(&vertex.label).to_string();
+                return Some((vertex_id, pos, landmark_url));
+            }
+            // Layer 1 portal: has text/gradesta-url in layer 1
+            if let Some(layer1) = vertex.layers.get(&1) {
+                if layer1.mime == "text/gradesta-url" {
+                    let landmark_url = String::from_utf8_lossy(&layer1.data).to_string();
+                    return Some((vertex_id, pos, landmark_url));
+                }
+            }
+            None
+        })
+        .collect();
 
-            // Only add if position is not occupied
-            if !grid.cells.contains_key(&placeholder_pos) {
-                grid.loading_portal = Some(LoadingPortalPlaceholder {
-                    position: placeholder_pos,
-                    created_at: loading_cell.created_at,
+    for (portal_id, portal_pos, landmark_url) in portal_info {
+        // Check if this landmark has any non-portal content loaded
+        let has_content = graph.landmark_vertices
+            .get(&landmark_url)
+            .map(|vertices| {
+                vertices.iter().any(|&vid| {
+                    graph.vertices.get(&vid)
+                        .map(|v| v.mime.as_deref() != Some("text/gradesta-url"))
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false);
+
+        if !has_content {
+            // Try to place shadow in an unoccupied adjacent position
+            // Prefer directions that have edges pointing to non-existent vertices (unloaded content)
+            // Fall back to any unoccupied position
+            let portal_vertex = graph.vertices.get(&portal_id);
+            let directions = [EDGE_EAST, EDGE_WEST, EDGE_NORTH, EDGE_SOUTH];
+
+            // First try: find edge pointing to unloaded vertex
+            let mut shadow_pos = None;
+            if let Some(v) = portal_vertex {
+                for &dir in &directions {
+                    let edge_id = v.edges[dir];
+                    if edge_id != 0 && !graph.vertices.contains_key(&edge_id) {
+                        let offset = DIR_OFFSETS[dir];
+                        let pos = (portal_pos.0 + offset.0, portal_pos.1 + offset.1);
+                        if !grid.cells.contains_key(&pos) {
+                            shadow_pos = Some(pos);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Second try: find any unoccupied adjacent position
+            if shadow_pos.is_none() {
+                for &dir in &directions {
+                    let offset = DIR_OFFSETS[dir];
+                    let pos = (portal_pos.0 + offset.0, portal_pos.1 + offset.1);
+                    if !grid.cells.contains_key(&pos) {
+                        shadow_pos = Some(pos);
+                        break;
+                    }
+                }
+            }
+
+            if let Some(shadow_pos) = shadow_pos {
+                // Check if this portal is currently being loaded
+                let is_loading = loading_portal_cell
+                    .map(|lc| lc.landmark_url == landmark_url)
+                    .unwrap_or(false);
+
+                grid.portal_shadows.push(PortalShadow {
+                    position: shadow_pos,
+                    portal_vertex_id: portal_id,
+                    is_loading,
                 });
 
                 // Update grid bounds
-                grid.min_x = grid.min_x.min(placeholder_pos.0);
-                grid.max_x = grid.max_x.max(placeholder_pos.0);
-                grid.min_y = grid.min_y.min(placeholder_pos.1);
-                grid.max_y = grid.max_y.max(placeholder_pos.1);
+                grid.min_x = grid.min_x.min(shadow_pos.0);
+                grid.max_x = grid.max_x.max(shadow_pos.0);
+                grid.min_y = grid.min_y.min(shadow_pos.1);
+                grid.max_y = grid.max_y.max(shadow_pos.1);
             }
         }
     }
