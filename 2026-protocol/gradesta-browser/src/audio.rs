@@ -539,6 +539,82 @@ fn extract_wav_transcript(data: &[u8]) -> Option<String> {
 }
 
 // ============================================================================
+// Audio Normalization
+// ============================================================================
+
+/// Target RMS level in dB (relative to full scale)
+/// -20 dBFS leaves headroom for peaks while being audible
+const TARGET_RMS_DB: f32 = -20.0;
+
+/// Below this RMS, audio is considered silent and normalization is skipped
+const SILENCE_THRESHOLD: f32 = 1e-6;
+
+/// Maximum gain boost in dB (prevents amplifying noise too much)
+const MAX_GAIN_DB: f32 = 40.0;
+
+/// Minimum gain (maximum attenuation) in dB
+const MIN_GAIN_DB: f32 = -20.0;
+
+/// Threshold above which soft limiting kicks in
+const LIMITER_THRESHOLD: f32 = 0.9;
+
+/// Normalize audio to consistent loudness with soft limiting for ear protection.
+///
+/// Uses RMS (root mean square) normalization which correlates well with perceived
+/// loudness for voice. After normalization, applies soft limiting to any peaks
+/// above 0.9 to prevent clipping and ear-damaging loud pops.
+///
+/// Returns the gain applied (1.0 = no change).
+pub fn normalize_audio(samples: &mut [f32]) -> f32 {
+    if samples.is_empty() {
+        return 1.0;
+    }
+
+    // Stage 1: Calculate RMS
+    let sum_sq: f32 = samples.iter().map(|s| s * s).sum();
+    let rms = (sum_sq / samples.len() as f32).sqrt();
+
+    // Skip normalization for silent audio
+    if rms < SILENCE_THRESHOLD {
+        return 1.0;
+    }
+
+    // Calculate target RMS in linear scale
+    // dB to linear: 10^(dB/20)
+    let target_rms = 10.0_f32.powf(TARGET_RMS_DB / 20.0);
+
+    // Calculate gain needed
+    let mut gain = target_rms / rms;
+
+    // Limit gain to prevent excessive amplification or attenuation
+    let max_gain = 10.0_f32.powf(MAX_GAIN_DB / 20.0);
+    let min_gain = 10.0_f32.powf(MIN_GAIN_DB / 20.0);
+    gain = gain.clamp(min_gain, max_gain);
+
+    // Apply gain
+    for sample in samples.iter_mut() {
+        *sample *= gain;
+    }
+
+    // Stage 2: Soft limiting for ear protection
+    // Uses tanh-based soft curve for samples above threshold
+    for sample in samples.iter_mut() {
+        let abs_val = sample.abs();
+        if abs_val > LIMITER_THRESHOLD {
+            // Soft curve: map [threshold, infinity) -> [threshold, 1.0)
+            // Using tanh to smoothly compress peaks
+            let excess = abs_val - LIMITER_THRESHOLD;
+            let compressed = LIMITER_THRESHOLD + (1.0 - LIMITER_THRESHOLD) * (excess / (1.0 + excess)).tanh();
+            // Ensure we never exceed 0.99 (ear protection)
+            let limited = compressed.min(0.99);
+            *sample = sample.signum() * limited;
+        }
+    }
+
+    gain
+}
+
+// ============================================================================
 // Background Audio Processing
 // ============================================================================
 
@@ -610,6 +686,16 @@ pub fn spawn_audio_encoding_task(
             local_id,
             status: PendingAudioStatus::Encoding,
         });
+
+        // Normalize audio for consistent loudness
+        let mut samples = samples;
+        let gain = normalize_audio(&mut samples);
+        eprintln!(
+            "Audio normalization: local_id={} gain={:.2}x ({:.1} dB)",
+            local_id,
+            gain,
+            20.0 * gain.log10()
+        );
 
         // Encode to OGG Vorbis
         match encode_ogg_vorbis(&samples, sample_rate, None) {
