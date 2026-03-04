@@ -1277,6 +1277,7 @@ fn handle_navigation(
     keys: Res<ButtonInput<bevy::prelude::KeyCode>>,
     mut contexts: EguiContexts,
     mut frames_to_skip: Local<u8>,
+    ws_cmd_tx: Res<WsCommandTx>,
 ) {
     // bevy_egui 0.39 requires a few frames for initialization (see ui_system for details)
     if *frames_to_skip < 2 {
@@ -1405,6 +1406,16 @@ fn handle_navigation(
     if resolver.command_just_pressed_bevy(context, &Command::GraphHistoryBack, &keys) {
         if let Some(prev_id) = app_state.history.pop() {
             app_state.current_vertex = Some(prev_id);
+            // Animate in reverse direction of last navigation
+            let offset = match app_state.last_nav_direction {
+                EDGE_WEST => (-1.0, 0.0),
+                EDGE_EAST => (1.0, 0.0),
+                EDGE_NORTH => (0.0, -1.0),
+                EDGE_SOUTH => (0.0, 1.0),
+                _ => (0.0, 0.0),
+            };
+            app_state.nav_animation_start = Some(Instant::now());
+            app_state.nav_animation_offset = offset;
         }
         return;
     }
@@ -1414,6 +1425,16 @@ fn handle_navigation(
         if resolver.command_pressed_gamepad(&Command::GraphHistoryBack, gp) {
             if let Some(prev_id) = app_state.history.pop() {
                 app_state.current_vertex = Some(prev_id);
+                // Animate in reverse direction of last navigation
+                let offset = match app_state.last_nav_direction {
+                    EDGE_WEST => (-1.0, 0.0),
+                    EDGE_EAST => (1.0, 0.0),
+                    EDGE_NORTH => (0.0, -1.0),
+                    EDGE_SOUTH => (0.0, 1.0),
+                    _ => (0.0, 0.0),
+                };
+                app_state.nav_animation_start = Some(Instant::now());
+                app_state.nav_animation_offset = offset;
             }
             return;
         }
@@ -1468,9 +1489,71 @@ fn handle_navigation(
         if let Some(edge_idx) = target_edge {
             let target_id = vertex.edges[edge_idx];
             if target_id != 0 {
-                // Move cursor to target (even if it's a portal - auto_expand will handle following it)
-                app_state.history.push(current_id);
-                app_state.current_vertex = Some(target_id);
+                // Check if target is a portal that needs loading
+                // A portal needs loading if:
+                // 1. It's a portal (mime == text/gradesta-url)
+                // 2. The landmark has no non-portal vertices loaded yet
+                let is_unloaded_portal = graph.vertices.get(&target_id)
+                    .filter(|v| v.mime.as_deref() == Some("text/gradesta-url"))
+                    .map(|v| {
+                        let landmark_url = String::from_utf8_lossy(&v.label).to_string();
+                        // Check if landmark has any non-portal vertices
+                        let has_content = graph.landmark_vertices
+                            .get(&landmark_url)
+                            .map(|vertices| {
+                                vertices.iter().any(|&vid| {
+                                    graph.vertices.get(&vid)
+                                        .map(|v| v.mime.as_deref() != Some("text/gradesta-url"))
+                                        .unwrap_or(false)
+                                })
+                            })
+                            .unwrap_or(false);
+                        !has_content
+                    })
+                    .unwrap_or(false);
+
+                if is_unloaded_portal {
+                    // Don't navigate to the portal - create a loading placeholder instead
+                    let landmark_url = graph.vertices.get(&target_id)
+                        .map(|v| String::from_utf8_lossy(&v.label).to_string())
+                        .unwrap_or_default();
+
+                    // Request the landmark if not already requested
+                    if !app_state.requested_landmarks.contains(&landmark_url) {
+                        app_state.requested_landmarks.insert(landmark_url.clone());
+                        let action_id = app_state.next_action_id;
+                        app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                        if let Some(ref tx) = ws_cmd_tx.0 {
+                            let _ = tx.send(WsCommand::WatchLandmark { action_id, landmark: landmark_url.clone() });
+                        }
+                    }
+
+                    app_state.loading_portal_cell = Some(state::LoadingPortalCell {
+                        direction: edge_idx,
+                        from_vertex: current_id,
+                        created_at: Instant::now(),
+                        landmark_url: landmark_url.clone(),
+                    });
+                    app_state.loading_portal_vertex = Some(target_id);
+                    app_state.following_portal = Some(landmark_url);
+                    // Don't update current_vertex - stay where we are
+                } else {
+                    // Move cursor to target normally
+                    app_state.history.push(current_id);
+                    app_state.current_vertex = Some(target_id);
+
+                    // Start slide animation - offset is opposite of movement direction
+                    // (we animate FROM the old position TO the new position)
+                    let offset = match edge_idx {
+                        EDGE_WEST => (1.0, 0.0),   // Moved west, animate from east
+                        EDGE_EAST => (-1.0, 0.0),  // Moved east, animate from west
+                        EDGE_NORTH => (0.0, 1.0),  // Moved north, animate from south
+                        EDGE_SOUTH => (0.0, -1.0), // Moved south, animate from north
+                        _ => (0.0, 0.0),           // Up/down don't animate horizontally
+                    };
+                    app_state.nav_animation_start = Some(Instant::now());
+                    app_state.nav_animation_offset = offset;
+                }
             } else {
                 // Provide feedback for up/down navigation at stack edges
                 if edge_idx == EDGE_UP {
@@ -1609,6 +1692,8 @@ fn auto_expand_nearby_links(
                         app_state.history.push(current_id);
                         app_state.current_vertex = Some(east_id);
                         app_state.following_portal = None;
+                        app_state.loading_portal_vertex = None;
+                        app_state.loading_portal_cell = None;
                         return;
                     }
                 }
@@ -1622,6 +1707,8 @@ fn auto_expand_nearby_links(
                         app_state.history.push(current_id);
                         app_state.current_vertex = Some(vid);
                         app_state.following_portal = None;
+                        app_state.loading_portal_vertex = None;
+                        app_state.loading_portal_cell = None;
                         return;
                     }
                 }
@@ -1639,6 +1726,7 @@ fn auto_expand_nearby_links(
         // Set up to jump when it loads
         if app_state.following_portal.is_none() {
             app_state.following_portal = Some(landmark_url);
+            app_state.loading_portal_vertex = Some(current_id);
         }
         return;
     } else if let Some(landmark_url) = layer1_portal_url {

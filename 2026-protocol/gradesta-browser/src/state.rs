@@ -329,6 +329,19 @@ pub struct PendingAudioCell {
     pub action_id: Option<u64>,
 }
 
+/// A placeholder cell shown while a portal/landmark is loading
+#[derive(Clone, Debug)]
+pub struct LoadingPortalCell {
+    /// Direction from current vertex where the portal is
+    pub direction: usize,
+    /// Vertex ID this cell is connected from
+    pub from_vertex: u64,
+    /// When loading started
+    pub created_at: Instant,
+    /// The landmark URL being loaded
+    pub landmark_url: String,
+}
+
 /// Pending identification request from a server
 #[derive(Clone, Debug)]
 pub struct PendingIdentification {
@@ -391,6 +404,14 @@ pub struct AppState {
     pub requested_landmarks: HashSet<String>,
     /// If set, we're waiting to jump to this landmark's first vertex
     pub following_portal: Option<String>,
+    /// The vertex ID of the portal we're currently loading (for loading animation)
+    pub loading_portal_vertex: Option<u64>,
+    /// Placeholder cell shown while a portal is loading
+    pub loading_portal_cell: Option<LoadingPortalCell>,
+    /// Navigation slide animation - when it started
+    pub nav_animation_start: Option<Instant>,
+    /// Navigation slide animation - offset in grid cells (x, y) to animate from
+    pub nav_animation_offset: (f32, f32),
     // Key repeat state
     pub key_repeat_last_move: Option<Instant>,
     pub key_repeat_started: bool,
@@ -525,6 +546,10 @@ impl Default for AppState {
             base_ws_url: None,
             requested_landmarks: HashSet::new(),
             following_portal: None,
+            loading_portal_vertex: None,
+            loading_portal_cell: None,
+            nav_animation_start: None,
+            nav_animation_offset: (0.0, 0.0),
             key_repeat_last_move: None,
             key_repeat_started: false,
             show_text_modal: false,
