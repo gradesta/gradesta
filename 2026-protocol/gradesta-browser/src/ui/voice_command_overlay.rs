@@ -544,201 +544,216 @@ pub fn render_voice_settings_dialog(
                 egui::StrokeKind::Outside,
             );
 
-            // Content area
+            // Content area with header, scrollable body, and fixed footer
             let content_rect = panel_rect.shrink(20.0);
-            let ui_builder = egui::UiBuilder::new().max_rect(content_rect);
+            let header_height = 50.0;
+            let footer_height = 50.0;
+
+            // Header area
+            let header_rect = egui::Rect::from_min_size(
+                content_rect.min,
+                egui::vec2(content_rect.width(), header_height),
+            );
+            let header_builder = egui::UiBuilder::new().max_rect(header_rect);
 
             #[allow(deprecated)]
-            ui.allocate_new_ui(ui_builder, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        // Title
-                        ui.horizontal(|ui| {
-                            ui.heading(
-                                egui::RichText::new("Settings")
-                                    .color(egui::Color32::WHITE),
-                            );
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui.button("✕").clicked() {
-                                    action = VoiceSettingsAction::Close;
-                                }
-                            });
-                        });
-                        ui.add_space(15.0);
-                        ui.separator();
-                        ui.add_space(10.0);
-
-                        // API Keys Section
-                        ui.label(
-                            egui::RichText::new("API Keys")
-                                .color(egui::Color32::WHITE)
-                                .strong()
-                                .size(16.0),
-                        );
-                        ui.add_space(10.0);
-
-                        // Requesty API Key
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new("Requesty.ai:")
-                                    .color(egui::Color32::GRAY),
-                            );
-                        });
-                        ui.add(
-                            egui::TextEdit::singleline(&mut config.requesty_api_key)
-                                .password(true)
-                                .desired_width(400.0)
-                                .hint_text("Enter Requesty API key...")
-                        );
-                        ui.label(
-                            egui::RichText::new("Used for LLM voice command interpretation")
-                                .size(11.0)
-                                .color(egui::Color32::DARK_GRAY),
-                        );
-                        ui.add_space(10.0);
-
-                        // Soniox API Key
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new("Soniox:")
-                                    .color(egui::Color32::GRAY),
-                            );
-                        });
-                        ui.add(
-                            egui::TextEdit::singleline(&mut config.soniox_api_key)
-                                .password(true)
-                                .desired_width(400.0)
-                                .hint_text("Enter Soniox API key...")
-                        );
-                        ui.label(
-                            egui::RichText::new("Used for real-time speech-to-text")
-                                .size(11.0)
-                                .color(egui::Color32::DARK_GRAY),
-                        );
-                        ui.add_space(15.0);
-                        ui.separator();
-                        ui.add_space(10.0);
-
-                        // LLM Model Section
-                        ui.label(
-                            egui::RichText::new("LLM Model")
-                                .color(egui::Color32::WHITE)
-                                .strong()
-                                .size(16.0),
-                        );
-                        ui.add_space(5.0);
-
-                        // Current model display
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new("Current:")
-                                    .color(egui::Color32::GRAY),
-                            );
-                            ui.label(
-                                egui::RichText::new(&config.model)
-                                    .color(egui::Color32::WHITE)
-                                    .strong(),
-                            );
-                        });
-                        ui.add_space(10.0);
-
-                        // Search filter and refresh
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("Filter:").color(egui::Color32::GRAY));
-                            ui.add(
-                                egui::TextEdit::singleline(filter)
-                                    .desired_width(200.0)
-                                    .hint_text("Search models...")
-                            );
-
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui.button("Refresh").clicked() {
-                                    action = VoiceSettingsAction::FetchModels;
-                                }
-                            });
-                        });
-                        ui.add_space(5.0);
-
-                        // Model list
-                        if model_state.loading {
-                            ui.horizontal(|ui| {
-                                ui.spinner();
-                                ui.label(
-                                    egui::RichText::new("Loading models from Requesty.ai...")
-                                        .color(egui::Color32::LIGHT_GRAY),
-                                );
-                            });
-                        } else if let Some(ref error) = model_state.error {
-                            ui.label(
-                                egui::RichText::new(format!("Error: {}", error))
-                                    .color(egui::Color32::from_rgb(255, 100, 100)),
-                            );
-                            if ui.button("Retry").clicked() {
-                                action = VoiceSettingsAction::FetchModels;
-                            }
-                        } else if model_state.models.is_empty() {
-                            ui.label(
-                                egui::RichText::new("No models loaded. Click Refresh to fetch.")
-                                    .color(egui::Color32::YELLOW),
-                            );
-                        } else {
-                            // Filter models
-                            let filter_lower = filter.to_lowercase();
-                            let filtered_models: Vec<&LlmModelInfo> = model_state.models.iter()
-                                .filter(|m| {
-                                    filter_lower.is_empty() ||
-                                    m.id.to_lowercase().contains(&filter_lower) ||
-                                    m.owned_by.to_lowercase().contains(&filter_lower)
-                                })
-                                .collect();
-
-                            ui.label(
-                                egui::RichText::new(format!("{} models", filtered_models.len()))
-                                    .size(12.0)
-                                    .color(egui::Color32::GRAY),
-                            );
-
-                            egui::ScrollArea::vertical()
-                                .id_salt("model_list")
-                                .max_height(180.0)
-                                .show(ui, |ui| {
-                                    for model in filtered_models {
-                                        let is_selected = config.model == model.id;
-
-                                        // Create a selectable row
-                                        let text = if model.owned_by.is_empty() {
-                                            model.id.clone()
-                                        } else {
-                                            format!("{} ({})", model.id, model.owned_by)
-                                        };
-
-                                        if ui.selectable_label(is_selected, &text).clicked() {
-                                            config.model = model.id.clone();
-                                        }
-                                    }
-                                });
+            ui.allocate_new_ui(header_builder, |ui| {
+                ui.horizontal(|ui| {
+                    ui.heading(
+                        egui::RichText::new("Settings")
+                            .color(egui::Color32::WHITE),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("✕").clicked() {
+                            action = VoiceSettingsAction::Close;
                         }
+                    });
+                });
+                ui.separator();
+            });
 
-                        ui.add_space(15.0);
-                        ui.separator();
-                        ui.add_space(10.0);
+            // Footer area (fixed at bottom)
+            let footer_rect = egui::Rect::from_min_size(
+                egui::pos2(content_rect.min.x, content_rect.max.y - footer_height),
+                egui::vec2(content_rect.width(), footer_height),
+            );
+            let footer_builder = egui::UiBuilder::new().max_rect(footer_rect);
 
-                        // Save/Cancel buttons
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Max), |ui| {
-                            if ui
-                                .button(
-                                    egui::RichText::new("Save")
-                                        .color(egui::Color32::WHITE),
-                                )
-                                .clicked()
-                            {
-                                action = VoiceSettingsAction::Save(config.clone());
-                            }
-                            if ui.button("Cancel").clicked() {
-                                action = VoiceSettingsAction::Close;
+            #[allow(deprecated)]
+            ui.allocate_new_ui(footer_builder, |ui| {
+                ui.separator();
+                ui.add_space(10.0);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .button(
+                            egui::RichText::new("Save")
+                                .color(egui::Color32::WHITE),
+                        )
+                        .clicked()
+                    {
+                        action = VoiceSettingsAction::Save(config.clone());
+                    }
+                    ui.add_space(10.0);
+                    if ui.button("Cancel").clicked() {
+                        action = VoiceSettingsAction::Close;
+                    }
+                });
+            });
+
+            // Scrollable body area (between header and footer)
+            let body_rect = egui::Rect::from_min_max(
+                egui::pos2(content_rect.min.x, content_rect.min.y + header_height),
+                egui::pos2(content_rect.max.x, content_rect.max.y - footer_height),
+            );
+            let body_builder = egui::UiBuilder::new().max_rect(body_rect);
+
+            #[allow(deprecated)]
+            ui.allocate_new_ui(body_builder, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    ui.add_space(10.0);
+
+                    // API Keys Section
+                    ui.label(
+                        egui::RichText::new("API Keys")
+                            .color(egui::Color32::WHITE)
+                            .strong()
+                            .size(16.0),
+                    );
+                    ui.add_space(10.0);
+
+                    // Requesty API Key
+                    ui.label(
+                        egui::RichText::new("Requesty.ai:")
+                            .color(egui::Color32::GRAY),
+                    );
+                    ui.add(
+                        egui::TextEdit::singleline(&mut config.requesty_api_key)
+                            .password(true)
+                            .desired_width(400.0)
+                            .hint_text("Enter Requesty API key...")
+                    );
+                    ui.label(
+                        egui::RichText::new("Used for LLM voice command interpretation")
+                            .size(11.0)
+                            .color(egui::Color32::DARK_GRAY),
+                    );
+                    ui.add_space(10.0);
+
+                    // Soniox API Key
+                    ui.label(
+                        egui::RichText::new("Soniox:")
+                            .color(egui::Color32::GRAY),
+                    );
+                    ui.add(
+                        egui::TextEdit::singleline(&mut config.soniox_api_key)
+                            .password(true)
+                            .desired_width(400.0)
+                            .hint_text("Enter Soniox API key...")
+                    );
+                    ui.label(
+                        egui::RichText::new("Used for real-time speech-to-text")
+                            .size(11.0)
+                            .color(egui::Color32::DARK_GRAY),
+                    );
+                    ui.add_space(15.0);
+                    ui.separator();
+                    ui.add_space(10.0);
+
+                    // LLM Model Section
+                    ui.label(
+                        egui::RichText::new("LLM Model")
+                            .color(egui::Color32::WHITE)
+                            .strong()
+                            .size(16.0),
+                    );
+                    ui.add_space(5.0);
+
+                    // Current model display
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("Current:")
+                                .color(egui::Color32::GRAY),
+                        );
+                        ui.label(
+                            egui::RichText::new(&config.model)
+                                .color(egui::Color32::WHITE)
+                                .strong(),
+                        );
+                    });
+                    ui.add_space(10.0);
+
+                    // Search filter and refresh
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Filter:").color(egui::Color32::GRAY));
+                        ui.add(
+                            egui::TextEdit::singleline(filter)
+                                .desired_width(200.0)
+                                .hint_text("Search models...")
+                        );
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("Refresh").clicked() {
+                                action = VoiceSettingsAction::FetchModels;
                             }
                         });
                     });
+                    ui.add_space(5.0);
+
+                    // Model list
+                    if model_state.loading {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label(
+                                egui::RichText::new("Loading models from Requesty.ai...")
+                                    .color(egui::Color32::LIGHT_GRAY),
+                            );
+                        });
+                    } else if let Some(ref error) = model_state.error {
+                        ui.label(
+                            egui::RichText::new(format!("Error: {}", error))
+                                .color(egui::Color32::from_rgb(255, 100, 100)),
+                        );
+                        if ui.button("Retry").clicked() {
+                            action = VoiceSettingsAction::FetchModels;
+                        }
+                    } else if model_state.models.is_empty() {
+                        ui.label(
+                            egui::RichText::new("No models loaded. Click Refresh to fetch.")
+                                .color(egui::Color32::YELLOW),
+                        );
+                    } else {
+                        // Filter models
+                        let filter_lower = filter.to_lowercase();
+                        let filtered_models: Vec<&LlmModelInfo> = model_state.models.iter()
+                            .filter(|m| {
+                                filter_lower.is_empty() ||
+                                m.id.to_lowercase().contains(&filter_lower) ||
+                                m.owned_by.to_lowercase().contains(&filter_lower)
+                            })
+                            .collect();
+
+                        ui.label(
+                            egui::RichText::new(format!("{} models", filtered_models.len()))
+                                .size(12.0)
+                                .color(egui::Color32::GRAY),
+                        );
+
+                        for model in filtered_models {
+                            let is_selected = config.model == model.id;
+
+                            // Create a selectable row
+                            let text = if model.owned_by.is_empty() {
+                                model.id.clone()
+                            } else {
+                                format!("{} ({})", model.id, model.owned_by)
+                            };
+
+                            if ui.selectable_label(is_selected, &text).clicked() {
+                                config.model = model.id.clone();
+                            }
+                        }
+                    }
+                    ui.add_space(10.0);
                 });
             });
         });
