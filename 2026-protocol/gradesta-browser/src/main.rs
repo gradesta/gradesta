@@ -1406,16 +1406,6 @@ fn handle_navigation(
     if resolver.command_just_pressed_bevy(context, &Command::GraphHistoryBack, &keys) {
         if let Some(prev_id) = app_state.history.pop() {
             app_state.current_vertex = Some(prev_id);
-            // Animate in reverse direction of last navigation
-            let offset = match app_state.last_nav_direction {
-                EDGE_WEST => (-1.0, 0.0),
-                EDGE_EAST => (1.0, 0.0),
-                EDGE_NORTH => (0.0, -1.0),
-                EDGE_SOUTH => (0.0, 1.0),
-                _ => (0.0, 0.0),
-            };
-            app_state.nav_animation_start = Some(Instant::now());
-            app_state.nav_animation_offset = offset;
         }
         return;
     }
@@ -1425,16 +1415,6 @@ fn handle_navigation(
         if resolver.command_pressed_gamepad(&Command::GraphHistoryBack, gp) {
             if let Some(prev_id) = app_state.history.pop() {
                 app_state.current_vertex = Some(prev_id);
-                // Animate in reverse direction of last navigation
-                let offset = match app_state.last_nav_direction {
-                    EDGE_WEST => (-1.0, 0.0),
-                    EDGE_EAST => (1.0, 0.0),
-                    EDGE_NORTH => (0.0, -1.0),
-                    EDGE_SOUTH => (0.0, 1.0),
-                    _ => (0.0, 0.0),
-                };
-                app_state.nav_animation_start = Some(Instant::now());
-                app_state.nav_animation_offset = offset;
             }
             return;
         }
@@ -1541,18 +1521,6 @@ fn handle_navigation(
                     // Move cursor to target normally
                     app_state.history.push(current_id);
                     app_state.current_vertex = Some(target_id);
-
-                    // Start slide animation - offset is opposite of movement direction
-                    // (we animate FROM the old position TO the new position)
-                    let offset = match edge_idx {
-                        EDGE_WEST => (1.0, 0.0),   // Moved west, animate from east
-                        EDGE_EAST => (-1.0, 0.0),  // Moved east, animate from west
-                        EDGE_NORTH => (0.0, 1.0),  // Moved north, animate from south
-                        EDGE_SOUTH => (0.0, -1.0), // Moved south, animate from north
-                        _ => (0.0, 0.0),           // Up/down don't animate horizontally
-                    };
-                    app_state.nav_animation_start = Some(Instant::now());
-                    app_state.nav_animation_offset = offset;
                 }
             } else {
                 // Provide feedback for up/down navigation at stack edges

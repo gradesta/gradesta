@@ -408,10 +408,6 @@ pub struct AppState {
     pub loading_portal_vertex: Option<u64>,
     /// Placeholder cell shown while a portal is loading
     pub loading_portal_cell: Option<LoadingPortalCell>,
-    /// Navigation slide animation - when it started
-    pub nav_animation_start: Option<Instant>,
-    /// Navigation slide animation - offset in grid cells (x, y) to animate from
-    pub nav_animation_offset: (f32, f32),
     // Key repeat state
     pub key_repeat_last_move: Option<Instant>,
     pub key_repeat_started: bool,
@@ -548,8 +544,6 @@ impl Default for AppState {
             following_portal: None,
             loading_portal_vertex: None,
             loading_portal_cell: None,
-            nav_animation_start: None,
-            nav_animation_offset: (0.0, 0.0),
             key_repeat_last_move: None,
             key_repeat_started: false,
             show_text_modal: false,

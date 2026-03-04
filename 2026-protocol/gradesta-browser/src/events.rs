@@ -230,20 +230,6 @@ fn handle_set_vertex_label(
 
     // If we're waiting to jump to a new context, and this vertex is NOT a portal, jump to it
     if layer == 0 && graph.pending_jump_context.is_some() && mime != "text/gradesta-url" {
-        // Start animation based on the direction we were loading from
-        if let Some(ref loading_cell) = app_state.loading_portal_cell {
-            use crate::state::{EDGE_WEST, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH};
-            let offset = match loading_cell.direction {
-                EDGE_WEST => (1.0, 0.0),
-                EDGE_EAST => (-1.0, 0.0),
-                EDGE_NORTH => (0.0, 1.0),
-                EDGE_SOUTH => (0.0, -1.0),
-                _ => (0.0, 0.0),
-            };
-            app_state.nav_animation_start = Some(std::time::Instant::now());
-            app_state.nav_animation_offset = offset;
-        }
-
         if let Some(current) = app_state.current_vertex {
             app_state.history.push(current);
         }

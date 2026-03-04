@@ -80,27 +80,7 @@ pub fn render_grid_view(
         // Create a painter that clips to the CentralPanel area only
         let painter = ui.painter().with_clip_rect(panel_rect);
 
-        // Apply slide animation offset if active
-        const NAV_ANIMATION_DURATION_MS: f32 = 70.0;
-        let anim_offset = if let Some(start) = app_state.nav_animation_start {
-            let elapsed_ms = start.elapsed().as_secs_f32() * 1000.0;
-            if elapsed_ms < NAV_ANIMATION_DURATION_MS {
-                // Request repaint for smooth animation
-                ctx.request_repaint();
-                // Ease-out interpolation: starts fast, slows down
-                let t = elapsed_ms / NAV_ANIMATION_DURATION_MS;
-                let ease_t = 1.0 - (1.0 - t).powi(2); // Quadratic ease-out
-                let remaining = 1.0 - ease_t;
-                let (ox, oy) = app_state.nav_animation_offset;
-                (ox * remaining * (cell_width + padding), oy * remaining * (cell_height + padding))
-            } else {
-                (0.0, 0.0)
-            }
-        } else {
-            (0.0, 0.0)
-        };
-
-        let base_pos = panel_min + egui::vec2(offset_x + anim_offset.0, offset_y + anim_offset.1);
+        let base_pos = panel_min + egui::vec2(offset_x, offset_y);
 
         // Draw edge lines first (behind cells)
         let line_color_ns = egui::Color32::from_rgb(80, 120, 100); // North-South (vertical)
