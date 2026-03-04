@@ -21,8 +21,8 @@ use crate::state::{EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_W
 use crate::state::{ZOOM_MAX, ZOOM_MIN, ZOOM_STEP};
 use crate::tts;
 use crate::voice_command::{
-    self, AgentAction, AgentInterpretation, CellContext, InsertTarget, VoiceCommandChannel,
-    VoiceCommandEvent, VoiceCommandState,
+    self, AgentAction, AgentInterpretation, CellContext, VoiceCommandChannel,
+    VoiceCommandEvent, VoiceCommandState, parse_script, ScriptInstruction,
 };
 
 use super::input::CapturedCommands;
@@ -58,7 +58,7 @@ pub fn execute_commands(
     let mut results = CommandResults::default();
 
     // GlobalCloseModal - close modals or exit fullscreen
-    if cmds.close_modal {
+    if cmds.has(Command::GlobalCloseModal) {
         results.any_command_processed = true;
         // First priority: close command bar
         if app_state.show_command_bar {
@@ -91,27 +91,27 @@ pub fn execute_commands(
 
     // GlobalToggleFullscreen - toggle fullscreen or open modal with current content
     // (but not when in text input mode - that's for submitting)
-    if cmds.toggle_fullscreen && !matches!(app_state.input_mode, InputMode::TextInput { .. }) {
+    if cmds.has(Command::GlobalToggleFullscreen) && !matches!(app_state.input_mode, InputMode::TextInput { .. }) {
         results.any_command_processed = true;
         execute_toggle_fullscreen(app_state, graph);
     }
 
     // GraphClickVertex - "click" the current vertex (send click message to server)
-    if cmds.click_vertex && matches!(app_state.input_mode, InputMode::Normal) {
+    if cmds.has(Command::GraphClickVertex) && matches!(app_state.input_mode, InputMode::Normal) {
         results.any_command_processed = true;
         execute_click_vertex(app_state, ws_cmd_tx);
     }
 
     // Zoom commands
-    if cmds.zoom_in {
+    if cmds.has(Command::GlobalZoomIn) {
         results.any_command_processed = true;
         app_state.zoom_level = (app_state.zoom_level + ZOOM_STEP).min(ZOOM_MAX);
     }
-    if cmds.zoom_out {
+    if cmds.has(Command::GlobalZoomOut) {
         results.any_command_processed = true;
         app_state.zoom_level = (app_state.zoom_level - ZOOM_STEP).max(ZOOM_MIN);
     }
-    if cmds.zoom_reset {
+    if cmds.has(Command::GlobalZoomReset) {
         results.any_command_processed = true;
         app_state.zoom_level = 1.0;
     }
@@ -123,7 +123,7 @@ pub fn execute_commands(
     }
 
     // GlobalToggleBag
-    if cmds.toggle_bag {
+    if cmds.has(Command::GlobalToggleBag) {
         results.any_command_processed = true;
         app_state.show_bag_panel = !app_state.show_bag_panel;
         if app_state.show_bag_panel {
@@ -133,7 +133,7 @@ pub fn execute_commands(
     }
 
     // GlobalToggleNavPanel
-    if cmds.toggle_nav_panel {
+    if cmds.has(Command::GlobalToggleNavPanel) {
         results.any_command_processed = true;
         app_state.show_nav_panel = !app_state.show_nav_panel;
         if app_state.show_nav_panel {
@@ -143,7 +143,7 @@ pub fn execute_commands(
     }
 
     // GlobalToggleElfPanel
-    if cmds.toggle_elf_panel {
+    if cmds.has(Command::GlobalToggleElfPanel) {
         results.any_command_processed = true;
         app_state.show_elf_panel = !app_state.show_elf_panel;
         if app_state.show_elf_panel {
@@ -153,7 +153,7 @@ pub fn execute_commands(
     }
 
     // GraphYank - Yank (copy) current vertex to bag
-    if cmds.yank {
+    if cmds.has(Command::GraphYank) {
         results.any_command_processed = true;
         if let Some(current_id) = app_state.current_vertex {
             if app_state.bag.last() != Some(&current_id) {
@@ -164,7 +164,7 @@ pub fn execute_commands(
     }
 
     // BagPop - Pop from bag (remove top without connecting)
-    if cmds.bag_pop {
+    if cmds.has(Command::BagPop) {
         results.any_command_processed = true;
         if let Some(_popped) = app_state.bag.pop() {
             app_state.status = format!("Popped from bag (depth: {})", app_state.bag.len());
@@ -174,7 +174,7 @@ pub fn execute_commands(
     }
 
     // GraphGoToBagTop - Go to top of bag (jump to that vertex)
-    if cmds.go_to_bag_top && app_state.input_mode == InputMode::Normal {
+    if cmds.has(Command::GraphGoToBagTop) && app_state.input_mode == InputMode::Normal {
         results.any_command_processed = true;
         if let Some(&top_id) = app_state.bag.last() {
             if let Some(current_id) = app_state.current_vertex {
@@ -188,42 +188,42 @@ pub fn execute_commands(
     }
 
     // GraphPaste - Paste from bag (connect bag vertex in insertion direction)
-    if cmds.paste && app_state.input_mode == InputMode::Normal && app_state.connected {
+    if cmds.has(Command::GraphPaste) && app_state.input_mode == InputMode::Normal && app_state.connected {
         results.any_command_processed = true;
         execute_paste(app_state, graph, ws_cmd_tx);
     }
 
     // GraphCutEdge - Cut connection in the current navigation direction
-    if cmds.cut_edge && app_state.input_mode == InputMode::Normal && app_state.connected {
+    if cmds.has(Command::GraphCutEdge) && app_state.input_mode == InputMode::Normal && app_state.connected {
         results.any_command_processed = true;
         execute_cut_edge(app_state, graph, ws_cmd_tx);
     }
 
     // GraphDeleteVertex - Delete current vertex (if editable)
-    if cmds.delete_vertex && app_state.input_mode == InputMode::Normal && app_state.connected {
+    if cmds.has(Command::GraphDeleteVertex) && app_state.input_mode == InputMode::Normal && app_state.connected {
         results.any_command_processed = true;
         execute_delete_vertex(app_state, graph, ws_cmd_tx);
     }
 
     // GraphEditText - Insert text at current vertex (edit)
-    if cmds.edit_text && app_state.input_mode == InputMode::Normal && app_state.connected {
+    if cmds.has(Command::GraphEditText) && app_state.input_mode == InputMode::Normal && app_state.connected {
         results.any_command_processed = true;
         execute_edit_text(app_state, graph);
     }
 
     // GraphSetDirection* - Change last navigation direction without moving
     if app_state.input_mode == InputMode::Normal {
-        let dir = if cmds.set_dir_north {
+        let dir = if cmds.has(Command::GraphSetDirectionNorth) {
             Some(EDGE_NORTH)
-        } else if cmds.set_dir_south {
+        } else if cmds.has(Command::GraphSetDirectionSouth) {
             Some(EDGE_SOUTH)
-        } else if cmds.set_dir_west {
+        } else if cmds.has(Command::GraphSetDirectionWest) {
             Some(EDGE_WEST)
-        } else if cmds.set_dir_east {
+        } else if cmds.has(Command::GraphSetDirectionEast) {
             Some(EDGE_EAST)
-        } else if cmds.set_dir_up {
+        } else if cmds.has(Command::GraphSetDirectionUp) {
             Some(EDGE_UP)
-        } else if cmds.set_dir_down {
+        } else if cmds.has(Command::GraphSetDirectionDown) {
             Some(EDGE_DOWN)
         } else {
             None
@@ -235,8 +235,49 @@ pub fn execute_commands(
         }
     }
 
+    // Navigation commands
+    if app_state.input_mode == InputMode::Normal {
+        let nav_dir = if cmds.has(Command::GraphNavigateNorth) {
+            Some(EDGE_NORTH)
+        } else if cmds.has(Command::GraphNavigateSouth) {
+            Some(EDGE_SOUTH)
+        } else if cmds.has(Command::GraphNavigateEast) {
+            Some(EDGE_EAST)
+        } else if cmds.has(Command::GraphNavigateWest) {
+            Some(EDGE_WEST)
+        } else if cmds.has(Command::GraphNavigateUp) {
+            Some(EDGE_UP)
+        } else if cmds.has(Command::GraphNavigateDown) {
+            Some(EDGE_DOWN)
+        } else {
+            None
+        };
+
+        if let Some(direction) = nav_dir {
+            results.any_command_processed = true;
+            if let Some(current_id) = app_state.current_vertex {
+                if let Some(vertex) = graph.vertices.get(&current_id) {
+                    let target_id = vertex.edges[direction];
+                    if target_id != 0 && graph.vertices.contains_key(&target_id) {
+                        app_state.history.push(current_id);
+                        app_state.current_vertex = Some(target_id);
+                        app_state.last_nav_direction = direction;
+                    }
+                }
+            }
+        }
+
+        // History back
+        if cmds.has(Command::GraphHistoryBack) {
+            results.any_command_processed = true;
+            if let Some(prev_id) = app_state.history.pop() {
+                app_state.current_vertex = Some(prev_id);
+            }
+        }
+    }
+
     // GraphNewTextVertex - Create new text vertex in last navigation direction
-    if cmds.new_text_vertex && app_state.input_mode == InputMode::Normal && app_state.connected {
+    if cmds.has(Command::GraphNewTextVertex) && app_state.input_mode == InputMode::Normal && app_state.connected {
         results.any_command_processed = true;
         let direction = app_state.last_nav_direction;
         app_state.text_input_buffer.clear();
@@ -246,14 +287,14 @@ pub fn execute_commands(
     }
 
     // GraphStartRecording - Push-to-talk recording
-    if cmds.start_recording && app_state.input_mode == InputMode::Normal && app_state.connected {
+    if cmds.has(Command::GraphStartRecording) && app_state.input_mode == InputMode::Normal && app_state.connected {
         results.any_command_processed = true;
         execute_start_recording(app_state, audio_signal, playback_state);
     }
 
     // RecordingSave - Check for recording key release (push-to-talk stop)
     if let InputMode::Recording { .. } = &app_state.input_mode {
-        if cmds.recording_save {
+        if cmds.has(Command::RecordingSave) {
             results.any_command_processed = true;
             if let Ok(mut stop) = audio_signal.should_stop.lock() {
                 *stop = true;
@@ -262,7 +303,7 @@ pub fn execute_commands(
     }
 
     // GlobalOpenCommandBar - Open command bar (vim-style)
-    if cmds.open_command_bar && app_state.input_mode == InputMode::Normal && !app_state.show_command_bar {
+    if cmds.has(Command::GlobalOpenCommandBar) && app_state.input_mode == InputMode::Normal && !app_state.show_command_bar {
         results.any_command_processed = true;
         app_state.show_command_bar = true;
         app_state.command_bar_input.clear();
@@ -270,13 +311,13 @@ pub fn execute_commands(
     }
 
     // GlobalOpenKeybindings - Open keybindings editor
-    if cmds.open_keybindings {
+    if cmds.has(Command::GlobalOpenKeybindings) {
         results.any_command_processed = true;
         app_state.sidebar.mode = SidebarMode::Keybindings;
     }
 
     // GlobalToggleTTS - Toggle text-to-speech mode
-    if cmds.toggle_tts {
+    if cmds.has(Command::GlobalToggleTTS) {
         results.any_command_processed = true;
         app_state.tts_mode = !app_state.tts_mode;
         if app_state.tts_mode {
@@ -288,13 +329,13 @@ pub fn execute_commands(
     }
 
     // GlobalToggleGamepadHelp - Toggle gamepad help overlay
-    if cmds.toggle_gamepad_help {
+    if cmds.has(Command::GlobalToggleGamepadHelp) {
         results.any_command_processed = true;
         app_state.show_gamepad_help = !app_state.show_gamepad_help;
     }
 
     // GlobalToggleVoiceSettings - Toggle voice command settings dialog
-    if cmds.toggle_voice_settings {
+    if cmds.has(Command::GlobalToggleVoiceSettings) {
         results.any_command_processed = true;
         app_state.show_voice_settings = !app_state.show_voice_settings;
     }
@@ -314,7 +355,7 @@ pub fn execute_commands(
     // Note: focus_url_bar_next_frame is cleared in main.rs after focus is successfully applied
 
     // GlobalPlaybackSpeedBoost - Boost playback speed for TTS and audio
-    if cmds.playback_speed_boost {
+    if cmds.has(Command::GlobalPlaybackSpeedBoost) {
         results.any_command_processed = true;
         let new_speed = boost_state.apply_boost();
         // Apply speed to both TTS and audio
@@ -1192,10 +1233,17 @@ pub fn grant_voice_permission(
 }
 
 /// Execute the selected voice command action
+/// Uses the same execute_commands path as keybindings for consistency
 pub fn execute_voice_action(
     app_state: &mut AppState,
     graph: &mut GraphState,
     ws_cmd_tx: &WsCommandTx,
+    media_cache: &mut MediaCache,
+    audio_signal: &AudioRecordingSignal,
+    playback_state: &AudioPlaybackState,
+    boost_state: &mut PlaybackBoostState,
+    voice_channel: &VoiceCommandChannel,
+    ctx: &bevy_egui::egui::Context,
 ) {
     if let InputMode::VoiceCommand(VoiceCommandState::Selecting {
         ref interpretations,
@@ -1207,140 +1255,55 @@ pub fn execute_voice_action(
             let action = interp.action.clone();
             let explanation = interp.explanation.clone();
 
-            // Execute the action
             match action {
-                AgentAction::Command { slug } => {
-                    if let Some(cmd) = Command::from_slug(&slug) {
-                        // Execute the command
-                        execute_voice_command(app_state, graph, ws_cmd_tx, &cmd);
-                        app_state.status = format!("Executed: {}", explanation);
-                    } else {
-                        app_state.status = format!("Unknown command: {}", slug);
-                    }
-                }
+                AgentAction::Script(script) => {
+                    let instructions = parse_script(&script);
 
-                AgentAction::InsertText { target, direction, content } => {
-                    match target {
-                        InsertTarget::UrlBar => {
-                            app_state.server_input = content.clone();
-                            app_state.status = format!("Set URL: {}", content);
-                        }
-                        InsertTarget::LandmarkBar => {
-                            app_state.landmark_input = content.clone();
-                            app_state.status = format!("Set landmark: {}", content);
-                        }
-                        InsertTarget::CurrentCell => {
-                            // Edit current cell
-                            app_state.text_input_buffer = content.clone();
-                            super::text_edit::reset_text_edit_state(app_state);
-                            app_state.input_mode = InputMode::TextInput { direction: None };
-                            app_state.status = format!("Editing: {}", content);
-                            return; // Don't reset to Normal
-                        }
-                        InsertTarget::NewCell => {
-                            // Create new cell in direction
-                            let dir = direction
-                                .as_ref()
-                                .map(|d| parse_direction(d))
-                                .flatten()
-                                .unwrap_or(app_state.last_nav_direction);
-                            app_state.text_input_buffer = content.clone();
-                            super::text_edit::reset_text_edit_state(app_state);
-                            app_state.input_mode = InputMode::TextInput { direction: Some(dir) };
-                            app_state.status = format!("New cell {}: {}", direction_name(dir), content);
-                            return; // Don't reset to Normal
+                    for instruction in instructions {
+                        match instruction {
+                            ScriptInstruction::Command(cmd) => {
+                                // Create a CapturedCommands with just this command
+                                let mut cmds = super::input::CapturedCommands::default();
+                                cmds.add(cmd);
+                                // Execute through the standard command path
+                                execute_commands(
+                                    &cmds,
+                                    app_state,
+                                    graph,
+                                    ws_cmd_tx,
+                                    media_cache,
+                                    audio_signal,
+                                    playback_state,
+                                    boost_state,
+                                    voice_channel,
+                                    ctx,
+                                );
+                            }
+                            ScriptInstruction::InsertText(content) => {
+                                // Set text buffer for the next text input command
+                                app_state.text_input_buffer = content;
+                                super::text_edit::reset_text_edit_state(app_state);
+                            }
                         }
                     }
-                }
 
-                AgentAction::SummonElf { elf_url, params: _, target: _, direction: _ } => {
-                    // TODO: Implement elf summoning
-                    app_state.status = format!("Elf summoning not yet implemented: {}", elf_url);
-                }
+                    app_state.status = format!("Executed: {}", explanation);
 
-                AgentAction::RequestView { .. } => {
-                    // This shouldn't happen in Selecting state
-                    app_state.status = "Unexpected request_view action".to_string();
+                    // Only return to Normal if not in a text input mode
+                    if !matches!(app_state.input_mode, InputMode::TextInput { .. }) {
+                        app_state.input_mode = InputMode::Normal;
+                    }
                 }
 
                 AgentAction::Cancel => {
                     app_state.status = "Voice command cancelled".to_string();
-                }
-            }
-
-            app_state.input_mode = InputMode::Normal;
-        }
-    }
-}
-
-/// Execute a command from voice
-fn execute_voice_command(
-    app_state: &mut AppState,
-    graph: &mut GraphState,
-    ws_cmd_tx: &WsCommandTx,
-    cmd: &Command,
-) {
-    match cmd {
-        // Navigation commands
-        Command::GraphNavigateNorth => navigate_direction(app_state, graph, EDGE_NORTH),
-        Command::GraphNavigateSouth => navigate_direction(app_state, graph, EDGE_SOUTH),
-        Command::GraphNavigateEast => navigate_direction(app_state, graph, EDGE_EAST),
-        Command::GraphNavigateWest => navigate_direction(app_state, graph, EDGE_WEST),
-        Command::GraphNavigateUp => navigate_direction(app_state, graph, EDGE_UP),
-        Command::GraphNavigateDown => navigate_direction(app_state, graph, EDGE_DOWN),
-
-        Command::GraphHistoryBack => {
-            if let Some(prev_id) = app_state.history.pop() {
-                app_state.current_vertex = Some(prev_id);
-            }
-        }
-
-        // Yank
-        Command::GraphYank => {
-            if let Some(current_id) = app_state.current_vertex {
-                if app_state.bag.last() != Some(&current_id) {
-                    app_state.bag.push(current_id);
+                    app_state.input_mode = InputMode::Normal;
                 }
             }
         }
-
-        // Delete
-        Command::GraphDeleteVertex => {
-            execute_delete_vertex(app_state, graph, ws_cmd_tx);
-        }
-
-        // Toggle commands
-        Command::GlobalToggleBag => {
-            app_state.show_bag_panel = !app_state.show_bag_panel;
-        }
-        Command::GlobalToggleNavPanel => {
-            app_state.show_nav_panel = !app_state.show_nav_panel;
-        }
-        Command::GlobalToggleTTS => {
-            app_state.tts_mode = !app_state.tts_mode;
-            if !app_state.tts_mode {
-                tts::stop();
-            }
-        }
-
-        _ => {
-            eprintln!("Voice command not implemented: {:?}", cmd);
-        }
     }
 }
 
-fn navigate_direction(app_state: &mut AppState, graph: &GraphState, direction: usize) {
-    if let Some(current_id) = app_state.current_vertex {
-        if let Some(vertex) = graph.vertices.get(&current_id) {
-            let target_id = vertex.edges[direction];
-            if target_id != 0 && graph.vertices.contains_key(&target_id) {
-                app_state.history.push(current_id);
-                app_state.current_vertex = Some(target_id);
-                app_state.last_nav_direction = direction;
-            }
-        }
-    }
-}
 
 fn get_current_cell_mime(app_state: &AppState, graph: &GraphState) -> String {
     app_state
@@ -1372,14 +1335,3 @@ fn get_cell_content_at(app_state: &AppState, graph: &GraphState, direction: Opti
     }
 }
 
-fn parse_direction(s: &str) -> Option<usize> {
-    match s.to_lowercase().as_str() {
-        "north" | "up" => Some(EDGE_NORTH),
-        "south" | "down" => Some(EDGE_SOUTH),
-        "east" | "right" => Some(EDGE_EAST),
-        "west" | "left" => Some(EDGE_WEST),
-        "stack_up" => Some(EDGE_UP),
-        "stack_down" => Some(EDGE_DOWN),
-        _ => None,
-    }
-}

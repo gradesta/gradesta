@@ -12,7 +12,7 @@ use bevy_egui::egui;
 use std::time::Instant;
 
 use crate::voice_command::{
-    AgentAction, AgentInterpretation, InsertTarget, VoiceCommandConfig,
+    AgentAction, AgentInterpretation, VoiceCommandConfig,
     VoiceCommandState,
 };
 
@@ -55,7 +55,15 @@ pub fn render_voice_command_overlay(
                 VoiceCommandState::Interpreting { .. } => 120.0,
                 VoiceCommandState::AwaitingPermission { .. } => 200.0,
                 VoiceCommandState::Selecting { interpretations, .. } => {
-                    100.0 + (interpretations.len() as f32 * 50.0).min(250.0)
+                    // Calculate height based on script lines
+                    let max_lines: usize = interpretations.iter()
+                        .map(|i| match &i.action {
+                            AgentAction::Script(s) => s.lines().count().max(1),
+                            AgentAction::Cancel => 1,
+                        })
+                        .max()
+                        .unwrap_or(1);
+                    100.0 + (interpretations.len() as f32 * (30.0 + max_lines as f32 * 18.0)).min(400.0)
                 }
             };
 
@@ -336,7 +344,7 @@ fn render_selection_menu(
 
     // Interpretation options
     egui::ScrollArea::vertical()
-        .max_height(200.0)
+        .max_height(350.0)
         .show(ui, |ui| {
             for (i, interp) in interpretations.iter().enumerate() {
                 let is_selected = i == selected;
@@ -344,7 +352,7 @@ fn render_selection_menu(
                 let bg_color = if is_selected {
                     egui::Color32::from_rgb(60, 80, 120)
                 } else {
-                    egui::Color32::TRANSPARENT
+                    egui::Color32::from_rgb(40, 40, 50)
                 };
 
                 let text_color = if is_selected {
@@ -358,6 +366,7 @@ fn render_selection_menu(
                     .corner_radius(6.0)
                     .inner_margin(egui::Margin::symmetric(10, 8))
                     .show(ui, |ui| {
+                        // Header row with selection indicator, confidence, and explanation
                         ui.horizontal(|ui| {
                             // Selection indicator
                             if is_selected {
@@ -375,29 +384,53 @@ fn render_selection_menu(
                                     .color(confidence_color),
                             );
 
-                            // Action description
-                            let action_text = format_action(&interp.action);
-                            ui.label(
-                                egui::RichText::new(action_text)
-                                    .size(14.0)
-                                    .color(text_color),
-                            );
-                        });
-
-                        // Explanation (smaller, below)
-                        if !interp.explanation.is_empty() {
-                            ui.horizontal(|ui| {
-                                ui.add_space(28.0);
+                            // Explanation as header
+                            if !interp.explanation.is_empty() {
                                 ui.label(
                                     egui::RichText::new(&interp.explanation)
-                                        .size(12.0)
-                                        .color(egui::Color32::GRAY),
+                                        .size(14.0)
+                                        .color(text_color),
                                 );
-                            });
+                            }
+                        });
+
+                        // Script content (monospace, indented)
+                        match &interp.action {
+                            AgentAction::Script(script) => {
+                                ui.horizontal(|ui| {
+                                    ui.add_space(28.0);
+                                    // Show script in a code-style frame
+                                    egui::Frame::new()
+                                        .fill(egui::Color32::from_rgb(25, 25, 35))
+                                        .corner_radius(4.0)
+                                        .inner_margin(egui::Margin::symmetric(8, 4))
+                                        .show(ui, |ui| {
+                                            for line in script.lines() {
+                                                ui.label(
+                                                    egui::RichText::new(line)
+                                                        .size(12.0)
+                                                        .family(egui::FontFamily::Monospace)
+                                                        .color(egui::Color32::from_rgb(180, 200, 180)),
+                                                );
+                                            }
+                                        });
+                                });
+                            }
+                            AgentAction::Cancel => {
+                                ui.horizontal(|ui| {
+                                    ui.add_space(28.0);
+                                    ui.label(
+                                        egui::RichText::new("(cancel)")
+                                            .size(12.0)
+                                            .italics()
+                                            .color(egui::Color32::GRAY),
+                                    );
+                                });
+                            }
                         }
                     });
 
-                ui.add_space(2.0);
+                ui.add_space(4.0);
             }
         });
 
@@ -423,52 +456,6 @@ fn confidence_to_color(confidence: f32) -> egui::Color32 {
     }
 }
 
-fn format_action(action: &AgentAction) -> String {
-    match action {
-        AgentAction::Command { slug } => {
-            // Convert slug to readable format
-            slug.replace('.', " → ").replace('_', " ")
-        }
-        AgentAction::InsertText { target, direction, content } => {
-            let target_str = match target {
-                InsertTarget::UrlBar => "URL bar",
-                InsertTarget::LandmarkBar => "landmark bar",
-                InsertTarget::CurrentCell => "current cell",
-                InsertTarget::NewCell => {
-                    if let Some(dir) = direction {
-                        return format!("New cell {}: \"{}\"", dir, truncate_string(content, 30));
-                    }
-                    "new cell"
-                }
-            };
-            format!("Insert in {}: \"{}\"", target_str, truncate_string(content, 30))
-        }
-        AgentAction::SummonElf { elf_url, target, direction, .. } => {
-            let elf_name = elf_url.split('/').last().unwrap_or(elf_url);
-            let target_str = match target {
-                InsertTarget::NewCell if direction.is_some() => {
-                    format!("new cell {}", direction.as_ref().unwrap())
-                }
-                _ => "cell".to_string(),
-            };
-            format!("Summon {} → {}", elf_name, target_str)
-        }
-        AgentAction::RequestView { targets, .. } => {
-            format!("View cells: {}", targets.join(", "))
-        }
-        AgentAction::Cancel => {
-            "Cancel".to_string()
-        }
-    }
-}
-
-fn truncate_string(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max_len.saturating_sub(3)])
-    }
-}
 
 // ============================================================================
 // Voice Settings Dialog

@@ -436,7 +436,7 @@ fn ui_system(
 
     // Log triggered commands to debug log (separated to avoid borrow conflicts)
     ui::log_triggered_commands_to_debug(&cmds, &mut app_state);
-    let cmd_refresh = cmds.refresh;  // Used later for refresh logic
+    let cmd_refresh = cmds.has(commands::Command::GlobalRefresh);  // Used later for refresh logic
 
     // IMPORTANT: Consume text edit events BEFORE any UI rendering
     // This prevents egui's TextEdit from trying to use the broken system clipboard
@@ -487,7 +487,17 @@ fn ui_system(
             match state {
                 VoiceCommandState::Selecting { ref interpretations, selected, .. } => {
                     eprintln!("Executing voice action, {} interpretations, selected: {}", interpretations.len(), selected);
-                    ui::execute_voice_action(&mut app_state, &mut graph, &ws_cmd_tx);
+                    ui::execute_voice_action(
+                        &mut app_state,
+                        &mut graph,
+                        &ws_cmd_tx,
+                        &mut media_cache,
+                        &audio_signal,
+                        &playback_state,
+                        &mut boost_state,
+                        &voice_channel,
+                        ctx,
+                    );
                 }
                 VoiceCommandState::AwaitingPermission { .. } => {
                     ui::grant_voice_permission(&mut app_state, &graph, &voice_channel, &voice_config.0);

@@ -6,6 +6,7 @@
 use bevy_egui::egui;
 
 use super::input::CapturedCommands;
+use crate::commands::Command;
 use crate::state::{AppState, InputMode};
 
 /// Get text from the system clipboard
@@ -261,14 +262,14 @@ pub fn process_text_edit_commands(
     }
 
     // Select All - Ctrl+A
-    if cmds.text_select_all {
+    if cmds.has(Command::TextInputSelectAll) {
         result.any_processed = true;
         app_state.text_selection_start = Some(0);
         app_state.text_cursor_pos = app_state.text_input_buffer.len();
     }
 
     // Copy - Ctrl+C
-    if cmds.text_copy {
+    if cmds.has(Command::TextInputCopy) {
         result.any_processed = true;
         if let Some(sel_start) = app_state.text_selection_start {
             let (start, end) = get_selection_range(sel_start, app_state.text_cursor_pos);
@@ -281,7 +282,7 @@ pub fn process_text_edit_commands(
     }
 
     // Cut - Ctrl+X
-    if cmds.text_cut {
+    if cmds.has(Command::TextInputCut) {
         result.any_processed = true;
         if let Some(sel_start) = app_state.text_selection_start {
             let (start, end) = get_selection_range(sel_start, app_state.text_cursor_pos);
@@ -306,7 +307,7 @@ pub fn process_text_edit_commands(
     }
 
     // Paste - Ctrl+V
-    if cmds.text_paste {
+    if cmds.has(Command::TextInputPaste) {
         result.any_processed = true;
         // Try system clipboard first, fall back to internal clipboard
         let clipboard_text = get_clipboard_text()
@@ -346,7 +347,7 @@ pub fn process_text_edit_commands(
     }
 
     // Undo - Ctrl+Z
-    if cmds.text_undo {
+    if cmds.has(Command::TextInputUndo) {
         result.any_processed = true;
         if let Some(prev_text) = app_state.text_undo_stack.pop() {
             // Push current state to redo stack
@@ -359,7 +360,7 @@ pub fn process_text_edit_commands(
     }
 
     // Redo - Ctrl+Shift+Z or Ctrl+Y
-    if cmds.text_redo {
+    if cmds.has(Command::TextInputRedo) {
         result.any_processed = true;
         if let Some(next_text) = app_state.text_redo_stack.pop() {
             // Push current state to undo stack

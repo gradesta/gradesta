@@ -229,45 +229,13 @@ pub struct CellContext {
 }
 
 /// An action the agent can suggest
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[derive(Clone, Debug)]
 pub enum AgentAction {
-    /// Execute an editor command by slug
-    Command {
-        slug: String,
-    },
-    /// Insert text into a target
-    InsertText {
-        target: InsertTarget,
-        #[serde(default)]
-        direction: Option<String>,
-        content: String,
-    },
-    /// Call another elf agent (e.g., for image/audio generation)
-    SummonElf {
-        elf_url: String,
-        params: HashMap<String, String>,
-        target: InsertTarget,
-        #[serde(default)]
-        direction: Option<String>,
-    },
-    /// Request to view cell content (LLM's first response may include this)
-    RequestView {
-        targets: Vec<String>,
-        reason: String,
-    },
+    /// Execute a command script (semicolon-separated commands)
+    /// e.g. "global.focus_url;insert_text \"ws://localhost:8080\";global.refresh"
+    Script(String),
     /// Cancel the voice command (user-selectable option)
     Cancel,
-}
-
-/// Target for text insertion
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum InsertTarget {
-    UrlBar,
-    LandmarkBar,
-    CurrentCell,
-    NewCell,
 }
 
 /// A single interpretation from the LLM
@@ -674,24 +642,30 @@ struct LlmChoice {
 
 /// Build the system prompt for the LLM
 fn build_system_prompt(context: &str, mime_type: &str, direction: &str) -> String {
-    format!(r#"Voice command interpreter for Gradesta Browser (spatial graph editor).
+    format!(r#"Voice command interpreter for Gradesta Browser, a spatial graph editor.
 
-Commands: navigate_{{north|south|east|west|up|down}}, yank, paste, delete_vertex, edit_text, new_text_vertex
+## Gradesta Concepts
+- **Cells/Vertices**: Nodes in a graph containing text, audio, images, or other content
+- **Navigation**: Move between cells using directions (north/south/east/west/up/down)
+- **Bag**: A clipboard stack. "Yank" copies current cell to bag, "paste" connects bag top to current cell
+- **Elves**: External AI agents that can generate content (images, audio, etc.)
+- **Connecting**: Enter a server URL and refresh to connect to a Gradesta server
 
-Tools:
-- get_commands(category): Get available commands
-- get_services(): Get available local servers and elves to connect to
-- request_view(targets, reason): Request to view cell content
+## Tools
+- get_commands(category): Discover available commands by category
+- get_services(): Get local servers and elves the user has configured
+- request_view(targets, reason): Ask permission to view cell content
 
-Respond with JSON array.
-- For content like "add a cell with X", use insert_text with target=new_cell
-- For "connect to X", call get_services() to find the URL, then insert_text with target=url_bar
-- If no match: [{{"type": "none", "confidence": 1.0, "explanation": "..."}}]
+## Response Format
+JSON array sorted by confidence:
+[{{"script": "command.slug\nanother.command", "confidence": 0.9, "explanation": "Brief description"}}]
 
-Action types:
-- command: {{"type": "command", "slug": "graph.X", "confidence": 0.9, "explanation": "..."}}
-- insert_text: {{"type": "insert_text", "target": "url_bar|new_cell", "direction": "{direction}", "content": "...", "confidence": 0.9, "explanation": "..."}}
-- none: {{"type": "none", "confidence": 1.0, "explanation": "..."}}
+## Script Syntax
+- Newline-separated command slugs (use \n in JSON)
+- Use EXACT slugs from get_commands() output
+- Special: `insert_text "content"` sets text buffer before text input commands
+
+If no match: {{"script": "", "confidence": 1.0, "explanation": "Could not understand"}}
 
 Context: {context} | MIME: {mime_type} | Direction: {direction}
 "#, context = context, mime_type = mime_type, direction = direction)
@@ -758,71 +732,40 @@ fn build_tools() -> Vec<LlmTool> {
     ]
 }
 
-/// Get commands for a category
+/// Get commands for a category by querying the Command enum
 fn get_commands_for_category(category: &str) -> serde_json::Value {
-    let commands: Vec<(&str, &[&str])> = match category {
-        "navigation" => vec![
-            ("graph.navigate_north", &["go north", "up", "move up"][..]),
-            ("graph.navigate_south", &["go south", "down", "move down"]),
-            ("graph.navigate_east", &["go east", "right", "move right"]),
-            ("graph.navigate_west", &["go west", "left", "move left"]),
-            ("graph.navigate_up", &["go up stack", "stack up"]),
-            ("graph.navigate_down", &["go down stack", "stack down"]),
-            ("graph.history_back", &["go back", "back", "previous"]),
-        ],
-        "editing" => vec![
-            ("graph.edit_text", &["edit", "modify", "change text"][..]),
-            ("graph.new_text_vertex", &["new note", "create text", "add note"]),
-            ("graph.delete_vertex", &["delete", "remove", "trash"]),
-        ],
-        "clipboard" => vec![
-            ("graph.yank", &["yank", "copy", "grab"][..]),
-            ("graph.paste", &["paste", "put"]),
-            ("graph.cut_edge", &["cut", "disconnect"]),
-            ("bag.pop", &["pop", "remove from bag"]),
-            ("bag.clear", &["clear bag", "empty bag"]),
-        ],
-        "ui" => vec![
-            ("global.toggle_bag", &["show bag", "open clipboard", "toggle bag"][..]),
-            ("global.toggle_nav_panel", &["show nav", "navigation panel"]),
-            ("global.zoom_in", &["zoom in", "bigger"]),
-            ("global.zoom_out", &["zoom out", "smaller"]),
-            ("global.toggle_fullscreen", &["fullscreen", "expand"]),
-            ("global.toggle_tts", &["toggle speech", "text to speech"]),
-        ],
-        "text_input" => vec![
-            ("text_input.submit", &["submit", "save", "done"][..]),
-            ("text_input.cancel", &["cancel", "abort"]),
-            ("text_input.copy", &["copy"]),
-            ("text_input.paste", &["paste"]),
-            ("text_input.undo", &["undo"]),
-            ("text_input.redo", &["redo"]),
-        ],
-        "recording" => vec![
-            ("recording.save", &["save recording", "stop recording"][..]),
-            ("recording.cancel", &["cancel recording", "discard"]),
-        ],
-        "export" => vec![
-            ("global.export_html", &["export", "export html", "save as html"][..]),
-            ("export.confirm", &["confirm export"]),
-            ("export.cancel", &["cancel export"]),
-        ],
-        "elf" => vec![
-            ("global.toggle_elf_panel", &["show elves", "elf panel"][..]),
-            ("elf.summon", &["summon elf", "call elf"]),
-            ("elf.refresh", &["refresh elf"]),
-        ],
-        _ => vec![],
+    use crate::commands::Context;
+
+    let target_context = match category {
+        "navigation" | "editing" | "clipboard" => Some(Context::Graph),
+        "ui" => Some(Context::Global),
+        "text_input" => Some(Context::TextInput),
+        "recording" => Some(Context::Recording),
+        "export" => Some(Context::Export),
+        "elf" => Some(Context::Elf),
+        "bag" => Some(Context::Bag),
+        _ => None,
     };
 
-    serde_json::json!({
-        "commands": commands.into_iter().map(|(slug, phrases)| {
+    let commands: Vec<serde_json::Value> = Command::all()
+        .into_iter()
+        .filter(|cmd| {
+            if let Some(ctx) = target_context {
+                cmd.context() == ctx
+            } else {
+                false
+            }
+        })
+        .map(|cmd| {
             serde_json::json!({
-                "slug": slug,
-                "phrases": phrases
+                "slug": cmd.slug(),
+                "description": cmd.description(),
+                "phrases": cmd.voice_phrases()
             })
-        }).collect::<Vec<_>>()
-    })
+        })
+        .collect();
+
+    serde_json::json!({ "commands": commands })
 }
 
 /// Get available local services (servers and elves)
@@ -1064,55 +1007,22 @@ fn parse_llm_response(content: &str) -> Result<LlmResult, String> {
     if let (Some(start), Some(end)) = (json_start, json_end) {
         if end > start {
             let json_str = &content[start..=end];
-            let actions: Vec<serde_json::Value> = serde_json::from_str(json_str)
+            let options: Vec<serde_json::Value> = serde_json::from_str(json_str)
                 .map_err(|e| format!("Failed to parse LLM JSON: {}", e))?;
 
-            let interpretations: Vec<AgentInterpretation> = actions
+            let interpretations: Vec<AgentInterpretation> = options
                 .into_iter()
                 .filter_map(|v| {
                     let confidence = v["confidence"].as_f64().unwrap_or(0.5) as f32;
                     let explanation = v["explanation"].as_str().unwrap_or("").to_string();
+                    let script = v["script"].as_str().unwrap_or("").to_string();
 
-                    // Parse action based on type
-                    let action = match v["type"].as_str()? {
-                        "command" => Some(AgentAction::Command {
-                            slug: v["slug"].as_str()?.to_string(),
-                        }),
-                        "insert_text" => Some(AgentAction::InsertText {
-                            target: match v["target"].as_str()? {
-                                "url_bar" => InsertTarget::UrlBar,
-                                "landmark_bar" => InsertTarget::LandmarkBar,
-                                "current_cell" => InsertTarget::CurrentCell,
-                                "new_cell" => InsertTarget::NewCell,
-                                _ => InsertTarget::NewCell,
-                            },
-                            direction: v["direction"].as_str().map(String::from),
-                            content: v["content"].as_str()?.to_string(),
-                        }),
-                        "summon_elf" => Some(AgentAction::SummonElf {
-                            elf_url: v["elf_url"].as_str()?.to_string(),
-                            params: v["params"]
-                                .as_object()
-                                .map(|m| {
-                                    m.iter()
-                                        .filter_map(|(k, v)| {
-                                            Some((k.clone(), v.as_str()?.to_string()))
-                                        })
-                                        .collect()
-                                })
-                                .unwrap_or_default(),
-                            target: match v["target"].as_str().unwrap_or("new_cell") {
-                                "url_bar" => InsertTarget::UrlBar,
-                                "landmark_bar" => InsertTarget::LandmarkBar,
-                                "current_cell" => InsertTarget::CurrentCell,
-                                _ => InsertTarget::NewCell,
-                            },
-                            direction: v["direction"].as_str().map(String::from),
-                        }),
-                        // Handle "none" type for when LLM can't find a match
-                        "none" => Some(AgentAction::Cancel),
-                        _ => None,
-                    }?;
+                    // Empty script means cancel/no match
+                    let action = if script.is_empty() {
+                        AgentAction::Cancel
+                    } else {
+                        AgentAction::Script(script)
+                    };
 
                     Some(AgentInterpretation {
                         action,
@@ -1123,7 +1033,6 @@ fn parse_llm_response(content: &str) -> Result<LlmResult, String> {
                 .collect();
 
             if interpretations.is_empty() {
-                // Return a "no match" interpretation instead of error
                 return Ok(LlmResult::Interpretations(vec![AgentInterpretation {
                     action: AgentAction::Cancel,
                     confidence: 1.0,
@@ -1145,14 +1054,40 @@ fn parse_llm_response(content: &str) -> Result<LlmResult, String> {
 }
 
 // ============================================================================
-// Command Execution
+// Script Parsing
 // ============================================================================
 
-/// Execute an agent action
-/// Returns the command slug if it's a command action, otherwise handles directly
-pub fn get_command_for_action(action: &AgentAction) -> Option<Command> {
-    match action {
-        AgentAction::Command { slug } => Command::from_slug(slug),
-        _ => None,
+/// A single parsed instruction from a script
+#[derive(Debug, Clone)]
+pub enum ScriptInstruction {
+    /// Execute a command by slug (e.g., "graph.navigate_north")
+    Command(Command),
+    /// Insert text into the current text buffer (only special case needed)
+    InsertText(String),
+}
+
+/// Parse a script string into individual instructions
+/// Script format: newline-separated command slugs
+/// Special: `insert_text "content"` sets text buffer before text_input commands
+pub fn parse_script(script: &str) -> Vec<ScriptInstruction> {
+    let mut instructions = Vec::new();
+
+    for line in script.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        // Special case: insert_text "content" - sets text buffer
+        if line.starts_with("insert_text ") {
+            let content = line[12..].trim().trim_matches('"');
+            instructions.push(ScriptInstruction::InsertText(content.to_string()));
+        } else if let Some(cmd) = Command::from_slug(line) {
+            instructions.push(ScriptInstruction::Command(cmd));
+        } else {
+            eprintln!("Unknown command in script: {}", line);
+        }
     }
+
+    instructions
 }
