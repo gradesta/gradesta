@@ -256,19 +256,18 @@ pub fn capture_voice_command_gamepad(
 
     // Right stick for selection (during voice command mode)
     const STICK_DEADZONE: f32 = 0.5;
-    let (rx, ry) = gp.right_stick;
+    let (_rx, ry) = gp.right_stick;
 
     // Y axis: negative = up, positive = down
     cmds.voice_select_up = ry < -STICK_DEADZONE;
     cmds.voice_select_down = ry > STICK_DEADZONE;
 
-    // X axis: positive = right (confirm), negative = left (cancel)
-    cmds.voice_confirm = rx > STICK_DEADZONE;
-    cmds.voice_cancel = rx < -STICK_DEADZONE;
-
-    // Also allow A button for confirm and B button for cancel
+    // R3 (right stick click) or A button to confirm selection
+    cmds.voice_confirm = gp.is_pressed(GamepadKey::RightStick); // R3
     cmds.voice_confirm |= gp.is_pressed(GamepadKey::South); // A / Cross
-    cmds.voice_cancel |= gp.is_pressed(GamepadKey::East);   // B / Circle
+
+    // B button to cancel (legacy, Cancel is now a menu option)
+    cmds.voice_cancel = gp.is_pressed(GamepadKey::East); // B / Circle
 }
 
 /// Log triggered commands to the debug log

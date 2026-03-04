@@ -256,6 +256,8 @@ pub enum AgentAction {
         targets: Vec<String>,
         reason: String,
     },
+    /// Cancel the voice command (user-selectable option)
+    Cancel,
 }
 
 /// Target for text insertion
@@ -464,10 +466,11 @@ fn run_soniox_websocket(
     let mut end_of_stream_time: Option<std::time::Instant> = None;
 
     loop {
-        // Timeout: if we've sent end-of-stream and been waiting > 5 seconds, give up
+        // Timeout: if we've sent end-of-stream and been waiting > 500ms, consider complete
+        // Soniox doesn't reliably send "finished: true", so we use a short timeout
         if let Some(eos_time) = end_of_stream_time {
-            if eos_time.elapsed() > std::time::Duration::from_secs(5) {
-                eprintln!("Timeout waiting for Soniox response");
+            if eos_time.elapsed() > std::time::Duration::from_millis(500) {
+                eprintln!("Transcription complete (timeout after end-of-stream)");
                 let final_text = format!("{}{}", final_transcript, interim_transcript);
                 let _ = result_tx.send(VoiceCommandEvent::TranscriptionComplete {
                     transcript: final_text,
@@ -940,12 +943,17 @@ fn query_llm_sync(
             return Err(format!("LLM API error: {}", error_text));
         }
 
-        let llm_response: LlmResponse = response
-            .json()
+        let response_text = response.text().map_err(|e| format!("Failed to read LLM response: {}", e))?;
+        eprintln!("LLM raw response: {}", &response_text[..response_text.len().min(500)]);
+
+        let llm_response: LlmResponse = serde_json::from_str(&response_text)
             .map_err(|e| format!("Failed to parse LLM response: {}", e))?;
 
         let choice = llm_response.choices.into_iter().next()
             .ok_or("No response from LLM")?;
+
+        eprintln!("LLM content: {:?}", &choice.message.content);
+        eprintln!("LLM tool_calls: {:?}", &choice.message.tool_calls);
 
         // Check for tool calls
         if let Some(tool_calls) = choice.message.tool_calls {

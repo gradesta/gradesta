@@ -21,7 +21,7 @@ use crate::state::{EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_W
 use crate::state::{ZOOM_MAX, ZOOM_MIN, ZOOM_STEP};
 use crate::tts;
 use crate::voice_command::{
-    self, AgentAction, CellContext, InsertTarget, VoiceCommandChannel,
+    self, AgentAction, AgentInterpretation, CellContext, InsertTarget, VoiceCommandChannel,
     VoiceCommandEvent, VoiceCommandState,
 };
 
@@ -1073,14 +1073,8 @@ pub fn process_voice_command_events(
                 eprintln!("Live transcript update: \"{}\"", text);
             }
 
-            VoiceCommandEvent::LlmResponse { interpretations } => {
+            VoiceCommandEvent::LlmResponse { mut interpretations } => {
                 eprintln!("LLM response: {} interpretations", interpretations.len());
-
-                if interpretations.is_empty() {
-                    app_state.input_mode = InputMode::Normal;
-                    app_state.status = "Could not interpret command".to_string();
-                    continue;
-                }
 
                 // Get the transcript from current state
                 let transcript = if let InputMode::VoiceCommand(VoiceCommandState::Interpreting { ref transcript, .. }) = app_state.input_mode {
@@ -1089,13 +1083,20 @@ pub fn process_voice_command_events(
                     "".to_string()
                 };
 
+                // Always add Cancel as the last option
+                interpretations.push(AgentInterpretation {
+                    action: AgentAction::Cancel,
+                    confidence: 1.0,
+                    explanation: "Cancel voice command".to_string(),
+                });
+
                 // Show selection menu
                 app_state.input_mode = InputMode::VoiceCommand(VoiceCommandState::Selecting {
                     transcript,
                     interpretations,
                     selected: 0,
                 });
-                app_state.status = "Select action with joystick".to_string();
+                app_state.status = "Select action with R3/A, navigate with right stick".to_string();
             }
 
             VoiceCommandEvent::LlmRequestsView { targets, reason } => {
@@ -1260,6 +1261,10 @@ pub fn execute_voice_action(
                 AgentAction::RequestView { .. } => {
                     // This shouldn't happen in Selecting state
                     app_state.status = "Unexpected request_view action".to_string();
+                }
+
+                AgentAction::Cancel => {
+                    app_state.status = "Voice command cancelled".to_string();
                 }
             }
 

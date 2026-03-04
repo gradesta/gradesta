@@ -405,11 +405,9 @@ fn render_selection_menu(
 
     // Joystick hints
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("← Cancel").color(egui::Color32::from_rgb(200, 100, 100)));
-        ui.add_space(15.0);
         ui.label(egui::RichText::new("↑↓ Navigate").color(egui::Color32::GRAY));
         ui.add_space(15.0);
-        ui.label(egui::RichText::new("→ Confirm").color(egui::Color32::GREEN));
+        ui.label(egui::RichText::new("R3/A Select").color(egui::Color32::GREEN));
     });
 }
 
@@ -457,6 +455,9 @@ fn format_action(action: &AgentAction) -> String {
         }
         AgentAction::RequestView { targets, .. } => {
             format!("View cells: {}", targets.join(", "))
+        }
+        AgentAction::Cancel => {
+            "Cancel".to_string()
         }
     }
 }

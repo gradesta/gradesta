@@ -481,9 +481,12 @@ fn ui_system(
 
     // Handle voice command confirm/action execution
     if cmds.voice_confirm {
+        eprintln!("voice_confirm triggered, input_mode: {:?}", std::mem::discriminant(&app_state.input_mode));
         if let InputMode::VoiceCommand(ref state) = app_state.input_mode {
+            eprintln!("In VoiceCommand mode, state: {:?}", std::mem::discriminant(state));
             match state {
-                VoiceCommandState::Selecting { .. } => {
+                VoiceCommandState::Selecting { ref interpretations, selected, .. } => {
+                    eprintln!("Executing voice action, {} interpretations, selected: {}", interpretations.len(), selected);
                     ui::execute_voice_action(&mut app_state, &mut graph, &ws_cmd_tx);
                 }
                 VoiceCommandState::AwaitingPermission { .. } => {
@@ -492,6 +495,9 @@ fn ui_system(
                 _ => {}
             }
         }
+    }
+    if cmds.voice_cancel {
+        eprintln!("voice_cancel triggered");
     }
 
     // Apply zoom by scaling the UI - we do this manually in rendering instead of using pixels_per_point
