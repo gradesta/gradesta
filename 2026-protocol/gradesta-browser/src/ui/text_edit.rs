@@ -233,22 +233,14 @@ pub fn handle_url_bar_copy_shortcut(ctx: &egui::Context, app_state: &mut AppStat
 /// Sync selected text to system clipboard when Copy/Cut events occur
 /// Call this after TextEdit rendering to capture what was copied
 pub fn sync_copy_to_system_clipboard(ctx: &egui::Context) {
-    ctx.input(|input| {
-        for event in &input.events {
-            match event {
-                egui::Event::Copy | egui::Event::Cut => {
-                    // egui stores copied text in its output
-                    // We need to get it and sync to system clipboard
-                }
-                _ => {}
-            }
-        }
-    });
-
-    // Get text that egui copied to its internal clipboard and sync to system
+    // In egui 0.33+, copied text is handled via OutputCommand::CopyText in the commands field
     ctx.output_mut(|output| {
-        if !output.copied_text.is_empty() {
-            set_clipboard_text(&output.copied_text);
+        for command in &output.commands {
+            if let egui::OutputCommand::CopyText(text) = command {
+                if !text.is_empty() {
+                    set_clipboard_text(text);
+                }
+            }
         }
     });
 }

@@ -78,7 +78,7 @@ pub fn render_elf_panel(
         for (idx, elf) in app_state.trusted_elves.iter().enumerate() {
             let selected = idx == app_state.elf_panel.selected_elf_index;
 
-            egui::Frame::none()
+            egui::Frame::new()
                 .fill(if selected {
                     ui.visuals().selection.bg_fill
                 } else {

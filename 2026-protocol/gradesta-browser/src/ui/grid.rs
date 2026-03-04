@@ -147,7 +147,7 @@ pub fn render_grid_view(
                         // No vertex data - just draw empty cell
                         let corner_radius = 4.0 * zoom;
                         painter.rect_filled(rect, corner_radius, egui::Color32::from_rgb(50, 50, 55));
-                        painter.rect_stroke(rect, corner_radius, egui::Stroke::new(2.0 * zoom, egui::Color32::from_rgb(80, 80, 90)));
+                        painter.rect_stroke(rect, corner_radius, egui::Stroke::new(2.0 * zoom, egui::Color32::from_rgb(80, 80, 90)), egui::StrokeKind::Outside);
                     }
 
                     // Detect clicks on cells

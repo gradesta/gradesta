@@ -1,5 +1,6 @@
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use bevy::window::PrimaryWindow;
+use bevy_egui::{egui, EguiContexts, EguiContextSettings, EguiPlugin, EguiStartupSet, EguiPrimaryContextPass};
 use crossbeam_channel::{unbounded, Sender, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -163,15 +164,16 @@ fn main() {
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Gradesta Browser".to_string(),
-                resolution: (1400.0, 900.0).into(),
+                resolution: bevy::window::WindowResolution::new(1400, 900),
                 ..default()
             }),
             ..default()
         }))
-        .add_plugins(EguiPlugin)
-        .add_systems(Startup, setup)
+        .add_plugins(EguiPlugin::default())
+        .add_systems(Startup, setup.after(EguiStartupSet::InitContexts))
+        .add_systems(PreUpdate, sync_egui_scale_factor)
+        .add_systems(EguiPrimaryContextPass, ui_system)
         .add_systems(Update, (
-            ui_system,
             events::ingest_server_events,
             process_elf_http_events,
             (handle_navigation, auto_play_audio_on_navigate).chain(),
@@ -269,12 +271,29 @@ fn run_startup_download() {
     let _ = eframe::run_native(
         "Gradesta Browser Setup",
         options,
-        Box::new(|_cc| Box::new(DownloadApp { progress })),
+        Box::new(|_cc| Ok(Box::new(DownloadApp { progress }))),
     );
 }
 
 fn setup(mut commands: Commands) {
-    commands.spawn(Camera2dBundle::default());
+    commands.spawn(Camera2d);
+}
+
+/// Sync bevy_egui's scale_factor with the window's DPI scale factor
+/// This fixes pointer coordinate mismatch on HiDPI displays
+fn sync_egui_scale_factor(
+    windows: Query<&Window, With<PrimaryWindow>>,
+    mut egui_settings: Query<&mut EguiContextSettings>,
+) {
+    let Ok(window) = windows.single() else { return };
+    let window_scale = window.scale_factor();
+
+    for mut settings in egui_settings.iter_mut() {
+        if (settings.scale_factor - window_scale).abs() > 0.01 {
+            eprintln!("Syncing egui scale_factor: {} -> {}", settings.scale_factor, window_scale);
+            settings.scale_factor = window_scale;
+        }
+    }
 }
 
 fn ui_system(
@@ -287,8 +306,26 @@ fn ui_system(
     audio_signal: Res<AudioRecordingSignal>,
     playback_state: Res<AudioPlaybackState>,
     elf_http_tx: Res<ElfHttpTx>,
-) {
-    let ctx = contexts.ctx_mut();
+) -> Result {
+    let ctx = contexts.ctx_mut()?;
+
+    // Debug: check input state periodically and on pointer activity
+    static DEBUG_FRAME: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let frame = DEBUG_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    if frame == 0 {
+        // Print screen info once at startup
+        let screen = ctx.screen_rect();
+        let ppp = ctx.pixels_per_point();
+        eprintln!("Screen rect: {:?}, pixels_per_point: {}", screen, ppp);
+    }
+    ctx.input(|i| {
+        let show_debug = frame % 60 == 0 || i.pointer.any_down() || i.pointer.any_click() || i.pointer.any_released();
+        if show_debug {
+            eprintln!("Frame {}: down={}, click={}, released={}, pos={:?}, hover_pos={:?}",
+                frame, i.pointer.any_down(), i.pointer.any_click(), i.pointer.any_released(),
+                i.pointer.interact_pos(), i.pointer.hover_pos());
+        }
+    });
 
     // Process at most ONE decoded image per frame to avoid GPU upload stalls
     if let Ok(decoded) = media_cache.decoded_rx.try_recv() {
@@ -402,7 +439,7 @@ fn ui_system(
         if matches!(action, ui::FullscreenAction::ExitFullscreen) {
             app_state.sidebar.fullscreen = false;
         }
-        return; // Skip the rest of the normal UI
+        return Ok(()); // Skip the rest of the normal UI
     }
 
     // NORMAL MODE: Render full UI with panels
@@ -481,17 +518,32 @@ fn ui_system(
             // Server input
             ui.label("Server:");
             let server_bar_id = egui::Id::new("server_bar");
-            let lock_input = app_state.focus_url_bar_next_frame;
+            let should_focus = app_state.focus_url_bar_next_frame;
             let server_edit = egui::TextEdit::singleline(&mut app_state.server_input)
                 .id(server_bar_id)
                 .desired_width(server_width)
-                .lock_focus(lock_input)
+                .lock_focus(should_focus)
                 .hint_text("ws://localhost:8080");
             let server_response = ui.add(server_edit);
-            app_state.server_bar_has_focus = server_response.has_focus();
 
-            // Select all text when focused via Ctrl+L
-            if lock_input && server_response.has_focus() {
+            // Request focus AFTER the TextEdit is rendered (ensures widget is in used_ids)
+            if should_focus {
+                ui.ctx().memory_mut(|mem| mem.request_focus(server_bar_id));
+                eprintln!("Requested focus on server_bar");
+            }
+
+            // Check focus state after potential request
+            let has_focus = ui.ctx().memory(|mem| mem.has_focus(server_bar_id));
+            app_state.server_bar_has_focus = has_focus;
+
+            // Debug: print focus state when it changes or when we requested focus
+            if should_focus || server_response.clicked() {
+                eprintln!("server_bar: should_focus={}, clicked={}, has_focus={}, response.has_focus={}",
+                    should_focus, server_response.clicked(), has_focus, server_response.has_focus());
+            }
+
+            // Select all text when focused via Ctrl+L, then clear the flag
+            if should_focus && has_focus {
                 if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), server_bar_id) {
                     let text_len = app_state.server_input.len();
                     state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
@@ -500,6 +552,8 @@ fn ui_system(
                     )));
                     state.store(ui.ctx(), server_bar_id);
                 }
+                // Clear the flag now that focus is confirmed
+                app_state.focus_url_bar_next_frame = false;
             }
 
             // Reset dropdown active state when user types (input changes)
@@ -617,7 +671,7 @@ fn ui_system(
             let selected_index = app_state.server_dropdown.selected_index;
             let is_active = app_state.server_dropdown.is_active;
 
-            egui::Area::new(egui::Id::new("server_dropdown"))
+            egui::Area::new("server_dropdown".into())
                 .fixed_pos(egui::pos2(server_rect.left(), server_rect.bottom() + 2.0))
                 .order(egui::Order::Foreground)
                 .show(ctx, |ui| {
@@ -716,7 +770,13 @@ fn ui_system(
     }
 
     // Bottom panel with navigation help
-    egui::TopBottomPanel::bottom("help_panel").show(ctx, |ui| {
+    let bottom_response = egui::TopBottomPanel::bottom("help_panel").show(ctx, |ui| {
+        // Debug: print panel rect once
+        static PRINTED_RECT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if !PRINTED_RECT.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            eprintln!("Bottom panel clip_rect: {:?}", ui.clip_rect());
+        }
+
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             let mut help_text = "↑↓←→ Nav | Enter=Click | Space=Record | I=Edit | Y=Yank | Ctrl+K=Keybindings".to_string();
@@ -727,7 +787,20 @@ fn ui_system(
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 // TTS mode indicator
                 let tts_label = if app_state.tts_mode { "🔊 TTS ON" } else { "🔇 TTS" };
-                if ui.button(tts_label).on_hover_text("Toggle text-to-speech (Ctrl+T)").clicked() {
+                let tts_response = ui.button(tts_label).on_hover_text("Toggle text-to-speech (Ctrl+T)");
+
+                // Debug: print button rect once
+                static PRINTED_BTN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                if !PRINTED_BTN.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                    eprintln!("TTS button rect: {:?}", tts_response.rect);
+                }
+
+                // Debug: check interaction state
+                if tts_response.hovered() {
+                    eprintln!("TTS button hovered");
+                }
+                if tts_response.clicked() {
+                    eprintln!("TTS button CLICKED!");
                     app_state.tts_mode = !app_state.tts_mode;
                     if !app_state.tts_mode {
                         tts::stop();
@@ -1062,6 +1135,8 @@ fn ui_system(
     if app_state.show_gamepad_help {
         ui::render_gamepad_help_overlay(ctx);
     }
+
+    Ok(())
 }
 
 /// Handle actions from the elf panel
@@ -1197,7 +1272,14 @@ fn handle_navigation(
     graph: Res<GraphState>,
     keys: Res<ButtonInput<bevy::prelude::KeyCode>>,
     mut contexts: EguiContexts,
+    mut frames_to_skip: Local<u8>,
 ) {
+    // bevy_egui 0.39 requires a few frames for initialization (see ui_system for details)
+    if *frames_to_skip < 2 {
+        *frames_to_skip += 1;
+        return;
+    }
+
     // Don't handle navigation when URL bar has focus
     if app_state.url_bar_has_focus {
         return;
@@ -1216,9 +1298,10 @@ fn handle_navigation(
     // Don't handle navigation when panels with text inputs are shown
     // (elf panel, identity panel, identity setup)
     if app_state.show_elf_panel || app_state.show_identity_panel || app_state.pending_identity_setup.is_some() {
-        let ctx = contexts.ctx_mut();
-        if ctx.wants_keyboard_input() {
-            return;
+        if let Ok(ctx) = contexts.ctx_mut() {
+            if ctx.wants_keyboard_input() {
+                return;
+            }
         }
     }
 

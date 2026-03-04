@@ -4,15 +4,15 @@ use bevy_egui::egui;
 
 /// Render the gamepad help overlay
 pub fn render_gamepad_help_overlay(ctx: &egui::Context) {
-    egui::Area::new(egui::Id::new("gamepad_help_overlay"))
+    egui::Area::new("gamepad_help_overlay".into())
         .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {
             egui::Frame::popup(ui.style())
                 .fill(egui::Color32::from_rgba_unmultiplied(20, 20, 30, 240))
                 .stroke(egui::Stroke::new(2.0, egui::Color32::from_rgb(100, 149, 237)))
-                .rounding(egui::Rounding::same(8.0))
-                .inner_margin(egui::Margin::same(20.0))
+                .corner_radius(egui::CornerRadius::same(8))
+                .inner_margin(egui::Margin::same(20))
                 .show(ui, |ui| {
                     ui.heading("Gamepad Controls (Ctrl+G or L3 to close)");
                     ui.add_space(10.0);

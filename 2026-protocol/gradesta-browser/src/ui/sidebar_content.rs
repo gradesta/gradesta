@@ -523,10 +523,10 @@ fn render_text_input_mode(ui: &mut egui::Ui, app_state: &mut AppState, direction
 
             // Update our selection state from egui's cursor state
             if let Some(cursor_range) = output.cursor_range {
-                use egui::text::CursorRange;
-                let range: CursorRange = cursor_range;
-                let primary = range.primary.ccursor.index;
-                let secondary = range.secondary.ccursor.index;
+                use egui::text::CCursorRange;
+                let range: CCursorRange = cursor_range;
+                let primary = range.primary.index;
+                let secondary = range.secondary.index;
 
                 if primary != secondary {
                     // There's a selection
@@ -679,7 +679,7 @@ fn render_nav_panel(
             .collect();
 
         egui::ScrollArea::vertical()
-            .id_source("landmark_history")
+            .id_salt("landmark_history")
             .max_height(200.0)
             .show(ui, |ui| {
                 let zoom = 1.0f32;
@@ -754,7 +754,7 @@ fn render_nav_panel(
         ui.label(format!("{} islands found:", islands.len()));
 
         egui::ScrollArea::vertical()
-            .id_source("islands")
+            .id_salt("islands")
             .max_height(ui.available_height() - 20.0)
             .show(ui, |ui| {
                 let zoom = 1.0f32;
@@ -818,7 +818,7 @@ fn render_nav_panel(
 
 fn render_landmark_placeholder(painter: &egui::Painter, rect: egui::Rect, landmark: &str) {
     painter.rect_filled(rect, 4.0, egui::Color32::from_rgb(50, 50, 55));
-    painter.rect_stroke(rect, 4.0, egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 80, 90)));
+    painter.rect_stroke(rect, 4.0, egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 80, 90)), egui::StrokeKind::Outside);
     let short_landmark: String = if landmark.len() > 30 {
         format!("...{}", &landmark[landmark.len()-27..])
     } else {
@@ -835,7 +835,7 @@ fn render_landmark_placeholder(painter: &egui::Painter, rect: egui::Rect, landma
 
 fn render_vertex_placeholder(painter: &egui::Painter, rect: egui::Rect, vertex_id: u64) {
     painter.rect_filled(rect, 4.0, egui::Color32::from_rgb(50, 50, 55));
-    painter.rect_stroke(rect, 4.0, egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 80, 90)));
+    painter.rect_stroke(rect, 4.0, egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 80, 90)), egui::StrokeKind::Outside);
     painter.text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
@@ -1063,6 +1063,7 @@ fn render_debug_panel(ui: &mut egui::Ui, app_state: &mut AppState) -> SidebarCon
                         DebugCategory::Keypress => egui::Color32::from_rgb(180, 180, 180),
                         DebugCategory::Command => egui::Color32::from_rgb(100, 255, 100),
                         DebugCategory::Execution => egui::Color32::from_rgb(255, 200, 100),
+                        DebugCategory::Focus => egui::Color32::from_rgb(255, 150, 255),
                     };
 
                     ui.horizontal(|ui| {

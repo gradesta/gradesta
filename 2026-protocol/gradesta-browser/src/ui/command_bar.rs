@@ -30,6 +30,7 @@ pub fn render_command_bar(
 
     let mut action = CommandBarAction::None;
 
+    #[allow(deprecated)]
     let screen_rect = ctx.screen_rect();
     let command_bar_width = (screen_rect.width() * 0.6).min(800.0).max(400.0);
     let command_bar_x = (screen_rect.width() - command_bar_width) / 2.0;

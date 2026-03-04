@@ -41,7 +41,7 @@ pub fn execute_commands(
     media_cache: &mut MediaCache,
     audio_signal: &AudioRecordingSignal,
     playback_state: &AudioPlaybackState,
-    ctx: &bevy_egui::egui::Context,
+    _ctx: &bevy_egui::egui::Context,
 ) -> CommandResults {
     let mut results = CommandResults::default();
 
@@ -281,8 +281,8 @@ pub fn execute_commands(
         app_state.show_gamepad_help = !app_state.show_gamepad_help;
     }
 
-    // Handle URL focus key - focuses the server bar
-    let server_bar_id = bevy_egui::egui::Id::new("server_bar");
+    // Handle URL focus key - sets flag for main.rs to handle after TextEdit is rendered
+    // (Focus must be requested AFTER the widget is rendered to ensure it's in used_ids)
     if cmds.focus_url_down {
         // Log only on first press (when transitioning from not pressed)
         if !app_state.focus_url_bar_next_frame {
@@ -292,10 +292,8 @@ pub fn execute_commands(
             debug_log::log_command_triggered(app_state, Command::GlobalFocusUrl.slug(), key_info.as_deref());
         }
         app_state.focus_url_bar_next_frame = true;
-    } else if app_state.focus_url_bar_next_frame && cmds.focus_url_released {
-        app_state.focus_url_bar_next_frame = false;
-        ctx.memory_mut(|mem| mem.request_focus(server_bar_id));
     }
+    // Note: focus_url_bar_next_frame is cleared in main.rs after focus is successfully applied
 
     // Check if we should finalize recording (space was released)
     results.should_finalize_recording = if let InputMode::Recording { .. } = &app_state.input_mode {

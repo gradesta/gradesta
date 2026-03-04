@@ -132,6 +132,8 @@ pub enum DebugCategory {
     Command,
     /// Command execution results
     Execution,
+    /// Focus changes (URL bar, text inputs)
+    Focus,
 }
 
 impl DebugCategory {
@@ -142,6 +144,7 @@ impl DebugCategory {
             DebugCategory::Keypress => "KEY",
             DebugCategory::Command => "CMD",
             DebugCategory::Execution => "EXE",
+            DebugCategory::Focus => "FOC",
         }
     }
 
@@ -152,6 +155,7 @@ impl DebugCategory {
             DebugCategory::Keypress => "⌨",
             DebugCategory::Command => "⚡",
             DebugCategory::Execution => "✓",
+            DebugCategory::Focus => "👁",
         }
     }
 }

@@ -283,7 +283,7 @@ pub fn render_vertex_card(
             let offset = i as f32 * 4.0 * zoom;
             let shadow_rect = rect.translate(egui::vec2(offset, offset));
             painter.rect_filled(shadow_rect, corner_radius, shadow_color);
-            painter.rect_stroke(shadow_rect, corner_radius, egui::Stroke::new(1.0 * zoom, egui::Color32::from_rgb(60, 60, 65)));
+            painter.rect_stroke(shadow_rect, corner_radius, egui::Stroke::new(1.0 * zoom, egui::Color32::from_rgb(60, 60, 65)), egui::StrokeKind::Outside);
         }
         // Also draw cards above (offset in opposite direction)
         let cards_above = stack.current_index.min(3);
@@ -291,12 +291,12 @@ pub fn render_vertex_card(
             let offset = i as f32 * 4.0 * zoom;
             let shadow_rect = rect.translate(egui::vec2(-offset, -offset));
             painter.rect_filled(shadow_rect, corner_radius, shadow_color);
-            painter.rect_stroke(shadow_rect, corner_radius, egui::Stroke::new(1.0 * zoom, egui::Color32::from_rgb(60, 60, 65)));
+            painter.rect_stroke(shadow_rect, corner_radius, egui::Stroke::new(1.0 * zoom, egui::Color32::from_rgb(60, 60, 65)), egui::StrokeKind::Outside);
         }
     }
 
     painter.rect_filled(rect, corner_radius, bg_color);
-    painter.rect_stroke(rect, corner_radius, egui::Stroke::new(if is_current { 3.0 * zoom } else { 2.0 * zoom }, border_color));
+    painter.rect_stroke(rect, corner_radius, egui::Stroke::new(if is_current { 3.0 * zoom } else { 2.0 * zoom }, border_color), egui::StrokeKind::Outside);
 
     // Draw stack position badge if this vertex is part of a stack
     if has_stack {

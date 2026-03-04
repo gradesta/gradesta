@@ -13,7 +13,7 @@ gpu-hipblas = ["whisper-rs/hipblas"] # AMD ROCm (Linux only)
 
 [dependencies]
 anyhow = "1.0"
-bevy = { version = "0.13", default-features = false, features = [
+bevy = { version = "0.18", default-features = false, features = [
     "bevy_asset",
     "bevy_core_pipeline",
     "bevy_render",
@@ -21,12 +21,13 @@ bevy = { version = "0.13", default-features = false, features = [
     "bevy_text",
     "bevy_ui",
     "bevy_winit",
+    "bevy_state",
     "x11",
     "wayland",
     "png",
     "jpeg",
 ] }
-bevy_egui = "0.25"
+bevy_egui = "0.39"
 crossbeam-channel = "0.5"
 dirs = "5.0"
 gif = "0.12"
@@ -53,7 +54,7 @@ lewton = "0.10"
 whisper-rs = { version = "0.14", default-features = true }
 hound = "3.5"
 # Standalone egui window for startup dialog
-eframe = "0.27"
+eframe = "0.30"
 # Temp files for external video playback
 tempfile = "3.10"
 # Video playback (native in-browser)
