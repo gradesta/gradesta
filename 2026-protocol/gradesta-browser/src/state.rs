@@ -427,6 +427,8 @@ pub struct AppState {
     // Identity consent dialog
     pub pending_identification: Option<PendingIdentification>,
     pub selected_identity_index: usize,
+    /// Selected button in identification dialog: 0=Identify, 1=Remember, 2=Refuse
+    pub identification_button_selected: usize,
     // Nextcloud login flow state
     pub nextcloud_login_state: Option<NextcloudLoginState>,
     pub pending_identity_setup: Option<PendingIdentitySetup>,
@@ -652,6 +654,7 @@ impl Default for AppState {
             identity_config,
             pending_identification: None,
             selected_identity_index: 0,
+            identification_button_selected: 0,
             nextcloud_login_state: None,
             pending_identity_setup: None,
             nextcloud_url_input: "https://".to_string(),

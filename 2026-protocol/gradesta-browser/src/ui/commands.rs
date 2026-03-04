@@ -36,6 +36,8 @@ pub struct CommandResults {
     pub should_finalize_recording: bool,
     /// Whether voice command recording should be finalized
     pub should_finalize_voice_recording: bool,
+    /// Whether to grant voice command permission (user selected Allow)
+    pub should_grant_voice_permission: bool,
 }
 
 /// Execute all captured commands and update state accordingly
@@ -439,15 +441,41 @@ pub fn execute_commands(
         }
 
         // Permission response in AwaitingPermission state
-        if let VoiceCommandState::AwaitingPermission { .. } = state {
+        if let VoiceCommandState::AwaitingPermission { selected, .. } = state {
+            // Left stick navigation between Allow (0) and Deny (1)
+            if cmds.permission_select_left {
+                results.any_command_processed = true;
+                if let InputMode::VoiceCommand(VoiceCommandState::AwaitingPermission { ref mut selected, .. }) = app_state.input_mode {
+                    *selected = 0; // Allow
+                }
+            }
+            if cmds.permission_select_right {
+                results.any_command_processed = true;
+                if let InputMode::VoiceCommand(VoiceCommandState::AwaitingPermission { ref mut selected, .. }) = app_state.input_mode {
+                    *selected = 1; // Deny
+                }
+            }
+
+            // L3 confirms the selected button
+            if cmds.permission_confirm {
+                results.any_command_processed = true;
+                if *selected == 0 {
+                    // Allow - this will be handled in main.rs via grant_voice_permission
+                    // Set a flag that main.rs checks
+                    results.should_grant_voice_permission = true;
+                } else {
+                    // Deny - cancel voice command
+                    app_state.input_mode = InputMode::Normal;
+                    app_state.status = "Permission denied, voice command cancelled".to_string();
+                }
+            }
+
+            // B button also denies (legacy)
             if cmds.voice_cancel {
                 results.any_command_processed = true;
-                // User denied - cancel voice command
                 app_state.input_mode = InputMode::Normal;
                 app_state.status = "Permission denied, voice command cancelled".to_string();
             }
-            // Note: voice_confirm for granting permission is handled in main.rs
-            // where we have access to VoiceCommandChannel to re-query the LLM
         }
     }
 
@@ -1169,11 +1197,12 @@ pub fn process_voice_command_events(
                     "".to_string()
                 };
 
-                // Show permission prompt
+                // Show permission prompt (default selection: Allow)
                 app_state.input_mode = InputMode::VoiceCommand(VoiceCommandState::AwaitingPermission {
                     transcript,
                     requested_targets: targets,
                     reason,
+                    selected: 0, // Default to Allow button
                 });
                 app_state.status = "Agent requests permission".to_string();
             }

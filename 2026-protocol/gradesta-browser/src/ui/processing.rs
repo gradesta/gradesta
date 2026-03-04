@@ -10,6 +10,7 @@ use crate::identity;
 use crate::network::{NetEventsTx, ServerEvent, WsCommand, WsCommandTx};
 use crate::state::{AppState, IdentificationAction, InputMode, PendingVertexCreation};
 use crate::state::{EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
+use super::input::CapturedCommands;
 
 /// Result of text input processing
 #[derive(Clone, Debug, PartialEq)]
@@ -179,6 +180,7 @@ pub fn process_identification(
     ctx: &egui::Context,
     app_state: &mut AppState,
     ws_cmd_tx: &WsCommandTx,
+    cmds: &CapturedCommands,
 ) {
     // Handle identification in a separate pass to avoid borrow conflicts
     let mut id_action: Option<IdentificationAction> = None;
@@ -205,9 +207,28 @@ pub fn process_identification(
                 app_state.selected_identity_index = (app_state.selected_identity_index + 1) % num_identities;
             }
 
-            // Enter confirms identification
+            // Gamepad left stick navigation between buttons
+            // Buttons: 0=Identify, 1=Remember, 2=Refuse
+            if cmds.permission_select_left && app_state.identification_button_selected > 0 {
+                app_state.identification_button_selected -= 1;
+            }
+            if cmds.permission_select_right && app_state.identification_button_selected < 2 {
+                app_state.identification_button_selected += 1;
+            }
+
+            // Enter confirms identification (keyboard) OR L3 confirms selected button (gamepad)
             if id_enter_pressed && !app_state.identity_config.identities.is_empty() {
                 id_action = Some(IdentificationAction::Identify { remember: false });
+            }
+
+            // L3 (permission_confirm) triggers the selected button
+            if cmds.permission_confirm && !app_state.identity_config.identities.is_empty() {
+                match app_state.identification_button_selected {
+                    0 => id_action = Some(IdentificationAction::Identify { remember: false }),
+                    1 => id_action = Some(IdentificationAction::Identify { remember: true }),
+                    2 => id_action = Some(IdentificationAction::Refuse),
+                    _ => {}
+                }
             }
 
             // Escape refuses

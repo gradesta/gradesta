@@ -110,8 +110,8 @@ pub fn render_voice_command_overlay(
                         VoiceCommandState::Interpreting { transcript, .. } => {
                             render_interpreting_indicator(ui, transcript);
                         }
-                        VoiceCommandState::AwaitingPermission { transcript, requested_targets, reason } => {
-                            render_permission_prompt(ui, transcript, requested_targets, reason);
+                        VoiceCommandState::AwaitingPermission { transcript, requested_targets, reason, selected } => {
+                            render_permission_prompt(ui, transcript, requested_targets, reason, *selected);
                         }
                         VoiceCommandState::Selecting { transcript, interpretations, selected } => {
                             render_selection_menu(ui, transcript, interpretations, *selected);
@@ -283,6 +283,7 @@ fn render_permission_prompt(
     transcript: &str,
     requested_targets: &[String],
     reason: &str,
+    selected: usize,
 ) {
     ui.add_space(5.0);
     ui.heading(egui::RichText::new("Permission Required").color(egui::Color32::YELLOW));
@@ -315,12 +316,81 @@ fn render_permission_prompt(
 
     ui.add_space(15.0);
 
-    // Joystick hints
+    // Selectable buttons: Allow (0) and Deny (1)
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("→ Allow").color(egui::Color32::GREEN));
-        ui.add_space(30.0);
-        ui.label(egui::RichText::new("← Deny").color(egui::Color32::from_rgb(255, 100, 100)));
+        // Allow button
+        let allow_selected = selected == 0;
+        let allow_bg = if allow_selected {
+            egui::Color32::from_rgb(40, 100, 40)
+        } else {
+            egui::Color32::from_rgb(40, 40, 50)
+        };
+        let allow_border = if allow_selected {
+            egui::Color32::from_rgb(100, 200, 100)
+        } else {
+            egui::Color32::from_rgb(60, 60, 80)
+        };
+
+        egui::Frame::new()
+            .fill(allow_bg)
+            .stroke(egui::Stroke::new(2.0, allow_border))
+            .corner_radius(8.0)
+            .inner_margin(egui::Margin::symmetric(20, 10))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    if allow_selected {
+                        ui.label(egui::RichText::new("▶").color(egui::Color32::WHITE));
+                    }
+                    ui.label(
+                        egui::RichText::new("Allow")
+                            .size(16.0)
+                            .color(egui::Color32::from_rgb(100, 200, 100)),
+                    );
+                });
+            });
+
+        ui.add_space(20.0);
+
+        // Deny button
+        let deny_selected = selected == 1;
+        let deny_bg = if deny_selected {
+            egui::Color32::from_rgb(100, 40, 40)
+        } else {
+            egui::Color32::from_rgb(40, 40, 50)
+        };
+        let deny_border = if deny_selected {
+            egui::Color32::from_rgb(200, 100, 100)
+        } else {
+            egui::Color32::from_rgb(60, 60, 80)
+        };
+
+        egui::Frame::new()
+            .fill(deny_bg)
+            .stroke(egui::Stroke::new(2.0, deny_border))
+            .corner_radius(8.0)
+            .inner_margin(egui::Margin::symmetric(20, 10))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    if deny_selected {
+                        ui.label(egui::RichText::new("▶").color(egui::Color32::WHITE));
+                    }
+                    ui.label(
+                        egui::RichText::new("Deny")
+                            .size(16.0)
+                            .color(egui::Color32::from_rgb(255, 100, 100)),
+                    );
+                });
+            });
     });
+
+    ui.add_space(10.0);
+
+    // Joystick hints
+    ui.label(
+        egui::RichText::new("← → Select  |  L3 Confirm")
+            .size(12.0)
+            .color(egui::Color32::GRAY),
+    );
 }
 
 fn render_selection_menu(

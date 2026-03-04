@@ -186,6 +186,8 @@ pub enum VoiceCommandState {
         transcript: String,
         requested_targets: Vec<String>, // ["current", "north", "east"]
         reason: String,
+        /// Selected button: 0 = Allow, 1 = Deny
+        selected: usize,
     },
     /// Final menu shown, user selecting
     Selecting {
@@ -205,9 +207,9 @@ impl PartialEq for VoiceCommandState {
                 VoiceCommandState::Interpreting { transcript: t2, .. },
             ) => t1 == t2,
             (
-                VoiceCommandState::AwaitingPermission { transcript: t1, .. },
-                VoiceCommandState::AwaitingPermission { transcript: t2, .. },
-            ) => t1 == t2,
+                VoiceCommandState::AwaitingPermission { transcript: t1, selected: s1, .. },
+                VoiceCommandState::AwaitingPermission { transcript: t2, selected: s2, .. },
+            ) => t1 == t2 && s1 == s2,
             (
                 VoiceCommandState::Selecting { transcript: t1, selected: s1, .. },
                 VoiceCommandState::Selecting { transcript: t2, selected: s2, .. },

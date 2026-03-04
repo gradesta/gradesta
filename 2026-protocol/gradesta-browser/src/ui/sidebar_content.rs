@@ -625,17 +625,70 @@ fn render_identification_request(ui: &mut egui::Ui, app_state: &mut AppState) ->
             }
 
             ui.separator();
+
+            // Buttons with gamepad selection highlighting
+            // Buttons: 0=Identify, 1=Remember, 2=Refuse
+            let selected = app_state.identification_button_selected;
+
             ui.horizontal(|ui| {
-                if ui.button("Identify (Enter)").clicked() {
-                    // Will be handled by keyboard
-                }
-                if ui.button("Remember").clicked() {
-                    // Will be handled by keyboard
-                }
-                if ui.button("Refuse (Esc)").clicked() {
-                    // Will be handled by keyboard
-                }
+                // Helper to render a selectable button
+                let button_style = |is_selected: bool| {
+                    if is_selected {
+                        egui::RichText::new("▶ ").color(egui::Color32::WHITE)
+                    } else {
+                        egui::RichText::new("  ")
+                    }
+                };
+
+                // Identify button (0)
+                ui.horizontal(|ui| {
+                    ui.label(button_style(selected == 0));
+                    let btn = if selected == 0 {
+                        egui::Button::new(egui::RichText::new("Identify (Enter)").color(egui::Color32::WHITE))
+                            .fill(egui::Color32::from_rgb(60, 100, 60))
+                    } else {
+                        egui::Button::new("Identify (Enter)")
+                    };
+                    if ui.add(btn).clicked() {
+                        // Will be handled by keyboard/gamepad
+                    }
+                });
+
+                // Remember button (1)
+                ui.horizontal(|ui| {
+                    ui.label(button_style(selected == 1));
+                    let btn = if selected == 1 {
+                        egui::Button::new(egui::RichText::new("Remember").color(egui::Color32::WHITE))
+                            .fill(egui::Color32::from_rgb(60, 80, 100))
+                    } else {
+                        egui::Button::new("Remember")
+                    };
+                    if ui.add(btn).clicked() {
+                        // Will be handled by keyboard/gamepad
+                    }
+                });
+
+                // Refuse button (2)
+                ui.horizontal(|ui| {
+                    ui.label(button_style(selected == 2));
+                    let btn = if selected == 2 {
+                        egui::Button::new(egui::RichText::new("Refuse (Esc)").color(egui::Color32::WHITE))
+                            .fill(egui::Color32::from_rgb(100, 60, 60))
+                    } else {
+                        egui::Button::new("Refuse (Esc)")
+                    };
+                    if ui.add(btn).clicked() {
+                        // Will be handled by keyboard/gamepad
+                    }
+                });
             });
+
+            ui.add_space(5.0);
+            ui.label(
+                egui::RichText::new("← → Select  |  L3 Confirm")
+                    .size(11.0)
+                    .color(egui::Color32::GRAY),
+            );
         }
     }
 

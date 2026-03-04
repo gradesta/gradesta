@@ -476,10 +476,15 @@ fn ui_system(
         ui::finalize_voice_recording(&mut app_state, &voice_channel, &voice_config.0);
     }
 
+    // Grant voice permission if user confirmed with L3
+    if cmd_results.should_grant_voice_permission {
+        ui::grant_voice_permission(&mut app_state, &graph, &voice_channel, &voice_config.0);
+    }
+
     // Process voice command events from async operations
     ui::process_voice_command_events(&mut app_state, &graph, &voice_channel, &voice_config.0);
 
-    // Handle voice command confirm/action execution
+    // Handle voice command confirm/action execution (R3/A button)
     if cmds.voice_confirm {
         eprintln!("voice_confirm triggered, input_mode: {:?}", std::mem::discriminant(&app_state.input_mode));
         if let InputMode::VoiceCommand(ref state) = app_state.input_mode {
@@ -499,8 +504,14 @@ fn ui_system(
                         ctx,
                     );
                 }
-                VoiceCommandState::AwaitingPermission { .. } => {
-                    ui::grant_voice_permission(&mut app_state, &graph, &voice_channel, &voice_config.0);
+                VoiceCommandState::AwaitingPermission { selected, .. } => {
+                    // R3/A confirms the currently selected button
+                    if *selected == 0 {
+                        ui::grant_voice_permission(&mut app_state, &graph, &voice_channel, &voice_config.0);
+                    } else {
+                        app_state.input_mode = InputMode::Normal;
+                        app_state.status = "Permission denied, voice command cancelled".to_string();
+                    }
                 }
                 _ => {}
             }
@@ -1222,7 +1233,7 @@ fn ui_system(
     // Process text input, recording cancellation, and identification using ui module
     ui::process_text_input(ctx, &mut app_state, &graph, &ws_cmd_tx, &net_events);
     ui::process_recording_cancel(ctx, &mut app_state, &audio_signal);
-    ui::process_identification(ctx, &mut app_state, &ws_cmd_tx);
+    ui::process_identification(ctx, &mut app_state, &ws_cmd_tx, &cmds);
 
     // Central panel showing grid view
     ui::render_grid_view(ctx, &mut app_state, &graph, &mut media_cache, &ws_cmd_tx);

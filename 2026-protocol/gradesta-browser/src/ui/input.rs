@@ -35,6 +35,11 @@ pub struct CapturedCommands {
     pub voice_select_down: bool,    // Right stick down
     pub voice_confirm: bool,        // Right stick click or A button
     pub voice_cancel: bool,         // B button
+
+    // Permission dialog navigation (left stick + L3)
+    pub permission_select_left: bool,   // Left stick left
+    pub permission_select_right: bool,  // Left stick right
+    pub permission_confirm: bool,       // Left stick click (L3)
 }
 
 impl CapturedCommands {
@@ -89,13 +94,11 @@ pub fn capture_keyboard_commands(
         Command::GraphEditText,
         Command::GraphNewTextVertex,
         Command::GraphStartRecording,
-        Command::GraphNavigateNorth,
-        Command::GraphNavigateSouth,
-        Command::GraphNavigateEast,
-        Command::GraphNavigateWest,
-        Command::GraphNavigateUp,
-        Command::GraphNavigateDown,
-        Command::GraphHistoryBack,
+        // Note: Navigation commands (GraphNavigate*, GraphHistoryBack) are NOT captured here
+        // for keyboard input. Keyboard navigation is handled by `handle_navigation` in main.rs
+        // which uses raw keyboard input with key repeat logic. Gamepad navigation uses
+        // capture_gamepad_commands which adds these commands to CapturedCommands for
+        // execute_commands to process. Voice commands also add navigation via scripts.
         // Direction setting
         Command::GraphSetDirectionNorth,
         Command::GraphSetDirectionSouth,
@@ -259,6 +262,14 @@ pub fn capture_voice_command_gamepad(
 
     // B button to cancel (legacy, Cancel is now a menu option)
     cmds.voice_cancel = gp.is_pressed(GamepadKey::East); // B / Circle
+
+    // Left stick for permission dialog button selection
+    let (lx, _ly) = gp.left_stick;
+    cmds.permission_select_left = lx < -STICK_DEADZONE;
+    cmds.permission_select_right = lx > STICK_DEADZONE;
+
+    // L3 (left stick click) to confirm permission dialog selection
+    cmds.permission_confirm = gp.is_pressed(GamepadKey::LeftStick);
 }
 
 /// Log triggered commands to the debug log
