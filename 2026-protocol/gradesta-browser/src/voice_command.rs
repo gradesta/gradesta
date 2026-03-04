@@ -625,6 +625,7 @@ struct LlmRequest {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct LlmMessage {
     role: String,
+    #[serde(default)]
     content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_calls: Option<Vec<LlmToolCall>>,
