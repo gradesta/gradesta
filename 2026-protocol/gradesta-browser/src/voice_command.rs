@@ -941,33 +941,12 @@ fn get_available_image_models(api_key: &str) -> serde_json::Value {
         println!("Sample model from API: {}", serde_json::to_string_pretty(first).unwrap_or_default());
     }
 
-    // Filter for image generation models using ONLY API metadata
+    // Filter for image generation models using the supports_image_generation field
     let image_models: Vec<_> = models_array
         .iter()
         .filter(|m| {
-            // Check capabilities.image_generation or capabilities.images
-            if let Some(caps) = m.get("capabilities") {
-                if caps["image_generation"].as_bool() == Some(true) { return true; }
-                if caps["images"].as_bool() == Some(true) { return true; }
-            }
-
-            // Check type field
-            if m["type"].as_str() == Some("image") { return true; }
-
-            // Check modality field
-            if let Some(mod_) = m["modality"].as_str() {
-                if mod_ == "image" || mod_ == "image-generation" { return true; }
-            }
-
-            // Check supported_generation_methods array
-            if let Some(methods) = m["supported_generation_methods"].as_array() {
-                for method in methods {
-                    if method.as_str() == Some("image") { return true; }
-                    if method.as_str() == Some("images") { return true; }
-                }
-            }
-
-            false
+            // Requesty API uses supports_image_generation boolean at top level
+            m["supports_image_generation"].as_bool() == Some(true)
         })
         .cloned()
         .collect();
