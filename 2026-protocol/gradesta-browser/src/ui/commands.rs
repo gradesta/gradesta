@@ -1226,8 +1226,17 @@ pub fn process_voice_command_events(
                 eprintln!("Live transcript update: \"{}\"", text);
             }
 
-            VoiceCommandEvent::LlmResponse { mut interpretations } => {
+            VoiceCommandEvent::LlmResponse { mut interpretations, generated_image } => {
                 eprintln!("LLM response: {} interpretations", interpretations.len());
+
+                // Store generated image if present
+                if let Some(img) = generated_image {
+                    eprintln!("Storing generated image: {} bytes, {}", img.data.len(), img.mime);
+                    app_state.generated_image_buffer = Some(crate::state::GeneratedImage {
+                        mime: img.mime,
+                        data: img.data,
+                    });
+                }
 
                 // Get the transcript from current state
                 let transcript = if let InputMode::VoiceCommand(VoiceCommandState::Interpreting { ref transcript, .. }) = app_state.input_mode {
@@ -1422,6 +1431,55 @@ pub fn execute_voice_action(
                                         voice_channel,
                                         ctx,
                                     );
+                                }
+                            }
+                            ScriptInstruction::InsertGeneratedImage => {
+                                // Create a new cell with the generated image
+                                if let Some(ref img) = app_state.generated_image_buffer {
+                                    if let Some(current_id) = app_state.current_vertex {
+                                        if let Some(ref tx) = ws_cmd_tx.0 {
+                                            let direction = app_state.last_nav_direction;
+                                            let dir_byte = match direction {
+                                                EDGE_WEST => 0,
+                                                EDGE_EAST => 1,
+                                                EDGE_NORTH => 2,
+                                                EDGE_SOUTH => 3,
+                                                EDGE_UP => 4,
+                                                EDGE_DOWN => 5,
+                                                _ => 3, // default south
+                                            };
+                                            let action_id = app_state.next_action_id;
+                                            app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+
+                                            let mime = img.mime.clone();
+                                            let data = img.data.clone();
+
+                                            eprintln!("Creating image vertex: {} bytes, {}", data.len(), mime);
+
+                                            let _ = tx.send(WsCommand::CreateVertex {
+                                                action_id,
+                                                from_vertex: current_id,
+                                                direction: dir_byte,
+                                                layer: 0,
+                                                mime: mime.clone(),
+                                                data: data.clone(),
+                                            });
+
+                                            app_state.pending_creations.insert(action_id, PendingVertexCreation {
+                                                samples: Vec::new(),
+                                                sample_rate: 0,
+                                                data,
+                                                mime,
+                                                local_placeholder_id: None,
+                                            });
+
+                                            app_state.status = format!("Creating image cell {}...", direction_name(direction));
+                                        }
+                                    }
+                                    // Clear the buffer after use
+                                    app_state.generated_image_buffer = None;
+                                } else {
+                                    app_state.status = "No generated image in buffer".to_string();
                                 }
                             }
                         }

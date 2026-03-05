@@ -525,6 +525,17 @@ pub struct AppState {
     pub model_fetch_state: crate::voice_command::ModelFetchState,
     /// Filter text for model search
     pub model_filter: String,
+    /// Generated image buffer (from voice command image generation)
+    pub generated_image_buffer: Option<GeneratedImage>,
+}
+
+/// A generated image waiting to be inserted into a cell
+#[derive(Clone, Debug)]
+pub struct GeneratedImage {
+    /// MIME type of the image (e.g., "image/png")
+    pub mime: String,
+    /// Raw image data
+    pub data: Vec<u8>,
 }
 
 /// Playback speed boost state for TTS and audio playback
@@ -708,6 +719,7 @@ impl Default for AppState {
             l2_press_start: None,
             model_fetch_state: crate::voice_command::ModelFetchState::default(),
             model_filter: String::new(),
+            generated_image_buffer: None,
         }
     }
 }

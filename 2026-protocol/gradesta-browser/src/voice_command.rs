@@ -261,8 +261,11 @@ pub enum VoiceCommandEvent {
     TranscriptionComplete { transcript: String },
     /// Transcription failed
     TranscriptionFailed { error: String },
-    /// LLM response received
-    LlmResponse { interpretations: Vec<AgentInterpretation> },
+    /// LLM response received (may include a generated image)
+    LlmResponse {
+        interpretations: Vec<AgentInterpretation>,
+        generated_image: Option<GeneratedImageData>,
+    },
     /// LLM requested to view cells
     LlmRequestsView { targets: Vec<String>, reason: String },
     /// LLM request failed
@@ -657,6 +660,8 @@ fn build_system_prompt(context: &str, mime_type: &str, direction: &str) -> Strin
 - get_commands(category): Discover available commands by category
 - get_services(): Get local servers and elves the user has configured
 - request_view(targets, reason): Ask permission to view cell content
+- get_image_models(): Get available image generation models from Requesty
+- generate_image(model, prompt): Generate an image and store it in a buffer
 
 ## Response Format
 Return ONLY a raw JSON array (no markdown, no code blocks). Sorted by confidence:
@@ -666,6 +671,7 @@ Return ONLY a raw JSON array (no markdown, no code blocks). Sorted by confidence
 - Newline-separated command slugs (use \n in JSON)
 - Use EXACT slugs from get_commands() output
 - Special: `insert_text "content"` sets text AND auto-submits (no separate submit needed)
+- Special: `insert_generated_image` inserts the buffered image into a new cell
 
 ## IMPORTANT: Command Order
 Commands execute in order. Some commands clear buffers, so order matters!
@@ -681,6 +687,17 @@ insert_text "hello"
 WRONG order (buffer gets cleared):
 insert_text "hello"
 graph.new_text_vertex  <-- this clears the buffer!
+
+## Image Generation
+To generate and insert an image:
+1. Call get_image_models() to discover available models
+2. Call generate_image(model, prompt) with a model ID and descriptive prompt
+3. Use insert_generated_image in the script to create a new cell with the image
+
+Example: "create a picture of a cow"
+1. Call get_image_models()
+2. Call generate_image("dall-e-3", "a cow standing in a green meadow")
+3. Return script: "graph.set_direction_south\ninsert_generated_image"
 
 If no match: {{"script": "", "confidence": 1.0, "explanation": "Could not understand"}}
 
@@ -743,6 +760,39 @@ fn build_tools() -> Vec<LlmTool> {
                         }
                     },
                     "required": ["targets", "reason"]
+                }),
+            },
+        },
+        LlmTool {
+            tool_type: "function".to_string(),
+            function: LlmToolDefinition {
+                name: "get_image_models".to_string(),
+                description: "Get available image generation models from Requesty".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            },
+        },
+        LlmTool {
+            tool_type: "function".to_string(),
+            function: LlmToolDefinition {
+                name: "generate_image".to_string(),
+                description: "Generate an image using a specified model and prompt. The image is stored in a buffer and can be inserted into a cell using 'insert_generated_image' in the script.".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "model": {
+                            "type": "string",
+                            "description": "The model ID to use (e.g., 'openai/dall-e-3', 'stability-ai/stable-diffusion-xl')"
+                        },
+                        "prompt": {
+                            "type": "string",
+                            "description": "A detailed description of the image to generate"
+                        }
+                    },
+                    "required": ["model", "prompt"]
                 }),
             },
         },
@@ -819,6 +869,159 @@ fn get_available_services() -> serde_json::Value {
     }
 }
 
+/// Get available image generation models from Requesty
+fn get_available_image_models(api_key: &str) -> serde_json::Value {
+    let client = reqwest::blocking::Client::new();
+
+    match client
+        .get("https://router.requesty.ai/v1/models")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .send()
+    {
+        Ok(response) => {
+            if response.status().is_success() {
+                match response.json::<ModelsResponse>() {
+                    Ok(models_resp) => {
+                        // Filter for image generation models
+                        let image_models: Vec<_> = models_resp.data
+                            .into_iter()
+                            .filter(|m| {
+                                let id = m.id.to_lowercase();
+                                // Common image generation model identifiers
+                                id.contains("dall-e") ||
+                                id.contains("dalle") ||
+                                id.contains("stable-diffusion") ||
+                                id.contains("sdxl") ||
+                                id.contains("midjourney") ||
+                                id.contains("imagen") ||
+                                id.contains("flux") ||
+                                id.contains("image") ||
+                                // Check provider prefixes for image models
+                                id.starts_with("stability-ai/") ||
+                                id.starts_with("openai/dall")
+                            })
+                            .map(|m| {
+                                serde_json::json!({
+                                    "id": m.id,
+                                    "owned_by": m.owned_by
+                                })
+                            })
+                            .collect();
+
+                        if image_models.is_empty() {
+                            serde_json::json!({
+                                "models": [],
+                                "note": "No image generation models found. Common models include 'openai/dall-e-3', 'stability-ai/stable-diffusion-xl-1024-v1-0'. Try using one of these directly."
+                            })
+                        } else {
+                            serde_json::json!({
+                                "models": image_models,
+                                "instructions": "Use generate_image(model, prompt) with one of these model IDs"
+                            })
+                        }
+                    }
+                    Err(e) => {
+                        serde_json::json!({
+                            "error": format!("Failed to parse models: {}", e),
+                            "fallback_models": ["openai/dall-e-3", "stability-ai/stable-diffusion-xl-1024-v1-0"]
+                        })
+                    }
+                }
+            } else {
+                serde_json::json!({
+                    "error": format!("API error: {}", response.status()),
+                    "fallback_models": ["openai/dall-e-3", "stability-ai/stable-diffusion-xl-1024-v1-0"]
+                })
+            }
+        }
+        Err(e) => {
+            serde_json::json!({
+                "error": format!("Request failed: {}", e),
+                "fallback_models": ["openai/dall-e-3", "stability-ai/stable-diffusion-xl-1024-v1-0"]
+            })
+        }
+    }
+}
+
+/// Generated image data stored during LLM conversation
+#[derive(Clone, Debug)]
+pub struct GeneratedImageData {
+    pub mime: String,
+    pub data: Vec<u8>,
+}
+
+/// Generate an image using Requesty's image generation API
+fn generate_image_sync(
+    model: &str,
+    prompt: &str,
+    api_key: &str,
+) -> Result<GeneratedImageData, String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(120)) // Image gen can take a while
+        .build()
+        .map_err(|e| format!("Failed to create client: {}", e))?;
+
+    // Use OpenAI-compatible image generation endpoint
+    let request_body = serde_json::json!({
+        "model": model,
+        "prompt": prompt,
+        "n": 1,
+        "size": "1024x1024",
+        "response_format": "b64_json"
+    });
+
+    eprintln!("Generating image with model {} and prompt: {}", model, prompt);
+
+    let response = client
+        .post("https://router.requesty.ai/v1/images/generations")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .map_err(|e| format!("Image generation request failed: {}", e))?;
+
+    if !response.status().is_success() {
+        let error_text = response.text().unwrap_or_default();
+        return Err(format!("Image generation failed: {}", error_text));
+    }
+
+    let response_text = response.text()
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+
+    eprintln!("Image generation response received ({} bytes)", response_text.len());
+
+    // Parse OpenAI-style image response
+    let parsed: serde_json::Value = serde_json::from_str(&response_text)
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    // Extract base64 image data
+    let b64_data = parsed["data"][0]["b64_json"]
+        .as_str()
+        .ok_or("No image data in response")?;
+
+    // Decode base64
+    use base64::Engine;
+    let image_data = base64::engine::general_purpose::STANDARD
+        .decode(b64_data)
+        .map_err(|e| format!("Failed to decode base64: {}", e))?;
+
+    eprintln!("Decoded image: {} bytes", image_data.len());
+
+    // Determine MIME type from data (PNG is most common for DALL-E)
+    let mime = if image_data.starts_with(&[0x89, b'P', b'N', b'G']) {
+        "image/png"
+    } else if image_data.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        "image/jpeg"
+    } else {
+        "image/png" // Default assumption
+    };
+
+    Ok(GeneratedImageData {
+        mime: mime.to_string(),
+        data: image_data,
+    })
+}
+
 /// Query the LLM with the voice command transcript
 pub fn query_llm(
     transcript: &str,
@@ -840,8 +1043,8 @@ pub fn query_llm(
 
     thread::spawn(move || {
         match query_llm_sync(&transcript, &context, &mime_type, &direction, cell_context.as_ref(), &api_key, &model) {
-            Ok(LlmResult::Interpretations(interpretations)) => {
-                let _ = result_tx.send(VoiceCommandEvent::LlmResponse { interpretations });
+            Ok(LlmResult::Interpretations { interpretations, generated_image }) => {
+                let _ = result_tx.send(VoiceCommandEvent::LlmResponse { interpretations, generated_image });
             }
             Ok(LlmResult::RequestView { targets, reason }) => {
                 let _ = result_tx.send(VoiceCommandEvent::LlmRequestsView { targets, reason });
@@ -854,7 +1057,10 @@ pub fn query_llm(
 }
 
 enum LlmResult {
-    Interpretations(Vec<AgentInterpretation>),
+    Interpretations {
+        interpretations: Vec<AgentInterpretation>,
+        generated_image: Option<GeneratedImageData>,
+    },
     RequestView { targets: Vec<String>, reason: String },
 }
 
@@ -906,8 +1112,11 @@ fn query_llm_sync(
     let tools = build_tools();
     let client = reqwest::blocking::Client::new();
 
+    // Track generated image across tool call iterations
+    let mut generated_image: Option<GeneratedImageData> = None;
+
     // Loop to handle tool calls
-    for _iteration in 0..5 {
+    for _iteration in 0..10 {  // More iterations to allow for image generation
         let request = LlmRequest {
             model: model.to_string(),
             messages: messages.clone(),
@@ -984,6 +1193,41 @@ fn query_llm_sync(
                         let reason = args["reason"].as_str().unwrap_or("").to_string();
                         return Ok(LlmResult::RequestView { targets, reason });
                     }
+                    "get_image_models" => {
+                        let result = get_available_image_models(api_key);
+                        messages.push(LlmMessage {
+                            role: "tool".to_string(),
+                            content: result.to_string(),
+                            tool_calls: None,
+                            tool_call_id: Some(tool_call.id),
+                        });
+                    }
+                    "generate_image" => {
+                        let model_id = args["model"].as_str().unwrap_or("openai/dall-e-3");
+                        let prompt = args["prompt"].as_str().unwrap_or("");
+
+                        match generate_image_sync(model_id, prompt, api_key) {
+                            Ok(image_data) => {
+                                // Store the generated image
+                                let img_size = image_data.data.len();
+                                generated_image = Some(image_data);
+                                messages.push(LlmMessage {
+                                    role: "tool".to_string(),
+                                    content: format!("{{\"success\": true, \"message\": \"Image generated successfully ({} bytes). Use 'insert_generated_image' in your script to insert it into a new cell.\"}}", img_size),
+                                    tool_calls: None,
+                                    tool_call_id: Some(tool_call.id),
+                                });
+                            }
+                            Err(e) => {
+                                messages.push(LlmMessage {
+                                    role: "tool".to_string(),
+                                    content: format!("{{\"success\": false, \"error\": \"{}\"}}", e),
+                                    tool_calls: None,
+                                    tool_call_id: Some(tool_call.id),
+                                });
+                            }
+                        }
+                    }
                     _ => {
                         messages.push(LlmMessage {
                             role: "tool".to_string(),
@@ -1000,21 +1244,24 @@ fn query_llm_sync(
 
         // No tool calls - parse final response
         let content = choice.message.content;
-        return parse_llm_response(&content);
+        return parse_llm_response(&content, generated_image);
     }
 
     Err("LLM exceeded maximum iterations".to_string())
 }
 
-fn parse_llm_response(content: &str) -> Result<LlmResult, String> {
+fn parse_llm_response(content: &str, generated_image: Option<GeneratedImageData>) -> Result<LlmResult, String> {
     // Handle empty content
     if content.trim().is_empty() {
         eprintln!("LLM returned empty response, returning 'no match' interpretation");
-        return Ok(LlmResult::Interpretations(vec![AgentInterpretation {
-            action: AgentAction::Cancel,
-            confidence: 1.0,
-            explanation: "LLM returned empty response - try rephrasing your command".to_string(),
-        }]));
+        return Ok(LlmResult::Interpretations {
+            interpretations: vec![AgentInterpretation {
+                action: AgentAction::Cancel,
+                confidence: 1.0,
+                explanation: "LLM returned empty response - try rephrasing your command".to_string(),
+            }],
+            generated_image,
+        });
     }
 
     // Try to find JSON array in the response
@@ -1050,24 +1297,30 @@ fn parse_llm_response(content: &str) -> Result<LlmResult, String> {
                 .collect();
 
             if interpretations.is_empty() {
-                return Ok(LlmResult::Interpretations(vec![AgentInterpretation {
-                    action: AgentAction::Cancel,
-                    confidence: 1.0,
-                    explanation: "Could not parse any actions from LLM response".to_string(),
-                }]));
+                return Ok(LlmResult::Interpretations {
+                    interpretations: vec![AgentInterpretation {
+                        action: AgentAction::Cancel,
+                        confidence: 1.0,
+                        explanation: "Could not parse any actions from LLM response".to_string(),
+                    }],
+                    generated_image,
+                });
             }
 
-            return Ok(LlmResult::Interpretations(interpretations));
+            return Ok(LlmResult::Interpretations { interpretations, generated_image });
         }
     }
 
     // Return a "no match" interpretation instead of error for missing JSON
     eprintln!("Could not find JSON array in LLM response: {}", content);
-    Ok(LlmResult::Interpretations(vec![AgentInterpretation {
-        action: AgentAction::Cancel,
-        confidence: 1.0,
-        explanation: "Could not understand response - try rephrasing your command".to_string(),
-    }]))
+    Ok(LlmResult::Interpretations {
+        interpretations: vec![AgentInterpretation {
+            action: AgentAction::Cancel,
+            confidence: 1.0,
+            explanation: "Could not understand response - try rephrasing your command".to_string(),
+        }],
+        generated_image,
+    })
 }
 
 // ============================================================================
@@ -1081,11 +1334,14 @@ pub enum ScriptInstruction {
     Command(Command),
     /// Insert text into the current text buffer (only special case needed)
     InsertText(String),
+    /// Insert the generated image from buffer into a new cell
+    InsertGeneratedImage,
 }
 
 /// Parse a script string into individual instructions
 /// Script format: newline-separated command slugs
 /// Special: `insert_text "content"` sets text buffer before text_input commands
+/// Special: `insert_generated_image` inserts the generated image from buffer
 pub fn parse_script(script: &str) -> Vec<ScriptInstruction> {
     let mut instructions = Vec::new();
 
@@ -1099,6 +1355,9 @@ pub fn parse_script(script: &str) -> Vec<ScriptInstruction> {
         if line.starts_with("insert_text ") {
             let content = line[12..].trim().trim_matches('"');
             instructions.push(ScriptInstruction::InsertText(content.to_string()));
+        } else if line == "insert_generated_image" {
+            // Special case: insert the generated image from buffer
+            instructions.push(ScriptInstruction::InsertGeneratedImage);
         } else if let Some(cmd) = Command::from_slug(line) {
             instructions.push(ScriptInstruction::Command(cmd));
         } else {
