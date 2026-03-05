@@ -1650,6 +1650,15 @@ fn auto_play_audio_on_navigate(
         // Stop any playing audio when leaving a cell
         stop_audio(&playback_state);
 
+        // Clear image modal when navigating away from the image's vertex
+        if app_state.show_image_modal {
+            if app_state.image_modal_vertex_id != current_id {
+                app_state.show_image_modal = false;
+                app_state.image_modal_vertex_id = None;
+                app_state.sidebar.fullscreen = false;
+            }
+        }
+
         app_state.last_vertex = current_id;
 
         // If we navigated to a new vertex, check if it's audio

@@ -4,8 +4,10 @@
 
 use bevy_egui::egui;
 
-use crate::graph::{build_grid_view, GraphState, PlaceholderCell, PortalShadow};
-use crate::media::MediaCache;
+use std::collections::HashMap;
+
+use crate::graph::{build_grid_view, GraphState, GridView, PlaceholderCell, PortalShadow, Vertex};
+use crate::media::{is_image_data, MediaCache};
 use crate::network::{WsCommand, WsCommandTx};
 use crate::rendering::render_vertex_card;
 use crate::state::{AppState, PendingAudioStatus};
@@ -16,6 +18,142 @@ use crate::state::{EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_W
 pub enum GridAction {
     None,
     ClickVertex,
+}
+
+/// Calculate the appropriate height for a cell based on its content
+/// Uses cached textures only to avoid expensive loading during layout
+fn calculate_cell_height(
+    vertex: &Vertex,
+    vertex_id: u64,
+    cell_width: f32,
+    max_height: f32,
+    zoom: f32,
+    media_cache: &MediaCache,
+) -> f32 {
+    let min_height = 80.0 * zoom;
+    let padding = 8.0 * zoom;
+    let content_width = cell_width - padding * 2.0;
+
+    let mime = vertex.mime.as_deref().unwrap_or("");
+    let primary_is_image = mime.starts_with("image/") || is_image_data(&vertex.label);
+    let primary_is_audio = mime.starts_with("audio/");
+    let primary_is_text = mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url";
+
+    // Count content sections (same logic as rendering.rs)
+    let mut has_image = primary_is_image;
+    let mut has_audio = primary_is_audio;
+    let mut has_text = primary_is_text;
+    let mut text_content: Option<String> = None;
+
+    // Check additional layers
+    for layer in vertex.layers.values() {
+        if layer.mime.starts_with("image/") || is_image_data(&layer.data) {
+            has_image = true;
+        } else if layer.mime.starts_with("audio/") {
+            has_audio = true;
+        } else if layer.mime.starts_with("text/") && !layer.mime.contains("gradesta-url") {
+            has_text = true;
+            if text_content.is_none() {
+                text_content = String::from_utf8(layer.data.clone()).ok();
+            }
+        }
+    }
+
+    // For primary text content
+    if primary_is_text && text_content.is_none() {
+        text_content = String::from_utf8(vertex.label.clone()).ok();
+    }
+
+    let num_sections = (has_image as usize) + (has_audio as usize) + (has_text as usize);
+    if num_sections == 0 {
+        return min_height;
+    }
+
+    let mut total_height = padding * 2.0; // Top and bottom padding
+
+    // Image section height - use cached texture if available, otherwise estimate
+    if has_image {
+        if let Some(tex) = media_cache.textures.get(&vertex_id) {
+            let aspect = tex.size_vec2().x / tex.size_vec2().y;
+            let image_height = content_width / aspect;
+            total_height += image_height.min(max_height * 0.6);
+        } else {
+            // Default to square-ish aspect for uncached images
+            total_height += content_width * 0.75;
+        }
+    }
+
+    // Audio waveform section - fixed height
+    if has_audio {
+        total_height += 60.0 * zoom;
+    }
+
+    // Text section height
+    if has_text {
+        if let Some(ref text) = text_content {
+            let font_size = 13.0 * zoom * 0.9;
+            let char_width = font_size * 0.5;
+            let line_height = font_size * 1.2;
+            let chars_per_line = (content_width / char_width) as usize;
+            let chars_per_line = chars_per_line.max(5);
+
+            // Count wrapped lines
+            let mut line_count = 0usize;
+            let mut current_line_len = 0usize;
+            for word in text.split_whitespace() {
+                let word_len = word.chars().count();
+                if current_line_len == 0 {
+                    current_line_len = word_len;
+                } else if current_line_len + 1 + word_len <= chars_per_line {
+                    current_line_len += 1 + word_len;
+                } else {
+                    line_count += 1;
+                    current_line_len = word_len;
+                }
+            }
+            if current_line_len > 0 {
+                line_count += 1;
+            }
+
+            // Cap at 20 lines for reasonable sizing
+            let line_count = line_count.min(20).max(1);
+            total_height += line_count as f32 * line_height;
+        } else {
+            // Fallback for text without content
+            total_height += 40.0 * zoom;
+        }
+    }
+
+    total_height.min(max_height).max(min_height)
+}
+
+/// Calculate row heights based on maximum cell height in each row
+fn calculate_row_heights(
+    grid: &GridView,
+    graph: &GraphState,
+    cell_width: f32,
+    max_height: f32,
+    zoom: f32,
+    media_cache: &MediaCache,
+) -> HashMap<i32, f32> {
+    let mut row_heights: HashMap<i32, f32> = HashMap::new();
+    let min_height = 80.0 * zoom;
+
+    // For each cell in the grid, calculate its height and track max per row
+    for ((_, y), &vertex_id) in &grid.cells {
+        if let Some(vertex) = graph.vertices.get(&vertex_id) {
+            let height = calculate_cell_height(vertex, vertex_id, cell_width, max_height, zoom, media_cache);
+            let current_max = row_heights.get(y).copied().unwrap_or(min_height);
+            row_heights.insert(*y, current_max.max(height));
+        }
+    }
+
+    // Ensure all rows have at least minimum height
+    for y in grid.min_y..=grid.max_y {
+        row_heights.entry(y).or_insert(min_height);
+    }
+
+    row_heights
 }
 
 /// Render the central grid view
@@ -53,13 +191,27 @@ pub fn render_grid_view(
         let grid = build_grid_view(graph, Some(current_id), &app_state.pending_audio_cells, app_state.loading_portal_cell.as_ref());
 
         let zoom = app_state.zoom_level;
-        let cell_width = 160.0f32 * zoom;
-        let cell_height = 140.0f32 * zoom;
+        let cell_width = 320.0f32 * zoom;
         let padding = 4.0f32 * zoom;
         let font_size = 13.0f32 * zoom;
 
         let available = ui.available_size();
         let panel_min = ui.min_rect().min;
+
+        // Calculate max cell height: 2/3 of available screen height at zoom=1.0
+        let max_cell_height = (available.y * 2.0 / 3.0) / zoom * zoom; // Normalize to current zoom
+
+        // Calculate row heights based on content
+        let row_heights = calculate_row_heights(&grid, graph, cell_width, max_cell_height, zoom, media_cache);
+
+        // Helper to calculate Y position for a given row
+        let row_y_position = |row: i32| -> f32 {
+            let mut y = 0.0;
+            for r in grid.min_y..row {
+                y += row_heights.get(&r).copied().unwrap_or(80.0 * zoom) + padding;
+            }
+            y
+        };
 
         // Determine which cell is "current" - either the recording placeholder or current_vertex
         // Placeholders are added to grid.positions so the same lookup works for both
@@ -68,7 +220,8 @@ pub fn render_grid_view(
 
         // Calculate where the selected cell would be in grid-local coordinates
         let selected_cell_x = (selected_pos.0 - grid.min_x) as f32 * (cell_width + padding) + cell_width / 2.0;
-        let selected_cell_y = (selected_pos.1 - grid.min_y) as f32 * (cell_height + padding) + cell_height / 2.0;
+        let selected_row_height = row_heights.get(&selected_pos.1).copied().unwrap_or(80.0 * zoom);
+        let selected_cell_y = row_y_position(selected_pos.1) + selected_row_height / 2.0;
 
         // Calculate offset to center the selected cell in the available space
         let offset_x = available.x / 2.0 - selected_cell_x;
@@ -90,15 +243,16 @@ pub fn render_grid_view(
         for ((x, y), &vertex_id) in &grid.cells {
             if let Some(vertex) = graph.vertices.get(&vertex_id) {
                 let from_cell_x = (*x - grid.min_x) as f32 * (cell_width + padding);
-                let from_cell_y = (*y - grid.min_y) as f32 * (cell_height + padding);
+                let from_cell_y = row_y_position(*y);
+                let from_cell_height = row_heights.get(y).copied().unwrap_or(80.0 * zoom);
 
                 // Draw line to south neighbor
                 if vertex.edges[EDGE_SOUTH] != 0 {
                     if let Some(&(tx, ty)) = grid.positions.get(&vertex.edges[EDGE_SOUTH]) {
                         let to_cell_x = (tx - grid.min_x) as f32 * (cell_width + padding);
-                        let to_cell_y = (ty - grid.min_y) as f32 * (cell_height + padding);
+                        let to_cell_y = row_y_position(ty);
 
-                        let from_edge = base_pos + egui::vec2(from_cell_x + cell_width / 2.0, from_cell_y + cell_height);
+                        let from_edge = base_pos + egui::vec2(from_cell_x + cell_width / 2.0, from_cell_y + from_cell_height);
                         let to_edge = base_pos + egui::vec2(to_cell_x + cell_width / 2.0, to_cell_y);
 
                         painter.line_segment([from_edge, to_edge], egui::Stroke::new(line_thickness, line_color_ns));
@@ -109,10 +263,11 @@ pub fn render_grid_view(
                 if vertex.edges[EDGE_EAST] != 0 {
                     if let Some(&(tx, ty)) = grid.positions.get(&vertex.edges[EDGE_EAST]) {
                         let to_cell_x = (tx - grid.min_x) as f32 * (cell_width + padding);
-                        let to_cell_y = (ty - grid.min_y) as f32 * (cell_height + padding);
+                        let to_cell_y = row_y_position(ty);
+                        let to_cell_height = row_heights.get(&ty).copied().unwrap_or(80.0 * zoom);
 
-                        let from_edge = base_pos + egui::vec2(from_cell_x + cell_width, from_cell_y + cell_height / 2.0);
-                        let to_edge = base_pos + egui::vec2(to_cell_x, to_cell_y + cell_height / 2.0);
+                        let from_edge = base_pos + egui::vec2(from_cell_x + cell_width, from_cell_y + from_cell_height / 2.0);
+                        let to_edge = base_pos + egui::vec2(to_cell_x, to_cell_y + to_cell_height / 2.0);
 
                         painter.line_segment([from_edge, to_edge], egui::Stroke::new(line_thickness, line_color_ew));
                     }
@@ -122,10 +277,11 @@ pub fn render_grid_view(
 
         // Draw cells
         for y in grid.min_y..=grid.max_y {
+            let cell_height = row_heights.get(&y).copied().unwrap_or(80.0 * zoom);
             for x in grid.min_x..=grid.max_x {
                 if let Some(&vertex_id) = grid.cells.get(&(x, y)) {
                     let cell_x = (x - grid.min_x) as f32 * (cell_width + padding);
-                    let cell_y = (y - grid.min_y) as f32 * (cell_height + padding);
+                    let cell_y = row_y_position(y);
 
                     let rect = egui::Rect::from_min_size(
                         base_pos + egui::vec2(cell_x, cell_y),
@@ -173,7 +329,8 @@ pub fn render_grid_view(
         for placeholder in &grid.placeholder_cells {
             let (x, y) = placeholder.position;
             let cell_x = (x - grid.min_x) as f32 * (cell_width + padding);
-            let cell_y = (y - grid.min_y) as f32 * (cell_height + padding);
+            let cell_y = row_y_position(y);
+            let cell_height = row_heights.get(&y).copied().unwrap_or(80.0 * zoom);
 
             let rect = egui::Rect::from_min_size(
                 base_pos + egui::vec2(cell_x, cell_y),
@@ -195,7 +352,8 @@ pub fn render_grid_view(
         for shadow in &grid.portal_shadows {
             let (x, y) = shadow.position;
             let cell_x = (x - grid.min_x) as f32 * (cell_width + padding);
-            let cell_y = (y - grid.min_y) as f32 * (cell_height + padding);
+            let cell_y = row_y_position(y);
+            let cell_height = row_heights.get(&y).copied().unwrap_or(80.0 * zoom);
 
             let rect = egui::Rect::from_min_size(
                 base_pos + egui::vec2(cell_x, cell_y),

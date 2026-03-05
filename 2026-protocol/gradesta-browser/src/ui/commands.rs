@@ -682,8 +682,19 @@ fn execute_toggle_fullscreen(app_state: &mut AppState, graph: &GraphState) {
             let has_layer_image = vertex.layers.values()
                 .any(|l| l.mime.starts_with("image/") || is_image_data(&l.data));
 
-            if primary_is_text && !has_layer_image {
+            // Check for text in layers (e.g., transcript on audio cells)
+            let layer_text = vertex.layers.values()
+                .find(|l| l.mime.starts_with("text/") && l.mime != "text/gradesta-url")
+                .and_then(|l| String::from_utf8(l.data.clone()).ok());
+
+            if primary_is_text {
+                // Primary text content - expand it
                 app_state.text_modal_content = String::from_utf8_lossy(&vertex.label).to_string();
+                app_state.show_text_modal = true;
+                app_state.sidebar.fullscreen = true;
+            } else if let Some(text) = layer_text {
+                // Text in a layer (e.g., transcript) - expand that
+                app_state.text_modal_content = text;
                 app_state.show_text_modal = true;
                 app_state.sidebar.fullscreen = true;
             } else if primary_is_image || has_layer_image {
