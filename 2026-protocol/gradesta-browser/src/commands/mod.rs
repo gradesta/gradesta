@@ -91,6 +91,10 @@ pub enum Command {
     GlobalToggleVoiceSettings,
     /// Open the context menu (gamepad)
     GlobalOpenContextMenu,
+    /// Toggle the debug panel
+    GlobalToggleDebugPanel,
+    /// Toggle the identity panel
+    GlobalToggleIdentityPanel,
 
     // === Graph Context Commands ===
     /// Navigate north in the graph
@@ -255,6 +259,8 @@ impl Command {
             Command::GlobalPlaybackSpeedBoost => "global.playback_speed_boost",
             Command::GlobalToggleVoiceSettings => "global.toggle_voice_settings",
             Command::GlobalOpenContextMenu => "global.open_context_menu",
+            Command::GlobalToggleDebugPanel => "global.toggle_debug_panel",
+            Command::GlobalToggleIdentityPanel => "global.toggle_identity_panel",
             // Graph
             Command::GraphNavigateNorth => "graph.navigate_north",
             Command::GraphNavigateSouth => "graph.navigate_south",
@@ -350,6 +356,8 @@ impl Command {
             "global.playback_speed_boost" => Some(Command::GlobalPlaybackSpeedBoost),
             "global.toggle_voice_settings" => Some(Command::GlobalToggleVoiceSettings),
             "global.open_context_menu" => Some(Command::GlobalOpenContextMenu),
+            "global.toggle_debug_panel" => Some(Command::GlobalToggleDebugPanel),
+            "global.toggle_identity_panel" => Some(Command::GlobalToggleIdentityPanel),
             // Graph
             "graph.navigate_north" => Some(Command::GraphNavigateNorth),
             "graph.navigate_south" => Some(Command::GraphNavigateSouth),
@@ -446,6 +454,8 @@ impl Command {
             Command::GlobalPlaybackSpeedBoost => "Boost playback speed",
             Command::GlobalToggleVoiceSettings => "Voice command settings",
             Command::GlobalOpenContextMenu => "Open context menu",
+            Command::GlobalToggleDebugPanel => "Toggle debug panel",
+            Command::GlobalToggleIdentityPanel => "Toggle identity panel",
             // Graph
             Command::GraphNavigateNorth => "Navigate north in the graph",
             Command::GraphNavigateSouth => "Navigate south in the graph",
@@ -539,7 +549,9 @@ impl Command {
             | Command::GlobalToggleGamepadHelp
             | Command::GlobalPlaybackSpeedBoost
             | Command::GlobalToggleVoiceSettings
-            | Command::GlobalOpenContextMenu => Context::Global,
+            | Command::GlobalOpenContextMenu
+            | Command::GlobalToggleDebugPanel
+            | Command::GlobalToggleIdentityPanel => Context::Global,
 
             Command::GraphNavigateNorth
             | Command::GraphNavigateSouth
@@ -635,6 +647,8 @@ impl Command {
             Command::GlobalPlaybackSpeedBoost,
             Command::GlobalToggleVoiceSettings,
             Command::GlobalOpenContextMenu,
+            Command::GlobalToggleDebugPanel,
+            Command::GlobalToggleIdentityPanel,
             // Graph
             Command::GraphNavigateNorth,
             Command::GraphNavigateSouth,
@@ -801,6 +815,8 @@ impl Command {
             Command::GlobalToggleGamepadHelp => &["gamepad help", "controller help"],
             Command::GlobalToggleVoiceSettings => &["voice settings", "voice config", "configure voice"],
             Command::GlobalOpenContextMenu => &["context menu", "open menu", "menu"],
+            Command::GlobalToggleDebugPanel => &["debug panel", "toggle debug", "show debug"],
+            Command::GlobalToggleIdentityPanel => &["identity panel", "toggle identity", "show identity"],
             Command::GlobalZoomIn => &["zoom in", "bigger", "magnify"],
             Command::GlobalZoomOut => &["zoom out", "smaller", "shrink"],
             Command::GlobalZoomReset => &["reset zoom", "normal zoom", "zoom 100"],

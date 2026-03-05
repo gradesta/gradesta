@@ -431,6 +431,11 @@ fn ui_system(
         ui::capture_gamepad_commands(&mut cmds, &gamepad_snapshot, &app_state.keybindings);
     }
 
+    // Capture text input gamepad commands (Circle to cancel, Cross to submit)
+    if kb_context == commands::Context::TextInput {
+        ui::capture_text_input_gamepad(&mut cmds, &gamepad_snapshot);
+    }
+
     // Always capture context menu open command (works globally like a menu button)
     if let Some(ref gp) = gamepad_snapshot {
         // Debug: log any button presses
@@ -449,6 +454,9 @@ fn ui_system(
 
     // Capture context menu specific gamepad inputs (right stick + face buttons when menu open)
     ui::capture_context_menu_gamepad(&mut cmds, &gamepad_snapshot, app_state.context_menu.open);
+
+    // Capture sidebar gamepad inputs (for sidebar panel navigation)
+    let sidebar_gamepad_input = ui::capture_sidebar_gamepad(&gamepad_snapshot);
 
     // Log triggered commands to debug log (separated to avoid borrow conflicts)
     ui::log_triggered_commands_to_debug(&cmds, &mut app_state);
@@ -1020,7 +1028,7 @@ fn ui_system(
 
     // Right panel for content - renders based on sidebar mode
     let sidebar_action = egui::SidePanel::right("preview_panel").min_width(400.0).show(ctx, |ui| {
-        ui::render_sidebar_content(ui, ctx, &mut app_state, &graph, &mut media_cache, &ws_cmd_tx, &playback_state)
+        ui::render_sidebar_content(ui, ctx, &mut app_state, &graph, &mut media_cache, &ws_cmd_tx, &playback_state, &sidebar_gamepad_input)
     }).inner;
 
     // Sync any copied text to system clipboard (after all UI rendering)

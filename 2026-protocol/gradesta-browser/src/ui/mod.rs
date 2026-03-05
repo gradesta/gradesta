@@ -22,7 +22,7 @@ pub use context_menu::render_context_menu;
 pub use fullscreen::{render_fullscreen_content, FullscreenAction};
 pub use gamepad_help::render_gamepad_help_overlay;
 pub use grid::render_grid_view;
-pub use input::{capture_context_menu_gamepad, capture_gamepad_commands, capture_keyboard_commands, capture_voice_command_gamepad, log_triggered_commands_to_debug, CapturedCommands};
+pub use input::{capture_context_menu_gamepad, capture_gamepad_commands, capture_keyboard_commands, capture_sidebar_gamepad, capture_text_input_gamepad, capture_voice_command_gamepad, log_triggered_commands_to_debug, CapturedCommands, SidebarGamepadInput};
 pub use processing::{process_identification, process_recording_cancel, process_text_input};
 pub use sidebar_content::{render_sidebar_content, SidebarContentAction};
 pub use text_edit::{consume_text_edit_events, handle_url_bar_copy_shortcut, handle_url_bar_smart_paste, process_text_edit_commands, sync_copy_to_system_clipboard};

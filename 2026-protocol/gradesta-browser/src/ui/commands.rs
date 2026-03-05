@@ -134,6 +134,8 @@ pub fn execute_commands(
         if app_state.show_bag_panel {
             app_state.show_nav_panel = false;
             app_state.show_elf_panel = false;
+            app_state.show_debug_panel = false;
+            app_state.show_identity_panel = false;
         }
     }
 
@@ -144,6 +146,8 @@ pub fn execute_commands(
         if app_state.show_nav_panel {
             app_state.show_bag_panel = false;
             app_state.show_elf_panel = false;
+            app_state.show_debug_panel = false;
+            app_state.show_identity_panel = false;
         }
     }
 
@@ -154,6 +158,32 @@ pub fn execute_commands(
         if app_state.show_elf_panel {
             app_state.show_bag_panel = false;
             app_state.show_nav_panel = false;
+            app_state.show_debug_panel = false;
+            app_state.show_identity_panel = false;
+        }
+    }
+
+    // GlobalToggleDebugPanel
+    if cmds.has(Command::GlobalToggleDebugPanel) {
+        results.any_command_processed = true;
+        app_state.show_debug_panel = !app_state.show_debug_panel;
+        if app_state.show_debug_panel {
+            app_state.show_bag_panel = false;
+            app_state.show_nav_panel = false;
+            app_state.show_elf_panel = false;
+            app_state.show_identity_panel = false;
+        }
+    }
+
+    // GlobalToggleIdentityPanel
+    if cmds.has(Command::GlobalToggleIdentityPanel) {
+        results.any_command_processed = true;
+        app_state.show_identity_panel = !app_state.show_identity_panel;
+        if app_state.show_identity_panel {
+            app_state.show_bag_panel = false;
+            app_state.show_nav_panel = false;
+            app_state.show_elf_panel = false;
+            app_state.show_debug_panel = false;
         }
     }
 
@@ -396,6 +426,16 @@ pub fn execute_commands(
         results.any_command_processed = true;
         // Set a flag that main.rs will check
         app_state.voice_refresh_pending = true;
+    }
+
+    // TextInputCancel - cancel text input mode
+    if cmds.has(Command::TextInputCancel) {
+        if let InputMode::TextInput { .. } = app_state.input_mode {
+            results.any_command_processed = true;
+            app_state.input_mode = InputMode::Normal;
+            app_state.text_input_buffer.clear();
+            app_state.status = "Text input cancelled".to_string();
+        }
     }
 
     // TextInputSubmit - submit text input or URL bar

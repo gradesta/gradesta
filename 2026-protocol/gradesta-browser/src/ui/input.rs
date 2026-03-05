@@ -89,6 +89,8 @@ pub fn capture_keyboard_commands(
         Command::GlobalToggleTTS,
         Command::GlobalToggleGamepadHelp,
         Command::GlobalToggleVoiceSettings,
+        Command::GlobalToggleDebugPanel,
+        Command::GlobalToggleIdentityPanel,
         Command::GlobalRefresh,
         Command::GlobalCopyUrl,
         Command::GlobalPlaybackSpeedBoost,
@@ -199,6 +201,25 @@ pub fn capture_gamepad_commands(
 
     // Note: Playback speed boost (L2) is handled in capture_voice_command_gamepad
     // because L2 is dual-purpose: tap = boost, hold = voice command
+}
+
+/// Capture text input mode gamepad commands (Circle to cancel)
+/// Call this when in TextInput mode to allow gamepad escape
+pub fn capture_text_input_gamepad(
+    cmds: &mut CapturedCommands,
+    gamepad: &Option<GamepadSnapshot>,
+) {
+    let Some(gp) = gamepad else { return };
+
+    // Circle/B button cancels text input
+    if gp.is_pressed(GamepadKey::East) {
+        cmds.add(Command::TextInputCancel);
+    }
+
+    // Cross/A button submits text input
+    if gp.is_pressed(GamepadKey::South) {
+        cmds.add(Command::TextInputSubmit);
+    }
 }
 
 use std::time::{Duration, Instant};
@@ -320,6 +341,55 @@ pub fn capture_context_menu_gamepad(
 
     // ○ (Circle) to go back
     cmds.context_menu_back = gp.is_pressed(GamepadKey::East);
+}
+
+/// Sidebar gamepad input state
+#[derive(Clone, Debug, Default)]
+pub struct SidebarGamepadInput {
+    /// Right stick Y > 0.5 (move selection up)
+    pub nav_up: bool,
+    /// Right stick Y < -0.5 (move selection down)
+    pub nav_down: bool,
+    /// Right stick X > 0.5 (move right / next section)
+    pub nav_right: bool,
+    /// Right stick X < -0.5 (move left / prev section)
+    pub nav_left: bool,
+    /// R3 pressed (select/activate item)
+    pub select: bool,
+    /// Circle pressed (close panel / go back)
+    pub back: bool,
+    /// Cross pressed (alternative select)
+    pub cross: bool,
+}
+
+/// Capture sidebar-specific gamepad inputs
+/// Only call when a sidebar panel is open
+pub fn capture_sidebar_gamepad(
+    gamepad: &Option<GamepadSnapshot>,
+) -> SidebarGamepadInput {
+    let mut input = SidebarGamepadInput::default();
+
+    let Some(gp) = gamepad else { return input };
+
+    const STICK_DEADZONE: f32 = 0.5;
+    let (rx, ry) = gp.right_stick;
+
+    // Right stick for navigation
+    input.nav_up = ry > STICK_DEADZONE;
+    input.nav_down = ry < -STICK_DEADZONE;
+    input.nav_right = rx > STICK_DEADZONE;
+    input.nav_left = rx < -STICK_DEADZONE;
+
+    // R3 (right stick click) to select
+    input.select = gp.is_pressed(GamepadKey::RightStick);
+
+    // Cross (A/South) also selects
+    input.cross = gp.is_pressed(GamepadKey::South);
+
+    // Circle (B/East) to go back/close
+    input.back = gp.is_pressed(GamepadKey::East);
+
+    input
 }
 
 /// Log triggered commands to the debug log

@@ -15,6 +15,8 @@ use crate::rendering::{render_vertex_card, render_vertex_content};
 use crate::sidebar;
 use crate::state::{AppState, DebugCategory, DebugFilter, InputMode, EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
 
+use super::input::SidebarGamepadInput;
+
 /// Action returned from sidebar content rendering
 #[derive(Clone, Debug)]
 pub enum SidebarContentAction {
@@ -62,6 +64,7 @@ pub fn render_sidebar_content(
     media_cache: &mut MediaCache,
     ws_cmd_tx: &WsCommandTx,
     playback_state: &AudioPlaybackState,
+    gamepad_input: &SidebarGamepadInput,
 ) -> SidebarContentAction {
     // Render content based on current mode
     if app_state.show_text_modal {
@@ -75,7 +78,7 @@ pub fn render_sidebar_content(
     } else if app_state.pending_identity_setup.is_some() {
         render_identity_setup(ui, app_state)
     } else if app_state.show_identity_panel {
-        render_identity_panel(ui, app_state)
+        render_identity_panel(ui, app_state, gamepad_input)
     } else if let InputMode::TextInput { direction } = app_state.input_mode.clone() {
         render_text_input_mode(ui, app_state, direction)
     } else if let InputMode::Recording { .. } = app_state.input_mode.clone() {
@@ -83,17 +86,17 @@ pub fn render_sidebar_content(
     } else if app_state.pending_identification.is_some() {
         render_identification_request(ui, app_state)
     } else if app_state.show_nav_panel {
-        render_nav_panel(ui, ctx, app_state, graph, media_cache, ws_cmd_tx)
+        render_nav_panel(ui, ctx, app_state, graph, media_cache, ws_cmd_tx, gamepad_input)
     } else if app_state.show_bag_panel {
-        render_bag_panel(ui, ctx, app_state, graph, media_cache)
+        render_bag_panel(ui, ctx, app_state, graph, media_cache, gamepad_input)
     } else if matches!(app_state.sidebar.mode, sidebar::SidebarMode::Keybindings) {
         render_keybindings_mode(ui, app_state)
     } else if matches!(app_state.sidebar.mode, sidebar::SidebarMode::Export) {
         render_export_mode(ui, app_state)
     } else if app_state.show_debug_panel {
-        render_debug_panel(ui, app_state)
+        render_debug_panel(ui, app_state, gamepad_input)
     } else if app_state.show_elf_panel {
-        render_elf_panel(ui, app_state, graph)
+        render_elf_panel(ui, app_state, graph, gamepad_input)
     } else {
         render_preview_mode(ui, ctx, app_state, graph, media_cache, playback_state)
     }
@@ -422,8 +425,13 @@ fn render_identity_setup(ui: &mut egui::Ui, app_state: &mut AppState) -> Sidebar
     action
 }
 
-fn render_identity_panel(ui: &mut egui::Ui, app_state: &mut AppState) -> SidebarContentAction {
+fn render_identity_panel(ui: &mut egui::Ui, app_state: &mut AppState, gamepad_input: &SidebarGamepadInput) -> SidebarContentAction {
     let mut action = SidebarContentAction::None;
+
+    // Handle gamepad back button to close
+    if gamepad_input.back {
+        return SidebarContentAction::CloseIdentityPanel;
+    }
 
     ui.horizontal(|ui| {
         ui.heading("Identity Management");
@@ -435,15 +443,47 @@ fn render_identity_panel(ui: &mut egui::Ui, app_state: &mut AppState) -> Sidebar
     });
     ui.separator();
 
-    // List existing identities
+    ui.label("↑↓=Select | R3=Remove | ○=Close");
+    ui.separator();
+
+    // List existing identities with gamepad navigation
+    let identity_count = app_state.identity_config.identities.len();
+
+    // Handle navigation
+    if gamepad_input.nav_up && app_state.identity_panel_selected > 0 {
+        app_state.identity_panel_selected -= 1;
+    }
+    if gamepad_input.nav_down && app_state.identity_panel_selected < identity_count.saturating_sub(1) {
+        app_state.identity_panel_selected += 1;
+    }
+
+    // Clamp selection
+    if app_state.identity_panel_selected >= identity_count && identity_count > 0 {
+        app_state.identity_panel_selected = identity_count - 1;
+    }
+
+    let selected = app_state.identity_panel_selected;
+
     ui.label("Your Identities:");
     if app_state.identity_config.identities.is_empty() {
         ui.label("No identities configured. Add a Nextcloud account below.");
     } else {
         let mut to_remove = None;
         for (i, identity) in app_state.identity_config.identities.iter().enumerate() {
-            ui.group(|ui| {
+            let is_selected = i == selected;
+
+            let frame = if is_selected {
+                egui::Frame::group(ui.style())
+                    .stroke(egui::Stroke::new(2.0, egui::Color32::from_rgb(100, 200, 100)))
+            } else {
+                egui::Frame::group(ui.style())
+            };
+
+            frame.show(ui, |ui| {
                 ui.horizontal(|ui| {
+                    if is_selected {
+                        ui.label("▶");
+                    }
                     ui.strong(&identity.display_name);
                     if ui.small_button("Remove").clicked() {
                         to_remove = Some(i);
@@ -451,6 +491,11 @@ fn render_identity_panel(ui: &mut egui::Ui, app_state: &mut AppState) -> Sidebar
                 });
                 ui.monospace(&identity.share_url);
             });
+
+            // Handle gamepad select to remove
+            if is_selected && (gamepad_input.select || gamepad_input.cross) {
+                to_remove = Some(i);
+            }
         }
         if let Some(i) = to_remove {
             action = SidebarContentAction::RemoveIdentity(i);
@@ -702,8 +747,14 @@ fn render_nav_panel(
     graph: &GraphState,
     media_cache: &mut MediaCache,
     _ws_cmd_tx: &WsCommandTx,
+    gamepad_input: &SidebarGamepadInput,
 ) -> SidebarContentAction {
     let mut action = SidebarContentAction::None;
+
+    // Handle gamepad back button to close
+    if gamepad_input.back {
+        return SidebarContentAction::CloseNavPanel;
+    }
 
     ui.horizontal(|ui| {
         ui.heading("Navigation");
@@ -715,131 +766,121 @@ fn render_nav_panel(
     });
     ui.separator();
 
-    ui.label("Ctrl+N to toggle | Click to jump");
+    ui.label("↑↓=Select | ←→=Section | R3=Jump | ○=Close");
     ui.separator();
 
-    // Landmark History section
-    ui.heading("Landmark History");
-    if app_state.landmark_history.is_empty() {
-        ui.label("No landmarks visited yet.");
-    } else {
-        let landmark_vertices: Vec<(String, Option<u64>)> = app_state.landmark_history.iter().rev()
-            .map(|landmark| {
-                let vertex_id = graph.landmark_vertices.get(landmark)
-                    .and_then(|vertices| vertices.first().copied());
-                (landmark.clone(), vertex_id)
-            })
-            .collect();
+    // Calculate item counts for navigation
+    let history_count = app_state.landmark_history.len();
+    let islands = find_islands(graph, app_state.current_vertex);
+    let island_count = if islands.len() > 1 { islands.len() } else { 0 };
 
-        egui::ScrollArea::vertical()
-            .id_salt("landmark_history")
-            .max_height(200.0)
-            .show(ui, |ui| {
-                let zoom = 1.0f32;
-                let card_width = ui.available_width() - 16.0;
-                let card_height = 100.0 * zoom;
-                let font_size = 13.0 * zoom;
-
-                for (landmark, vertex_id_opt) in landmark_vertices.iter() {
-                    let is_current = graph.context_uri.as_ref() == Some(landmark);
-
-                    ui.add_space(4.0);
-
-                    if is_current {
-                        ui.horizontal(|ui| {
-                            ui.label("→ Current:");
-                        });
-                    }
-
-                    let (card_rect, response) = ui.allocate_exact_size(
-                        egui::vec2(card_width, card_height),
-                        egui::Sense::click(),
-                    );
-
-                    let painter = ui.painter();
-                    if let Some(vertex_id) = vertex_id_opt {
-                        if let Some(vertex) = graph.vertices.get(vertex_id) {
-                            render_vertex_card(
-                                painter,
-                                vertex,
-                                *vertex_id,
-                                card_rect,
-                                is_current,
-                                zoom,
-                                font_size,
-                                media_cache,
-                                ctx,
-                                graph,
-                            );
-                        } else {
-                            render_landmark_placeholder(painter, card_rect, landmark);
-                        }
-                    } else {
-                        render_landmark_placeholder(painter, card_rect, landmark);
-                    }
-
-                    if response.clicked() && !is_current {
-                        if let Some(vertex_id) = vertex_id_opt {
-                            if graph.vertices.contains_key(vertex_id) {
-                                action = SidebarContentAction::JumpToVertex(*vertex_id);
-                            } else {
-                                action = SidebarContentAction::WatchLandmark(landmark.clone());
-                            }
-                        } else {
-                            action = SidebarContentAction::WatchLandmark(landmark.clone());
-                        }
-                    }
-
-                    ui.add_space(4.0);
-                }
-            });
+    // Handle section switching (left/right)
+    if gamepad_input.nav_left && app_state.nav_panel_section > 0 {
+        app_state.nav_panel_section = 0;
+        app_state.nav_panel_selected = 0;
+    }
+    if gamepad_input.nav_right && app_state.nav_panel_section == 0 && island_count > 0 {
+        app_state.nav_panel_section = 1;
+        app_state.nav_panel_selected = 0;
     }
 
+    let current_section = app_state.nav_panel_section;
+    let item_count = if current_section == 0 { history_count } else { island_count };
+
+    // Handle up/down navigation
+    if gamepad_input.nav_up && app_state.nav_panel_selected > 0 {
+        app_state.nav_panel_selected -= 1;
+    }
+    if gamepad_input.nav_down && app_state.nav_panel_selected < item_count.saturating_sub(1) {
+        app_state.nav_panel_selected += 1;
+    }
+
+    // Clamp selection
+    if app_state.nav_panel_selected >= item_count && item_count > 0 {
+        app_state.nav_panel_selected = item_count - 1;
+    }
+
+    let selected = app_state.nav_panel_selected;
+
+    // Section tabs
+    ui.horizontal(|ui| {
+        let history_label = if current_section == 0 { "▶ History" } else { "  History" };
+        let islands_label = if current_section == 1 { "▶ Islands" } else { "  Islands" };
+
+        if ui.selectable_label(current_section == 0, history_label).clicked() {
+            app_state.nav_panel_section = 0;
+            app_state.nav_panel_selected = 0;
+        }
+        if island_count > 0 {
+            if ui.selectable_label(current_section == 1, islands_label).clicked() {
+                app_state.nav_panel_section = 1;
+                app_state.nav_panel_selected = 0;
+            }
+        }
+    });
     ui.separator();
 
-    // Islands section
-    ui.heading("Islands");
-    let islands = find_islands(graph, app_state.current_vertex);
+    if current_section == 0 {
+        // Landmark History section
+        ui.heading("Landmark History");
+        if app_state.landmark_history.is_empty() {
+            ui.label("No landmarks visited yet.");
+        } else {
+            let landmark_vertices: Vec<(String, Option<u64>)> = app_state.landmark_history.iter().rev()
+                .map(|landmark| {
+                    let vertex_id = graph.landmark_vertices.get(landmark)
+                        .and_then(|vertices| vertices.first().copied());
+                    (landmark.clone(), vertex_id)
+                })
+                .collect();
 
-    if islands.len() <= 1 {
-        ui.label("No disconnected islands.");
-    } else {
-        ui.label(format!("{} islands found:", islands.len()));
+            egui::ScrollArea::vertical()
+                .id_salt("landmark_history")
+                .max_height(ui.available_height() - 20.0)
+                .show(ui, |ui| {
+                    let zoom = 1.0f32;
+                    let card_width = ui.available_width() - 16.0;
+                    let card_height = 100.0 * zoom;
+                    let font_size = 13.0 * zoom;
 
-        egui::ScrollArea::vertical()
-            .id_salt("islands")
-            .max_height(ui.available_height() - 20.0)
-            .show(ui, |ui| {
-                let zoom = 1.0f32;
-                let card_width = ui.available_width() - 16.0;
-                let card_height = 100.0 * zoom;
-                let font_size = 13.0 * zoom;
+                    for (i, (landmark, vertex_id_opt)) in landmark_vertices.iter().enumerate() {
+                        let is_current = graph.context_uri.as_ref() == Some(landmark);
+                        let is_selected = selected == i;
 
-                for (island_idx, island) in islands.iter().enumerate() {
-                    let is_current_island = island_idx == 0;
-                    let header = if is_current_island {
-                        format!("Current ({} vertices)", island.len())
-                    } else {
-                        format!("Island {} ({} vertices)", island_idx, island.len())
-                    };
+                        ui.add_space(4.0);
 
-                    ui.collapsing(header, |ui| {
-                        let display_count = island.len().min(5);
-                        for &vertex_id in island.iter().take(display_count) {
-                            ui.add_space(4.0);
+                        if is_current {
+                            ui.horizontal(|ui| {
+                                let prefix = if is_selected { "▶ " } else { "" };
+                                ui.label(format!("{}→ Current:", prefix));
+                            });
+                        } else if is_selected {
+                            ui.label("▶");
+                        }
 
-                            let (card_rect, response) = ui.allocate_exact_size(
-                                egui::vec2(card_width, card_height),
-                                egui::Sense::click(),
+                        let (card_rect, response) = ui.allocate_exact_size(
+                            egui::vec2(card_width, card_height),
+                            egui::Sense::click(),
+                        );
+
+                        let painter = ui.painter();
+
+                        // Draw selection highlight
+                        if is_selected {
+                            painter.rect_stroke(
+                                card_rect.expand(2.0),
+                                6.0,
+                                egui::Stroke::new(3.0, egui::Color32::from_rgb(100, 200, 100)),
+                                egui::StrokeKind::Outside,
                             );
+                        }
 
-                            let painter = ui.painter();
-                            if let Some(vertex) = graph.vertices.get(&vertex_id) {
-                                let is_current = app_state.current_vertex == Some(vertex_id);
+                        if let Some(vertex_id) = vertex_id_opt {
+                            if let Some(vertex) = graph.vertices.get(vertex_id) {
                                 render_vertex_card(
                                     painter,
                                     vertex,
-                                    vertex_id,
+                                    *vertex_id,
                                     card_rect,
                                     is_current,
                                     zoom,
@@ -849,21 +890,113 @@ fn render_nav_panel(
                                     graph,
                                 );
                             } else {
-                                render_vertex_placeholder(painter, card_rect, vertex_id);
+                                render_landmark_placeholder(painter, card_rect, landmark);
                             }
+                        } else {
+                            render_landmark_placeholder(painter, card_rect, landmark);
+                        }
 
-                            if response.clicked() {
-                                action = SidebarContentAction::JumpToVertex(vertex_id);
+                        let should_activate = response.clicked() || (is_selected && (gamepad_input.select || gamepad_input.cross));
+                        if should_activate && !is_current {
+                            if let Some(vertex_id) = vertex_id_opt {
+                                if graph.vertices.contains_key(vertex_id) {
+                                    action = SidebarContentAction::JumpToVertex(*vertex_id);
+                                } else {
+                                    action = SidebarContentAction::WatchLandmark(landmark.clone());
+                                }
+                            } else {
+                                action = SidebarContentAction::WatchLandmark(landmark.clone());
                             }
+                        }
 
-                            ui.add_space(4.0);
+                        ui.add_space(4.0);
+                    }
+                });
+        }
+    } else {
+        // Islands section
+        ui.heading("Islands");
+
+        if islands.len() <= 1 {
+            ui.label("No disconnected islands.");
+        } else {
+            ui.label(format!("{} islands found:", islands.len()));
+
+            egui::ScrollArea::vertical()
+                .id_salt("islands")
+                .max_height(ui.available_height() - 20.0)
+                .show(ui, |ui| {
+                    let zoom = 1.0f32;
+                    let card_width = ui.available_width() - 16.0;
+                    let card_height = 100.0 * zoom;
+                    let font_size = 13.0 * zoom;
+
+                    for (island_idx, island) in islands.iter().enumerate() {
+                        let is_current_island = island_idx == 0;
+                        let is_selected = selected == island_idx;
+                        let prefix = if is_selected { "▶ " } else { "" };
+                        let header = if is_current_island {
+                            format!("{}Current ({} vertices)", prefix, island.len())
+                        } else {
+                            format!("{}Island {} ({} vertices)", prefix, island_idx, island.len())
+                        };
+
+                        // Draw selection highlight for collapsed header
+                        if is_selected {
+                            ui.horizontal(|ui| {
+                                ui.colored_label(egui::Color32::from_rgb(100, 200, 100), &header);
+                            });
                         }
-                        if island.len() > display_count {
-                            ui.label(format!("... and {} more", island.len() - display_count));
+
+                        ui.collapsing(&header, |ui| {
+                            let display_count = island.len().min(5);
+                            for &vertex_id in island.iter().take(display_count) {
+                                ui.add_space(4.0);
+
+                                let (card_rect, response) = ui.allocate_exact_size(
+                                    egui::vec2(card_width, card_height),
+                                    egui::Sense::click(),
+                                );
+
+                                let painter = ui.painter();
+                                if let Some(vertex) = graph.vertices.get(&vertex_id) {
+                                    let is_current = app_state.current_vertex == Some(vertex_id);
+                                    render_vertex_card(
+                                        painter,
+                                        vertex,
+                                        vertex_id,
+                                        card_rect,
+                                        is_current,
+                                        zoom,
+                                        font_size,
+                                        media_cache,
+                                        ctx,
+                                        graph,
+                                    );
+                                } else {
+                                    render_vertex_placeholder(painter, card_rect, vertex_id);
+                                }
+
+                                if response.clicked() {
+                                    action = SidebarContentAction::JumpToVertex(vertex_id);
+                                }
+
+                                ui.add_space(4.0);
+                            }
+                            if island.len() > display_count {
+                                ui.label(format!("... and {} more", island.len() - display_count));
+                            }
+                        });
+
+                        // Handle gamepad select on island - jump to first vertex
+                        if is_selected && (gamepad_input.select || gamepad_input.cross) {
+                            if let Some(&first_vertex) = island.first() {
+                                action = SidebarContentAction::JumpToVertex(first_vertex);
+                            }
                         }
-                    });
-                }
-            });
+                    }
+                });
+        }
     }
 
     action
@@ -904,8 +1037,14 @@ fn render_bag_panel(
     app_state: &mut AppState,
     graph: &GraphState,
     media_cache: &mut MediaCache,
+    gamepad_input: &SidebarGamepadInput,
 ) -> SidebarContentAction {
     let mut action = SidebarContentAction::None;
+
+    // Handle gamepad back button to close
+    if gamepad_input.back {
+        return SidebarContentAction::CloseBagPanel;
+    }
 
     ui.horizontal(|ui| {
         ui.heading("Bag");
@@ -917,13 +1056,40 @@ fn render_bag_panel(
     });
     ui.separator();
 
+    // Bag has 2 selectable items at top: Clear All (index 0), then bag items (index 1+)
+    let item_count = app_state.bag.len() + 1; // +1 for Clear button
+    let selected = app_state.bag_panel_selected;
+
+    // Handle gamepad navigation
+    if gamepad_input.nav_up && selected > 0 {
+        app_state.bag_panel_selected = selected - 1;
+    }
+    if gamepad_input.nav_down && selected < item_count.saturating_sub(1) {
+        app_state.bag_panel_selected = selected + 1;
+    }
+
+    // Clamp selection to valid range
+    if app_state.bag_panel_selected >= item_count && item_count > 0 {
+        app_state.bag_panel_selected = item_count - 1;
+    }
+
+    let selected = app_state.bag_panel_selected;
+
+    // Clear button (index 0)
+    let clear_selected = selected == 0;
     ui.horizontal(|ui| {
-        if ui.button("Clear All").clicked() {
+        let btn = if clear_selected {
+            egui::Button::new(egui::RichText::new("Clear All").color(egui::Color32::WHITE))
+                .fill(egui::Color32::from_rgb(60, 100, 60))
+        } else {
+            egui::Button::new("Clear All")
+        };
+        if ui.add(btn).clicked() || (clear_selected && (gamepad_input.select || gamepad_input.cross)) {
             action = SidebarContentAction::ClearBag;
         }
     });
 
-    ui.label("Y=Yank | P=Paste | G=Go | Ctrl+Y=Pop");
+    ui.label("Y=Yank | P=Paste | G=Go | ↑↓=Select | R3=Activate");
     ui.separator();
 
     if app_state.bag.is_empty() {
@@ -944,14 +1110,18 @@ fn render_bag_panel(
 
                 for (i, &vertex_id) in app_state.bag.iter().rev().enumerate() {
                     let stack_idx = app_state.bag.len() - 1 - i;
+                    let is_selected = selected == i + 1; // +1 because Clear is index 0
                     let is_top = i == 0;
 
                     ui.add_space(4.0);
 
                     if is_top {
                         ui.horizontal(|ui| {
-                            ui.label("→ Next to paste:");
+                            let prefix = if is_selected { "▶ " } else { "" };
+                            ui.label(format!("{}→ Next to paste:", prefix));
                         });
+                    } else if is_selected {
+                        ui.label("▶");
                     }
 
                     let (card_rect, response) = ui.allocate_exact_size(
@@ -960,6 +1130,17 @@ fn render_bag_panel(
                     );
 
                     let painter = ui.painter();
+
+                    // Draw selection highlight
+                    if is_selected {
+                        painter.rect_stroke(
+                            card_rect.expand(2.0),
+                            6.0,
+                            egui::Stroke::new(3.0, egui::Color32::from_rgb(100, 200, 100)),
+                            egui::StrokeKind::Outside,
+                        );
+                    }
+
                     if let Some(vertex) = graph.vertices.get(&vertex_id) {
                         render_vertex_card(
                             painter,
@@ -978,6 +1159,11 @@ fn render_bag_panel(
                     }
 
                     if response.clicked() {
+                        jump_to = Some(vertex_id);
+                    }
+
+                    // Handle gamepad select on this item
+                    if is_selected && (gamepad_input.select || gamepad_input.cross) {
                         jump_to = Some(vertex_id);
                     }
 
@@ -1036,8 +1222,13 @@ fn render_keybindings_mode(ui: &mut egui::Ui, app_state: &mut AppState) -> Sideb
     action
 }
 
-fn render_debug_panel(ui: &mut egui::Ui, app_state: &mut AppState) -> SidebarContentAction {
+fn render_debug_panel(ui: &mut egui::Ui, app_state: &mut AppState, gamepad_input: &SidebarGamepadInput) -> SidebarContentAction {
     let mut action = SidebarContentAction::None;
+
+    // Handle gamepad back button to close
+    if gamepad_input.back {
+        return SidebarContentAction::CloseDebugPanel;
+    }
 
     ui.horizontal(|ui| {
         ui.heading("Debug Log");
@@ -1057,9 +1248,47 @@ fn render_debug_panel(ui: &mut egui::Ui, app_state: &mut AppState) -> SidebarCon
         });
     }
 
+    // Filter count for navigation (5 filters: All, Cmd, Ctx, Exec, Key)
+    let filter_count = 5;
+
+    // Handle left/right to change filter
+    let current_filter_idx = match app_state.debug_filter {
+        DebugFilter::All => 0,
+        DebugFilter::Command => 1,
+        DebugFilter::Context => 2,
+        DebugFilter::Execution => 3,
+        DebugFilter::Keypress => 4,
+    };
+
+    if gamepad_input.nav_left && current_filter_idx > 0 {
+        app_state.debug_filter = match current_filter_idx - 1 {
+            0 => DebugFilter::All,
+            1 => DebugFilter::Command,
+            2 => DebugFilter::Context,
+            3 => DebugFilter::Execution,
+            _ => DebugFilter::Keypress,
+        };
+    }
+    if gamepad_input.nav_right && current_filter_idx < filter_count - 1 {
+        app_state.debug_filter = match current_filter_idx + 1 {
+            1 => DebugFilter::Command,
+            2 => DebugFilter::Context,
+            3 => DebugFilter::Execution,
+            4 => DebugFilter::Keypress,
+            _ => DebugFilter::All,
+        };
+    }
+
     // Controls
     ui.horizontal(|ui| {
-        if ui.button("Clear").clicked() {
+        let clear_selected = app_state.debug_panel_selected == 0;
+        let clear_btn = if clear_selected {
+            egui::Button::new(egui::RichText::new("Clear").color(egui::Color32::WHITE))
+                .fill(egui::Color32::from_rgb(60, 100, 60))
+        } else {
+            egui::Button::new("Clear")
+        };
+        if ui.add(clear_btn).clicked() || (clear_selected && (gamepad_input.select || gamepad_input.cross)) {
             action = SidebarContentAction::ClearDebugLog;
         }
         ui.label(format!("{} entries", app_state.debug_log.len()));
@@ -1067,23 +1296,28 @@ fn render_debug_panel(ui: &mut egui::Ui, app_state: &mut AppState) -> SidebarCon
 
     ui.separator();
 
-    // Filter buttons
+    ui.label("←→=Filter | R3=Clear | ○=Close");
+
+    // Filter buttons with selection indicator
     ui.horizontal(|ui| {
         ui.label("Filter:");
-        if ui.selectable_label(app_state.debug_filter == DebugFilter::All, "All").clicked() {
-            app_state.debug_filter = DebugFilter::All;
-        }
-        if ui.selectable_label(app_state.debug_filter == DebugFilter::Command, "Cmd").clicked() {
-            app_state.debug_filter = DebugFilter::Command;
-        }
-        if ui.selectable_label(app_state.debug_filter == DebugFilter::Context, "Ctx").clicked() {
-            app_state.debug_filter = DebugFilter::Context;
-        }
-        if ui.selectable_label(app_state.debug_filter == DebugFilter::Execution, "Exec").clicked() {
-            app_state.debug_filter = DebugFilter::Execution;
-        }
-        if ui.selectable_label(app_state.debug_filter == DebugFilter::Keypress, "Key").clicked() {
-            app_state.debug_filter = DebugFilter::Keypress;
+        let filters = [
+            (DebugFilter::All, "All"),
+            (DebugFilter::Command, "Cmd"),
+            (DebugFilter::Context, "Ctx"),
+            (DebugFilter::Execution, "Exec"),
+            (DebugFilter::Keypress, "Key"),
+        ];
+        for (filter, label) in filters {
+            let is_current = app_state.debug_filter == filter;
+            let label_text = if is_current {
+                format!("▶{}", label)
+            } else {
+                label.to_string()
+            };
+            if ui.selectable_label(is_current, label_text).clicked() {
+                app_state.debug_filter = filter;
+            }
         }
     });
 
@@ -1170,11 +1404,12 @@ fn render_elf_panel(
     ui: &mut egui::Ui,
     app_state: &mut AppState,
     graph: &GraphState,
+    gamepad_input: &SidebarGamepadInput,
 ) -> SidebarContentAction {
     let current_vertex = app_state.current_vertex;
     let current_landmark = graph.context_uri.as_deref().unwrap_or("");
 
-    if let Some(elf_action) = sidebar::elf::render_elf_panel(ui, app_state, current_vertex, current_landmark) {
+    if let Some(elf_action) = sidebar::elf::render_elf_panel(ui, app_state, current_vertex, current_landmark, gamepad_input) {
         SidebarContentAction::ElfAction(elf_action)
     } else {
         SidebarContentAction::None

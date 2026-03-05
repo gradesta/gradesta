@@ -107,6 +107,22 @@ impl ElfTask {
     }
 }
 
+/// Which section of the elf panel has gamepad focus
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ElfPanelFocus {
+    #[default]
+    /// Elf list selection
+    ElfList,
+    /// Command list selection
+    CommandList,
+    /// Direction toggles (W/E/N/S/U/D)
+    Directions,
+    /// Permission toggles (Read/Write/Create/Delete)
+    Permissions,
+    /// Summon button
+    Summon,
+}
+
 /// State for elf panel UI
 #[derive(Clone, Debug, Default)]
 pub struct ElfPanelState {
@@ -120,6 +136,12 @@ pub struct ElfPanelState {
     pub selected_directions: u8,
     /// Permission checkboxes (bitmask)
     pub selected_permissions: u8,
+    /// Which section has gamepad focus
+    pub gamepad_focus: ElfPanelFocus,
+    /// Which direction toggle is selected (0-5 for W/E/N/S/U/D)
+    pub direction_cursor: usize,
+    /// Which permission toggle is selected (0-3 for R/W/C/D)
+    pub permission_cursor: usize,
 }
 
 /// Category of debug log entry
@@ -602,6 +624,17 @@ pub struct AppState {
     pub generated_image_buffer: Option<GeneratedImage>,
     /// Context menu state (gamepad)
     pub context_menu: ContextMenuState,
+    // Sidebar gamepad navigation state
+    /// Selected index in bag panel (for gamepad navigation)
+    pub bag_panel_selected: usize,
+    /// Selected index in nav panel (for gamepad navigation)
+    pub nav_panel_selected: usize,
+    /// Which section in nav panel: 0=history, 1=islands
+    pub nav_panel_section: usize,
+    /// Selected index in debug panel (for gamepad navigation)
+    pub debug_panel_selected: usize,
+    /// Selected index in identity panel (for gamepad navigation)
+    pub identity_panel_selected: usize,
 }
 
 /// A generated image waiting to be inserted into a cell
@@ -796,6 +829,11 @@ impl Default for AppState {
             model_filter: String::new(),
             generated_image_buffer: None,
             context_menu: ContextMenuState::default(),
+            bag_panel_selected: 0,
+            nav_panel_selected: 0,
+            nav_panel_section: 0,
+            debug_panel_selected: 0,
+            identity_panel_selected: 0,
         }
     }
 }
