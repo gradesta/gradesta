@@ -432,7 +432,8 @@ fn ui_system(
     }
 
     // Capture voice command specific gamepad inputs (L2 hold for voice, right stick for selection)
-    ui::capture_voice_command_gamepad(&mut cmds, &gamepad_snapshot, is_in_voice_command_mode, &mut app_state.l2_press_start);
+    let recording_start = app_state.recording_start;
+    ui::capture_voice_command_gamepad(&mut cmds, &gamepad_snapshot, is_in_voice_command_mode, &mut app_state.l2_press_start, recording_start);
 
     // Log triggered commands to debug log (separated to avoid borrow conflicts)
     ui::log_triggered_commands_to_debug(&cmds, &mut app_state);

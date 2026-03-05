@@ -31,6 +31,7 @@ pub struct CapturedCommands {
     // Voice command UI state (not general commands)
     pub voice_command_start: bool,  // L2+R2 held long enough this frame
     pub voice_command_stop: bool,   // L2 or R2 released while in voice command mode
+    pub voice_command_cancel_burst: bool, // L2 released < 1 sec = cancel voice + trigger burst
     pub voice_select_up: bool,      // Right stick up
     pub voice_select_down: bool,    // Right stick down
     pub voice_confirm: bool,        // Right stick click or A button
@@ -196,14 +197,19 @@ use std::time::{Duration, Instant};
 /// Duration L2 must be held before voice command mode activates
 const L2_HOLD_THRESHOLD: Duration = Duration::from_millis(100);
 
+/// Duration voice command must be held to count as a real command (not a burst)
+const VOICE_COMMAND_MIN_DURATION: Duration = Duration::from_secs(1);
+
 /// Capture voice command gamepad inputs (L2 hold for voice command mode)
 /// L2 tap = playback speed boost, L2 hold (100ms+) = voice command
+/// L2 release < 1 sec while recording = cancel voice + burst
 /// This needs to be called separately with access to the current input mode
 pub fn capture_voice_command_gamepad(
     cmds: &mut CapturedCommands,
     gamepad: &Option<GamepadSnapshot>,
     is_in_voice_command_mode: bool,
     l2_press_start: &mut Option<Instant>,
+    recording_start: Option<Instant>,
 ) {
     let Some(gp) = gamepad else { return };
 
@@ -231,8 +237,19 @@ pub fn capture_voice_command_gamepad(
     // When L2 is released
     if l2_released {
         if is_in_voice_command_mode {
-            // In voice command mode: stop recording
-            cmds.voice_command_stop = true;
+            // In voice command mode: check if it was held long enough
+            if let Some(start) = recording_start {
+                if start.elapsed() < VOICE_COMMAND_MIN_DURATION {
+                    // Too short - cancel voice command and trigger burst instead
+                    cmds.voice_command_cancel_burst = true;
+                } else {
+                    // Long enough - finalize the voice command
+                    cmds.voice_command_stop = true;
+                }
+            } else {
+                // No recording start time - just stop
+                cmds.voice_command_stop = true;
+            }
         } else if let Some(start) = *l2_press_start {
             // Not in voice command mode: check if it was a quick tap
             if start.elapsed() < L2_HOLD_THRESHOLD {

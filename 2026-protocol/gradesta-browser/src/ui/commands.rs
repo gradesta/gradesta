@@ -467,14 +467,44 @@ pub fn execute_commands(
 
     // Handle voice command state machine
     if let InputMode::VoiceCommand(ref state) = app_state.input_mode.clone() {
+        // Voice command cancel + burst - L2 released < 1 second
+        // Cancel the voice command and trigger speed boost instead
+        if cmds.voice_command_cancel_burst {
+            if let VoiceCommandState::Recording { ref stop_signal, .. } = state {
+                results.any_command_processed = true;
+                // Stop the recording
+                if let Ok(mut stop) = stop_signal.lock() {
+                    *stop = true;
+                }
+                // Cancel voice command - return to normal mode
+                app_state.input_mode = InputMode::Normal;
+                app_state.recording_start = None;
+                app_state.status = "Voice command cancelled".to_string();
+                // Trigger speed boost
+                let new_speed = boost_state.apply_boost();
+                tts::set_rate(new_speed);
+                set_audio_speed(new_speed);
+                app_state.status = format!("Playback speed: {:.1}x", new_speed);
+            }
+        }
         // Voice command stop - triggers transition from Recording to Transcribing
-        if cmds.voice_command_stop {
+        else if cmds.voice_command_stop {
             if let VoiceCommandState::Recording { ref stop_signal, .. } = state {
                 results.any_command_processed = true;
                 if let Ok(mut stop) = stop_signal.lock() {
                     *stop = true;
                 }
                 results.should_finalize_voice_recording = true;
+            }
+        }
+
+        // Stop audio playback after 1 second of voice recording
+        // (before 1 second, user might cancel and want burst instead)
+        if let VoiceCommandState::Recording { .. } = state {
+            if let Some(start) = app_state.recording_start {
+                if start.elapsed() >= std::time::Duration::from_secs(1) {
+                    stop_audio(playback_state);
+                }
             }
         }
 
@@ -948,11 +978,11 @@ fn execute_start_recording(
 /// Start voice command recording with real-time transcription (L2+R2 held)
 fn start_voice_command(
     app_state: &mut AppState,
-    playback_state: &AudioPlaybackState,
+    _playback_state: &AudioPlaybackState,
     voice_channel: &VoiceCommandChannel,
 ) {
-    // Stop any currently playing audio
-    stop_audio(playback_state);
+    // Don't stop audio here - wait until 1 second to allow burst cancel
+    // Audio will be stopped in execute_commands after VOICE_COMMAND_MIN_DURATION
 
     // Create shared state for recording
     let samples = Arc::new(Mutex::new(Vec::new()));
