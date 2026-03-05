@@ -890,23 +890,26 @@ fn get_available_image_models(api_key: &str) -> serde_json::Value {
             if response.status().is_success() {
                 match response.json::<ModelsResponse>() {
                     Ok(models_resp) => {
-                        // Filter for image generation models
+                        // Filter for actual image GENERATION models (not vision/multimodal)
                         let image_models: Vec<_> = models_resp.data
                             .into_iter()
                             .filter(|m| {
                                 let id = m.id.to_lowercase();
-                                // Common image generation model identifiers
+                                // Exclude vision/preview models that analyze images but don't generate
+                                if id.contains("vision") || id.contains("preview") {
+                                    return false;
+                                }
+                                // Known image generation models
                                 id.contains("dall-e") ||
                                 id.contains("dalle") ||
                                 id.contains("stable-diffusion") ||
                                 id.contains("sdxl") ||
                                 id.contains("midjourney") ||
-                                id.contains("imagen") ||
                                 id.contains("flux") ||
-                                id.contains("image") ||
-                                // Check provider prefixes for image models
+                                // Provider prefixes for image gen models
                                 id.starts_with("stability-ai/") ||
-                                id.starts_with("openai/dall")
+                                id.starts_with("openai/dall") ||
+                                id.starts_with("black-forest-labs/")
                             })
                             .map(|m| {
                                 serde_json::json!({
@@ -919,33 +922,35 @@ fn get_available_image_models(api_key: &str) -> serde_json::Value {
                         if image_models.is_empty() {
                             serde_json::json!({
                                 "models": [],
-                                "note": "No image generation models found. Common models include 'openai/dall-e-3', 'stability-ai/stable-diffusion-xl-1024-v1-0'. Try using one of these directly."
+                                "recommended": "openai/dall-e-3",
+                                "note": "No image generation models found in API. Try 'openai/dall-e-3' directly - it's the most reliable option."
                             })
                         } else {
                             serde_json::json!({
                                 "models": image_models,
-                                "instructions": "Use generate_image(model, prompt) with one of these model IDs"
+                                "recommended": "openai/dall-e-3",
+                                "instructions": "Use generate_image(model, prompt) with one of these model IDs. Prefer dall-e-3 for best results."
                             })
                         }
                     }
                     Err(e) => {
                         serde_json::json!({
                             "error": format!("Failed to parse models: {}", e),
-                            "fallback_models": ["openai/dall-e-3", "stability-ai/stable-diffusion-xl-1024-v1-0"]
+                            "recommended": "openai/dall-e-3"
                         })
                     }
                 }
             } else {
                 serde_json::json!({
                     "error": format!("API error: {}", response.status()),
-                    "fallback_models": ["openai/dall-e-3", "stability-ai/stable-diffusion-xl-1024-v1-0"]
+                    "recommended": "openai/dall-e-3"
                 })
             }
         }
         Err(e) => {
             serde_json::json!({
                 "error": format!("Request failed: {}", e),
-                "fallback_models": ["openai/dall-e-3", "stability-ai/stable-diffusion-xl-1024-v1-0"]
+                "recommended": "openai/dall-e-3"
             })
         }
     }
