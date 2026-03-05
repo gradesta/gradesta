@@ -1020,20 +1020,57 @@ fn generate_image_sync(
         .map_err(|e| format!("Failed to read response: {}", e))?;
 
     println!("Image generation response received ({} bytes)", response_text.len());
-    println!("Response preview: {}", &response_text[..response_text.len().min(1000)]);
 
     // Parse chat completion response
     let parsed: serde_json::Value = serde_json::from_str(&response_text)
         .map_err(|e| format!("Failed to parse response: {}", e))?;
 
-    // Look for image data in the response
-    // Gemini models return images as inline_data in content parts
-    let content = &parsed["choices"][0]["message"]["content"];
+    // Log the complete structure for debugging
+    println!("Top-level keys: {:?}", parsed.as_object().map(|o| o.keys().collect::<Vec<_>>()));
 
-    // Check if content is an array (multimodal response with parts)
+    // Log choices array info
+    if let Some(choices) = parsed["choices"].as_array() {
+        println!("Number of choices: {}", choices.len());
+        for (i, choice) in choices.iter().enumerate() {
+            println!("Choice {} keys: {:?}", i, choice.as_object().map(|o| o.keys().collect::<Vec<_>>()));
+        }
+    }
+
+    let message = &parsed["choices"][0]["message"];
+    println!("Message keys: {:?}", message.as_object().map(|o| o.keys().collect::<Vec<_>>()));
+
+    // Log content type and structure in detail
+    let content = &message["content"];
+    if content.is_null() {
+        println!("Content is null");
+    } else if content.is_string() {
+        println!("Content is string ({} chars)", content.as_str().unwrap_or("").len());
+    } else if let Some(arr) = content.as_array() {
+        println!("Content is array with {} items", arr.len());
+        for (i, item) in arr.iter().enumerate().take(5) {
+            println!("  Content[{}] type: {:?}", i,
+                if item.is_object() {
+                    format!("object with keys {:?}", item.as_object().map(|o| o.keys().collect::<Vec<_>>()))
+                } else if item.is_string() {
+                    "string".to_string()
+                } else {
+                    format!("{:?}", item)
+                }
+            );
+        }
+    } else {
+        println!("Content is other type: {:?}", content);
+    }
+
+    // Look for image data in various possible locations
+    // Location 1: message.content as array of parts
+    let content = &message["content"];
     if let Some(parts) = content.as_array() {
-        for part in parts {
-            // Check for inline_data with image
+        println!("Content is array with {} parts", parts.len());
+        for (i, part) in parts.iter().enumerate() {
+            println!("Part {}: keys={:?}", i, part.as_object().map(|o| o.keys().collect::<Vec<_>>()));
+
+            // Check for inline_data with image (Gemini format)
             if let Some(inline_data) = part.get("inline_data") {
                 if let (Some(mime), Some(data)) = (
                     inline_data["mime_type"].as_str(),
@@ -1052,10 +1089,9 @@ fn generate_image_sync(
                     }
                 }
             }
-            // Check for image_url format
+            // Check for image_url format (OpenAI format)
             if let Some(image_url) = part.get("image_url") {
                 if let Some(url) = image_url["url"].as_str() {
-                    // Handle data URL (base64 encoded)
                     if url.starts_with("data:image/") {
                         if let Some((mime_part, data_part)) = url.strip_prefix("data:").and_then(|s| s.split_once(",")) {
                             let mime = mime_part.split(';').next().unwrap_or("image/png");
@@ -1072,15 +1108,147 @@ fn generate_image_sync(
                     }
                 }
             }
+            // Check for type=image with data field
+            if part["type"].as_str() == Some("image") {
+                if let Some(data) = part["data"].as_str() {
+                    use base64::Engine;
+                    let image_data = base64::engine::general_purpose::STANDARD
+                        .decode(data)
+                        .map_err(|e| format!("Failed to decode base64: {}", e))?;
+                    let mime = part["mime_type"].as_str().unwrap_or("image/png");
+                    println!("Found type=image: {} bytes, {}", image_data.len(), mime);
+                    return Ok(GeneratedImageData {
+                        mime: mime.to_string(),
+                        data: image_data,
+                    });
+                }
+            }
         }
     }
 
-    // Check if content is a string (might contain base64 or URL)
+    // Location 2: Check if content itself contains base64 image data
     if let Some(text) = content.as_str() {
-        println!("Response is text: {}", &text[..text.len().min(200)]);
+        println!("Content is string ({} chars)", text.len());
+        // Check if it looks like base64 image data (starts with image magic bytes when decoded)
+        if text.len() > 1000 && !text.contains(' ') {
+            use base64::Engine;
+            if let Ok(data) = base64::engine::general_purpose::STANDARD.decode(text) {
+                if data.starts_with(&[0x89, b'P', b'N', b'G']) {
+                    println!("Content is base64 PNG: {} bytes", data.len());
+                    return Ok(GeneratedImageData { mime: "image/png".to_string(), data });
+                }
+                if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
+                    println!("Content is base64 JPEG: {} bytes", data.len());
+                    return Ok(GeneratedImageData { mime: "image/jpeg".to_string(), data });
+                }
+            }
+        }
     }
 
-    Err("No image data found in response. The model may not have generated an image.".to_string())
+    // Location 3: Check for image field directly on message
+    if let Some(image) = message.get("image") {
+        println!("Found message.image field");
+        if let Some(data) = image["data"].as_str() {
+            use base64::Engine;
+            let image_data = base64::engine::general_purpose::STANDARD
+                .decode(data)
+                .map_err(|e| format!("Failed to decode base64: {}", e))?;
+            let mime = image["mime_type"].as_str().unwrap_or("image/png");
+            return Ok(GeneratedImageData { mime: mime.to_string(), data: image_data });
+        }
+    }
+
+    // Location 4: Check for images array on message
+    if let Some(images) = message.get("images") {
+        println!("Found message.images field");
+        // Log structure of images field
+        if images.is_array() {
+            let arr = images.as_array().unwrap();
+            println!("images is array with {} items", arr.len());
+            for (i, img) in arr.iter().enumerate().take(3) {
+                if img.is_object() {
+                    println!("  images[{}] keys: {:?}", i, img.as_object().map(|o| o.keys().collect::<Vec<_>>()));
+                } else if img.is_string() {
+                    let s = img.as_str().unwrap();
+                    println!("  images[{}] is string ({} chars): {}...", i, s.len(), &s[..s.len().min(100)]);
+                    // Try decoding as base64
+                    use base64::Engine;
+                    if let Ok(data) = base64::engine::general_purpose::STANDARD.decode(s) {
+                        // Check for image magic bytes
+                        if data.starts_with(&[0x89, b'P', b'N', b'G']) {
+                            println!("  -> Decoded as PNG ({} bytes)", data.len());
+                            return Ok(GeneratedImageData { mime: "image/png".to_string(), data });
+                        } else if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
+                            println!("  -> Decoded as JPEG ({} bytes)", data.len());
+                            return Ok(GeneratedImageData { mime: "image/jpeg".to_string(), data });
+                        } else if data.starts_with(&[0x47, 0x49, 0x46]) {
+                            println!("  -> Decoded as GIF ({} bytes)", data.len());
+                            return Ok(GeneratedImageData { mime: "image/gif".to_string(), data });
+                        } else if data.starts_with(b"RIFF") && data.len() > 12 && &data[8..12] == b"WEBP" {
+                            println!("  -> Decoded as WEBP ({} bytes)", data.len());
+                            return Ok(GeneratedImageData { mime: "image/webp".to_string(), data });
+                        } else {
+                            println!("  -> Decoded {} bytes, magic: {:02X?}", data.len(), &data[..data.len().min(8)]);
+                        }
+                    }
+                } else {
+                    println!("  images[{}] is: {:?}", i, img);
+                }
+            }
+            // Original logic for objects
+            if let Some(first) = arr.first() {
+                // Check for image_url format (Gemini via Requesty)
+                if let Some(image_url) = first.get("image_url") {
+                    // image_url can be a string or an object with "url" field
+                    let url_str = image_url.as_str()
+                        .or_else(|| image_url["url"].as_str());
+
+                    if let Some(url) = url_str {
+                        println!("Found image_url: {}...", &url[..url.len().min(100)]);
+                        if url.starts_with("data:") {
+                            // Parse data URL: data:image/png;base64,<data>
+                            if let Some((mime_part, data_part)) = url.strip_prefix("data:").and_then(|s| s.split_once(",")) {
+                                let mime = mime_part.split(';').next().unwrap_or("image/png");
+                                use base64::Engine;
+                                let image_data = base64::engine::general_purpose::STANDARD
+                                    .decode(data_part)
+                                    .map_err(|e| format!("Failed to decode base64: {}", e))?;
+                                println!("Decoded image from data URL: {} bytes, {}", image_data.len(), mime);
+                                return Ok(GeneratedImageData { mime: mime.to_string(), data: image_data });
+                            }
+                        }
+                    }
+                }
+
+                if let Some(data) = first["data"].as_str().or(first["b64_json"].as_str()) {
+                    use base64::Engine;
+                    let image_data = base64::engine::general_purpose::STANDARD
+                        .decode(data)
+                        .map_err(|e| format!("Failed to decode base64: {}", e))?;
+                    let mime = first["mime_type"].as_str().unwrap_or("image/png");
+                    return Ok(GeneratedImageData { mime: mime.to_string(), data: image_data });
+                }
+            }
+        } else if images.is_string() {
+            let s = images.as_str().unwrap();
+            println!("images is single string ({} chars)", s.len());
+            use base64::Engine;
+            if let Ok(data) = base64::engine::general_purpose::STANDARD.decode(s) {
+                if data.starts_with(&[0x89, b'P', b'N', b'G']) {
+                    return Ok(GeneratedImageData { mime: "image/png".to_string(), data });
+                } else if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
+                    return Ok(GeneratedImageData { mime: "image/jpeg".to_string(), data });
+                }
+            }
+        } else {
+            println!("images is neither array nor string: {:?}", images);
+        }
+    }
+
+    // Log a sample of the raw response for debugging
+    println!("Could not find image. Response sample: {}", &response_text[..response_text.len().min(2000)]);
+
+    Err("No image data found in response. Check logs for response structure.".to_string())
 }
 
 /// Query the LLM with the voice command transcript
