@@ -941,12 +941,23 @@ fn get_available_image_models(api_key: &str) -> serde_json::Value {
         println!("Sample model from API: {}", serde_json::to_string_pretty(first).unwrap_or_default());
     }
 
-    // Filter for image generation models using the supports_image_generation field
+    // Filter for image generation models
+    // Must have supports_image_generation=true AND use the "images" API (not "chat")
+    // Models with api="chat" use chat completions which is a different workflow
     let image_models: Vec<_> = models_array
         .iter()
         .filter(|m| {
-            // Requesty API uses supports_image_generation boolean at top level
-            m["supports_image_generation"].as_bool() == Some(true)
+            let supports_img = m["supports_image_generation"].as_bool() == Some(true);
+            let api_type = m["api"].as_str().unwrap_or("");
+
+            // Log models that claim image support so we can see what's available
+            if supports_img {
+                println!("Image model candidate: {} (api={})",
+                    m["id"].as_str().unwrap_or("?"), api_type);
+            }
+
+            // Only include models that use the dedicated images API
+            supports_img && api_type == "images"
         })
         .cloned()
         .collect();
