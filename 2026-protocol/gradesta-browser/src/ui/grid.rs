@@ -127,10 +127,11 @@ fn calculate_cell_height(
     total_height.min(max_height).max(min_height)
 }
 
-/// Calculate row heights based on maximum cell height in each row
+/// Calculate row heights - only the current row is sized based on its cell
 fn calculate_row_heights(
     grid: &GridView,
     graph: &GraphState,
+    current_vertex_id: u64,
     cell_width: f32,
     max_height: f32,
     zoom: f32,
@@ -139,16 +140,15 @@ fn calculate_row_heights(
     let mut row_heights: HashMap<i32, f32> = HashMap::new();
     let min_height = 80.0 * zoom;
 
-    // For each cell in the grid, calculate its height and track max per row
-    for ((_, y), &vertex_id) in &grid.cells {
-        if let Some(vertex) = graph.vertices.get(&vertex_id) {
-            let height = calculate_cell_height(vertex, vertex_id, cell_width, max_height, zoom, media_cache);
-            let current_max = row_heights.get(y).copied().unwrap_or(min_height);
-            row_heights.insert(*y, current_max.max(height));
+    // Find current cell's row and calculate its height
+    if let Some(&(_, current_y)) = grid.positions.get(&current_vertex_id) {
+        if let Some(vertex) = graph.vertices.get(&current_vertex_id) {
+            let height = calculate_cell_height(vertex, current_vertex_id, cell_width, max_height, zoom, media_cache);
+            row_heights.insert(current_y, height);
         }
     }
 
-    // Ensure all rows have at least minimum height
+    // All other rows use minimum height
     for y in grid.min_y..=grid.max_y {
         row_heights.entry(y).or_insert(min_height);
     }
@@ -201,8 +201,9 @@ pub fn render_grid_view(
         // Calculate max cell height: 2/3 of available screen height at zoom=1.0
         let max_cell_height = (available.y * 2.0 / 3.0) / zoom * zoom; // Normalize to current zoom
 
-        // Calculate row heights based on content
-        let row_heights = calculate_row_heights(&grid, graph, cell_width, max_cell_height, zoom, media_cache);
+        // Calculate row heights - only current row is sized based on content
+        let effective_current_id = app_state.recording_placeholder_id.unwrap_or(current_id);
+        let row_heights = calculate_row_heights(&grid, graph, effective_current_id, cell_width, max_cell_height, zoom, media_cache);
 
         // Helper to calculate Y position for a given row
         let row_y_position = |row: i32| -> f32 {
@@ -213,9 +214,7 @@ pub fn render_grid_view(
             y
         };
 
-        // Determine which cell is "current" - either the recording placeholder or current_vertex
-        // Placeholders are added to grid.positions so the same lookup works for both
-        let effective_current_id = app_state.recording_placeholder_id.unwrap_or(current_id);
+        // Get the selected cell position for centering
         let selected_pos = grid.positions.get(&effective_current_id).copied().unwrap_or((0, 0));
 
         // Calculate where the selected cell would be in grid-local coordinates
