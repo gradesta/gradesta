@@ -49,47 +49,53 @@ fn place_category_with_commands(
 }
 
 /// Build the sprawling context menu grid
-/// All categories and commands visible in one connected grid
+/// Categories stacked vertically, commands extend horizontally to the right
+/// All navigation is horizontal/vertical only
 pub fn build_sprawling_menu_grid(keybindings: &KeybindingResolver) -> ContextMenuGrid {
     let mut grid = ContextMenuGrid::default();
 
-    // Center: Controller Help at (0, 0)
+    // Layout: Categories in column 0, commands extend right (positive x)
+    // Row 0: Help (center)
+    // Rows above (negative y): Global, Graph, Recording, Elf
+    // Rows below (positive y): Bag, TextInput, Export, Auth
+
+    // Row 0: Controller Help
     grid.items.insert((0, 0), ContextMenuItem {
         label: "Controller Help".to_string(),
         item_type: ContextMenuItemType::Help,
     });
 
-    // WEST: Graph commands sprawling left from (-1, 0)
-    let graph_cmds = get_unbound_commands(CmdContext::Graph, keybindings);
-    place_category_with_commands(&mut grid, &graph_cmds, (-1, 0), (-1, 0));
-
-    // EAST: Bag commands sprawling right from (1, 0)
-    let bag_cmds = get_unbound_commands(CmdContext::Bag, keybindings);
-    place_category_with_commands(&mut grid, &bag_cmds, (1, 0), (1, 0));
-
-    // NORTH: Global commands sprawling up from (0, -1)
+    // Row -1: Global commands
     let global_cmds = get_unbound_commands(CmdContext::Global, keybindings);
-    place_category_with_commands(&mut grid, &global_cmds, (0, -1), (0, -1));
+    place_category_with_commands(&mut grid, &global_cmds, (0, -1), (1, 0));
 
-    // SOUTH: TextInput commands sprawling down from (0, 1)
-    let text_cmds = get_unbound_commands(CmdContext::TextInput, keybindings);
-    place_category_with_commands(&mut grid, &text_cmds, (0, 1), (0, 1));
+    // Row -2: Graph commands
+    let graph_cmds = get_unbound_commands(CmdContext::Graph, keybindings);
+    place_category_with_commands(&mut grid, &graph_cmds, (0, -2), (1, 0));
 
-    // NORTHWEST: Recording commands at (-1, -1) sprawling diagonally
+    // Row -3: Recording commands
     let recording_cmds = get_unbound_commands(CmdContext::Recording, keybindings);
-    place_category_with_commands(&mut grid, &recording_cmds, (-1, -1), (-1, -1));
+    place_category_with_commands(&mut grid, &recording_cmds, (0, -3), (1, 0));
 
-    // NORTHEAST: Elf commands at (1, -1) sprawling diagonally
+    // Row -4: Elf commands
     let elf_cmds = get_unbound_commands(CmdContext::Elf, keybindings);
-    place_category_with_commands(&mut grid, &elf_cmds, (1, -1), (1, -1));
+    place_category_with_commands(&mut grid, &elf_cmds, (0, -4), (1, 0));
 
-    // SOUTHWEST: Export commands at (-1, 1) sprawling SW (away from center)
+    // Row 1: Bag commands
+    let bag_cmds = get_unbound_commands(CmdContext::Bag, keybindings);
+    place_category_with_commands(&mut grid, &bag_cmds, (0, 1), (1, 0));
+
+    // Row 2: TextInput commands
+    let text_cmds = get_unbound_commands(CmdContext::TextInput, keybindings);
+    place_category_with_commands(&mut grid, &text_cmds, (0, 2), (1, 0));
+
+    // Row 3: Export commands
     let export_cmds = get_unbound_commands(CmdContext::Export, keybindings);
-    place_category_with_commands(&mut grid, &export_cmds, (-1, 1), (-1, 1));
+    place_category_with_commands(&mut grid, &export_cmds, (0, 3), (1, 0));
 
-    // SOUTHEAST: Auth commands at (1, 1) sprawling SE (away from center)
+    // Row 4: Auth commands
     let auth_cmds = get_unbound_commands(CmdContext::Authentication, keybindings);
-    place_category_with_commands(&mut grid, &auth_cmds, (1, 1), (1, 1));
+    place_category_with_commands(&mut grid, &auth_cmds, (0, 4), (1, 0));
 
     grid.recalculate_bounds();
     grid
@@ -210,62 +216,40 @@ pub fn open_context_menu(app_state: &mut AppState) {
     app_state.context_menu.last_nav_time = None;
 }
 
-/// Get the cell rectangle for a given grid position
-fn get_cell_rect(start_pos: Pos2, grid: &ContextMenuGrid, x: i32, y: i32) -> Rect {
-    let cell_x = start_pos.x + (x - grid.min_x) as f32 * (CELL_WIDTH + CELL_PADDING);
-    let cell_y = start_pos.y + (y - grid.min_y) as f32 * (CELL_HEIGHT + CELL_PADDING);
-    Rect::from_min_size(
-        Pos2::new(cell_x, cell_y),
+/// Get cell rect centered on the current selection
+fn get_cell_rect_centered(center: Pos2, current: (i32, i32), x: i32, y: i32) -> Rect {
+    // Calculate offset from current selection (current is at center)
+    let offset_x = (x - current.0) as f32 * (CELL_WIDTH + CELL_PADDING);
+    let offset_y = (y - current.1) as f32 * (CELL_HEIGHT + CELL_PADDING);
+
+    Rect::from_center_size(
+        Pos2::new(center.x + offset_x, center.y + offset_y),
         Vec2::new(CELL_WIDTH, CELL_HEIGHT),
     )
 }
 
-/// Draw edges connecting adjacent cells
-fn draw_edges(painter: &egui::Painter, grid: &ContextMenuGrid, start_pos: Pos2) {
+/// Draw edges connecting adjacent cells (centered view)
+fn draw_edges_centered(painter: &egui::Painter, grid: &ContextMenuGrid, center: Pos2, current: (i32, i32)) {
     let edge_color = Color32::from_rgb(60, 80, 100);
 
     for ((x, y), _) in &grid.items {
-        let cell_rect = get_cell_rect(start_pos, grid, *x, *y);
+        let cell_rect = get_cell_rect_centered(center, current, *x, *y);
 
-        // Check for neighbor to the right
+        // Check for neighbor to the right (horizontal)
         if grid.items.contains_key(&(x + 1, *y)) {
-            let neighbor_rect = get_cell_rect(start_pos, grid, x + 1, *y);
+            let neighbor_rect = get_cell_rect_centered(center, current, x + 1, *y);
             painter.line_segment(
                 [cell_rect.right_center(), neighbor_rect.left_center()],
                 Stroke::new(2.0, edge_color),
             );
         }
 
-        // Check for neighbor below
+        // Check for neighbor below (vertical)
         if grid.items.contains_key(&(*x, y + 1)) {
-            let neighbor_rect = get_cell_rect(start_pos, grid, *x, y + 1);
+            let neighbor_rect = get_cell_rect_centered(center, current, *x, y + 1);
             painter.line_segment(
                 [cell_rect.center_bottom(), neighbor_rect.center_top()],
                 Stroke::new(2.0, edge_color),
-            );
-        }
-
-        // Check for diagonal neighbor (down-right)
-        if grid.items.contains_key(&(x + 1, y + 1)) {
-            let neighbor_rect = get_cell_rect(start_pos, grid, x + 1, y + 1);
-            painter.line_segment(
-                [
-                    Pos2::new(cell_rect.right(), cell_rect.bottom()),
-                    Pos2::new(neighbor_rect.left(), neighbor_rect.top()),
-                ],
-                Stroke::new(1.5, edge_color),
-            );
-        }
-
-        // Check for diagonal neighbor (down-left)
-        if grid.items.contains_key(&(x - 1, y + 1)) {
-            let neighbor_rect = get_cell_rect(start_pos, grid, x - 1, y + 1);
-            painter.line_segment(
-                [
-                    Pos2::new(cell_rect.left(), cell_rect.bottom()),
-                    Pos2::new(neighbor_rect.right(), neighbor_rect.top()),
-                ],
-                Stroke::new(1.5, edge_color),
             );
         }
     }
@@ -279,12 +263,6 @@ pub fn render_context_menu(ctx: &egui::Context, app_state: &AppState) {
 
     let grid = &app_state.context_menu.grid;
     let current = app_state.context_menu.current_position;
-
-    // Calculate grid dimensions
-    let cols = (grid.max_x - grid.min_x + 1) as f32;
-    let rows = (grid.max_y - grid.min_y + 1) as f32;
-    let grid_width = cols * (CELL_WIDTH + CELL_PADDING) - CELL_PADDING;
-    let grid_height = rows * (CELL_HEIGHT + CELL_PADDING) - CELL_PADDING;
 
     // Semi-transparent background overlay
     #[allow(deprecated)]
@@ -301,106 +279,75 @@ pub fn render_context_menu(ctx: &egui::Context, app_state: &AppState) {
                 Color32::from_rgba_unmultiplied(0, 0, 0, 180),
             );
 
-            // Calculate panel dimensions
-            let panel_width = grid_width + 64.0; // Add margin for title and instructions
-            let panel_height = grid_height + 80.0; // Add space for title and instructions
-            let center = screen_rect.center();
-            let panel_rect = Rect::from_center_size(
-                center,
-                Vec2::new(panel_width, panel_height),
+            let painter = ui.painter().clone();
+            let screen_center = screen_rect.center();
+
+            // The grid center point (where current selection will be drawn)
+            let grid_center = screen_center;
+
+            // Draw edges first (behind cells)
+            draw_edges_centered(&painter, grid, grid_center, current);
+
+            // Draw cells on top
+            for ((x, y), item) in &grid.items {
+                let cell_rect = get_cell_rect_centered(grid_center, current, *x, *y);
+
+                let is_selected = (*x, *y) == current;
+                let bg_color = if is_selected {
+                    Color32::from_rgb(60, 100, 180)
+                } else {
+                    Color32::from_rgb(45, 45, 50)
+                };
+                let border_color = if is_selected {
+                    Color32::from_rgb(100, 160, 255)
+                } else {
+                    Color32::from_rgb(60, 60, 65)
+                };
+
+                // Cell background
+                painter.rect_filled(cell_rect, 4.0, bg_color);
+                painter.rect_stroke(cell_rect, 4.0, Stroke::new(2.0, border_color), StrokeKind::Outside);
+
+                // Item icon/indicator
+                let icon = match &item.item_type {
+                    ContextMenuItemType::Command(_) => "⚡",
+                    ContextMenuItemType::Submenu(_) => "▶",
+                    ContextMenuItemType::Help => "?",
+                };
+
+                // Icon
+                painter.text(
+                    Pos2::new(cell_rect.left() + 10.0, cell_rect.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    icon,
+                    FontId::proportional(16.0),
+                    Color32::WHITE,
+                );
+
+                // Label
+                let label = truncate_label(&item.label, 18);
+                painter.text(
+                    Pos2::new(cell_rect.left() + 28.0, cell_rect.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    label,
+                    FontId::proportional(14.0),
+                    Color32::WHITE,
+                );
+            }
+
+            // Instructions at bottom of screen
+            let instructions_rect = Rect::from_min_size(
+                Pos2::new(screen_rect.left() + 20.0, screen_rect.bottom() - 40.0),
+                Vec2::new(screen_rect.width() - 40.0, 30.0),
             );
 
-            // Panel background
-            ui.painter().rect_filled(
-                panel_rect,
-                12.0,
-                Color32::from_rgb(30, 30, 40),
+            painter.text(
+                instructions_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "Right Stick: Navigate  •  R3: Select  •  ○: Close",
+                FontId::proportional(12.0),
+                Color32::GRAY,
             );
-            ui.painter().rect_stroke(
-                panel_rect,
-                12.0,
-                Stroke::new(2.0, Color32::from_rgb(80, 80, 120)),
-                StrokeKind::Outside,
-            );
-
-            // Content area
-            let content_rect = panel_rect.shrink(20.0);
-            let ui_builder = egui::UiBuilder::new().max_rect(content_rect);
-
-            #[allow(deprecated)]
-            ui.allocate_new_ui(ui_builder, |ui| {
-                // Title
-                ui.heading(RichText::new("Commands").color(Color32::WHITE));
-                ui.add_space(8.0);
-
-                // Grid - get new painter reference inside this scope
-                let painter = ui.painter().clone();
-                let start_pos = ui.cursor().min;
-
-                // Draw edges first (behind cells)
-                draw_edges(&painter, grid, start_pos);
-
-                // Draw cells on top
-                for ((x, y), item) in &grid.items {
-                    let cell_rect = get_cell_rect(start_pos, grid, *x, *y);
-
-                    let is_selected = (*x, *y) == current;
-                    let bg_color = if is_selected {
-                        Color32::from_rgb(60, 100, 180)
-                    } else {
-                        Color32::from_rgb(45, 45, 50)
-                    };
-                    let border_color = if is_selected {
-                        Color32::from_rgb(100, 160, 255)
-                    } else {
-                        Color32::from_rgb(60, 60, 65)
-                    };
-
-                    // Cell background
-                    painter.rect_filled(cell_rect, 4.0, bg_color);
-                    painter.rect_stroke(cell_rect, 4.0, Stroke::new(2.0, border_color), StrokeKind::Outside);
-
-                    // Item icon/indicator
-                    let icon = match &item.item_type {
-                        ContextMenuItemType::Command(_) => "⚡",
-                        ContextMenuItemType::Submenu(_) => "▶",
-                        ContextMenuItemType::Help => "?",
-                    };
-
-                    // Icon
-                    painter.text(
-                        Pos2::new(cell_rect.left() + 10.0, cell_rect.center().y),
-                        egui::Align2::LEFT_CENTER,
-                        icon,
-                        FontId::proportional(16.0),
-                        Color32::WHITE,
-                    );
-
-                    // Label
-                    let label = truncate_label(&item.label, 18);
-                    painter.text(
-                        Pos2::new(cell_rect.left() + 28.0, cell_rect.center().y),
-                        egui::Align2::LEFT_CENTER,
-                        label,
-                        FontId::proportional(14.0),
-                        Color32::WHITE,
-                    );
-                }
-
-                // Reserve space for grid
-                ui.allocate_space(Vec2::new(grid_width, grid_height));
-
-                ui.add_space(8.0);
-
-                // Instructions
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("Right Stick: Navigate").color(Color32::GRAY).size(11.0));
-                    ui.label(RichText::new("•").color(Color32::GRAY).size(11.0));
-                    ui.label(RichText::new("R3: Select").color(Color32::GRAY).size(11.0));
-                    ui.label(RichText::new("•").color(Color32::GRAY).size(11.0));
-                    ui.label(RichText::new("○: Close").color(Color32::GRAY).size(11.0));
-                });
-            });
         });
 }
 
