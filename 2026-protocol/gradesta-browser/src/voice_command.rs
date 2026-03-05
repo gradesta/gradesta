@@ -665,20 +665,18 @@ Return ONLY a raw JSON array (no markdown, no code blocks). Sorted by confidence
 ## Script Syntax
 - Newline-separated command slugs (use \n in JSON)
 - Use EXACT slugs from get_commands() output
-- Special: `insert_text "content"` sets the text buffer
+- Special: `insert_text "content"` sets text AND auto-submits (no separate submit needed)
 
 ## IMPORTANT: Command Order
 Commands execute in order. Some commands clear buffers, so order matters!
 - graph.new_text_vertex CLEARS the text buffer, then enters text input mode
-- insert_text sets the text buffer
-- text_input.submit submits the current buffer
+- insert_text "content" sets the text buffer AND automatically submits it
 
 Example: "create a note saying hello to the east"
-CORRECT order:
+CORRECT (2 commands only):
 graph.set_direction_east
 graph.new_text_vertex
 insert_text "hello"
-text_input.submit
 
 WRONG order (buffer gets cleared):
 insert_text "hello"

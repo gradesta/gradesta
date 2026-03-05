@@ -16,7 +16,7 @@ use crate::graph::GraphState;
 use crate::media::MediaCache;
 use crate::network::{WsCommand, WsCommandTx};
 use crate::sidebar::SidebarMode;
-use crate::state::{AppState, InputMode, PendingAudioCell, PendingAudioStatus, PlaybackBoostState};
+use crate::state::{AppState, InputMode, PendingAudioCell, PendingAudioStatus, PendingVertexCreation, PlaybackBoostState};
 use crate::state::{EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
 use crate::state::{ZOOM_MAX, ZOOM_MIN, ZOOM_STEP};
 use crate::tts;
@@ -372,7 +372,72 @@ pub fn execute_commands(
             app_state.voice_refresh_pending = true;
             app_state.focus_url_bar_next_frame = false;
         }
-        // TODO: handle text input mode submission
+        // Handle text input mode submission
+        else if let InputMode::TextInput { direction } = app_state.input_mode.clone() {
+            let text = app_state.text_input_buffer.clone();
+            if !text.is_empty() {
+                if let Some(current_id) = app_state.current_vertex {
+                    if let Some(ref tx) = ws_cmd_tx.0 {
+                        if let Some(dir) = direction {
+                            // Create new vertex
+                            let dir_byte = match dir {
+                                EDGE_WEST => 0,
+                                EDGE_EAST => 1,
+                                EDGE_NORTH => 2,
+                                EDGE_SOUTH => 3,
+                                EDGE_UP => 4,
+                                EDGE_DOWN => 5,
+                                _ => 0,
+                            };
+                            let action_id = app_state.next_action_id;
+                            app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                            let text_bytes = text.into_bytes();
+                            let _ = tx.send(WsCommand::CreateVertex {
+                                action_id,
+                                from_vertex: current_id,
+                                direction: dir_byte,
+                                layer: 0,
+                                mime: "text/plain".to_string(),
+                                data: text_bytes.clone(),
+                            });
+                            app_state.pending_creations.insert(action_id, PendingVertexCreation {
+                                samples: Vec::new(),
+                                sample_rate: 0,
+                                data: text_bytes,
+                                mime: "text/plain".to_string(),
+                                local_placeholder_id: None,
+                            });
+                            app_state.status = "Creating new note...".to_string();
+                        } else {
+                            // Edit existing vertex - send to layer based on mime type
+                            let layer = if let Some(vertex) = graph.vertices.get(&current_id) {
+                                let mime = vertex.mime.as_deref().unwrap_or("");
+                                if mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url" {
+                                    0 // Primary is text, update layer 0
+                                } else {
+                                    1 // Primary is not text, add/update as layer 1
+                                }
+                            } else {
+                                0 // Fallback to layer 0
+                            };
+                            let action_id = app_state.next_action_id;
+                            app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                            let text_bytes = text.into_bytes();
+                            let _ = tx.send(WsCommand::SetVertexLabel {
+                                action_id,
+                                vertex_id: current_id,
+                                layer,
+                                mime: "text/plain".to_string(),
+                                data: text_bytes,
+                            });
+                            app_state.status = "Saving changes...".to_string();
+                        }
+                    }
+                }
+            }
+            app_state.input_mode = InputMode::Normal;
+            app_state.text_input_buffer.clear();
+        }
     }
 
     // GlobalPlaybackSpeedBoost - Boost playback speed for TTS and audio
@@ -1328,13 +1393,31 @@ pub fn execute_voice_action(
                                 );
                             }
                             ScriptInstruction::InsertText(content) => {
-                                // If URL bar is focused/pending focus, set server input
-                                // Otherwise set text input buffer for text mode
+                                // If URL bar is focused/pending focus, set server input and refresh
+                                // Otherwise set text input buffer and auto-submit
                                 if app_state.focus_url_bar_next_frame || app_state.url_bar_has_focus {
                                     app_state.server_input = content;
+                                    // Auto-trigger refresh for URL bar
+                                    app_state.voice_refresh_pending = true;
                                 } else {
+                                    // Set the text buffer
                                     app_state.text_input_buffer = content;
                                     super::text_edit::reset_text_edit_state(app_state);
+                                    // Auto-submit by executing TextInputSubmit command
+                                    let mut cmds = super::input::CapturedCommands::default();
+                                    cmds.add(Command::TextInputSubmit);
+                                    execute_commands(
+                                        &cmds,
+                                        app_state,
+                                        graph,
+                                        ws_cmd_tx,
+                                        media_cache,
+                                        audio_signal,
+                                        playback_state,
+                                        boost_state,
+                                        voice_channel,
+                                        ctx,
+                                    );
                                 }
                             }
                         }
