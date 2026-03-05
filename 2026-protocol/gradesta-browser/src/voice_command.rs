@@ -877,83 +877,110 @@ fn get_available_services() -> serde_json::Value {
     }
 }
 
-/// Get available image generation models from Requesty
+/// Get available image generation models from Requesty API
+/// Uses only API metadata - no hardcoded model names or pattern matching
 fn get_available_image_models(api_key: &str) -> serde_json::Value {
     let client = reqwest::blocking::Client::new();
 
-    match client
+    let response = match client
         .get("https://router.requesty.ai/v1/models")
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
     {
-        Ok(response) => {
-            if response.status().is_success() {
-                match response.json::<ModelsResponse>() {
-                    Ok(models_resp) => {
-                        // Filter for actual image GENERATION models (not vision/multimodal)
-                        let image_models: Vec<_> = models_resp.data
-                            .into_iter()
-                            .filter(|m| {
-                                let id = m.id.to_lowercase();
-                                // Exclude vision/preview models that analyze images but don't generate
-                                if id.contains("vision") || id.contains("preview") {
-                                    return false;
-                                }
-                                // Known image generation models
-                                id.contains("dall-e") ||
-                                id.contains("dalle") ||
-                                id.contains("stable-diffusion") ||
-                                id.contains("sdxl") ||
-                                id.contains("midjourney") ||
-                                id.contains("flux") ||
-                                // Provider prefixes for image gen models
-                                id.starts_with("stability-ai/") ||
-                                id.starts_with("openai/dall") ||
-                                id.starts_with("black-forest-labs/")
-                            })
-                            .map(|m| {
-                                serde_json::json!({
-                                    "id": m.id,
-                                    "owned_by": m.owned_by
-                                })
-                            })
-                            .collect();
-
-                        if image_models.is_empty() {
-                            serde_json::json!({
-                                "models": [],
-                                "recommended": "openai/dall-e-3",
-                                "note": "No image generation models found in API. Try 'openai/dall-e-3' directly - it's the most reliable option."
-                            })
-                        } else {
-                            serde_json::json!({
-                                "models": image_models,
-                                "recommended": "openai/dall-e-3",
-                                "instructions": "Use generate_image(model, prompt) with one of these model IDs. Prefer dall-e-3 for best results."
-                            })
-                        }
-                    }
-                    Err(e) => {
-                        serde_json::json!({
-                            "error": format!("Failed to parse models: {}", e),
-                            "recommended": "openai/dall-e-3"
-                        })
-                    }
-                }
-            } else {
-                serde_json::json!({
-                    "error": format!("API error: {}", response.status()),
-                    "recommended": "openai/dall-e-3"
-                })
-            }
-        }
+        Ok(r) => r,
         Err(e) => {
-            serde_json::json!({
-                "error": format!("Request failed: {}", e),
-                "recommended": "openai/dall-e-3"
-            })
+            println!("ERROR: Failed to fetch models from Requesty API: {}", e);
+            return serde_json::json!({
+                "error": format!("Failed to fetch models: {}", e)
+            });
         }
+    };
+
+    let status = response.status();
+    if !status.is_success() {
+        let error_text = response.text().unwrap_or_default();
+        println!("ERROR: Requesty API returned {}: {}", status, error_text);
+        return serde_json::json!({
+            "error": format!("API error {}: {}", status, error_text)
+        });
     }
+
+    let response_text = match response.text() {
+        Ok(t) => t,
+        Err(e) => {
+            println!("ERROR: Failed to read API response: {}", e);
+            return serde_json::json!({
+                "error": format!("Failed to read response: {}", e)
+            });
+        }
+    };
+
+    let parsed: serde_json::Value = match serde_json::from_str(&response_text) {
+        Ok(p) => p,
+        Err(e) => {
+            println!("ERROR: Failed to parse models JSON: {}", e);
+            return serde_json::json!({
+                "error": format!("Failed to parse JSON: {}", e)
+            });
+        }
+    };
+
+    let models_array = match parsed["data"].as_array() {
+        Some(arr) => arr,
+        None => {
+            println!("ERROR: No 'data' array in models response");
+            println!("Response: {}", &response_text[..response_text.len().min(1000)]);
+            return serde_json::json!({
+                "error": "No 'data' array in models response"
+            });
+        }
+    };
+
+    // Log the first model to see what fields are available
+    if let Some(first) = models_array.first() {
+        println!("Sample model from API: {}", serde_json::to_string_pretty(first).unwrap_or_default());
+    }
+
+    // Filter for image generation models using ONLY API metadata
+    let image_models: Vec<_> = models_array
+        .iter()
+        .filter(|m| {
+            // Check capabilities.image_generation or capabilities.images
+            if let Some(caps) = m.get("capabilities") {
+                if caps["image_generation"].as_bool() == Some(true) { return true; }
+                if caps["images"].as_bool() == Some(true) { return true; }
+            }
+
+            // Check type field
+            if m["type"].as_str() == Some("image") { return true; }
+
+            // Check modality field
+            if let Some(mod_) = m["modality"].as_str() {
+                if mod_ == "image" || mod_ == "image-generation" { return true; }
+            }
+
+            // Check supported_generation_methods array
+            if let Some(methods) = m["supported_generation_methods"].as_array() {
+                for method in methods {
+                    if method.as_str() == Some("image") { return true; }
+                    if method.as_str() == Some("images") { return true; }
+                }
+            }
+
+            false
+        })
+        .cloned()
+        .collect();
+
+    let total = models_array.len();
+    let found = image_models.len();
+    println!("Found {} image generation models out of {} total models", found, total);
+
+    serde_json::json!({
+        "models": image_models,
+        "total_models_checked": total,
+        "image_models_found": found
+    })
 }
 
 /// Generated image data stored during LLM conversation
@@ -993,9 +1020,11 @@ fn generate_image_sync(
         .send()
         .map_err(|e| format!("Image generation request failed: {}", e))?;
 
-    if !response.status().is_success() {
+    let status = response.status();
+    if !status.is_success() {
         let error_text = response.text().unwrap_or_default();
-        return Err(format!("Image generation failed: {}", error_text));
+        eprintln!("Image generation failed: HTTP {} - {}", status, error_text);
+        return Err(format!("HTTP {}: {}", status, error_text));
     }
 
     let response_text = response.text()
@@ -1223,6 +1252,7 @@ fn query_llm_sync(
                             Ok(image_data) => {
                                 // Store the generated image
                                 let img_size = image_data.data.len();
+                                eprintln!("Image generated successfully: {} bytes", img_size);
                                 generated_image = Some(image_data);
                                 messages.push(LlmMessage {
                                     role: "tool".to_string(),
@@ -1232,9 +1262,10 @@ fn query_llm_sync(
                                 });
                             }
                             Err(e) => {
+                                eprintln!("Image generation failed: {}", e);
                                 messages.push(LlmMessage {
                                     role: "tool".to_string(),
-                                    content: format!("{{\"success\": false, \"error\": \"{}\"}}", e),
+                                    content: format!("{{\"success\": false, \"error\": \"{}\". Try a different model like 'stability-ai/stable-diffusion-xl-1024-v1-0' or check your Requesty API subscription.\"}}", e),
                                     tool_calls: None,
                                     tool_call_id: Some(tool_call.id),
                                 });
