@@ -6,7 +6,7 @@
 
 use std::time::{Duration, Instant};
 
-use bevy_egui::egui::{self, Color32, FontId, Pos2, Rect, RichText, Stroke, StrokeKind, Vec2};
+use bevy_egui::egui::{self, Color32, FontId, Pos2, Rect, Stroke, StrokeKind, Vec2};
 
 use crate::commands::{Command, Context as CmdContext};
 use crate::keybindings::KeybindingResolver;
@@ -16,15 +16,23 @@ use crate::state::{AppState, ContextMenuGrid, ContextMenuItem, ContextMenuItemTy
 const NAV_COOLDOWN: Duration = Duration::from_millis(200);
 
 /// Cell size for menu items
-const CELL_WIDTH: f32 = 180.0;
 const CELL_HEIGHT: f32 = 50.0;
 const CELL_PADDING: f32 = 8.0;
+const MIN_CELL_WIDTH: f32 = 120.0;
+
+/// Calculate cell width to fit the given label
+fn calculate_cell_width(label: &str) -> f32 {
+    // Approximate: 8px per character + icon space (28px) + padding (20px)
+    let text_width = label.len() as f32 * 8.0;
+    (text_width + 48.0).max(MIN_CELL_WIDTH)
+}
 
 /// Get unbound commands for a context (commands without gamepad bindings)
 fn get_unbound_commands(context: CmdContext, keybindings: &KeybindingResolver) -> Vec<Command> {
     Command::all()
         .into_iter()
         .filter(|cmd| cmd.context() == context)
+        .filter(|cmd| cmd.is_menu_invocable())
         .filter(|cmd| keybindings.get_gamepad_bindings(cmd).is_empty())
         .collect()
 }
@@ -41,9 +49,12 @@ fn place_category_with_commands(
             start_pos.0 + direction.0 * i as i32,
             start_pos.1 + direction.1 * i as i32,
         );
+        let label = cmd.description().to_string();
+        let width = calculate_cell_width(&label);
         grid.items.insert(pos, ContextMenuItem {
-            label: cmd.description().to_string(),
+            label,
             item_type: ContextMenuItemType::Command(cmd.clone()),
+            width,
         });
     }
 }
@@ -60,9 +71,12 @@ pub fn build_sprawling_menu_grid(keybindings: &KeybindingResolver) -> ContextMen
     // Rows below (positive y): Bag, TextInput, Export, Auth
 
     // Row 0: Controller Help
+    let help_label = "Controller Help".to_string();
+    let help_width = calculate_cell_width(&help_label);
     grid.items.insert((0, 0), ContextMenuItem {
-        label: "Controller Help".to_string(),
+        label: help_label,
         item_type: ContextMenuItemType::Help,
+        width: help_width,
     });
 
     // Row -1: Global commands
@@ -217,14 +231,59 @@ pub fn open_context_menu(app_state: &mut AppState) {
 }
 
 /// Get cell rect centered on the current selection
-fn get_cell_rect_centered(center: Pos2, current: (i32, i32), x: i32, y: i32) -> Rect {
-    // Calculate offset from current selection (current is at center)
-    let offset_x = (x - current.0) as f32 * (CELL_WIDTH + CELL_PADDING);
+/// Uses per-item width for proper positioning
+fn get_cell_rect_centered(
+    center: Pos2,
+    current: (i32, i32),
+    x: i32,
+    y: i32,
+    grid: &ContextMenuGrid,
+) -> Rect {
+    // Get the width of this cell
+    let cell_width = grid.items.get(&(x, y))
+        .map(|item| item.width)
+        .unwrap_or(MIN_CELL_WIDTH);
+
+    // Calculate horizontal offset by summing widths of cells between current and target
+    let offset_x = if x == current.0 {
+        0.0
+    } else if x > current.0 {
+        // Moving right: sum widths from current to x-1, then add half of current and half of target
+        let current_width = grid.items.get(&current)
+            .map(|item| item.width)
+            .unwrap_or(MIN_CELL_WIDTH);
+        let mut total = current_width / 2.0 + CELL_PADDING;
+
+        for col in (current.0 + 1)..x {
+            let w = grid.items.get(&(col, current.1))
+                .map(|item| item.width)
+                .unwrap_or(MIN_CELL_WIDTH);
+            total += w + CELL_PADDING;
+        }
+
+        total + cell_width / 2.0
+    } else {
+        // Moving left: negative offset
+        let current_width = grid.items.get(&current)
+            .map(|item| item.width)
+            .unwrap_or(MIN_CELL_WIDTH);
+        let mut total = current_width / 2.0 + CELL_PADDING;
+
+        for col in (x + 1)..current.0 {
+            let w = grid.items.get(&(col, current.1))
+                .map(|item| item.width)
+                .unwrap_or(MIN_CELL_WIDTH);
+            total += w + CELL_PADDING;
+        }
+
+        -(total + cell_width / 2.0)
+    };
+
     let offset_y = (y - current.1) as f32 * (CELL_HEIGHT + CELL_PADDING);
 
     Rect::from_center_size(
         Pos2::new(center.x + offset_x, center.y + offset_y),
-        Vec2::new(CELL_WIDTH, CELL_HEIGHT),
+        Vec2::new(cell_width, CELL_HEIGHT),
     )
 }
 
@@ -233,11 +292,11 @@ fn draw_edges_centered(painter: &egui::Painter, grid: &ContextMenuGrid, center: 
     let edge_color = Color32::from_rgb(60, 80, 100);
 
     for ((x, y), _) in &grid.items {
-        let cell_rect = get_cell_rect_centered(center, current, *x, *y);
+        let cell_rect = get_cell_rect_centered(center, current, *x, *y, grid);
 
         // Check for neighbor to the right (horizontal)
         if grid.items.contains_key(&(x + 1, *y)) {
-            let neighbor_rect = get_cell_rect_centered(center, current, x + 1, *y);
+            let neighbor_rect = get_cell_rect_centered(center, current, x + 1, *y, grid);
             painter.line_segment(
                 [cell_rect.right_center(), neighbor_rect.left_center()],
                 Stroke::new(2.0, edge_color),
@@ -246,7 +305,7 @@ fn draw_edges_centered(painter: &egui::Painter, grid: &ContextMenuGrid, center: 
 
         // Check for neighbor below (vertical)
         if grid.items.contains_key(&(*x, y + 1)) {
-            let neighbor_rect = get_cell_rect_centered(center, current, *x, y + 1);
+            let neighbor_rect = get_cell_rect_centered(center, current, *x, y + 1, grid);
             painter.line_segment(
                 [cell_rect.center_bottom(), neighbor_rect.center_top()],
                 Stroke::new(2.0, edge_color),
@@ -290,7 +349,7 @@ pub fn render_context_menu(ctx: &egui::Context, app_state: &AppState) {
 
             // Draw cells on top
             for ((x, y), item) in &grid.items {
-                let cell_rect = get_cell_rect_centered(grid_center, current, *x, *y);
+                let cell_rect = get_cell_rect_centered(grid_center, current, *x, *y, grid);
 
                 let is_selected = (*x, *y) == current;
                 let bg_color = if is_selected {
@@ -324,12 +383,11 @@ pub fn render_context_menu(ctx: &egui::Context, app_state: &AppState) {
                     Color32::WHITE,
                 );
 
-                // Label
-                let label = truncate_label(&item.label, 18);
+                // Label (no truncation needed - cell width is calculated to fit)
                 painter.text(
                     Pos2::new(cell_rect.left() + 28.0, cell_rect.center().y),
                     egui::Align2::LEFT_CENTER,
-                    label,
+                    &item.label,
                     FontId::proportional(14.0),
                     Color32::WHITE,
                 );
@@ -349,13 +407,4 @@ pub fn render_context_menu(ctx: &egui::Context, app_state: &AppState) {
                 Color32::GRAY,
             );
         });
-}
-
-/// Truncate a label to fit in the cell
-fn truncate_label(s: &str, max_chars: usize) -> String {
-    if s.len() <= max_chars {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max_chars - 3])
-    }
 }

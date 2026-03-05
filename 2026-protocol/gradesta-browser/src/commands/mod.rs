@@ -707,6 +707,36 @@ impl Command {
         ]
     }
 
+    /// Whether this command makes sense to invoke from the context menu
+    /// Commands that require specific modal states (recording, text input, etc.) return false
+    pub fn is_menu_invocable(&self) -> bool {
+        match self {
+            // Context-dependent commands that don't make sense from menu
+            Command::RecordingSave | Command::RecordingCancel => false,
+            Command::TextInputSubmit | Command::TextInputCancel |
+            Command::TextInputCopy | Command::TextInputCut |
+            Command::TextInputPaste | Command::TextInputSelectAll |
+            Command::TextInputUndo | Command::TextInputRedo => false,
+            Command::AuthCycleIdentity | Command::AuthAccept |
+            Command::AuthAcceptRemember | Command::AuthRefuse => false,
+            Command::ExportConfirm | Command::ExportCancel |
+            Command::ExportToggleEast | Command::ExportToggleWest |
+            Command::ExportToggleNorth | Command::ExportToggleSouth |
+            Command::ExportToggleUp | Command::ExportToggleDown => false,
+            Command::ElfNextElf | Command::ElfPrevElf |
+            Command::ElfNextCommand | Command::ElfPrevCommand |
+            Command::ElfToggleWest | Command::ElfToggleEast |
+            Command::ElfToggleNorth | Command::ElfToggleSouth |
+            Command::ElfToggleUp | Command::ElfToggleDown => false,
+            // Meta commands
+            Command::GlobalOpenContextMenu => false,  // Already in menu
+            Command::GlobalCloseModal => false,  // Use Circle button
+            // Navigation usually has bindings, but allow in menu
+            // All other commands are menu-invocable
+            _ => true,
+        }
+    }
+
     /// Fuzzy match this command's slug against a query
     pub fn fuzzy_matches(&self, query: &str) -> bool {
         if query.is_empty() {

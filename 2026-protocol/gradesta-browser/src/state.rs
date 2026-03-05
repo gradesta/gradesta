@@ -401,6 +401,7 @@ pub enum ContextMenuItemType {
 pub struct ContextMenuItem {
     pub label: String,
     pub item_type: ContextMenuItemType,
+    pub width: f32,
 }
 
 /// Grid of context menu items
