@@ -942,24 +942,18 @@ fn get_available_image_models(api_key: &str) -> serde_json::Value {
     }
 
     // Filter for image generation models
-    // Must have supports_image_generation=true AND use the "images" API (not "chat")
-    // Models with api="chat" use chat completions which is a different workflow
     let image_models: Vec<_> = models_array
         .iter()
         .filter(|m| {
-            let supports_img = m["supports_image_generation"].as_bool() == Some(true);
-            let api_type = m["api"].as_str().unwrap_or("");
-
-            // Log models that claim image support so we can see what's available
-            if supports_img {
-                println!("Image model candidate: {} (api={})",
-                    m["id"].as_str().unwrap_or("?"), api_type);
-            }
-
-            // Only include models that use the dedicated images API
-            supports_img && api_type == "images"
+            m["supports_image_generation"].as_bool() == Some(true)
         })
-        .cloned()
+        .map(|m| {
+            serde_json::json!({
+                "id": m["id"],
+                "api": m["api"],
+                "description": m["description"]
+            })
+        })
         .collect();
 
     let total = models_array.len();
@@ -980,7 +974,8 @@ pub struct GeneratedImageData {
     pub data: Vec<u8>,
 }
 
-/// Generate an image using Requesty's image generation API
+/// Generate an image using Requesty's chat completions API
+/// Gemini and similar models return images via chat completions, not a dedicated images endpoint
 fn generate_image_sync(
     model: &str,
     prompt: &str,
@@ -991,19 +986,23 @@ fn generate_image_sync(
         .build()
         .map_err(|e| format!("Failed to create client: {}", e))?;
 
-    // Use OpenAI-compatible image generation endpoint
+    // Use chat completions endpoint - Requesty image models use this
     let request_body = serde_json::json!({
         "model": model,
-        "prompt": prompt,
-        "n": 1,
-        "size": "1024x1024",
-        "response_format": "b64_json"
+        "messages": [
+            {
+                "role": "user",
+                "content": format!("Generate an image: {}", prompt)
+            }
+        ],
+        "max_tokens": 4096
     });
 
-    eprintln!("Generating image with model {} and prompt: {}", model, prompt);
+    println!("Generating image with model {} via chat completions", model);
+    println!("Prompt: {}", prompt);
 
     let response = client
-        .post("https://router.requesty.ai/v1/images/generations")
+        .post("https://router.requesty.ai/v1/chat/completions")
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .json(&request_body)
@@ -1013,45 +1012,75 @@ fn generate_image_sync(
     let status = response.status();
     if !status.is_success() {
         let error_text = response.text().unwrap_or_default();
-        eprintln!("Image generation failed: HTTP {} - {}", status, error_text);
+        println!("ERROR: Image generation failed: HTTP {} - {}", status, error_text);
         return Err(format!("HTTP {}: {}", status, error_text));
     }
 
     let response_text = response.text()
         .map_err(|e| format!("Failed to read response: {}", e))?;
 
-    eprintln!("Image generation response received ({} bytes)", response_text.len());
+    println!("Image generation response received ({} bytes)", response_text.len());
+    println!("Response preview: {}", &response_text[..response_text.len().min(1000)]);
 
-    // Parse OpenAI-style image response
+    // Parse chat completion response
     let parsed: serde_json::Value = serde_json::from_str(&response_text)
         .map_err(|e| format!("Failed to parse response: {}", e))?;
 
-    // Extract base64 image data
-    let b64_data = parsed["data"][0]["b64_json"]
-        .as_str()
-        .ok_or("No image data in response")?;
+    // Look for image data in the response
+    // Gemini models return images as inline_data in content parts
+    let content = &parsed["choices"][0]["message"]["content"];
 
-    // Decode base64
-    use base64::Engine;
-    let image_data = base64::engine::general_purpose::STANDARD
-        .decode(b64_data)
-        .map_err(|e| format!("Failed to decode base64: {}", e))?;
+    // Check if content is an array (multimodal response with parts)
+    if let Some(parts) = content.as_array() {
+        for part in parts {
+            // Check for inline_data with image
+            if let Some(inline_data) = part.get("inline_data") {
+                if let (Some(mime), Some(data)) = (
+                    inline_data["mime_type"].as_str(),
+                    inline_data["data"].as_str()
+                ) {
+                    if mime.starts_with("image/") {
+                        use base64::Engine;
+                        let image_data = base64::engine::general_purpose::STANDARD
+                            .decode(data)
+                            .map_err(|e| format!("Failed to decode base64: {}", e))?;
+                        println!("Found inline image: {} bytes, {}", image_data.len(), mime);
+                        return Ok(GeneratedImageData {
+                            mime: mime.to_string(),
+                            data: image_data,
+                        });
+                    }
+                }
+            }
+            // Check for image_url format
+            if let Some(image_url) = part.get("image_url") {
+                if let Some(url) = image_url["url"].as_str() {
+                    // Handle data URL (base64 encoded)
+                    if url.starts_with("data:image/") {
+                        if let Some((mime_part, data_part)) = url.strip_prefix("data:").and_then(|s| s.split_once(",")) {
+                            let mime = mime_part.split(';').next().unwrap_or("image/png");
+                            use base64::Engine;
+                            let image_data = base64::engine::general_purpose::STANDARD
+                                .decode(data_part)
+                                .map_err(|e| format!("Failed to decode base64: {}", e))?;
+                            println!("Found data URL image: {} bytes, {}", image_data.len(), mime);
+                            return Ok(GeneratedImageData {
+                                mime: mime.to_string(),
+                                data: image_data,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
 
-    eprintln!("Decoded image: {} bytes", image_data.len());
+    // Check if content is a string (might contain base64 or URL)
+    if let Some(text) = content.as_str() {
+        println!("Response is text: {}", &text[..text.len().min(200)]);
+    }
 
-    // Determine MIME type from data (PNG is most common for DALL-E)
-    let mime = if image_data.starts_with(&[0x89, b'P', b'N', b'G']) {
-        "image/png"
-    } else if image_data.starts_with(&[0xFF, 0xD8, 0xFF]) {
-        "image/jpeg"
-    } else {
-        "image/png" // Default assumption
-    };
-
-    Ok(GeneratedImageData {
-        mime: mime.to_string(),
-        data: image_data,
-    })
+    Err("No image data found in response. The model may not have generated an image.".to_string())
 }
 
 /// Query the LLM with the voice command transcript
