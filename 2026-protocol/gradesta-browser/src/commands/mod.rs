@@ -89,6 +89,8 @@ pub enum Command {
     GlobalPlaybackSpeedBoost,
     /// Toggle voice command settings dialog
     GlobalToggleVoiceSettings,
+    /// Open the context menu (gamepad)
+    GlobalOpenContextMenu,
 
     // === Graph Context Commands ===
     /// Navigate north in the graph
@@ -252,6 +254,7 @@ impl Command {
             Command::GlobalToggleGamepadHelp => "global.toggle_gamepad_help",
             Command::GlobalPlaybackSpeedBoost => "global.playback_speed_boost",
             Command::GlobalToggleVoiceSettings => "global.toggle_voice_settings",
+            Command::GlobalOpenContextMenu => "global.open_context_menu",
             // Graph
             Command::GraphNavigateNorth => "graph.navigate_north",
             Command::GraphNavigateSouth => "graph.navigate_south",
@@ -346,6 +349,7 @@ impl Command {
             "global.toggle_gamepad_help" => Some(Command::GlobalToggleGamepadHelp),
             "global.playback_speed_boost" => Some(Command::GlobalPlaybackSpeedBoost),
             "global.toggle_voice_settings" => Some(Command::GlobalToggleVoiceSettings),
+            "global.open_context_menu" => Some(Command::GlobalOpenContextMenu),
             // Graph
             "graph.navigate_north" => Some(Command::GraphNavigateNorth),
             "graph.navigate_south" => Some(Command::GraphNavigateSouth),
@@ -441,6 +445,7 @@ impl Command {
             Command::GlobalToggleGamepadHelp => "Toggle gamepad help overlay",
             Command::GlobalPlaybackSpeedBoost => "Boost playback speed",
             Command::GlobalToggleVoiceSettings => "Voice command settings",
+            Command::GlobalOpenContextMenu => "Open context menu",
             // Graph
             Command::GraphNavigateNorth => "Navigate north in the graph",
             Command::GraphNavigateSouth => "Navigate south in the graph",
@@ -533,7 +538,8 @@ impl Command {
             | Command::GlobalTTSSpeedDown
             | Command::GlobalToggleGamepadHelp
             | Command::GlobalPlaybackSpeedBoost
-            | Command::GlobalToggleVoiceSettings => Context::Global,
+            | Command::GlobalToggleVoiceSettings
+            | Command::GlobalOpenContextMenu => Context::Global,
 
             Command::GraphNavigateNorth
             | Command::GraphNavigateSouth
@@ -628,6 +634,7 @@ impl Command {
             Command::GlobalToggleGamepadHelp,
             Command::GlobalPlaybackSpeedBoost,
             Command::GlobalToggleVoiceSettings,
+            Command::GlobalOpenContextMenu,
             // Graph
             Command::GraphNavigateNorth,
             Command::GraphNavigateSouth,
@@ -763,6 +770,7 @@ impl Command {
             Command::GlobalToggleFullscreen => &["fullscreen", "expand", "maximize"],
             Command::GlobalToggleGamepadHelp => &["gamepad help", "controller help"],
             Command::GlobalToggleVoiceSettings => &["voice settings", "voice config", "configure voice"],
+            Command::GlobalOpenContextMenu => &["context menu", "open menu", "menu"],
             Command::GlobalZoomIn => &["zoom in", "bigger", "magnify"],
             Command::GlobalZoomOut => &["zoom out", "smaller", "shrink"],
             Command::GlobalZoomReset => &["reset zoom", "normal zoom", "zoom 100"],

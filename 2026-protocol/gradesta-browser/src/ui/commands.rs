@@ -25,6 +25,7 @@ use crate::voice_command::{
     VoiceCommandEvent, VoiceCommandState, parse_script, ScriptInstruction,
 };
 
+use super::context_menu::{handle_context_menu_navigation, open_context_menu};
 use super::input::CapturedCommands;
 
 /// Results from command execution
@@ -38,6 +39,8 @@ pub struct CommandResults {
     pub should_finalize_voice_recording: bool,
     /// Whether to grant voice command permission (user selected Allow)
     pub should_grant_voice_permission: bool,
+    /// Command selected from context menu (if any) - will be added to cmds next frame
+    pub context_menu_command: Option<Command>,
 }
 
 /// Execute all captured commands and update state accordingly
@@ -340,6 +343,37 @@ pub fn execute_commands(
     if cmds.has(Command::GlobalToggleVoiceSettings) {
         results.any_command_processed = true;
         app_state.show_voice_settings = !app_state.show_voice_settings;
+    }
+
+    // GlobalOpenContextMenu - Open the context menu (gamepad)
+    if cmds.has(Command::GlobalOpenContextMenu) {
+        eprintln!("GlobalOpenContextMenu triggered, input_mode: {:?}", app_state.input_mode);
+        if app_state.input_mode == InputMode::Normal {
+            results.any_command_processed = true;
+            if app_state.context_menu.open {
+                // Toggle off if already open
+                app_state.context_menu.open = false;
+            } else {
+                open_context_menu(app_state);
+            }
+        }
+    }
+
+    // Context menu navigation
+    if app_state.context_menu.open {
+        if let Some(cmd) = handle_context_menu_navigation(
+            app_state,
+            cmds.context_menu_up,
+            cmds.context_menu_down,
+            cmds.context_menu_left,
+            cmds.context_menu_right,
+            cmds.context_menu_select,
+            cmds.context_menu_back,
+        ) {
+            results.any_command_processed = true;
+            // Store the selected command - will be processed next frame
+            results.context_menu_command = Some(cmd);
+        }
     }
 
     // Handle URL focus key - sets flag for main.rs to handle after TextEdit is rendered

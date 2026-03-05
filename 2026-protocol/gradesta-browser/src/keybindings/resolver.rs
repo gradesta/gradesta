@@ -130,6 +130,11 @@ impl KeybindingResolver {
         self.reverse.get(command).cloned().unwrap_or_default()
     }
 
+    /// Get all gamepad bindings for a command
+    pub fn get_gamepad_bindings(&self, command: &Command) -> Vec<GamepadKey> {
+        self.gamepad_bindings.get(command).cloned().unwrap_or_default()
+    }
+
     /// Get all bindings organized by context
     pub fn all_bindings_by_context(&self) -> HashMap<Context, Vec<(Command, Vec<KeyBinding>)>> {
         let mut result: HashMap<Context, Vec<(Command, Vec<KeyBinding>)>> = HashMap::new();

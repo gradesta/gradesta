@@ -379,6 +379,78 @@ pub enum IdentificationAction {
     Refuse,
 }
 
+// ============================================================================
+// Context Menu Types
+// ============================================================================
+
+use crate::commands::{Command, Context as CmdContext};
+
+/// Type of item in the context menu
+#[derive(Clone, Debug)]
+pub enum ContextMenuItemType {
+    /// Execute a command
+    Command(Command),
+    /// Navigate to a submenu for this context
+    Submenu(CmdContext),
+    /// Show controller help
+    Help,
+}
+
+/// A single item in the context menu
+#[derive(Clone, Debug)]
+pub struct ContextMenuItem {
+    pub label: String,
+    pub item_type: ContextMenuItemType,
+}
+
+/// Grid of context menu items
+#[derive(Clone, Debug, Default)]
+pub struct ContextMenuGrid {
+    pub items: HashMap<(i32, i32), ContextMenuItem>,
+    pub min_x: i32,
+    pub max_x: i32,
+    pub min_y: i32,
+    pub max_y: i32,
+}
+
+impl ContextMenuGrid {
+    /// Recalculate bounds based on current items
+    pub fn recalculate_bounds(&mut self) {
+        if self.items.is_empty() {
+            self.min_x = 0;
+            self.max_x = 0;
+            self.min_y = 0;
+            self.max_y = 0;
+            return;
+        }
+
+        self.min_x = i32::MAX;
+        self.max_x = i32::MIN;
+        self.min_y = i32::MAX;
+        self.max_y = i32::MIN;
+
+        for (x, y) in self.items.keys() {
+            self.min_x = self.min_x.min(*x);
+            self.max_x = self.max_x.max(*x);
+            self.min_y = self.min_y.min(*y);
+            self.max_y = self.max_y.max(*y);
+        }
+    }
+}
+
+/// State for the gamepad context menu
+#[derive(Clone, Debug, Default)]
+pub struct ContextMenuState {
+    /// Whether the context menu is open
+    pub open: bool,
+    /// Current cursor position in the grid
+    pub current_position: (i32, i32),
+    /// The current grid of items
+    pub grid: ContextMenuGrid,
+    /// Cooldown to prevent rapid navigation
+    pub last_nav_time: Option<Instant>,
+}
+
 /// State for server bar autocomplete dropdown
 #[derive(Default)]
 pub struct ServerDropdownState {
@@ -527,6 +599,8 @@ pub struct AppState {
     pub model_filter: String,
     /// Generated image buffer (from voice command image generation)
     pub generated_image_buffer: Option<GeneratedImage>,
+    /// Context menu state (gamepad)
+    pub context_menu: ContextMenuState,
 }
 
 /// A generated image waiting to be inserted into a cell
@@ -720,6 +794,7 @@ impl Default for AppState {
             model_fetch_state: crate::voice_command::ModelFetchState::default(),
             model_filter: String::new(),
             generated_image_buffer: None,
+            context_menu: ContextMenuState::default(),
         }
     }
 }

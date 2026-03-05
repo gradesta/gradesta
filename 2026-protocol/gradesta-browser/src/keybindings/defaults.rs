@@ -355,7 +355,8 @@ pub static GAMEPAD_DEFAULTS: &[(Command, GamepadKey)] = &[
     // Actions - Face buttons
     (Command::GraphDeleteVertex, GamepadKey::South),     // Cross = Delete
     (Command::GraphClickVertex, GamepadKey::East),       // Circle = Click/Enter
-    (Command::GraphEditText, GamepadKey::West),          // Square = Edit text
+    // Square (West) now opens context menu, not GraphEditText
+    (Command::GlobalOpenContextMenu, GamepadKey::West),  // Square = Context menu
     (Command::GraphNewTextVertex, GamepadKey::North),    // Triangle = New text
 
     // Recording - R2 (hold to record, release to save)

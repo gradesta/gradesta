@@ -46,14 +46,25 @@ const STICK_DEAD_ZONE: f32 = 0.3;
 impl GamepadState {
     pub fn new() -> Option<Self> {
         match Gilrs::new() {
-            Ok(gilrs) => Some(Self {
-                gilrs,
-                pressed_this_frame: HashSet::new(),
-                released_this_frame: HashSet::new(),
-                held: HashSet::new(),
-                left_stick: (0.0, 0.0),
-                right_stick: (0.0, 0.0),
-            }),
+            Ok(gilrs) => {
+                // Log connected gamepads
+                let mut count = 0;
+                for (_id, gamepad) in gilrs.gamepads() {
+                    eprintln!("Gamepad detected: {} (is_connected: {})", gamepad.name(), gamepad.is_connected());
+                    count += 1;
+                }
+                if count == 0 {
+                    eprintln!("No gamepads detected at startup");
+                }
+                Some(Self {
+                    gilrs,
+                    pressed_this_frame: HashSet::new(),
+                    released_this_frame: HashSet::new(),
+                    held: HashSet::new(),
+                    left_stick: (0.0, 0.0),
+                    right_stick: (0.0, 0.0),
+                })
+            },
             Err(e) => {
                 eprintln!("Failed to initialize gamepad: {}", e);
                 None

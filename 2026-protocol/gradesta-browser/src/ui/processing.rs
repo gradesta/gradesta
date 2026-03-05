@@ -216,12 +216,12 @@ pub fn process_identification(
                 app_state.identification_button_selected += 1;
             }
 
-            // Enter confirms identification (keyboard) OR L3 confirms selected button (gamepad)
+            // Enter confirms identification (keyboard) OR R3 confirms selected button (gamepad)
             if id_enter_pressed && !app_state.identity_config.identities.is_empty() {
                 id_action = Some(IdentificationAction::Identify { remember: false });
             }
 
-            // L3 (permission_confirm) triggers the selected button
+            // R3 (permission_confirm) triggers the selected button
             if cmds.permission_confirm && !app_state.identity_config.identities.is_empty() {
                 match app_state.identification_button_selected {
                     0 => id_action = Some(IdentificationAction::Identify { remember: false }),

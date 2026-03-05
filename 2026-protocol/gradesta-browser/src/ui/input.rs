@@ -37,10 +37,18 @@ pub struct CapturedCommands {
     pub voice_confirm: bool,        // Right stick click or A button
     pub voice_cancel: bool,         // B button
 
-    // Permission dialog navigation (left stick + L3)
-    pub permission_select_left: bool,   // Left stick left
-    pub permission_select_right: bool,  // Left stick right
-    pub permission_confirm: bool,       // Left stick click (L3)
+    // Permission dialog navigation (right stick X-axis + L3)
+    pub permission_select_left: bool,   // Right stick left
+    pub permission_select_right: bool,  // Right stick right
+    pub permission_confirm: bool,       // Right stick click (R3)
+
+    // Context menu navigation (right stick + face buttons)
+    pub context_menu_up: bool,
+    pub context_menu_down: bool,
+    pub context_menu_left: bool,
+    pub context_menu_right: bool,
+    pub context_menu_select: bool,   // A button / Cross
+    pub context_menu_back: bool,     // B button / Circle
 }
 
 impl CapturedCommands {
@@ -181,6 +189,7 @@ pub fn capture_gamepad_commands(
     check(Command::GraphYank);
     check(Command::GlobalToggleBag);
     check(Command::GlobalToggleGamepadHelp);
+    check(Command::GlobalOpenContextMenu);
 
     // Recording - pressed to start, released to save
     check(Command::GraphStartRecording);
@@ -275,13 +284,42 @@ pub fn capture_voice_command_gamepad(
     // B button to cancel (legacy, Cancel is now a menu option)
     cmds.voice_cancel = gp.is_pressed(GamepadKey::East); // B / Circle
 
-    // Left stick for permission dialog button selection
-    let (lx, _ly) = gp.left_stick;
-    cmds.permission_select_left = lx < -STICK_DEADZONE;
-    cmds.permission_select_right = lx > STICK_DEADZONE;
+    // Right stick X-axis for permission dialog button selection (when not in voice command mode)
+    let (rx, _ry) = gp.right_stick;
+    cmds.permission_select_left = rx < -STICK_DEADZONE;
+    cmds.permission_select_right = rx > STICK_DEADZONE;
 
-    // L3 (left stick click) to confirm permission dialog selection
-    cmds.permission_confirm = gp.is_pressed(GamepadKey::LeftStick);
+    // R3 (right stick click) to confirm permission dialog selection
+    cmds.permission_confirm = gp.is_pressed(GamepadKey::RightStick);
+}
+
+/// Capture context menu gamepad inputs (right stick + face buttons)
+/// Only captures when context menu is open
+pub fn capture_context_menu_gamepad(
+    cmds: &mut CapturedCommands,
+    gamepad: &Option<GamepadSnapshot>,
+    context_menu_open: bool,
+) {
+    let Some(gp) = gamepad else { return };
+
+    if !context_menu_open {
+        return;
+    }
+
+    const STICK_DEADZONE: f32 = 0.5;
+    let (rx, ry) = gp.right_stick;
+
+    // Right stick for navigation
+    cmds.context_menu_up = ry > STICK_DEADZONE;
+    cmds.context_menu_down = ry < -STICK_DEADZONE;
+    cmds.context_menu_left = rx < -STICK_DEADZONE;
+    cmds.context_menu_right = rx > STICK_DEADZONE;
+
+    // R3 (right stick click) to select
+    cmds.context_menu_select = gp.is_pressed(GamepadKey::RightStick);
+
+    // ○ (Circle) to go back
+    cmds.context_menu_back = gp.is_pressed(GamepadKey::East);
 }
 
 /// Log triggered commands to the debug log

@@ -431,9 +431,24 @@ fn ui_system(
         ui::capture_gamepad_commands(&mut cmds, &gamepad_snapshot, &app_state.keybindings);
     }
 
+    // Always capture context menu open command (works globally like a menu button)
+    if let Some(ref gp) = gamepad_snapshot {
+        // Debug: log any button presses
+        if !gp.pressed_this_frame.is_empty() {
+            eprintln!("Gamepad buttons pressed this frame: {:?}", gp.pressed_this_frame);
+        }
+        if app_state.keybindings.command_pressed_gamepad(&commands::Command::GlobalOpenContextMenu, gp) {
+            eprintln!("Captured GlobalOpenContextMenu from gamepad");
+            cmds.add(commands::Command::GlobalOpenContextMenu);
+        }
+    }
+
     // Capture voice command specific gamepad inputs (L2 hold for voice, right stick for selection)
     let recording_start = app_state.recording_start;
     ui::capture_voice_command_gamepad(&mut cmds, &gamepad_snapshot, is_in_voice_command_mode, &mut app_state.l2_press_start, recording_start);
+
+    // Capture context menu specific gamepad inputs (right stick + face buttons when menu open)
+    ui::capture_context_menu_gamepad(&mut cmds, &gamepad_snapshot, app_state.context_menu.open);
 
     // Log triggered commands to debug log (separated to avoid borrow conflicts)
     ui::log_triggered_commands_to_debug(&cmds, &mut app_state);
@@ -480,6 +495,25 @@ fn ui_system(
     // Grant voice permission if user confirmed with L3
     if cmd_results.should_grant_voice_permission {
         ui::grant_voice_permission(&mut app_state, &graph, &voice_channel, &voice_config.0);
+    }
+
+    // Handle context menu command if one was selected
+    // This creates a new CapturedCommands with just that command and processes it
+    if let Some(cmd) = cmd_results.context_menu_command {
+        let mut menu_cmds = ui::CapturedCommands::default();
+        menu_cmds.commands.insert(cmd);
+        let _ = ui::execute_commands(
+            &menu_cmds,
+            &mut app_state,
+            &mut graph,
+            &ws_cmd_tx,
+            &mut media_cache,
+            &audio_signal,
+            &playback_state,
+            &mut boost_state,
+            &voice_channel,
+            ctx,
+        );
     }
 
     // Process voice command events from async operations
@@ -560,19 +594,33 @@ fn ui_system(
         };
         let escape = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
 
+        // Gamepad navigation for dropdown (right stick Y-axis + A button or R3)
+        let (gamepad_down, gamepad_up, gamepad_select) = if let Some(ref gp) = gamepad_snapshot {
+            const STICK_DEADZONE: f32 = 0.5;
+            let (_rx, ry) = gp.right_stick;
+            (
+                ry < -STICK_DEADZONE,  // Down
+                ry > STICK_DEADZONE,   // Up
+                gp.is_pressed(keybindings::key::GamepadKey::South)  // A/Cross
+                    || gp.is_pressed(keybindings::key::GamepadKey::RightStick),  // R3
+            )
+        } else {
+            (false, false, false)
+        };
+
         let max_idx = app_state.server_dropdown.filtered_indices.len().saturating_sub(1);
 
-        // Arrow keys activate the dropdown navigation
-        if arrow_down {
+        // Arrow keys or gamepad down activates the dropdown navigation
+        if arrow_down || gamepad_down {
             app_state.server_dropdown.is_active = true;
             app_state.server_dropdown.selected_index = (app_state.server_dropdown.selected_index + 1).min(max_idx);
         }
-        if arrow_up {
+        if arrow_up || gamepad_up {
             app_state.server_dropdown.is_active = true;
             app_state.server_dropdown.selected_index = app_state.server_dropdown.selected_index.saturating_sub(1);
         }
-        // Enter selects from dropdown only if dropdown is active
-        if enter && dropdown_is_active {
+        // Enter or A button selects from dropdown only if dropdown is active
+        if (enter || gamepad_select) && dropdown_is_active {
             if let Some(&server_idx) = app_state.server_dropdown.filtered_indices.get(app_state.server_dropdown.selected_index) {
                 if let Some(ref services) = app_state.local_services {
                     if let Some(server) = services.servers.get(server_idx) {
@@ -1243,6 +1291,9 @@ fn ui_system(
     if let InputMode::VoiceCommand(ref state) = app_state.input_mode {
         ui::render_voice_command_overlay(ctx, state, app_state.recording_start);
     }
+
+    // Context menu overlay (gamepad, rendered on top)
+    ui::render_context_menu(ctx, &app_state);
 
     // Gamepad help overlay (rendered last so it's on top)
     if app_state.show_gamepad_help {
