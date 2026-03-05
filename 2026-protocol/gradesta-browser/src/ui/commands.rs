@@ -1372,6 +1372,10 @@ pub fn execute_voice_action(
                 AgentAction::Script(script) => {
                     let instructions = parse_script(&script);
 
+                    // Exit voice command mode BEFORE executing commands
+                    // Commands check for InputMode::Normal, so we need to set it first
+                    app_state.input_mode = InputMode::Normal;
+
                     for instruction in instructions {
                         match instruction {
                             ScriptInstruction::Command(cmd) => {
