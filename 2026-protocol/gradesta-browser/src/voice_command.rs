@@ -669,9 +669,17 @@ Return ONLY a raw JSON array (no markdown, no code blocks). Sorted by confidence
 
 ## Script Syntax
 - Newline-separated command slugs (use \n in JSON)
-- Use EXACT slugs from get_commands() output
+- CRITICAL: You MUST call get_commands() BEFORE returning any script to discover valid command slugs
+- NEVER guess or invent command names - use ONLY exact slugs from get_commands() output
 - Special: `insert_text "content"` sets text AND auto-submits (no separate submit needed)
 - Special: `insert_generated_image` inserts the buffered image into a new cell
+
+## Common Command Slugs (call get_commands to verify)
+- global.focus_url (NOT focus.url_bar)
+- global.refresh (NOT graph.refresh)
+- graph.navigate_north/south/east/west/up/down
+- graph.set_direction_north/south/east/west/up/down
+- graph.new_text_vertex
 
 ## IMPORTANT: Command Order
 Commands execute in order. Some commands clear buffers, so order matters!
@@ -712,14 +720,14 @@ fn build_tools() -> Vec<LlmTool> {
             tool_type: "function".to_string(),
             function: LlmToolDefinition {
                 name: "get_commands".to_string(),
-                description: "Get available commands for a category".to_string(),
+                description: "REQUIRED: Get available commands for a category. You MUST call this before returning any script to get exact command slugs. Never guess command names.".to_string(),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
                         "category": {
                             "type": "string",
                             "enum": ["navigation", "editing", "clipboard", "ui", "text_input", "recording", "export", "elf"],
-                            "description": "Command category to retrieve"
+                            "description": "Command category: ui=focus_url/refresh/toggles, navigation=graph movement, editing=vertex operations"
                         }
                     },
                     "required": ["category"]
