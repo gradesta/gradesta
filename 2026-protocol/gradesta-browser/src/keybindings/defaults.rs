@@ -131,6 +131,18 @@ static DEFAULTS: &[DefaultBinding] = &[
         bindings: &[(KeyCode::BracketLeft, CTRL)],
     },
 
+    // === Undo Navigation ===
+    DefaultBinding {
+        command: Command::GraphShowUndoTree,
+        context: Context::Graph,
+        bindings: &[(KeyCode::Z, CTRL), (KeyCode::U, NONE)],
+    },
+    DefaultBinding {
+        command: Command::GraphReturnFromUndoTree,
+        context: Context::Graph,
+        bindings: &[(KeyCode::Escape, NONE)],
+    },
+
     // === Graph Navigation ===
     DefaultBinding {
         command: Command::GraphNavigateNorth,
@@ -372,4 +384,7 @@ pub static GAMEPAD_DEFAULTS: &[(Command, GamepadKey)] = &[
 
     // Help overlay - L3 (left stick press)
     (Command::GlobalToggleGamepadHelp, GamepadKey::LeftStick),
+
+    // R3 also clicks (alternative to Circle)
+    (Command::GraphClickVertex, GamepadKey::RightStick),
 ];

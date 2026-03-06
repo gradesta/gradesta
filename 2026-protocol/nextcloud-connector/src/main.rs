@@ -12,6 +12,7 @@ mod notes;
 mod protocol;
 mod router;
 mod storage;
+mod undo;
 
 use anyhow::{anyhow, Result};
 use axum::{
@@ -95,6 +96,8 @@ struct ConnState {
     conn_id: u64,
     /// Elf connection state (only set when conn_state == Elf)
     elf_connection: Option<ElfConnection>,
+    /// Undo tree for this session
+    undo_tree: Option<undo::UndoTree>,
 }
 
 impl Default for ConnState {
@@ -118,6 +121,7 @@ impl Default for ConnState {
             server_port: 8083,
             conn_id: CONN_COUNTER.fetch_add(1, Ordering::SeqCst),
             elf_connection: None,
+            undo_tree: None,
         }
     }
 }
@@ -828,12 +832,17 @@ where
         // Load notes index
         let index = NotesIndex::load(&nc).await?;
 
+        // Load undo tree (use empty tree if not found or error)
+        let undo_tree = undo::UndoTree::load(&nc).await.unwrap_or_default();
+        log::info!("Loaded undo tree with {} actions", undo_tree.actions.len());
+
         // Get a server-generated action_id for the router
         let action_id = {
             let mut s = state.lock().await;
             s.identity = Some(identity.clone());
             s.nextcloud = Some(nc);
             s.index = Some(index);
+            s.undo_tree = Some(undo_tree);
             s.conn_state = ConnectionState::Browsing;
             s.get_next_action_id()
         };
@@ -988,6 +997,7 @@ where
 {
     let (action_id, landmark) = parse_watch_landmark(data)?;
     log::info!("Watch landmark: {} (action={})", landmark, action_id);
+    eprintln!("DEBUG: Received landmark request: '{}' (len={})", landmark, landmark.len());
 
     let (identity, conn_id) = {
         let s = state.lock().await;
@@ -1046,6 +1056,11 @@ where
         } else {
             "notes/"
         }
+    } else if landmark.starts_with("gradesta://undo") {
+        // Undo tree landmark - serve the undo history as a graph
+        log::info!("Undo tree landmark requested");
+        eprintln!("DEBUG: Handling gradesta://undo landmark");
+        return handle_undo_landmark(state, write, action_id, &landmark).await;
     } else if let Some(vertex_hash) = landmark.strip_prefix("vertex/") {
         // Direct vertex request - try to find and load it
         // This is used by the browser when preloading unknown vertices
@@ -1076,6 +1091,7 @@ where
     };
 
     log::info!("Routing path: '{}'", path);
+    eprintln!("DEBUG: Final routing path: '{}' (landmark was '{}')", path, landmark);
 
     match path {
         "" => {
@@ -1435,8 +1451,17 @@ where
         }
     };
 
+    // Get identity for undo
+    let identity = {
+        let s = state.lock().await;
+        s.identity.clone()
+    };
+
     // Find vertex by hash
     if let Some(uuid) = notes::hash_to_uuid(&index, vertex_id) {
+        // Prepare undo action BEFORE making changes
+        let mut undo_action_opt: Option<undo::UndoAction> = None;
+
         if layer == 0 {
             // Layer 0: Update primary content
             let vertex = match index.get_vertex(uuid) {
@@ -1447,6 +1472,24 @@ where
                     return Ok(());
                 }
             };
+
+            // Capture old content for undo (only for layer 0)
+            if let Ok(old_content) = nc.download(&vertex.file).await {
+                if let Some((old_mime, _old_file, mut undo_action)) = index.prepare_undo_for_label(uuid, layer, identity.clone()) {
+                    // Save old content to snapshot file
+                    match undo::save_content_snapshot(&nc, undo_action.id, layer, &old_content).await {
+                        Ok(snapshot_path) => {
+                            if let undo::UndoOperationType::SetVertexLabel { old_snapshot_path: ref mut path, .. } = undo_action.operation {
+                                *path = snapshot_path;
+                            }
+                            undo_action_opt = Some(undo_action);
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to save undo snapshot: {}", e);
+                        }
+                    }
+                }
+            }
 
             // Upload new content
             if let Err(e) = nc.upload(&vertex.file, &content).await {
@@ -1490,10 +1533,25 @@ where
             return Ok(());
         }
 
-        // Update state
+        // Update state including undo tree
         {
             let mut s = state.lock().await;
             s.index = Some(index);
+
+            // Add undo action if we captured one
+            if let Some(undo_action) = undo_action_opt {
+                let mut undo_tree = s.undo_tree.clone().unwrap_or_else(undo::UndoTree::new);
+                undo_tree.add_action(undo_action);
+                s.undo_tree = Some(undo_tree.clone());
+
+                // Save undo tree asynchronously
+                let nc_clone = nc.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = undo_tree.save(&nc_clone).await {
+                        log::warn!("Failed to save undo tree: {}", e);
+                    }
+                });
+            }
         }
 
         log::info!("Updated vertex {}", uuid);
@@ -1687,10 +1745,52 @@ where
         return Ok(());
     }
 
-    // Update state
+    // Record undo action with snapshot for redo support
+    let from_uuid = if from_vertex != 0 {
+        notes::hash_to_uuid(&index, from_vertex)
+    } else {
+        None
+    };
+
+    // Create a snapshot of the new vertex for redo
+    let snapshot_path = if let Some(snapshot) = index.create_vertex_snapshot(new_id) {
+        match snapshot.save(&nc, new_id).await {
+            Ok(path) => Some(path),
+            Err(e) => {
+                log::warn!("Failed to save vertex snapshot for redo: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let undo_action = index.create_undo_for_create(
+        new_id,
+        from_uuid,
+        Some(direction),
+        displaced_vertex,
+        Some(_identity.clone()),
+        snapshot_path,
+    );
+
+    // Update state including undo tree
     {
         let mut s = state.lock().await;
         s.index = Some(index.clone());
+
+        // Add to undo tree
+        let mut undo_tree = s.undo_tree.clone().unwrap_or_else(undo::UndoTree::new);
+        undo_tree.add_action(undo_action);
+        s.undo_tree = Some(undo_tree.clone());
+
+        // Save undo tree asynchronously (don't block on it)
+        let nc_clone = nc.clone();
+        tokio::spawn(async move {
+            if let Err(e) = undo_tree.save(&nc_clone).await {
+                log::warn!("Failed to save undo tree: {}", e);
+            }
+        });
     }
 
     // Don't send SetVertexLabel for newly created vertices - the client already has the data.
@@ -1826,6 +1926,32 @@ where
         }
     };
 
+    // Prepare undo data BEFORE deleting
+    let (mut undo_action, _connected_edges) = match index.prepare_undo_for_delete(vertex_uuid, _identity.clone()) {
+        Some(data) => data,
+        None => {
+            let msg = encode_log_message(action_id, 404, vertex_id, "Vertex not found for undo");
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            return Ok(());
+        }
+    };
+
+    // Create and save vertex snapshot for undo
+    if let Some(snapshot) = index.create_vertex_snapshot(vertex_uuid) {
+        match snapshot.save(&nc, undo_action.id).await {
+            Ok(snapshot_path) => {
+                // Update the undo action with the snapshot path
+                if let undo::UndoOperationType::DeleteVertex { snapshot_path: ref mut path, .. } = undo_action.operation {
+                    *path = snapshot_path;
+                }
+            }
+            Err(e) => {
+                log::warn!("Failed to save undo snapshot: {}", e);
+                // Continue anyway - undo won't work but deletion should proceed
+            }
+        }
+    }
+
     // Delete vertex and get files to delete + affected neighbors
     let (files_to_delete, affected_neighbors) = match index.delete_vertex(vertex_uuid) {
         Ok(result) => result,
@@ -1836,12 +1962,11 @@ where
         }
     };
 
-    // Delete content files from Nextcloud
+    // NOTE: We don't delete content files from Nextcloud immediately anymore
+    // They're kept for undo capability. A separate cleanup process can remove old snapshots.
+    // For now, just log what would be deleted
     for file_path in &files_to_delete {
-        if let Err(e) = nc.delete(file_path).await {
-            log::warn!("Failed to delete file {}: {}", file_path, e);
-            // Continue anyway - the index is the source of truth
-        }
+        log::info!("Would delete file (kept for undo): {}", file_path);
     }
 
     // Save updated index
@@ -1851,10 +1976,23 @@ where
         return Ok(());
     }
 
-    // Update state
+    // Update state including undo tree
     {
         let mut s = state.lock().await;
         s.index = Some(index.clone());
+
+        // Add to undo tree
+        let mut undo_tree = s.undo_tree.clone().unwrap_or_else(undo::UndoTree::new);
+        undo_tree.add_action(undo_action);
+        s.undo_tree = Some(undo_tree.clone());
+
+        // Save undo tree asynchronously
+        let nc_clone = nc.clone();
+        tokio::spawn(async move {
+            if let Err(e) = undo_tree.save(&nc_clone).await {
+                log::warn!("Failed to save undo tree: {}", e);
+            }
+        });
     }
 
     // Send updated edges for all affected neighbors
@@ -1917,6 +2055,11 @@ where
 {
     let (action_id, vertex_id) = parse_click_vertex(data)?;
     log::info!("ClickVertex: action={}, vertex={}", action_id, vertex_id);
+
+    // Check if this is an undo tree vertex click
+    if handle_undo_click(state, write, action_id, vertex_id).await? {
+        return Ok(()); // Handled as undo click
+    }
 
     // Check if this is a file entry click
     let (file_path, nc, jwt_secret, server_port, index) = {
@@ -2014,6 +2157,340 @@ where
     }
 
     Ok(())
+}
+
+/// Handle the gradesta://undo landmark - serve the undo tree as a graph
+async fn handle_undo_landmark<W>(
+    state: &Arc<Mutex<ConnState>>,
+    write: &mut W,
+    action_id: u64,
+    _landmark: &str,
+) -> Result<()>
+where
+    W: SinkExt<AxumWsMessage> + Unpin,
+    W::Error: std::fmt::Debug,
+{
+    let (undo_tree, identity, nc) = {
+        let s = state.lock().await;
+        (s.undo_tree.clone(), s.identity.clone(), s.nextcloud.clone())
+    };
+
+    // Load undo tree if not loaded yet
+    let undo_tree = if let Some(tree) = undo_tree {
+        eprintln!("DEBUG: Using cached undo tree with {} actions", tree.actions.len());
+        tree
+    } else if let Some(ref nc) = nc {
+        eprintln!("DEBUG: Loading undo tree from storage...");
+        let tree = match undo::UndoTree::load(nc).await {
+            Ok(t) => {
+                eprintln!("DEBUG: Loaded undo tree with {} actions, current={:?}", t.actions.len(), t.current_id);
+                t
+            }
+            Err(e) => {
+                eprintln!("DEBUG: Failed to load undo tree: {}, using empty tree", e);
+                undo::UndoTree::new()
+            }
+        };
+        // Store it in state
+        {
+            let mut s = state.lock().await;
+            s.undo_tree = Some(tree.clone());
+        }
+        tree
+    } else {
+        eprintln!("DEBUG: No nextcloud client, using empty undo tree");
+        undo::UndoTree::new()
+    };
+
+    let identity = identity.unwrap_or_default();
+
+    // Send context
+    let landmark_uri = "gradesta://undo";
+    let ctx_msg = encode_set_context(action_id, landmark_uri);
+    write.send(AxumWsMessage::Binary(ctx_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+    // Send a "back to notes" portal vertex
+    let portal_id = hash_string(&format!("undo:{}:portal", identity));
+    let notes_landmark = format!("nextcloud://{}/notes/", identity);
+    let portal_msg = encode_set_vertex_label(action_id, portal_id, "text/plain", b"< Back to Notes");
+    write.send(AxumWsMessage::Binary(portal_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+    // Portal has layer 1 with gradesta-url for navigation
+    let portal_layer1 = encode_set_vertex_label_layer(action_id, portal_id, 1, "text/gradesta-url", notes_landmark.as_bytes());
+    write.send(AxumWsMessage::Binary(portal_layer1)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+    if undo_tree.actions.is_empty() {
+        // Empty undo tree - send placeholder
+        let empty_id = hash_string(&format!("undo:{}:empty", identity));
+        let empty_msg = encode_set_vertex_label(action_id, empty_id, "text/plain", b"(no undo history yet)");
+        write.send(AxumWsMessage::Binary(empty_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+        // Portal points east to empty
+        let portal_edges = encode_set_edges(action_id, portal_id, 0, empty_id, 0, 0, 0, 0, 0);
+        write.send(AxumWsMessage::Binary(portal_edges)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+        // Empty points west to portal
+        let empty_edges = encode_set_edges(action_id, empty_id, portal_id, 0, 0, 0, 0, 0, 0);
+        write.send(AxumWsMessage::Binary(empty_edges)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+        return Ok(());
+    }
+
+    // Get current position and path
+    let current_id = undo_tree.current_id;
+    let current_path: std::collections::HashSet<uuid::Uuid> = undo_tree.path_to_current().into_iter().collect();
+
+    // Send all actions as vertices
+    // We'll build edges as we go
+    let mut vertex_edges: HashMap<u64, [u64; 6]> = HashMap::new();
+
+    for (uuid, action) in &undo_tree.actions {
+        let vertex_id = undo::action_to_hash(*uuid);
+
+        // Create label with description and timestamp
+        let is_current = current_id == Some(*uuid);
+        let is_on_path = current_path.contains(uuid);
+        let label = if is_current {
+            format!(
+                "→ Currently at:\n{}\n{}",
+                action.description,
+                action.timestamp.format("%Y-%m-%d %H:%M:%S")
+            )
+        } else {
+            let prefix = if is_on_path { "↓ " } else { "  " };
+            format!(
+                "{}{}\n{}",
+                prefix,
+                action.description,
+                action.timestamp.format("%Y-%m-%d %H:%M:%S")
+            )
+        };
+
+        // Send vertex label
+        let label_msg = encode_set_vertex_label(action_id, vertex_id, "text/plain", label.as_bytes());
+        write.send(AxumWsMessage::Binary(label_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+        // Send metadata as layer 1 (JSON)
+        let metadata = serde_json::json!({
+            "action_id": uuid.to_string(),
+            "timestamp": action.timestamp.to_rfc3339(),
+            "is_current": is_current,
+            "operation_type": format!("{:?}", std::mem::discriminant(&action.operation)),
+        });
+        let meta_msg = encode_set_vertex_label_layer(
+            action_id, vertex_id, 1, "application/json",
+            metadata.to_string().as_bytes()
+        );
+        write.send(AxumWsMessage::Binary(meta_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+        // Initialize edges
+        let edges = vertex_edges.entry(vertex_id).or_insert([0u64; 6]);
+
+        // West edge: parent action
+        if let Some(parent_id) = action.parent_id {
+            edges[0] = undo::action_to_hash(parent_id);
+        }
+
+        // East edge: first child (main branch)
+        if let Some(child_id) = action.children.first() {
+            edges[1] = undo::action_to_hash(*child_id);
+        }
+
+        // North/South edges: siblings (alternative branches)
+        let siblings = undo_tree.get_siblings(*uuid);
+        if siblings.len() >= 1 {
+            edges[2] = undo::action_to_hash(siblings[0]); // North
+        }
+        if siblings.len() >= 2 {
+            edges[3] = undo::action_to_hash(siblings[1]); // South
+        }
+    }
+
+    // Connect root action to portal
+    if let Some(root_id) = undo_tree.root_id {
+        let root_hash = undo::action_to_hash(root_id);
+
+        // Portal's east points to root
+        let portal_edges = encode_set_edges(action_id, portal_id, 0, root_hash, 0, 0, 0, 0, 0);
+        write.send(AxumWsMessage::Binary(portal_edges)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+        // Root's west points to portal
+        if let Some(edges) = vertex_edges.get_mut(&root_hash) {
+            edges[0] = portal_id;
+        }
+    }
+
+    // Send all edges
+    for (vertex_id, edges) in &vertex_edges {
+        let edges_msg = encode_set_edges(
+            action_id, *vertex_id,
+            edges[0], edges[1], edges[2], edges[3], edges[4], edges[5],
+            0x01, // Only label editable (clicking triggers undo)
+        );
+        write.send(AxumWsMessage::Binary(edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+    }
+
+    log::info!("Sent undo tree with {} actions", undo_tree.actions.len());
+    Ok(())
+}
+
+/// Handle click on an undo tree vertex - restore to that state
+async fn handle_undo_click<W>(
+    state: &Arc<Mutex<ConnState>>,
+    write: &mut W,
+    action_id: u64,
+    vertex_id: u64,
+) -> Result<bool>
+where
+    W: SinkExt<AxumWsMessage> + Unpin,
+    W::Error: std::fmt::Debug,
+{
+    let (undo_tree, nc, mut index) = {
+        let s = state.lock().await;
+        (s.undo_tree.clone(), s.nextcloud.clone(), s.index.clone())
+    };
+
+    let mut undo_tree = match undo_tree {
+        Some(tree) => tree,
+        None => {
+            eprintln!("DEBUG: handle_undo_click - no undo tree");
+            return Ok(false); // No undo tree, not an undo click
+        }
+    };
+
+    eprintln!("DEBUG: handle_undo_click - checking vertex {} in undo tree with {} actions", vertex_id, undo_tree.actions.len());
+
+    // Check if this vertex is in the undo tree
+    let target_action_id = match undo::hash_to_action(&undo_tree, vertex_id) {
+        Some(id) => id,
+        None => {
+            eprintln!("DEBUG: handle_undo_click - vertex {} not found in undo tree", vertex_id);
+            return Ok(false); // Not an undo vertex
+        }
+    };
+
+    log::info!("Undo click: navigating to action {}", target_action_id);
+    eprintln!("DEBUG: Undo click - navigating to action {}", target_action_id);
+
+    let nc = nc.ok_or_else(|| anyhow!("No Nextcloud client"))?;
+    let mut index = index.ok_or_else(|| anyhow!("No notes index"))?;
+
+    // Calculate path from current to target
+    let (undo_actions, redo_actions) = undo_tree
+        .navigate_to(target_action_id)
+        .ok_or_else(|| anyhow!("Cannot navigate to target action"))?;
+
+    let mut affected_vertices: Vec<uuid::Uuid> = Vec::new();
+
+    // Apply undo operations (in reverse order)
+    for action_uuid in &undo_actions {
+        if let Some(action) = undo_tree.get_action(*action_uuid).cloned() {
+            log::info!("Undoing: {}", action.description);
+            let (_, affected) = index.apply_undo(&action, &nc).await?;
+            affected_vertices.extend(affected);
+        }
+    }
+
+    // Apply redo operations (in forward order)
+    for action_uuid in &redo_actions {
+        if let Some(action) = undo_tree.get_action(*action_uuid).cloned() {
+            log::info!("Redoing: {}", action.description);
+            let (_, affected) = index.apply_redo(&action, &nc).await?;
+            affected_vertices.extend(affected);
+        }
+    }
+
+    // Update undo tree current position
+    undo_tree.set_current(target_action_id);
+
+    // Save changes
+    index.save(&nc).await?;
+    undo_tree.save(&nc).await?;
+
+    // Update state
+    {
+        let mut s = state.lock().await;
+        s.index = Some(index.clone());
+        s.undo_tree = Some(undo_tree);
+    }
+
+    // Send success message
+    let msg = encode_log_message(action_id, 200, vertex_id, "State restored");
+    write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+    log::info!(
+        "Undo navigation complete: undid {} actions, redid {} actions, {} affected vertices",
+        undo_actions.len(),
+        redo_actions.len(),
+        affected_vertices.len()
+    );
+
+    // Send updates for affected vertices so browser's cache is updated
+    // First send a context for the notes landmark
+    let s = state.lock().await;
+    let identity = s.identity.clone().unwrap_or_default();
+    drop(s);
+
+    let notes_landmark = format!("nextcloud://{}/notes/", identity);
+    let ctx_msg = encode_set_context(action_id, &notes_landmark);
+    write.send(AxumWsMessage::Binary(ctx_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+    // Deduplicate affected vertices
+    let mut unique_affected: Vec<uuid::Uuid> = affected_vertices.clone();
+    unique_affected.sort();
+    unique_affected.dedup();
+
+    for vertex_uuid in unique_affected {
+        let vertex_hash = notes::uuid_to_hash(vertex_uuid);
+
+        if let Some(vertex) = index.get_vertex(vertex_uuid).cloned() {
+            // Vertex exists - send its current state
+            eprintln!("DEBUG: Sending updated vertex {} (hash={})", vertex_uuid, vertex_hash);
+
+            // Load content from file
+            let content = match nc.download(&vertex.file).await {
+                Ok(data) => data,
+                Err(e) => {
+                    eprintln!("DEBUG: Failed to load content for {}: {}", vertex_uuid, e);
+                    format!("(failed to load: {})", e).into_bytes()
+                }
+            };
+
+            // Send label
+            let label_msg = encode_set_vertex_label(
+                action_id,
+                vertex_hash,
+                &vertex.mime,
+                &content
+            );
+            write.send(AxumWsMessage::Binary(label_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+            // Build and send edges
+            let edge_array = index.build_edge_array(vertex_uuid);
+            let edges_msg = encode_set_edges(
+                action_id,
+                vertex_hash,
+                edge_array[0], // west
+                edge_array[1], // east
+                edge_array[2], // north
+                edge_array[3], // south
+                edge_array[4], // up
+                edge_array[5], // down
+                0x7F, // All editable
+            );
+            write.send(AxumWsMessage::Binary(edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+        } else {
+            // Vertex was deleted - send deletion signal (all edges = 0, edit_mask = 0)
+            eprintln!("DEBUG: Sending deletion signal for vertex {} (hash={})", vertex_uuid, vertex_hash);
+            let edges_msg = encode_set_edges(action_id, vertex_hash, 0, 0, 0, 0, 0, 0, 0);
+            write.send(AxumWsMessage::Binary(edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+        }
+    }
+
+    // Resend the undo tree view with updated "Currently at" marker
+    handle_undo_landmark(state, write, action_id, "gradesta://undo").await?;
+
+    Ok(true)
 }
 
 /// Hash a string to u64

@@ -230,3 +230,48 @@ Permission bitmask (Introduce elf permissions):
 - Bit 1: write
 - Bit 2: create
 - Bit 3: delete
+
+Undo Tree (Well-Known Landmark)
+-------------------------------
+The undo system is implemented as a well-known landmark at `gradesta://undo`. This allows undo history to be navigated using the existing graph protocol - no new message types are required.
+
+Landmark URI: `gradesta://undo`
+
+Structure:
+- Each undo action is represented as a vertex
+- Layer 0: Human-readable description with timestamp
+- Layer 1: JSON metadata (action_id, timestamp, is_current, operation_type)
+- Tree structure uses existing 6-directional edges:
+  - West: Parent action (previous state)
+  - East: Child action (next state on main branch)
+  - North/South: Sibling branches (alternative timelines)
+
+Clicking a vertex in the undo tree:
+1. Server calculates path from current state to clicked state
+2. Server applies inverse operations to reach the target state
+3. If target is not on main branch, creates a new branch
+4. Server sends updated graph state to client
+5. Client navigates back to notes view
+
+Operation types stored in undo tree:
+- CreateVertex: Records vertex ID, from_vertex, direction, displaced_vertex
+- DeleteVertex: Records vertex ID, snapshot path (full vertex content), connected edges
+- SetVertexLabel: Records vertex ID, layer, old content snapshot path, old MIME type
+- SetEdges: Records vertex ID, old edge state [west, east, north, south, up, down]
+
+Storage layout:
+```
+.gradesta-notes/
+  index.toml                    # Current graph state
+  undo.toml                     # Undo tree metadata
+  undo-snapshots/
+    {action_id}_vertex.toml     # Deleted vertex snapshots
+    {action_id}_layer{n}.bin    # Content snapshots for restoration
+```
+
+History retention: Forever (all history kept indefinitely).
+
+Browser integration:
+- `Ctrl+Z` or `u` key: Navigate to undo tree view
+- `Escape`: Return from undo tree to previous position
+- Click any vertex in undo tree to restore that state

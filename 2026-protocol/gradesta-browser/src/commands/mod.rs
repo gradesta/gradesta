@@ -97,6 +97,10 @@ pub enum Command {
     GlobalToggleIdentityPanel,
 
     // === Graph Context Commands ===
+    /// Show the undo tree for navigation
+    GraphShowUndoTree,
+    /// Return from undo tree to previous position
+    GraphReturnFromUndoTree,
     /// Navigate north in the graph
     GraphNavigateNorth,
     /// Navigate south in the graph
@@ -262,6 +266,8 @@ impl Command {
             Command::GlobalToggleDebugPanel => "global.toggle_debug_panel",
             Command::GlobalToggleIdentityPanel => "global.toggle_identity_panel",
             // Graph
+            Command::GraphShowUndoTree => "graph.show_undo_tree",
+            Command::GraphReturnFromUndoTree => "graph.return_from_undo_tree",
             Command::GraphNavigateNorth => "graph.navigate_north",
             Command::GraphNavigateSouth => "graph.navigate_south",
             Command::GraphNavigateEast => "graph.navigate_east",
@@ -359,6 +365,8 @@ impl Command {
             "global.toggle_debug_panel" => Some(Command::GlobalToggleDebugPanel),
             "global.toggle_identity_panel" => Some(Command::GlobalToggleIdentityPanel),
             // Graph
+            "graph.show_undo_tree" => Some(Command::GraphShowUndoTree),
+            "graph.return_from_undo_tree" => Some(Command::GraphReturnFromUndoTree),
             "graph.navigate_north" => Some(Command::GraphNavigateNorth),
             "graph.navigate_south" => Some(Command::GraphNavigateSouth),
             "graph.navigate_east" => Some(Command::GraphNavigateEast),
@@ -457,6 +465,8 @@ impl Command {
             Command::GlobalToggleDebugPanel => "Toggle debug panel",
             Command::GlobalToggleIdentityPanel => "Toggle identity panel",
             // Graph
+            Command::GraphShowUndoTree => "Show undo history tree",
+            Command::GraphReturnFromUndoTree => "Return from undo tree view",
             Command::GraphNavigateNorth => "Navigate north in the graph",
             Command::GraphNavigateSouth => "Navigate south in the graph",
             Command::GraphNavigateEast => "Navigate east in the graph",
@@ -553,7 +563,9 @@ impl Command {
             | Command::GlobalToggleDebugPanel
             | Command::GlobalToggleIdentityPanel => Context::Global,
 
-            Command::GraphNavigateNorth
+            Command::GraphShowUndoTree
+            | Command::GraphReturnFromUndoTree
+            | Command::GraphNavigateNorth
             | Command::GraphNavigateSouth
             | Command::GraphNavigateEast
             | Command::GraphNavigateWest
@@ -650,6 +662,8 @@ impl Command {
             Command::GlobalToggleDebugPanel,
             Command::GlobalToggleIdentityPanel,
             // Graph
+            Command::GraphShowUndoTree,
+            Command::GraphReturnFromUndoTree,
             Command::GraphNavigateNorth,
             Command::GraphNavigateSouth,
             Command::GraphNavigateEast,
@@ -774,6 +788,10 @@ impl Command {
     /// Used by the LLM voice command system for better recognition
     pub fn voice_phrases(&self) -> &'static [&'static str] {
         match self {
+            // Undo navigation
+            Command::GraphShowUndoTree => &["show undo", "undo tree", "undo history", "show history"],
+            Command::GraphReturnFromUndoTree => &["return", "go back", "exit undo", "leave undo"],
+
             // Navigation
             Command::GraphNavigateNorth => &["go north", "up", "move up", "north"],
             Command::GraphNavigateSouth => &["go south", "down", "move down", "south"],

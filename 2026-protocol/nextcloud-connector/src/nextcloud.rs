@@ -74,6 +74,7 @@ impl NextcloudClient {
         }
 
         let url = self.webdav_url(path);
+        eprintln!("DEBUG: WebDAV PUT {} ({} bytes)", url, content.len());
         let response = self
             .client
             .put(&url)
@@ -83,8 +84,10 @@ impl NextcloudClient {
             .await
             .context("WebDAV PUT failed")?;
 
-        if !response.status().is_success() && response.status().as_u16() != 201 && response.status().as_u16() != 204 {
-            return Err(anyhow!("WebDAV upload failed: {}", response.status()));
+        let status = response.status();
+        eprintln!("DEBUG: WebDAV PUT response: {}", status);
+        if !status.is_success() && status.as_u16() != 201 && status.as_u16() != 204 {
+            return Err(anyhow!("WebDAV upload failed: {}", status));
         }
 
         Ok(())
@@ -215,6 +218,7 @@ impl NextcloudClient {
     /// Check if a file exists
     pub async fn exists(&self, path: &str) -> bool {
         let url = self.webdav_url(path);
+        eprintln!("DEBUG: WebDAV HEAD {} (exists check)", url);
         if let Ok(response) = self
             .client
             .head(&url)
@@ -222,8 +226,11 @@ impl NextcloudClient {
             .send()
             .await
         {
-            response.status().is_success()
+            let exists = response.status().is_success();
+            eprintln!("DEBUG: WebDAV HEAD response: {} (exists={})", response.status(), exists);
+            exists
         } else {
+            eprintln!("DEBUG: WebDAV HEAD failed (exists=false)");
             false
         }
     }

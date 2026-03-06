@@ -635,6 +635,11 @@ pub struct AppState {
     pub debug_panel_selected: usize,
     /// Selected index in identity panel (for gamepad navigation)
     pub identity_panel_selected: usize,
+    // Undo navigation state
+    /// Position saved before entering undo tree view (landmark, vertex)
+    pub pre_undo_position: Option<(String, Option<u64>)>,
+    /// Whether we're currently viewing the undo tree
+    pub viewing_undo_tree: bool,
 }
 
 /// A generated image waiting to be inserted into a cell
@@ -834,6 +839,8 @@ impl Default for AppState {
             nav_panel_section: 0,
             debug_panel_selected: 0,
             identity_panel_selected: 0,
+            pre_undo_position: None,
+            viewing_undo_tree: false,
         }
     }
 }
