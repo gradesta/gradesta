@@ -14,7 +14,11 @@ mod protocol;
 mod router;
 mod storage;
 mod sync_worker;
+mod webdav;
 mod webdav_mount;
+
+#[cfg(test)]
+mod tests;
 
 use anyhow::{anyhow, Result};
 use axum::{

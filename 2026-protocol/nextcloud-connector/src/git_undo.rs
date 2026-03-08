@@ -532,8 +532,16 @@ impl GitUndoRepo {
                 .ok_or_else(|| anyhow!("HEAD has no target"))?;
             let commit = self.repo.find_commit(head_oid)?;
 
-            // Generate branch name based on timestamp
-            let branch_name = format!("undo-branch-{}", chrono::Utc::now().timestamp());
+            // Generate branch name based on timestamp (milliseconds for uniqueness)
+            let base_timestamp = chrono::Utc::now().timestamp_millis();
+            let mut branch_name = format!("undo-branch-{}", base_timestamp);
+
+            // If branch already exists, add a counter suffix
+            let mut counter = 0;
+            while self.repo.find_branch(&branch_name, BranchType::Local).is_ok() {
+                counter += 1;
+                branch_name = format!("undo-branch-{}-{}", base_timestamp, counter);
+            }
 
             // Create the branch
             self.repo.branch(&branch_name, &commit, false)?;

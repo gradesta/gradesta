@@ -1,10 +1,13 @@
 //! Nextcloud Login Flow v2, WebDAV, and CalDAV client
 
 use anyhow::{anyhow, Context, Result};
+use async_trait::async_trait;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use reqwest::Client;
 use serde::Deserialize;
 use std::time::Duration;
+
+use crate::webdav::WebDavClient;
 
 /// Login Flow v2 initial response
 #[derive(Debug, Deserialize)]
@@ -507,6 +510,34 @@ pub struct FileInfo {
     pub is_directory: bool,
     pub size: u64,
     pub content_type: Option<String>,
+}
+
+// Implement WebDavClient trait for NextcloudClient
+#[async_trait]
+impl WebDavClient for NextcloudClient {
+    async fn upload(&self, path: &str, content: &[u8]) -> Result<()> {
+        NextcloudClient::upload(self, path, content).await
+    }
+
+    async fn download(&self, path: &str) -> Result<Vec<u8>> {
+        NextcloudClient::download(self, path).await
+    }
+
+    async fn delete(&self, path: &str) -> Result<()> {
+        NextcloudClient::delete(self, path).await
+    }
+
+    async fn exists(&self, path: &str) -> bool {
+        NextcloudClient::exists(self, path).await
+    }
+
+    async fn mkdir(&self, path: &str) -> Result<()> {
+        NextcloudClient::mkdir(self, path).await
+    }
+
+    async fn list_directory(&self, path: &str) -> Result<Vec<FileInfo>> {
+        NextcloudClient::list_directory(self, path).await
+    }
 }
 
 /// Information about a calendar

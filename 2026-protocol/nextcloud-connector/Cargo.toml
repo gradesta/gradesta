@@ -67,3 +67,10 @@ quick-xml = { version = "0.31", features = ["serialize"] }
 
 # CLI argument parsing
 clap = { version = "4", features = ["derive"] }
+
+# Async traits
+async-trait = "0.1"
+
+[dev-dependencies]
+# Temp directories for tests
+tempfile = "3"
