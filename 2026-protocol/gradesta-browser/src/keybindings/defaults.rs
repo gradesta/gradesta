@@ -103,7 +103,7 @@ static DEFAULTS: &[DefaultBinding] = &[
     DefaultBinding {
         command: Command::GlobalOpenCommandBar,
         context: Context::Global,
-        bindings: &[(KeyCode::Colon, NONE)],
+        bindings: &[(KeyCode::Colon, SHIFT)],  // Colon requires Shift on most keyboards
     },
     DefaultBinding {
         command: Command::GlobalOpenKeybindings,

@@ -16,7 +16,7 @@ use crate::graph::GraphState;
 use crate::media::MediaCache;
 use crate::network::{WsCommand, WsCommandTx};
 use crate::sidebar::SidebarMode;
-use crate::state::{AppState, InputMode, PendingAudioCell, PendingAudioStatus, PendingVertexCreation, PlaybackBoostState};
+use crate::state::{AppState, InputMode, PendingCell, PendingCellKind, PendingAudioStatus, PendingVertexCreation, PlaybackBoostState};
 use crate::state::{EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
 use crate::state::{ZOOM_MAX, ZOOM_MIN, ZOOM_STEP};
 use crate::tts;
@@ -70,6 +70,10 @@ pub fn execute_commands(
             app_state.show_command_bar = false;
             app_state.command_bar_input.clear();
             app_state.command_bar_selected = 0;
+            app_state.command_bar_in_list = false;
+            app_state.command_bar_llm_pending = false;
+            app_state.command_bar_interpretations.clear();
+            app_state.command_bar_interpretation_selected = 0;
         }
         // Next: exit fullscreen mode
         else if app_state.sidebar.fullscreen {
@@ -324,13 +328,45 @@ pub fn execute_commands(
     }
 
     // GraphNewTextVertex - Create new text vertex in last navigation direction
+    // Creates a virtual placeholder locally and enters inline edit mode immediately
+    // The actual CreateVertex is sent when user presses Ctrl+Enter to submit
     if cmds.has(Command::GraphNewTextVertex) && app_state.input_mode == InputMode::Normal && app_state.connected {
         results.any_command_processed = true;
         let direction = app_state.last_nav_direction;
-        app_state.text_input_buffer.clear();
-        super::text_edit::reset_text_edit_state(app_state);
-        app_state.input_mode = InputMode::TextInput { direction: Some(direction) };
-        app_state.status = format!("Text input mode (new vertex {})", direction_name(direction));
+
+        if let Some(current_id) = app_state.current_vertex {
+            // Create local placeholder ID
+            let local_id = app_state.next_local_id;
+            app_state.next_local_id = app_state.next_local_id.wrapping_sub(1);
+
+            // Create virtual placeholder cell (not sent to server yet)
+            let pending_cell = PendingCell {
+                local_id,
+                direction,
+                from_vertex: current_id,
+                created_at: Instant::now(),
+                server_vertex_id: None,
+                action_id: None,
+                kind: PendingCellKind::Text,
+            };
+
+            app_state.pending_audio_cells.insert(local_id, pending_cell);
+
+            eprintln!("GraphNewTextVertex: Created text placeholder local_id={} direction={}", local_id, direction);
+
+            // Clear text buffer for editing
+            app_state.text_input_buffer.clear();
+            super::text_edit::reset_text_edit_state(app_state);
+
+            // Enter inline edit mode with the local_id
+            app_state.input_mode = InputMode::InlineEdit {
+                vertex_id: local_id, // Using local_id as the "vertex_id" for new cells
+                is_new: true,
+                submitting: false,
+            };
+
+            app_state.status = "Editing new cell (Ctrl+Enter to save, Esc to cancel)".to_string();
+        }
     }
 
     // GraphStartRecording - Push-to-talk recording
@@ -355,6 +391,10 @@ pub fn execute_commands(
         app_state.show_command_bar = true;
         app_state.command_bar_input.clear();
         app_state.command_bar_selected = 0;
+        app_state.command_bar_in_list = false;
+        app_state.command_bar_llm_pending = false;
+        app_state.command_bar_interpretations.clear();
+        app_state.command_bar_interpretation_selected = 0;
     }
 
     // GlobalOpenKeybindings - Open keybindings editor
@@ -440,13 +480,36 @@ pub fn execute_commands(
         app_state.voice_refresh_pending = true;
     }
 
-    // TextInputCancel - cancel text input mode
+    // TextInputCancel - cancel text input mode or inline edit mode
     if cmds.has(Command::TextInputCancel) {
         if let InputMode::TextInput { .. } = app_state.input_mode {
             results.any_command_processed = true;
             app_state.input_mode = InputMode::Normal;
             app_state.text_input_buffer.clear();
             app_state.status = "Text input cancelled".to_string();
+        } else if let InputMode::InlineEdit { vertex_id, is_new, submitting } = app_state.input_mode {
+            // Don't allow cancel while submitting - wait for server response
+            if submitting {
+                return results;
+            }
+            results.any_command_processed = true;
+            if is_new {
+                // For new cells, just remove the local placeholder (never sent to server)
+                app_state.pending_audio_cells.remove(&vertex_id);
+                eprintln!("InlineEdit cancel: Removed local placeholder {}", vertex_id);
+            } else {
+                // Restore original content for existing vertex
+                if let Some(original) = app_state.inline_edit_original.take() {
+                    // Restore original content to the graph (no server call needed since we never saved)
+                    if let Some(vertex) = graph.vertices.get_mut(&vertex_id) {
+                        vertex.label = original.into_bytes();
+                    }
+                }
+            }
+            app_state.input_mode = InputMode::Normal;
+            app_state.text_input_buffer.clear();
+            app_state.inline_edit_original = None;
+            app_state.status = "Edit cancelled".to_string();
         }
     }
 
@@ -523,6 +586,98 @@ pub fn execute_commands(
             }
             app_state.input_mode = InputMode::Normal;
             app_state.text_input_buffer.clear();
+        }
+        // Handle inline edit mode submission
+        else if let InputMode::InlineEdit { vertex_id, is_new, submitting } = app_state.input_mode {
+            // Don't resubmit if already submitting
+            if submitting {
+                return results;
+            }
+            let text = app_state.text_input_buffer.clone();
+            if let Some(ref tx) = ws_cmd_tx.0 {
+                if is_new {
+                    // New cell: send CreateVertex with the text content
+                    // vertex_id is actually a local_id for new cells
+                    let local_id = vertex_id;
+
+                    if let Some(placeholder) = app_state.pending_audio_cells.get(&local_id) {
+                        let direction = placeholder.direction;
+                        let from_vertex = placeholder.from_vertex;
+
+                        let dir_byte = match direction {
+                            EDGE_WEST => 0,
+                            EDGE_EAST => 1,
+                            EDGE_NORTH => 2,
+                            EDGE_SOUTH => 3,
+                            EDGE_UP => 4,
+                            EDGE_DOWN => 5,
+                            _ => 3, // default south
+                        };
+
+                        let action_id = app_state.next_action_id;
+                        app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                        let text_bytes = text.into_bytes();
+
+                        // Send CreateVertex to server
+                        let _ = tx.send(WsCommand::CreateVertex {
+                            action_id,
+                            from_vertex,
+                            direction: dir_byte,
+                            layer: 0,
+                            mime: "text/plain".to_string(),
+                            data: text_bytes.clone(),
+                        });
+
+                        // Track pending creation so we can update when server responds
+                        app_state.pending_creations.insert(action_id, PendingVertexCreation {
+                            samples: Vec::new(),
+                            sample_rate: 0,
+                            data: text_bytes,
+                            mime: "text/plain".to_string(),
+                            local_placeholder_id: Some(local_id),
+                        });
+
+                        // Update the placeholder with action_id so we can match server response
+                        if let Some(cell) = app_state.pending_audio_cells.get_mut(&local_id) {
+                            cell.action_id = Some(action_id);
+                        }
+
+                        eprintln!("InlineEdit submit: Sending CreateVertex action_id={} local_id={}", action_id, local_id);
+                        app_state.status = "Creating cell...".to_string();
+
+                        // Stay in InlineEdit mode but mark as submitting - keeps grid centered
+                        // Will switch to Normal when server responds with 202
+                        app_state.input_mode = InputMode::InlineEdit {
+                            vertex_id: local_id,
+                            is_new: true,
+                            submitting: true,
+                        };
+                        app_state.text_input_buffer.clear();
+                        return results;
+                    }
+                } else {
+                    // Existing cell: send SetVertexLabel
+                    let action_id = app_state.next_action_id;
+                    app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                    let text_bytes = text.into_bytes();
+                    let _ = tx.send(WsCommand::SetVertexLabel {
+                        action_id,
+                        vertex_id,
+                        layer: 0,
+                        mime: "text/plain".to_string(),
+                        data: text_bytes.clone(),
+                    });
+                    // Update local graph state optimistically
+                    if let Some(vertex) = graph.vertices.get_mut(&vertex_id) {
+                        vertex.label = text_bytes;
+                    }
+                    app_state.status = "Saved".to_string();
+                }
+            }
+            // For existing cells or fallback, switch to normal immediately
+            app_state.input_mode = InputMode::Normal;
+            app_state.text_input_buffer.clear();
+            app_state.inline_edit_original = None;
         }
     }
 
@@ -708,7 +863,7 @@ pub fn finalize_recording(
             .pending_audio_cells
             .iter()
             .find(|(_, cell)| {
-                cell.status == PendingAudioStatus::Recording && cell.direction == direction
+                cell.is_recording() && cell.direction == direction
             })
             .map(|(id, _)| *id);
 
@@ -722,9 +877,9 @@ pub fn finalize_recording(
 
                 // Update existing placeholder cell
                 if let Some(cell) = app_state.pending_audio_cells.get_mut(&local_id) {
-                    cell.status = PendingAudioStatus::Encoding;
-                    cell.waveform = waveform;
-                    cell.current_audio_level = 0.0;
+                    cell.set_audio_status(PendingAudioStatus::Encoding);
+                    cell.set_waveform(waveform);
+                    cell.set_audio_level(0.0);
                 }
 
                 app_state.status = format!("Recording saved ({:.1}s) - encoding...", duration_secs);
@@ -993,9 +1148,16 @@ fn execute_edit_text(app_state: &mut AppState, graph: &GraphState) {
                 app_state.text_input_buffer.clear();
             }
         }
+        // Save original content for restore on cancel
+        app_state.inline_edit_original = Some(app_state.text_input_buffer.clone());
         super::text_edit::reset_text_edit_state(app_state);
-        app_state.input_mode = InputMode::TextInput { direction: None };
-        app_state.status = "Text input mode (editing current vertex)".to_string();
+        // Use inline edit mode instead of sidebar
+        app_state.input_mode = InputMode::InlineEdit {
+            vertex_id: current_id,
+            is_new: false, // Existing vertex
+            submitting: false,
+        };
+        app_state.status = "Editing cell (Ctrl+Enter to save, Esc to cancel)".to_string();
     }
 }
 
@@ -1085,16 +1247,18 @@ fn execute_start_recording(
         let local_id = app_state.next_local_id;
         app_state.next_local_id = app_state.next_local_id.wrapping_sub(1);
 
-        let pending_cell = PendingAudioCell {
+        let pending_cell = PendingCell {
             local_id,
             direction,
             from_vertex: current_id,
             created_at: Instant::now(),
-            status: PendingAudioStatus::Recording,
-            waveform: Vec::new(),
-            current_audio_level: 0.0,
             server_vertex_id: None,
             action_id: None,
+            kind: PendingCellKind::Audio {
+                status: PendingAudioStatus::Recording,
+                waveform: Vec::new(),
+                current_audio_level: 0.0,
+            },
         };
 
         app_state.pending_audio_cells.insert(local_id, pending_cell);
@@ -1475,6 +1639,19 @@ pub fn process_voice_command_events(
                 eprintln!("LLM failed: {}", error);
                 app_state.input_mode = InputMode::Normal;
                 app_state.status = format!("Interpretation failed: {}", error);
+            }
+
+            // Command bar LLM events
+            VoiceCommandEvent::CommandBarLlmResponse { interpretations } => {
+                eprintln!("Command bar LLM response: {} interpretations", interpretations.len());
+                app_state.command_bar_llm_pending = false;
+                app_state.command_bar_interpretations = interpretations;
+                app_state.command_bar_interpretation_selected = 0;
+            }
+            VoiceCommandEvent::CommandBarLlmFailed { error } => {
+                eprintln!("Command bar LLM failed: {}", error);
+                app_state.command_bar_llm_pending = false;
+                app_state.status = format!("LLM error: {}", error);
             }
         }
     }

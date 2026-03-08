@@ -297,10 +297,24 @@ pub enum InputMode {
     Normal,
     /// Editing text; direction indicates where to create new vertex (None = edit current)
     TextInput { direction: Option<usize> },
+    /// Inline editing text directly in a cell (not in sidebar)
+    /// vertex_id: The vertex being edited
+    /// is_new: If true, cancellation deletes the vertex
+    /// submitting: If true, we're waiting for server confirmation (don't show edit UI)
+    InlineEdit { vertex_id: u64, is_new: bool, submitting: bool },
     /// Recording audio to create new vertex in the given direction
     Recording { direction: usize },
     /// Voice command mode (L2+R2 held on gamepad)
     VoiceCommand(VoiceCommandState),
+}
+
+/// Pending inline edit creation - waiting for server acknowledgment
+#[derive(Clone, Debug)]
+pub struct PendingInlineEdit {
+    /// Action ID of the CreateVertex request
+    pub action_id: u64,
+    /// Direction the vertex was created in
+    pub direction: usize,
 }
 
 /// Pending vertex creation data - waiting for server acknowledgment
@@ -314,6 +328,22 @@ pub struct PendingVertexCreation {
     pub mime: String,
     /// Local placeholder ID (if this was an async audio cell)
     pub local_placeholder_id: Option<u64>,
+}
+
+/// Kind-specific data for pending cells
+#[derive(Clone, Debug)]
+pub enum PendingCellKind {
+    /// Audio recording/processing
+    Audio {
+        /// Current processing status
+        status: PendingAudioStatus,
+        /// Waveform preview data (downsampled amplitudes for visualization)
+        waveform: Vec<f32>,
+        /// Current audio level (0.0-1.0) for live recording visualization
+        current_audio_level: f32,
+    },
+    /// Text being edited inline
+    Text,
 }
 
 /// Status of a pending audio cell being processed in the background
@@ -331,28 +361,84 @@ pub enum PendingAudioStatus {
     Complete,
 }
 
-/// A pending audio cell shown as a placeholder while processing happens in background
+/// A pending cell shown as a placeholder (audio recording or text editing)
 #[derive(Clone, Debug)]
-pub struct PendingAudioCell {
+pub struct PendingCell {
     /// Temporary local ID (high bits set to distinguish from server IDs)
     pub local_id: u64,
     /// Direction from current vertex where this cell will be created
     pub direction: usize,
     /// Vertex ID this cell is connected from
     pub from_vertex: u64,
-    /// When recording started
+    /// When this pending cell was created
     pub created_at: Instant,
-    /// Current processing status
-    pub status: PendingAudioStatus,
-    /// Waveform preview data (downsampled amplitudes for visualization)
-    pub waveform: Vec<f32>,
-    /// Current audio level (0.0-1.0) for live recording visualization
-    pub current_audio_level: f32,
     /// Server-assigned vertex ID once creation is acknowledged (None until then)
     pub server_vertex_id: Option<u64>,
     /// Action ID used for CreateVertex (to match Log response)
     pub action_id: Option<u64>,
+    /// Kind-specific data
+    pub kind: PendingCellKind,
 }
+
+impl PendingCell {
+    /// Get the audio status if this is an audio cell
+    pub fn audio_status(&self) -> Option<PendingAudioStatus> {
+        match &self.kind {
+            PendingCellKind::Audio { status, .. } => Some(*status),
+            _ => None,
+        }
+    }
+
+    /// Set the audio status (no-op if not an audio cell)
+    pub fn set_audio_status(&mut self, new_status: PendingAudioStatus) {
+        if let PendingCellKind::Audio { status, .. } = &mut self.kind {
+            *status = new_status;
+        }
+    }
+
+    /// Get current audio level if this is an audio cell
+    pub fn audio_level(&self) -> f32 {
+        match &self.kind {
+            PendingCellKind::Audio { current_audio_level, .. } => *current_audio_level,
+            _ => 0.0,
+        }
+    }
+
+    /// Set current audio level (no-op if not an audio cell)
+    pub fn set_audio_level(&mut self, level: f32) {
+        if let PendingCellKind::Audio { current_audio_level, .. } = &mut self.kind {
+            *current_audio_level = level;
+        }
+    }
+
+    /// Get waveform data if this is an audio cell
+    pub fn waveform(&self) -> Option<&Vec<f32>> {
+        match &self.kind {
+            PendingCellKind::Audio { waveform, .. } => Some(waveform),
+            _ => None,
+        }
+    }
+
+    /// Set waveform data (no-op if not an audio cell)
+    pub fn set_waveform(&mut self, new_waveform: Vec<f32>) {
+        if let PendingCellKind::Audio { waveform, .. } = &mut self.kind {
+            *waveform = new_waveform;
+        }
+    }
+
+    /// Check if this is a recording audio cell
+    pub fn is_recording(&self) -> bool {
+        matches!(&self.kind, PendingCellKind::Audio { status: PendingAudioStatus::Recording, .. })
+    }
+
+    /// Check if this is a text cell
+    pub fn is_text(&self) -> bool {
+        matches!(&self.kind, PendingCellKind::Text)
+    }
+}
+
+/// Backwards compatibility alias
+pub type PendingAudioCell = PendingCell;
 
 /// A placeholder cell shown while a portal/landmark is loading
 #[derive(Clone, Debug)]
@@ -549,6 +635,8 @@ pub struct AppState {
     pub text_undo_stack: Vec<String>,
     /// Redo stack for text input
     pub text_redo_stack: Vec<String>,
+    /// Original content before inline edit (for restore on cancel)
+    pub inline_edit_original: Option<String>,
     // Audio recording state
     pub audio_samples: Arc<Mutex<Vec<f32>>>,
     pub recording_start: Option<Instant>,
@@ -560,6 +648,8 @@ pub struct AppState {
     pub pending_creations: HashMap<u64, PendingVertexCreation>,
     /// Pending audio cells being processed in background: maps local_id -> cell
     pub pending_audio_cells: HashMap<u64, PendingAudioCell>,
+    /// Pending inline edit - waiting for server to create the vertex
+    pub pending_inline_edit: Option<PendingInlineEdit>,
     /// Currently recording placeholder ID (selected/focused during recording)
     pub recording_placeholder_id: Option<u64>,
     /// Skip auto-play for this vertex (set after recording to avoid immediate playback)
@@ -640,6 +730,16 @@ pub struct AppState {
     pub pre_undo_position: Option<(String, Option<u64>)>,
     /// Whether we're currently viewing the undo tree
     pub viewing_undo_tree: bool,
+
+    // Command bar LLM state
+    /// True while waiting for LLM response
+    pub command_bar_llm_pending: bool,
+    /// LLM interpretations (from voice_command::AgentInterpretation)
+    pub command_bar_interpretations: Vec<crate::voice_command::AgentInterpretation>,
+    /// Selected interpretation index
+    pub command_bar_interpretation_selected: usize,
+    /// True when navigating the filtered command list (up arrow pressed)
+    pub command_bar_in_list: bool,
 }
 
 /// A generated image waiting to be inserted into a cell
@@ -794,12 +894,14 @@ impl Default for AppState {
             text_clipboard: String::new(),
             text_undo_stack: Vec::new(),
             text_redo_stack: Vec::new(),
+            inline_edit_original: None,
             audio_samples: Arc::new(Mutex::new(Vec::new())),
             recording_start: None,
             next_action_id: u64::MAX,
             next_local_id: u64::MAX - 1_000_000, // Reserve top range for action IDs
             pending_creations: HashMap::new(),
             pending_audio_cells: HashMap::new(),
+            pending_inline_edit: None,
             recording_placeholder_id: None,
             skip_autoplay_vertex: None,
             last_nav_direction: EDGE_SOUTH, // Default to south
@@ -841,6 +943,10 @@ impl Default for AppState {
             identity_panel_selected: 0,
             pre_undo_position: None,
             viewing_undo_tree: false,
+            command_bar_llm_pending: false,
+            command_bar_interpretations: Vec::new(),
+            command_bar_interpretation_selected: 0,
+            command_bar_in_list: false,
         }
     }
 }

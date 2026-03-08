@@ -61,8 +61,8 @@ pub struct TextEditResult {
 /// This should be called BEFORE rendering any TextEdit widgets.
 /// It replaces egui's broken clipboard handling with arboard.
 pub fn consume_text_edit_events(ctx: &egui::Context, app_state: &AppState) {
-    // Handle in any text input context (TextInput mode or URL bar focus)
-    let in_text_context = matches!(app_state.input_mode, InputMode::TextInput { .. })
+    // Handle in any text input context (TextInput mode, InlineEdit mode, or URL bar focus)
+    let in_text_context = matches!(app_state.input_mode, InputMode::TextInput { .. } | InputMode::InlineEdit { .. })
         || app_state.url_bar_has_focus
         || app_state.focus_url_bar_next_frame;
 
@@ -256,8 +256,8 @@ pub fn process_text_edit_commands(
 ) -> TextEditResult {
     let mut result = TextEditResult::default();
 
-    // Only process in TextInput mode
-    if !matches!(app_state.input_mode, InputMode::TextInput { .. }) {
+    // Only process in TextInput or InlineEdit mode
+    if !matches!(app_state.input_mode, InputMode::TextInput { .. } | InputMode::InlineEdit { .. }) {
         return result;
     }
 

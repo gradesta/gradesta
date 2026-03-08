@@ -58,6 +58,7 @@ pub struct ElfHttpRx(pub Receiver<elf_http::ElfHttpEvent>);
 fn current_context(app_state: &AppState) -> commands::Context {
     match app_state.input_mode {
         InputMode::TextInput { .. } => commands::Context::TextInput,
+        InputMode::InlineEdit { .. } => commands::Context::TextInput, // Inline edit uses text input context
         InputMode::Recording { .. } => commands::Context::Recording,
         InputMode::VoiceCommand(_) => commands::Context::Global, // Voice command has its own handling
         InputMode::Normal => {
@@ -1022,8 +1023,54 @@ fn ui_system(
     });
 
     // Command bar overlay (vim-style ':' command)
-    if let ui::CommandBarAction::Execute(cmd) = ui::render_command_bar(ctx, &mut app_state) {
-        ui::execute_command_bar_command(cmd, &mut app_state);
+    match ui::render_command_bar(ctx, &mut app_state, &voice_channel, &voice_config.0) {
+        ui::CommandBarAction::Execute(cmd) => {
+            // Execute command through the standard command execution path
+            let mut cmds = ui::CapturedCommands::default();
+            cmds.add(cmd);
+            ui::execute_commands(
+                &cmds,
+                &mut app_state,
+                &mut graph,
+                &ws_cmd_tx,
+                &mut media_cache,
+                &audio_signal,
+                &playback_state,
+                &mut boost_state,
+                &voice_channel,
+                ctx,
+            );
+        }
+        ui::CommandBarAction::ExecuteScript(action) => {
+            // Execute LLM-generated script through voice action path
+            // First set up a temporary Selecting state for execute_voice_action
+            use voice_command::{AgentInterpretation, VoiceCommandState};
+
+            let interp = AgentInterpretation {
+                action: action.clone(),
+                confidence: 1.0,
+                explanation: "Command bar LLM action".to_string(),
+            };
+
+            app_state.input_mode = InputMode::VoiceCommand(VoiceCommandState::Selecting {
+                transcript: String::new(),
+                interpretations: vec![interp],
+                selected: 0,
+            });
+
+            ui::execute_voice_action(
+                &mut app_state,
+                &mut graph,
+                &ws_cmd_tx,
+                &mut media_cache,
+                &audio_signal,
+                &playback_state,
+                &mut boost_state,
+                &voice_channel,
+                ctx,
+            );
+        }
+        ui::CommandBarAction::None => {}
     }
 
     // Right panel for content - renders based on sidebar mode
@@ -1293,7 +1340,91 @@ fn ui_system(
     ui::process_identification(ctx, &mut app_state, &ws_cmd_tx, &cmds);
 
     // Central panel showing grid view
-    ui::render_grid_view(ctx, &mut app_state, &graph, &mut media_cache, &ws_cmd_tx);
+    let grid_action = ui::render_grid_view(ctx, &mut app_state, &graph, &mut media_cache, &ws_cmd_tx);
+
+    // Handle grid actions
+    match grid_action {
+        ui::GridAction::SaveInlineEdit { vertex_id, content } => {
+            // Check if this is a new cell (placeholder) or existing cell
+            if let InputMode::InlineEdit { is_new, .. } = app_state.input_mode {
+                if is_new {
+                    // New cell: send CreateVertex with the text content
+                    // vertex_id is actually a local_id for new cells
+                    let local_id = vertex_id;
+
+                    if let Some(placeholder) = app_state.pending_audio_cells.get(&local_id) {
+                        if let Some(ref tx) = ws_cmd_tx.0 {
+                            let direction = placeholder.direction;
+                            let from_vertex = placeholder.from_vertex;
+
+                            let dir_byte = match direction {
+                                state::EDGE_WEST => 0,
+                                state::EDGE_EAST => 1,
+                                state::EDGE_NORTH => 2,
+                                state::EDGE_SOUTH => 3,
+                                state::EDGE_UP => 4,
+                                state::EDGE_DOWN => 5,
+                                _ => 3, // default south
+                            };
+
+                            let action_id = app_state.next_action_id;
+                            app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                            let text_bytes = content.into_bytes();
+
+                            // Send CreateVertex to server
+                            let _ = tx.send(WsCommand::CreateVertex {
+                                action_id,
+                                from_vertex,
+                                direction: dir_byte,
+                                layer: 0,
+                                mime: "text/plain".to_string(),
+                                data: text_bytes.clone(),
+                            });
+
+                            // Track pending creation
+                            app_state.pending_creations.insert(action_id, state::PendingVertexCreation {
+                                samples: Vec::new(),
+                                sample_rate: 0,
+                                data: text_bytes,
+                                mime: "text/plain".to_string(),
+                                local_placeholder_id: Some(local_id),
+                            });
+
+                            // Update the placeholder with action_id
+                            if let Some(cell) = app_state.pending_audio_cells.get_mut(&local_id) {
+                                cell.action_id = Some(action_id);
+                            }
+
+                            app_state.status = "Creating cell...".to_string();
+                        }
+                    }
+                } else {
+                    // Existing cell: send SetVertexLabel
+                    if let Some(ref tx) = ws_cmd_tx.0 {
+                        let action_id = app_state.next_action_id;
+                        app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                        let text_bytes = content.into_bytes();
+                        let _ = tx.send(WsCommand::SetVertexLabel {
+                            action_id,
+                            vertex_id,
+                            layer: 0,
+                            mime: "text/plain".to_string(),
+                            data: text_bytes.clone(),
+                        });
+                        // Update local graph state optimistically
+                        if let Some(vertex) = graph.vertices.get_mut(&vertex_id) {
+                            vertex.label = text_bytes;
+                        }
+                        app_state.status = "Saved".to_string();
+                    }
+                }
+            }
+            app_state.input_mode = InputMode::Normal;
+            app_state.text_input_buffer.clear();
+            app_state.inline_edit_original = None;
+        }
+        ui::GridAction::ClickVertex | ui::GridAction::None => {}
+    }
 
     // Voice command overlay (rendered on top of everything except gamepad help)
     if let InputMode::VoiceCommand(ref state) = app_state.input_mode {
@@ -1495,8 +1626,8 @@ fn handle_navigation(
         return;
     }
 
-    // Don't handle navigation when in text input mode
-    if matches!(app_state.input_mode, InputMode::TextInput { .. }) {
+    // Don't handle navigation when in text input or inline edit mode
+    if matches!(app_state.input_mode, InputMode::TextInput { .. } | InputMode::InlineEdit { .. }) {
         return;
     }
 

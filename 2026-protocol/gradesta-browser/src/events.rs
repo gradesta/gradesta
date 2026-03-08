@@ -11,7 +11,7 @@ use crate::elf_http;
 use crate::graph::{GraphState, LayerContent};
 use crate::media::{is_image_data, MediaCache};
 use crate::network::{NetEventsTx, NetRx, ServerEvent, WsCommand, WsCommandTx};
-use crate::state::{AppState, PendingAudioStatus, PendingIdentification, PendingVertexCreation};
+use crate::state::{AppState, InputMode, PendingAudioStatus, PendingIdentification, PendingVertexCreation};
 use crate::video_player::VideoPlayer;
 use crate::whisper;
 use crate::ElfHttpTx;
@@ -288,25 +288,16 @@ fn handle_log(
 ) {
     app_state.status = format!("Server [{}]: {}", status, message);
     if status == 200 {
-        eprintln!("Edit acknowledged: action={} vertex={} status={}", action_id, vertex_id, status);
-
         if let Some(pending) = app_state.pending_creations.remove(&action_id) {
             // If this was an async audio recording, update/remove the placeholder cell
             if let Some(local_id) = pending.local_placeholder_id {
-                eprintln!(
-                    "Mapping local_id={} to server vertex_id={}",
-                    local_id, vertex_id
-                );
-
                 // Update pending cell status and server ID
                 if let Some(pending_cell) = app_state.pending_audio_cells.get_mut(&local_id) {
                     pending_cell.server_vertex_id = Some(vertex_id);
-                    pending_cell.status = PendingAudioStatus::Transcribing;
+                    pending_cell.set_audio_status(PendingAudioStatus::Transcribing);
                 }
 
-                // The placeholder cell will be removed after transcription completes
-                // or we can remove it now since the real vertex will appear
-                // Let's remove it immediately since the server vertex is now created
+                // Remove placeholder since the server vertex is now created
                 app_state.pending_audio_cells.remove(&local_id);
 
                 // Clear recording_placeholder_id if it was pointing to this placeholder
@@ -320,7 +311,6 @@ fn handle_log(
                     if current != vertex_id {
                         app_state.history.push(current);
                         app_state.current_vertex = Some(vertex_id);
-                        eprintln!("Navigating to newly created vertex {}", vertex_id);
                     }
                 } else {
                     app_state.current_vertex = Some(vertex_id);
@@ -364,10 +354,38 @@ fn handle_log(
                 });
             }
         }
-    } else {
-        eprintln!("Edit failed: action={} vertex={} status={} msg={}", action_id, vertex_id, status, message);
+    } else if status == 202 {
+        // 202 Accepted - request is being processed
+        // For text cells, navigate IMMEDIATELY on 202 (edges are already set up by now)
+        // For audio cells, we'll wait for 200 to handle transcription
+        if let Some(pending) = app_state.pending_creations.get(&action_id) {
+            if !pending.mime.starts_with("audio/") && vertex_id != 0 {
+                // Text cell - navigate immediately and clean up
+                // Clean up the local placeholder
+                if let Some(local_id) = pending.local_placeholder_id {
+                    app_state.pending_audio_cells.remove(&local_id);
+                }
 
-        // If this was an async audio recording that failed, remove the placeholder
+                // Switch from submitting mode to Normal
+                if let InputMode::InlineEdit { submitting: true, .. } = app_state.input_mode {
+                    app_state.input_mode = InputMode::Normal;
+                }
+
+                // Navigate to the new vertex
+                if let Some(current) = app_state.current_vertex {
+                    if current != vertex_id {
+                        app_state.history.push(current);
+                        app_state.current_vertex = Some(vertex_id);
+                    }
+                } else {
+                    app_state.current_vertex = Some(vertex_id);
+                }
+            }
+        }
+        // Don't remove pending_creation - wait for the final 200 status for cleanup
+    } else {
+
+        // If this was an async recording or text cell that failed, remove the placeholder
         if let Some(pending) = app_state.pending_creations.remove(&action_id) {
             if let Some(local_id) = pending.local_placeholder_id {
                 app_state.pending_audio_cells.remove(&local_id);
@@ -375,7 +393,11 @@ fn handle_log(
                 if app_state.recording_placeholder_id == Some(local_id) {
                     app_state.recording_placeholder_id = None;
                 }
-                app_state.status = format!("Audio upload failed: {}", message);
+                if pending.mime.starts_with("audio/") {
+                    app_state.status = format!("Audio upload failed: {}", message);
+                } else {
+                    app_state.status = format!("Failed to create cell: {}", message);
+                }
             }
         }
     }
@@ -546,7 +568,7 @@ pub fn update_recording_audio_levels(
     let samples_arc = app_state.audio_samples.clone();
 
     for cell in app_state.pending_audio_cells.values_mut() {
-        if cell.status == PendingAudioStatus::Recording {
+        if cell.is_recording() {
             // Calculate RMS of recent samples (last ~100ms worth at 44100Hz = ~4410 samples)
             if let Ok(samples) = samples_arc.lock() {
                 let recent_count = 4410.min(samples.len());
@@ -555,7 +577,7 @@ pub fn update_recording_audio_levels(
                     let sum_sq: f32 = samples[start..].iter().map(|s| s * s).sum();
                     let rms = (sum_sq / recent_count as f32).sqrt();
                     // Normalize to 0-1 range (typical voice RMS is 0.01-0.3)
-                    cell.current_audio_level = (rms * 5.0).min(1.0);
+                    cell.set_audio_level((rms * 5.0).min(1.0));
                 }
             }
         }
@@ -572,7 +594,7 @@ pub fn process_audio_results(
         match result {
             AudioProcessingResult::StatusUpdate { local_id, status } => {
                 if let Some(pending) = app_state.pending_audio_cells.get_mut(&local_id) {
-                    pending.status = status;
+                    pending.set_audio_status(status);
                 }
             }
             AudioProcessingResult::Encoded {
@@ -593,7 +615,7 @@ pub fn process_audio_results(
                 if let Some(pending_cell) = pending_info {
                     // Update status to uploading
                     if let Some(cell) = app_state.pending_audio_cells.get_mut(&local_id) {
-                        cell.status = PendingAudioStatus::Uploading;
+                        cell.set_audio_status(PendingAudioStatus::Uploading);
                     }
 
                     // Allocate action_id for the CreateVertex

@@ -16,12 +16,12 @@ mod text_edit;
 pub mod url_utils;
 mod voice_command_overlay;
 
-pub use command_bar::{execute_command_bar_command, render_command_bar, CommandBarAction};
+pub use command_bar::{render_command_bar, CommandBarAction};
 pub use commands::{execute_commands, execute_voice_action, finalize_recording, finalize_voice_recording, grant_voice_permission, process_voice_command_events};
 pub use context_menu::render_context_menu;
 pub use fullscreen::{render_fullscreen_content, FullscreenAction};
 pub use gamepad_help::render_gamepad_help_overlay;
-pub use grid::render_grid_view;
+pub use grid::{render_grid_view, GridAction};
 pub use input::{capture_context_menu_gamepad, capture_gamepad_commands, capture_keyboard_commands, capture_sidebar_gamepad, capture_text_input_gamepad, capture_voice_command_gamepad, log_triggered_commands_to_debug, CapturedCommands, SidebarGamepadInput};
 pub use processing::{process_identification, process_recording_cancel, process_text_input};
 pub use sidebar_content::{render_sidebar_content, SidebarContentAction};

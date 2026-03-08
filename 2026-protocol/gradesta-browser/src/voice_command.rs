@@ -270,6 +270,14 @@ pub enum VoiceCommandEvent {
     LlmRequestsView { targets: Vec<String>, reason: String },
     /// LLM request failed
     LlmFailed { error: String },
+    /// Command bar LLM response
+    CommandBarLlmResponse {
+        interpretations: Vec<AgentInterpretation>,
+    },
+    /// Command bar LLM failed
+    CommandBarLlmFailed {
+        error: String,
+    },
 }
 
 /// Channel for voice command async events
@@ -1291,6 +1299,42 @@ enum LlmResult {
         generated_image: Option<GeneratedImageData>,
     },
     RequestView { targets: Vec<String>, reason: String },
+}
+
+/// Query LLM for command bar input (natural language)
+/// This spawns a background thread and sends results via the voice command channel.
+pub fn query_llm_for_command_bar(
+    input: &str,
+    tx: Sender<VoiceCommandEvent>,
+    api_key: String,
+    model: String,
+) {
+    let input = input.to_string();
+
+    thread::spawn(move || {
+        match query_llm_sync(
+            &input,
+            "Normal",      // context
+            "text/plain",  // mime_type
+            "",            // direction (not applicable)
+            None,          // no cell context
+            &api_key,
+            &model,
+        ) {
+            Ok(LlmResult::Interpretations { interpretations, .. }) => {
+                let _ = tx.send(VoiceCommandEvent::CommandBarLlmResponse { interpretations });
+            }
+            Ok(LlmResult::RequestView { .. }) => {
+                // Command bar doesn't support permission flow - treat as error
+                let _ = tx.send(VoiceCommandEvent::CommandBarLlmFailed {
+                    error: "Command requires cell access (use voice command instead)".to_string(),
+                });
+            }
+            Err(e) => {
+                let _ = tx.send(VoiceCommandEvent::CommandBarLlmFailed { error: e });
+            }
+        }
+    });
 }
 
 fn query_llm_sync(

@@ -10,7 +10,7 @@ use crate::graph::{build_grid_view, GraphState, GridView, PlaceholderCell, Porta
 use crate::media::{is_image_data, MediaCache};
 use crate::network::{WsCommand, WsCommandTx};
 use crate::rendering::render_vertex_card;
-use crate::state::{AppState, PendingAudioStatus};
+use crate::state::{AppState, InputMode, PendingAudioStatus};
 use crate::state::{EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
 
 /// Action from grid rendering
@@ -18,10 +18,13 @@ use crate::state::{EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_W
 pub enum GridAction {
     None,
     ClickVertex,
+    /// User clicked outside the inline edit area - save changes
+    SaveInlineEdit { vertex_id: u64, content: String },
 }
 
 /// Calculate the appropriate height for a cell based on its content
 /// Uses cached textures only to avoid expensive loading during layout
+/// If inline_edit_content is provided, use that instead of vertex content for text height
 fn calculate_cell_height(
     vertex: &Vertex,
     vertex_id: u64,
@@ -29,6 +32,7 @@ fn calculate_cell_height(
     max_height: f32,
     zoom: f32,
     media_cache: &MediaCache,
+    inline_edit_content: Option<&str>,
 ) -> f32 {
     let min_height = 80.0 * zoom;
     let padding = 8.0 * zoom;
@@ -42,26 +46,32 @@ fn calculate_cell_height(
     // Count content sections (same logic as rendering.rs)
     let mut has_image = primary_is_image;
     let mut has_audio = primary_is_audio;
-    let mut has_text = primary_is_text;
+    let mut has_text = primary_is_text || inline_edit_content.is_some();
     let mut text_content: Option<String> = None;
 
-    // Check additional layers
-    for layer in vertex.layers.values() {
-        if layer.mime.starts_with("image/") || is_image_data(&layer.data) {
-            has_image = true;
-        } else if layer.mime.starts_with("audio/") {
-            has_audio = true;
-        } else if layer.mime.starts_with("text/") && !layer.mime.contains("gradesta-url") {
-            has_text = true;
-            if text_content.is_none() {
-                text_content = String::from_utf8(layer.data.clone()).ok();
+    // If inline editing, use that content for text sizing
+    if let Some(content) = inline_edit_content {
+        text_content = Some(content.to_string());
+        has_text = true;
+    } else {
+        // Check additional layers
+        for layer in vertex.layers.values() {
+            if layer.mime.starts_with("image/") || is_image_data(&layer.data) {
+                has_image = true;
+            } else if layer.mime.starts_with("audio/") {
+                has_audio = true;
+            } else if layer.mime.starts_with("text/") && !layer.mime.contains("gradesta-url") {
+                has_text = true;
+                if text_content.is_none() {
+                    text_content = String::from_utf8(layer.data.clone()).ok();
+                }
             }
         }
-    }
 
-    // For primary text content
-    if primary_is_text && text_content.is_none() {
-        text_content = String::from_utf8(vertex.label.clone()).ok();
+        // For primary text content
+        if primary_is_text && text_content.is_none() {
+            text_content = String::from_utf8(vertex.label.clone()).ok();
+        }
     }
 
     let num_sections = (has_image as usize) + (has_audio as usize) + (has_text as usize);
@@ -136,6 +146,8 @@ fn calculate_row_heights(
     max_height: f32,
     zoom: f32,
     media_cache: &MediaCache,
+    inline_edit_vertex: Option<u64>,
+    inline_edit_content: Option<&str>,
 ) -> HashMap<i32, f32> {
     let mut row_heights: HashMap<i32, f32> = HashMap::new();
     let min_height = 80.0 * zoom;
@@ -143,8 +155,26 @@ fn calculate_row_heights(
     // Find current cell's row and calculate its height
     if let Some(&(_, current_y)) = grid.positions.get(&current_vertex_id) {
         if let Some(vertex) = graph.vertices.get(&current_vertex_id) {
-            let height = calculate_cell_height(vertex, current_vertex_id, cell_width, max_height, zoom, media_cache);
+            // Check if this vertex is being inline edited
+            let inline_content = if inline_edit_vertex == Some(current_vertex_id) {
+                inline_edit_content
+            } else {
+                None
+            };
+            let height = calculate_cell_height(vertex, current_vertex_id, cell_width, max_height, zoom, media_cache, inline_content);
             row_heights.insert(current_y, height);
+        }
+    }
+
+    // If inline edit is on a different vertex, also calculate its row
+    if let Some(edit_id) = inline_edit_vertex {
+        if edit_id != current_vertex_id {
+            if let Some(&(_, edit_y)) = grid.positions.get(&edit_id) {
+                if let Some(vertex) = graph.vertices.get(&edit_id) {
+                    let height = calculate_cell_height(vertex, edit_id, cell_width, max_height, zoom, media_cache, inline_edit_content);
+                    row_heights.insert(edit_y, height);
+                }
+            }
         }
     }
 
@@ -202,8 +232,22 @@ pub fn render_grid_view(
         let max_cell_height = (available.y * 2.0 / 3.0) / zoom * zoom; // Normalize to current zoom
 
         // Calculate row heights - only current row is sized based on content
-        let effective_current_id = app_state.recording_placeholder_id.unwrap_or(current_id);
-        let row_heights = calculate_row_heights(&grid, graph, effective_current_id, cell_width, max_cell_height, zoom, media_cache);
+        // For recording, use the recording placeholder; for inline edit of new cell, use that placeholder
+        // Also keep using placeholder when submitting (waiting for server confirmation)
+        let effective_current_id = if let InputMode::InlineEdit { vertex_id, is_new: true, .. } = app_state.input_mode {
+            vertex_id // This is the local_id of the text placeholder (both editing and submitting)
+        } else {
+            app_state.recording_placeholder_id.unwrap_or(current_id)
+        };
+
+        // Get inline edit state for height calculation (skip when submitting - no edit UI shown)
+        let (inline_edit_vertex, inline_edit_content) = if let InputMode::InlineEdit { vertex_id, submitting: false, .. } = app_state.input_mode {
+            (Some(vertex_id), Some(app_state.text_input_buffer.as_str()))
+        } else {
+            (None, None)
+        };
+
+        let row_heights = calculate_row_heights(&grid, graph, effective_current_id, cell_width, max_cell_height, zoom, media_cache, inline_edit_vertex, inline_edit_content);
 
         // Helper to calculate Y position for a given row
         let row_y_position = |row: i32| -> f32 {
@@ -360,6 +404,93 @@ pub fn render_grid_view(
             );
 
             render_portal_shadow(&painter, rect, shadow, zoom, font_size, ctx);
+        }
+
+        // Render inline text edit overlay if in InlineEdit mode (but not when submitting)
+        // When submitting, the placeholder cell is still shown for centering, but we skip the edit UI
+        if let InputMode::InlineEdit { vertex_id, is_new, submitting: false } = app_state.input_mode {
+            // Find the cell position - check placeholders first for new cells, then regular positions
+            let cell_position = if is_new {
+                // For new cells, vertex_id is actually a local_id - find in placeholder_cells
+                grid.placeholder_cells.iter()
+                    .find(|p| p.local_id == vertex_id)
+                    .map(|p| p.position)
+            } else {
+                // For existing cells, look up in regular positions
+                grid.positions.get(&vertex_id).copied()
+            };
+
+            if let Some((x, y)) = cell_position {
+                let cell_x = (x - grid.min_x) as f32 * (cell_width + padding);
+                let cell_y = row_y_position(y);
+                let cell_height = row_heights.get(&y).copied().unwrap_or(80.0 * zoom);
+
+                let cell_rect = egui::Rect::from_min_size(
+                    base_pos + egui::vec2(cell_x, cell_y),
+                    egui::vec2(cell_width, cell_height),
+                );
+
+                // Calculate minimum height based on text content
+                let text_lines = app_state.text_input_buffer.lines().count().max(1);
+                let line_height = font_size * 1.4;
+                let text_height = text_lines as f32 * line_height + 16.0 * zoom; // Add padding
+                let min_edit_height = text_height.max(60.0 * zoom);
+
+                // Create the inline edit area at the cell position
+                let edit_rect = egui::Rect::from_min_size(
+                    cell_rect.min + egui::vec2(4.0 * zoom, 4.0 * zoom),
+                    egui::vec2(cell_width - 8.0 * zoom, min_edit_height.max(cell_height - 8.0 * zoom)),
+                );
+
+                // Draw background for the edit area
+                let corner_radius = 4.0 * zoom;
+                ui.painter().rect_filled(
+                    edit_rect,
+                    corner_radius,
+                    egui::Color32::from_rgb(35, 40, 50),
+                );
+                ui.painter().rect_stroke(
+                    edit_rect,
+                    corner_radius,
+                    egui::Stroke::new(2.0 * zoom, egui::Color32::from_rgb(100, 200, 255)),
+                    egui::StrokeKind::Outside,
+                );
+
+                // Create the TextEdit widget using an Area to position it
+                let text_edit_response = egui::Area::new(egui::Id::new("inline_edit"))
+                    .fixed_pos(edit_rect.min)
+                    .order(egui::Order::Foreground)
+                    .show(ctx, |ui| {
+                        ui.set_min_size(edit_rect.size());
+
+                        let response = egui::TextEdit::multiline(&mut app_state.text_input_buffer)
+                            .desired_width(edit_rect.width() - 8.0 * zoom)
+                            .font(egui::TextStyle::Monospace)
+                            .frame(false)
+                            .text_color(egui::Color32::WHITE)
+                            .show(ui);
+
+                        // Request focus on the text edit
+                        response.response.request_focus();
+
+                        response.response
+                    });
+
+                // Check for click outside the edit area to auto-save
+                if ctx.input(|i| i.pointer.any_click()) {
+                    if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
+                        // Expand the check rect slightly to give some tolerance
+                        let expanded_rect = edit_rect.expand(10.0);
+                        if !expanded_rect.contains(pos) && !text_edit_response.response.contains_pointer() {
+                            // Clicked outside - save and exit
+                            action = GridAction::SaveInlineEdit {
+                                vertex_id,
+                                content: app_state.text_input_buffer.clone(),
+                            };
+                        }
+                    }
+                }
+            }
         }
     });
 
@@ -552,15 +683,21 @@ fn render_placeholder_cell(
     is_current: bool,
 ) {
     let corner_radius = 8.0 * zoom;
-    let is_recording = placeholder.pending_cell.status == PendingAudioStatus::Recording;
+    let is_recording = placeholder.pending_cell.is_recording();
+    let is_text = placeholder.pending_cell.is_text();
 
-    // Background color based on status
-    let bg_color = match placeholder.pending_cell.status {
-        PendingAudioStatus::Recording => egui::Color32::from_rgba_unmultiplied(80, 40, 40, 230),
-        PendingAudioStatus::Encoding => egui::Color32::from_rgba_unmultiplied(60, 60, 80, 220),
-        PendingAudioStatus::Uploading => egui::Color32::from_rgba_unmultiplied(60, 80, 60, 220),
-        PendingAudioStatus::Transcribing => egui::Color32::from_rgba_unmultiplied(80, 60, 80, 220),
-        PendingAudioStatus::Complete => egui::Color32::from_rgba_unmultiplied(60, 80, 80, 220),
+    // Background color based on kind and status
+    let bg_color = if is_text {
+        egui::Color32::from_rgba_unmultiplied(40, 50, 70, 230) // Blue-ish for text
+    } else {
+        match placeholder.pending_cell.audio_status() {
+            Some(PendingAudioStatus::Recording) => egui::Color32::from_rgba_unmultiplied(80, 40, 40, 230),
+            Some(PendingAudioStatus::Encoding) => egui::Color32::from_rgba_unmultiplied(60, 60, 80, 220),
+            Some(PendingAudioStatus::Uploading) => egui::Color32::from_rgba_unmultiplied(60, 80, 60, 220),
+            Some(PendingAudioStatus::Transcribing) => egui::Color32::from_rgba_unmultiplied(80, 60, 80, 220),
+            Some(PendingAudioStatus::Complete) => egui::Color32::from_rgba_unmultiplied(60, 80, 80, 220),
+            None => egui::Color32::from_rgba_unmultiplied(50, 50, 60, 220),
+        }
     };
 
     // Border color - current cell gets highlight, recording pulses red
@@ -586,33 +723,40 @@ fn render_placeholder_cell(
         egui::StrokeKind::Outside,
     );
 
+    // Text cells don't need any content rendered here - the TextEdit overlay handles it
+    if is_text {
+        return;
+    }
+
     if is_recording {
         // Draw live audio level meter for recording
         draw_audio_level_meter(
             painter,
             rect,
-            placeholder.pending_cell.current_audio_level,
+            placeholder.pending_cell.audio_level(),
             zoom,
         );
     } else {
         // Draw waveform visualization for processing states
-        let waveform = &placeholder.pending_cell.waveform;
-        if !waveform.is_empty() {
-            let waveform_rect = egui::Rect::from_min_size(
-                rect.min + egui::vec2(8.0 * zoom, rect.height() * 0.3),
-                egui::vec2(rect.width() - 16.0 * zoom, rect.height() * 0.4),
-            );
-            draw_waveform(painter, waveform_rect, waveform, zoom, border_color);
+        if let Some(waveform) = placeholder.pending_cell.waveform() {
+            if !waveform.is_empty() {
+                let waveform_rect = egui::Rect::from_min_size(
+                    rect.min + egui::vec2(8.0 * zoom, rect.height() * 0.3),
+                    egui::vec2(rect.width() - 16.0 * zoom, rect.height() * 0.4),
+                );
+                draw_waveform(painter, waveform_rect, waveform, zoom, border_color);
+            }
         }
     }
 
-    // Draw status text
-    let status_text = match placeholder.pending_cell.status {
-        PendingAudioStatus::Recording => "🔴 Recording...",
-        PendingAudioStatus::Encoding => "Encoding...",
-        PendingAudioStatus::Uploading => "Uploading...",
-        PendingAudioStatus::Transcribing => "Transcribing...",
-        PendingAudioStatus::Complete => "Complete",
+    // Draw status text for audio cells
+    let status_text = match placeholder.pending_cell.audio_status() {
+        Some(PendingAudioStatus::Recording) => "🔴 Recording...",
+        Some(PendingAudioStatus::Encoding) => "Encoding...",
+        Some(PendingAudioStatus::Uploading) => "Uploading...",
+        Some(PendingAudioStatus::Transcribing) => "Transcribing...",
+        Some(PendingAudioStatus::Complete) => "Complete",
+        None => return, // Text cells don't show status here
     };
 
     let status_pos = egui::pos2(rect.center().x, rect.max.y - 12.0 * zoom);
