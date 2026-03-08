@@ -4,6 +4,7 @@ mod calendar;
 mod connection_manager;
 mod elf;
 mod files;
+mod git_undo;
 mod http_stream;
 mod identity;
 mod local_storage;
@@ -12,7 +13,6 @@ mod notes;
 mod protocol;
 mod router;
 mod storage;
-mod undo;
 
 use anyhow::{anyhow, Result};
 use axum::{
@@ -96,8 +96,8 @@ struct ConnState {
     conn_id: u64,
     /// Elf connection state (only set when conn_state == Elf)
     elf_connection: Option<ElfConnection>,
-    /// Undo tree for this session
-    undo_tree: Option<undo::UndoTree>,
+    /// Git-based undo repo for this session (for notes directory)
+    git_undo_repo: Option<std::sync::Arc<tokio::sync::Mutex<git_undo::GitUndoRepo>>>,
 }
 
 impl Default for ConnState {
@@ -121,7 +121,7 @@ impl Default for ConnState {
             server_port: 8083,
             conn_id: CONN_COUNTER.fetch_add(1, Ordering::SeqCst),
             elf_connection: None,
-            undo_tree: None,
+            git_undo_repo: None,
         }
     }
 }
@@ -832,9 +832,18 @@ where
         // Load notes index
         let index = NotesIndex::load(&nc).await?;
 
-        // Load undo tree (use empty tree if not found or error)
-        let undo_tree = undo::UndoTree::load(&nc).await.unwrap_or_default();
-        log::info!("Loaded undo tree with {} actions", undo_tree.actions.len());
+        // Initialize git-based undo repo
+        // The git repo is stored in Nextcloud via WebDAV and cloned to /tmp/ on connect
+        let git_repo = match git_undo::open_from_nextcloud(&nc).await {
+            Ok(repo) => {
+                log::info!("Git undo repo ready at {}", repo.local_path().display());
+                Some(std::sync::Arc::new(tokio::sync::Mutex::new(repo)))
+            }
+            Err(e) => {
+                log::warn!("Failed to initialize git undo repo: {}", e);
+                None
+            }
+        };
 
         // Get a server-generated action_id for the router
         let action_id = {
@@ -842,7 +851,7 @@ where
             s.identity = Some(identity.clone());
             s.nextcloud = Some(nc);
             s.index = Some(index);
-            s.undo_tree = Some(undo_tree);
+            s.git_undo_repo = git_repo;
             s.conn_state = ConnectionState::Browsing;
             s.get_next_action_id()
         };
@@ -1429,7 +1438,7 @@ where
     let (action_id, vertex_id, layer, mime, content) = parse_client_set_vertex_label(data)?;
     log::info!("SetVertexLabel: action={}, vertex={}, layer={}, mime={}", action_id, vertex_id, layer, mime);
 
-    let (nc, mut index) = {
+    let (nc, index) = {
         let s = state.lock().await;
         (s.nextcloud.clone(), s.index.clone())
     };
@@ -1451,17 +1460,14 @@ where
         }
     };
 
-    // Get identity for undo
-    let identity = {
+    // Get identity and git repo for undo
+    let (identity, git_repo) = {
         let s = state.lock().await;
-        s.identity.clone()
+        (s.identity.clone(), s.git_undo_repo.clone())
     };
 
     // Find vertex by hash
     if let Some(uuid) = notes::hash_to_uuid(&index, vertex_id) {
-        // Prepare undo action BEFORE making changes
-        let mut undo_action_opt: Option<undo::UndoAction> = None;
-
         if layer == 0 {
             // Layer 0: Update primary content
             let vertex = match index.get_vertex(uuid) {
@@ -1472,24 +1478,6 @@ where
                     return Ok(());
                 }
             };
-
-            // Capture old content for undo (only for layer 0)
-            if let Ok(old_content) = nc.download(&vertex.file).await {
-                if let Some((old_mime, _old_file, mut undo_action)) = index.prepare_undo_for_label(uuid, layer, identity.clone()) {
-                    // Save old content to snapshot file
-                    match undo::save_content_snapshot(&nc, undo_action.id, layer, &old_content).await {
-                        Ok(snapshot_path) => {
-                            if let undo::UndoOperationType::SetVertexLabel { old_snapshot_path: ref mut path, .. } = undo_action.operation {
-                                *path = snapshot_path;
-                            }
-                            undo_action_opt = Some(undo_action);
-                        }
-                        Err(e) => {
-                            log::warn!("Failed to save undo snapshot: {}", e);
-                        }
-                    }
-                }
-            }
 
             // Upload new content
             if let Err(e) = nc.upload(&vertex.file, &content).await {
@@ -1526,32 +1514,62 @@ where
             }
         }
 
-        // Save index
+        // Save index to Nextcloud
         if let Err(e) = index.save(&nc).await {
             let msg = encode_log_message(action_id, 500, vertex_id, &format!("Save failed: {}", e));
             write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
             return Ok(());
         }
 
-        // Update state including undo tree
+        // Also save to local git working directory and commit
+        let mut should_sync = false;
+        let mut sync_path = None;
+        if let Some(git_repo) = &git_repo {
+            let repo = git_repo.lock().await;
+            if let Some(workdir) = repo.workdir() {
+                // Write index and content to local git working directory
+                if let Err(e) = index.save_to_path(workdir) {
+                    log::warn!("Failed to save index to git workdir: {}", e);
+                }
+                // Write content file
+                let vertex = index.get_vertex(uuid);
+                if let Some(v) = vertex {
+                    let local_file = workdir.join(&v.file);
+                    if let Some(parent) = local_file.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    if let Err(e) = std::fs::write(&local_file, &content) {
+                        log::warn!("Failed to write content to git workdir: {}", e);
+                    }
+                }
+                // Commit the changes
+                let author = identity.as_deref().unwrap_or("unknown");
+                let message = format!("Edit vertex: {}", uuid);
+                // If in detached HEAD (after undo navigation), create a new branch
+                if let Err(e) = repo.ensure_on_branch() {
+                    log::warn!("Failed to ensure on branch: {}", e);
+                }
+                if let Err(e) = repo.commit_all(&message, author) {
+                    log::warn!("Failed to create git commit: {}", e);
+                } else {
+                    should_sync = true;
+                    sync_path = Some(repo.local_path().to_path_buf());
+                }
+            }
+        }
+        // Sync to Nextcloud after successful commit (outside the lock)
+        if should_sync {
+            if let Some(path) = sync_path {
+                if let Err(e) = git_undo::sync_to_nextcloud(&path, &nc).await {
+                    log::warn!("Failed to sync git repo to Nextcloud: {}", e);
+                }
+            }
+        }
+
+        // Update state
         {
             let mut s = state.lock().await;
             s.index = Some(index);
-
-            // Add undo action if we captured one
-            if let Some(undo_action) = undo_action_opt {
-                let mut undo_tree = s.undo_tree.clone().unwrap_or_else(undo::UndoTree::new);
-                undo_tree.add_action(undo_action);
-                s.undo_tree = Some(undo_tree.clone());
-
-                // Save undo tree asynchronously
-                let nc_clone = nc.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = undo_tree.save(&nc_clone).await {
-                        log::warn!("Failed to save undo tree: {}", e);
-                    }
-                });
-            }
         }
 
         log::info!("Updated vertex {}", uuid);
@@ -1580,7 +1598,7 @@ where
     let (action_id, vertex_id, edges) = parse_client_set_edges(data)?;
     log::info!("SetEdges: action={}, vertex={}", action_id, vertex_id);
 
-    let (nc, mut index) = {
+    let (nc, index) = {
         let s = state.lock().await;
         (s.nextcloud.clone(), s.index.clone())
     };
@@ -1679,9 +1697,9 @@ where
         mime
     );
 
-    let (nc, mut index, identity) = {
+    let (nc, index, identity, git_repo) = {
         let s = state.lock().await;
-        (s.nextcloud.clone(), s.index.clone(), s.identity.clone())
+        (s.nextcloud.clone(), s.index.clone(), s.identity.clone(), s.git_undo_repo.clone())
     };
 
     let nc = match nc {
@@ -1700,7 +1718,7 @@ where
             return Ok(());
         }
     };
-    let _identity = identity.unwrap_or_default();
+    let identity_str = identity.clone().unwrap_or_default();
 
     // Generate UUID and file path
     let id = uuid::Uuid::new_v4();
@@ -1738,59 +1756,59 @@ where
         None
     };
 
-    // Save index
+    // Save index to Nextcloud
     if let Err(e) = index.save(&nc).await {
         let msg = encode_log_message(action_id, 500, 0, &format!("Save failed: {}", e));
         write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
         return Ok(());
     }
 
-    // Record undo action with snapshot for redo support
-    let from_uuid = if from_vertex != 0 {
-        notes::hash_to_uuid(&index, from_vertex)
-    } else {
-        None
-    };
-
-    // Create a snapshot of the new vertex for redo
-    let snapshot_path = if let Some(snapshot) = index.create_vertex_snapshot(new_id) {
-        match snapshot.save(&nc, new_id).await {
-            Ok(path) => Some(path),
-            Err(e) => {
-                log::warn!("Failed to save vertex snapshot for redo: {}", e);
-                None
+    // Also save to local git working directory and commit
+    let mut should_sync = false;
+    let mut sync_path = None;
+    if let Some(git_repo) = &git_repo {
+        let repo = git_repo.lock().await;
+        if let Some(workdir) = repo.workdir() {
+            // Write index to local git working directory
+            if let Err(e) = index.save_to_path(workdir) {
+                log::warn!("Failed to save index to git workdir: {}", e);
+            }
+            // Write content file
+            let local_file = workdir.join(&file_path);
+            if let Some(parent) = local_file.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if let Err(e) = std::fs::write(&local_file, &content) {
+                log::warn!("Failed to write content to git workdir: {}", e);
+            }
+            // Commit the changes
+            let author = &identity_str;
+            let message = format!("Create vertex: {}", new_id);
+            // If in detached HEAD (after undo navigation), create a new branch
+            if let Err(e) = repo.ensure_on_branch() {
+                log::warn!("Failed to ensure on branch: {}", e);
+            }
+            if let Err(e) = repo.commit_all(&message, author) {
+                log::warn!("Failed to create git commit: {}", e);
+            } else {
+                should_sync = true;
+                sync_path = Some(repo.local_path().to_path_buf());
             }
         }
-    } else {
-        None
-    };
+    }
+    // Sync to Nextcloud after successful commit (outside the lock)
+    if should_sync {
+        if let Some(path) = sync_path {
+            if let Err(e) = git_undo::sync_to_nextcloud(&path, &nc).await {
+                log::warn!("Failed to sync git repo to Nextcloud: {}", e);
+            }
+        }
+    }
 
-    let undo_action = index.create_undo_for_create(
-        new_id,
-        from_uuid,
-        Some(direction),
-        displaced_vertex,
-        Some(_identity.clone()),
-        snapshot_path,
-    );
-
-    // Update state including undo tree
+    // Update state
     {
         let mut s = state.lock().await;
         s.index = Some(index.clone());
-
-        // Add to undo tree
-        let mut undo_tree = s.undo_tree.clone().unwrap_or_else(undo::UndoTree::new);
-        undo_tree.add_action(undo_action);
-        s.undo_tree = Some(undo_tree.clone());
-
-        // Save undo tree asynchronously (don't block on it)
-        let nc_clone = nc.clone();
-        tokio::spawn(async move {
-            if let Err(e) = undo_tree.save(&nc_clone).await {
-                log::warn!("Failed to save undo tree: {}", e);
-            }
-        });
     }
 
     // Don't send SetVertexLabel for newly created vertices - the client already has the data.
@@ -1894,9 +1912,9 @@ where
     let (action_id, vertex_id) = parse_client_delete_vertex(data)?;
     log::info!("DeleteVertex: action={}, vertex={}", action_id, vertex_id);
 
-    let (nc, mut index, _identity) = {
+    let (nc, index, identity, git_repo) = {
         let s = state.lock().await;
-        (s.nextcloud.clone(), s.index.clone(), s.identity.clone())
+        (s.nextcloud.clone(), s.index.clone(), s.identity.clone(), s.git_undo_repo.clone())
     };
 
     let nc = match nc {
@@ -1915,6 +1933,7 @@ where
             return Ok(());
         }
     };
+    let identity_str = identity.unwrap_or_default();
 
     // Find vertex by hash
     let vertex_uuid = match notes::hash_to_uuid(&index, vertex_id) {
@@ -1926,32 +1945,6 @@ where
         }
     };
 
-    // Prepare undo data BEFORE deleting
-    let (mut undo_action, _connected_edges) = match index.prepare_undo_for_delete(vertex_uuid, _identity.clone()) {
-        Some(data) => data,
-        None => {
-            let msg = encode_log_message(action_id, 404, vertex_id, "Vertex not found for undo");
-            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-            return Ok(());
-        }
-    };
-
-    // Create and save vertex snapshot for undo
-    if let Some(snapshot) = index.create_vertex_snapshot(vertex_uuid) {
-        match snapshot.save(&nc, undo_action.id).await {
-            Ok(snapshot_path) => {
-                // Update the undo action with the snapshot path
-                if let undo::UndoOperationType::DeleteVertex { snapshot_path: ref mut path, .. } = undo_action.operation {
-                    *path = snapshot_path;
-                }
-            }
-            Err(e) => {
-                log::warn!("Failed to save undo snapshot: {}", e);
-                // Continue anyway - undo won't work but deletion should proceed
-            }
-        }
-    }
-
     // Delete vertex and get files to delete + affected neighbors
     let (files_to_delete, affected_neighbors) = match index.delete_vertex(vertex_uuid) {
         Ok(result) => result,
@@ -1962,37 +1955,60 @@ where
         }
     };
 
-    // NOTE: We don't delete content files from Nextcloud immediately anymore
-    // They're kept for undo capability. A separate cleanup process can remove old snapshots.
-    // For now, just log what would be deleted
-    for file_path in &files_to_delete {
-        log::info!("Would delete file (kept for undo): {}", file_path);
-    }
-
-    // Save updated index
+    // Save updated index to Nextcloud
     if let Err(e) = index.save(&nc).await {
         let msg = encode_log_message(action_id, 500, vertex_id, &format!("Save failed: {}", e));
         write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
         return Ok(());
     }
 
-    // Update state including undo tree
+    // Also save to local git working directory and commit
+    let mut should_sync = false;
+    let mut sync_path = None;
+    if let Some(git_repo) = &git_repo {
+        let repo = git_repo.lock().await;
+        if let Some(workdir) = repo.workdir() {
+            // Write index to local git working directory
+            if let Err(e) = index.save_to_path(workdir) {
+                log::warn!("Failed to save index to git workdir: {}", e);
+            }
+            // Delete content files from local working directory
+            for file_path in &files_to_delete {
+                let local_file = workdir.join(file_path);
+                if local_file.exists() {
+                    if let Err(e) = std::fs::remove_file(&local_file) {
+                        log::warn!("Failed to delete {} from git workdir: {}", file_path, e);
+                    }
+                }
+            }
+            // Commit the changes (including deletions)
+            let author = &identity_str;
+            let message = format!("Delete vertex: {}", vertex_uuid);
+            // If in detached HEAD (after undo navigation), create a new branch
+            if let Err(e) = repo.ensure_on_branch() {
+                log::warn!("Failed to ensure on branch: {}", e);
+            }
+            if let Err(e) = repo.commit_all(&message, author) {
+                log::warn!("Failed to create git commit: {}", e);
+            } else {
+                should_sync = true;
+                sync_path = Some(repo.local_path().to_path_buf());
+            }
+        }
+    }
+    // Sync to Nextcloud after successful commit (outside the lock)
+    if should_sync {
+        if let Some(path) = sync_path {
+            if let Err(e) = git_undo::sync_to_nextcloud(&path, &nc).await {
+                log::warn!("Failed to sync git repo to Nextcloud: {}", e);
+            }
+        }
+    }
+
+    // Update state
     {
         let mut s = state.lock().await;
         s.index = Some(index.clone());
-
-        // Add to undo tree
-        let mut undo_tree = s.undo_tree.clone().unwrap_or_else(undo::UndoTree::new);
-        undo_tree.add_action(undo_action);
-        s.undo_tree = Some(undo_tree.clone());
-
-        // Save undo tree asynchronously
-        let nc_clone = nc.clone();
-        tokio::spawn(async move {
-            if let Err(e) = undo_tree.save(&nc_clone).await {
-                log::warn!("Failed to save undo tree: {}", e);
-            }
-        });
     }
 
     // Send updated edges for all affected neighbors
@@ -2159,7 +2175,7 @@ where
     Ok(())
 }
 
-/// Handle the gradesta://undo landmark - serve the undo tree as a graph
+/// Handle the gradesta://undo landmark - serve git history as a graph
 async fn handle_undo_landmark<W>(
     state: &Arc<Mutex<ConnState>>,
     write: &mut W,
@@ -2170,36 +2186,9 @@ where
     W: SinkExt<AxumWsMessage> + Unpin,
     W::Error: std::fmt::Debug,
 {
-    let (undo_tree, identity, nc) = {
+    let (git_repo, identity) = {
         let s = state.lock().await;
-        (s.undo_tree.clone(), s.identity.clone(), s.nextcloud.clone())
-    };
-
-    // Load undo tree if not loaded yet
-    let undo_tree = if let Some(tree) = undo_tree {
-        eprintln!("DEBUG: Using cached undo tree with {} actions", tree.actions.len());
-        tree
-    } else if let Some(ref nc) = nc {
-        eprintln!("DEBUG: Loading undo tree from storage...");
-        let tree = match undo::UndoTree::load(nc).await {
-            Ok(t) => {
-                eprintln!("DEBUG: Loaded undo tree with {} actions, current={:?}", t.actions.len(), t.current_id);
-                t
-            }
-            Err(e) => {
-                eprintln!("DEBUG: Failed to load undo tree: {}, using empty tree", e);
-                undo::UndoTree::new()
-            }
-        };
-        // Store it in state
-        {
-            let mut s = state.lock().await;
-            s.undo_tree = Some(tree.clone());
-        }
-        tree
-    } else {
-        eprintln!("DEBUG: No nextcloud client, using empty undo tree");
-        undo::UndoTree::new()
+        (s.git_undo_repo.clone(), s.identity.clone())
     };
 
     let identity = identity.unwrap_or_default();
@@ -2219,51 +2208,73 @@ where
     let portal_layer1 = encode_set_vertex_label_layer(action_id, portal_id, 1, "text/gradesta-url", notes_landmark.as_bytes());
     write.send(AxumWsMessage::Binary(portal_layer1)).await.map_err(|e| anyhow!("{:?}", e))?;
 
-    if undo_tree.actions.is_empty() {
-        // Empty undo tree - send placeholder
+    // Get commits from git repo
+    let git_repo = match git_repo {
+        Some(repo) => repo,
+        None => {
+            // No git repo - send empty placeholder
+            let empty_id = hash_string(&format!("undo:{}:empty", identity));
+            let empty_msg = encode_set_vertex_label(action_id, empty_id, "text/plain", b"(no undo history - git repo not initialized)");
+            write.send(AxumWsMessage::Binary(empty_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+            let portal_edges = encode_set_edges(action_id, portal_id, 0, empty_id, 0, 0, 0, 0, 0);
+            write.send(AxumWsMessage::Binary(portal_edges)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+            let empty_edges = encode_set_edges(action_id, empty_id, portal_id, 0, 0, 0, 0, 0, 0);
+            write.send(AxumWsMessage::Binary(empty_edges)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+            return Ok(());
+        }
+    };
+
+    let repo = git_repo.lock().await;
+    let commits = match repo.get_all_commits() {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!("Failed to get git commits: {}", e);
+            let empty_id = hash_string(&format!("undo:{}:error", identity));
+            let empty_msg = encode_set_vertex_label(action_id, empty_id, "text/plain",
+                format!("(error loading history: {})", e).as_bytes());
+            write.send(AxumWsMessage::Binary(empty_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            return Ok(());
+        }
+    };
+
+    let head_oid = repo.head_commit();
+
+    if commits.is_empty() || (commits.len() == 1 && commits[0].message == "Initial state") {
+        // Empty or just initial commit - send placeholder
         let empty_id = hash_string(&format!("undo:{}:empty", identity));
         let empty_msg = encode_set_vertex_label(action_id, empty_id, "text/plain", b"(no undo history yet)");
         write.send(AxumWsMessage::Binary(empty_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
-        // Portal points east to empty
         let portal_edges = encode_set_edges(action_id, portal_id, 0, empty_id, 0, 0, 0, 0, 0);
         write.send(AxumWsMessage::Binary(portal_edges)).await.map_err(|e| anyhow!("{:?}", e))?;
 
-        // Empty points west to portal
         let empty_edges = encode_set_edges(action_id, empty_id, portal_id, 0, 0, 0, 0, 0, 0);
         write.send(AxumWsMessage::Binary(empty_edges)).await.map_err(|e| anyhow!("{:?}", e))?;
 
         return Ok(());
     }
 
-    // Get current position and path
-    let current_id = undo_tree.current_id;
-    let current_path: std::collections::HashSet<uuid::Uuid> = undo_tree.path_to_current().into_iter().collect();
-
-    // Send all actions as vertices
-    // We'll build edges as we go
+    // Build edges structure
     let mut vertex_edges: HashMap<u64, [u64; 6]> = HashMap::new();
 
-    for (uuid, action) in &undo_tree.actions {
-        let vertex_id = undo::action_to_hash(*uuid);
+    // Send all commits as vertices
+    for commit in &commits {
+        let vertex_id = git_undo::commit_to_vertex_hash(&commit.oid);
+        let is_current = head_oid == Some(commit.oid);
+
+        // Format timestamp
+        let datetime = chrono::DateTime::from_timestamp(commit.timestamp, 0)
+            .unwrap_or_else(|| chrono::Utc::now());
+        let time_str = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
 
         // Create label with description and timestamp
-        let is_current = current_id == Some(*uuid);
-        let is_on_path = current_path.contains(uuid);
         let label = if is_current {
-            format!(
-                "→ Currently at:\n{}\n{}",
-                action.description,
-                action.timestamp.format("%Y-%m-%d %H:%M:%S")
-            )
+            format!("-> Currently at:\n{}\n{}", commit.message.trim(), time_str)
         } else {
-            let prefix = if is_on_path { "↓ " } else { "  " };
-            format!(
-                "{}{}\n{}",
-                prefix,
-                action.description,
-                action.timestamp.format("%Y-%m-%d %H:%M:%S")
-            )
+            format!("{}\n{}", commit.message.trim(), time_str)
         };
 
         // Send vertex label
@@ -2272,10 +2283,10 @@ where
 
         // Send metadata as layer 1 (JSON)
         let metadata = serde_json::json!({
-            "action_id": uuid.to_string(),
-            "timestamp": action.timestamp.to_rfc3339(),
+            "commit_oid": commit.oid.to_string(),
+            "timestamp": datetime.to_rfc3339(),
             "is_current": is_current,
-            "operation_type": format!("{:?}", std::mem::discriminant(&action.operation)),
+            "author": commit.author,
         });
         let meta_msg = encode_set_vertex_label_layer(
             action_id, vertex_id, 1, "application/json",
@@ -2283,40 +2294,36 @@ where
         );
         write.send(AxumWsMessage::Binary(meta_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
-        // Initialize edges
-        let edges = vertex_edges.entry(vertex_id).or_insert([0u64; 6]);
-
-        // West edge: parent action
-        if let Some(parent_id) = action.parent_id {
-            edges[0] = undo::action_to_hash(parent_id);
-        }
-
-        // East edge: first child (main branch)
-        if let Some(child_id) = action.children.first() {
-            edges[1] = undo::action_to_hash(*child_id);
-        }
-
-        // North/South edges: siblings (alternative branches)
-        let siblings = undo_tree.get_siblings(*uuid);
-        if siblings.len() >= 1 {
-            edges[2] = undo::action_to_hash(siblings[0]); // North
-        }
-        if siblings.len() >= 2 {
-            edges[3] = undo::action_to_hash(siblings[1]); // South
-        }
+        // Build edges
+        let children = repo.get_children(commit.oid, &commits);
+        let edges = git_undo::build_commit_edges(commit, &commits, &children);
+        vertex_edges.insert(vertex_id, edges);
     }
 
-    // Connect root action to portal
-    if let Some(root_id) = undo_tree.root_id {
-        let root_hash = undo::action_to_hash(root_id);
+    // Find ALL root-level commits (children of Initial or no parent)
+    let root_commits: Vec<&git_undo::CommitInfo> = commits.iter()
+        .filter(|c| {
+            c.message != "Initial state" &&
+            (c.parent_oids.is_empty() ||
+             c.parent_oids.iter().all(|p| {
+                 commits.iter().any(|pc| pc.oid == *p && pc.message == "Initial state")
+             }))
+        })
+        .collect();
 
-        // Portal's east points to root
-        let portal_edges = encode_set_edges(action_id, portal_id, 0, root_hash, 0, 0, 0, 0, 0);
+    if !root_commits.is_empty() {
+        // Connect portal east to first root commit
+        let first_hash = git_undo::commit_to_vertex_hash(&root_commits[0].oid);
+        let portal_edges = encode_set_edges(action_id, portal_id, 0, first_hash, 0, 0, 0, 0, 0);
         write.send(AxumWsMessage::Binary(portal_edges)).await.map_err(|e| anyhow!("{:?}", e))?;
 
-        // Root's west points to portal
-        if let Some(edges) = vertex_edges.get_mut(&root_hash) {
-            edges[0] = portal_id;
+        // Point all root commits' west edge to portal (instead of Initial commit)
+        // Sibling linking (north/south) is already handled by build_commit_edges
+        for root_commit in &root_commits {
+            let root_hash = git_undo::commit_to_vertex_hash(&root_commit.oid);
+            if let Some(edges) = vertex_edges.get_mut(&root_hash) {
+                edges[0] = portal_id;
+            }
         }
     }
 
@@ -2330,11 +2337,11 @@ where
         write.send(AxumWsMessage::Binary(edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
     }
 
-    log::info!("Sent undo tree with {} actions", undo_tree.actions.len());
+    log::info!("Sent git undo history with {} commits", commits.len());
     Ok(())
 }
 
-/// Handle click on an undo tree vertex - restore to that state
+/// Handle click on a git commit vertex - checkout that commit (undo/redo)
 async fn handle_undo_click<W>(
     state: &Arc<Mutex<ConnState>>,
     write: &mut W,
@@ -2345,88 +2352,131 @@ where
     W: SinkExt<AxumWsMessage> + Unpin,
     W::Error: std::fmt::Debug,
 {
-    let (undo_tree, nc, mut index) = {
+    let (git_repo, nc) = {
         let s = state.lock().await;
-        (s.undo_tree.clone(), s.nextcloud.clone(), s.index.clone())
+        (s.git_undo_repo.clone(), s.nextcloud.clone())
     };
 
-    let mut undo_tree = match undo_tree {
-        Some(tree) => tree,
+    let git_repo = match git_repo {
+        Some(repo) => repo,
         None => {
-            eprintln!("DEBUG: handle_undo_click - no undo tree");
-            return Ok(false); // No undo tree, not an undo click
+            eprintln!("DEBUG: handle_undo_click - no git repo");
+            return Ok(false); // No git repo, not an undo click
         }
     };
 
-    eprintln!("DEBUG: handle_undo_click - checking vertex {} in undo tree with {} actions", vertex_id, undo_tree.actions.len());
-
-    // Check if this vertex is in the undo tree
-    let target_action_id = match undo::hash_to_action(&undo_tree, vertex_id) {
-        Some(id) => id,
-        None => {
-            eprintln!("DEBUG: handle_undo_click - vertex {} not found in undo tree", vertex_id);
-            return Ok(false); // Not an undo vertex
+    // Get all commits to find the target
+    let commits = {
+        let repo = git_repo.lock().await;
+        match repo.get_all_commits() {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("Failed to get commits: {}", e);
+                return Ok(false);
+            }
         }
     };
 
-    log::info!("Undo click: navigating to action {}", target_action_id);
-    eprintln!("DEBUG: Undo click - navigating to action {}", target_action_id);
+    eprintln!("DEBUG: handle_undo_click - checking vertex {} in {} commits", vertex_id, commits.len());
 
+    // Check if this vertex corresponds to a commit
+    let target_oid = match git_undo::vertex_hash_to_oid(&commits, vertex_id) {
+        Some(oid) => oid,
+        None => {
+            eprintln!("DEBUG: handle_undo_click - vertex {} not found in git history", vertex_id);
+            return Ok(false); // Not a commit vertex
+        }
+    };
+
+    // Find the commit info for logging
+    let commit_info = commits.iter().find(|c| c.oid == target_oid);
+    let commit_msg = commit_info.map(|c| c.message.clone()).unwrap_or_default();
+    log::info!("Undo click: checking out commit {} ({})", target_oid, commit_msg.trim());
+    eprintln!("DEBUG: Undo click - checking out commit {}", target_oid);
+
+    // If not at a branch tip and about to make changes, ensure we're on a branch
+    {
+        let repo = git_repo.lock().await;
+        if let Err(e) = repo.ensure_on_branch() {
+            log::warn!("Failed to ensure on branch: {}", e);
+        }
+    }
+
+    // Get the workdir path before checkout
+    let workdir = {
+        let repo = git_repo.lock().await;
+        repo.workdir().map(|p| p.to_path_buf())
+    };
+
+    let workdir = match workdir {
+        Some(w) => w,
+        None => {
+            let msg = encode_log_message(action_id, 500, vertex_id, "No git working directory");
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            return Ok(true);
+        }
+    };
+
+    // Checkout the target commit
+    {
+        let repo = git_repo.lock().await;
+        if let Err(e) = repo.checkout_commit(target_oid) {
+            let msg = encode_log_message(action_id, 500, vertex_id, &format!("Checkout failed: {}", e));
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            return Ok(true);
+        }
+    }
+
+    // Load the index from the LOCAL git working directory (updated by checkout)
+    let new_index = notes::NotesIndex::load_from_path(&workdir)?;
+
+    log::info!("Checked out commit {}, loaded index with {} vertices from local git workdir",
+        target_oid, new_index.vertices.len());
+
+    // Upload the restored state to Nextcloud
     let nc = nc.ok_or_else(|| anyhow!("No Nextcloud client"))?;
-    let mut index = index.ok_or_else(|| anyhow!("No notes index"))?;
+    if let Err(e) = new_index.save(&nc).await {
+        log::warn!("Failed to save restored index to Nextcloud: {}", e);
+    }
 
-    // Calculate path from current to target
-    let (undo_actions, redo_actions) = undo_tree
-        .navigate_to(target_action_id)
-        .ok_or_else(|| anyhow!("Cannot navigate to target action"))?;
-
-    let mut affected_vertices: Vec<uuid::Uuid> = Vec::new();
-
-    // Apply undo operations (in reverse order)
-    for action_uuid in &undo_actions {
-        if let Some(action) = undo_tree.get_action(*action_uuid).cloned() {
-            log::info!("Undoing: {}", action.description);
-            let (_, affected) = index.apply_undo(&action, &nc).await?;
-            affected_vertices.extend(affected);
+    // Upload all content files to Nextcloud
+    for vertex in &new_index.vertices {
+        let local_file = workdir.join(&vertex.file);
+        if local_file.exists() {
+            match std::fs::read(&local_file) {
+                Ok(content) => {
+                    if let Err(e) = nc.upload(&vertex.file, &content).await {
+                        log::warn!("Failed to upload {} to Nextcloud: {}", vertex.file, e);
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Failed to read local file {}: {}", vertex.file, e);
+                }
+            }
         }
     }
 
-    // Apply redo operations (in forward order)
-    for action_uuid in &redo_actions {
-        if let Some(action) = undo_tree.get_action(*action_uuid).cloned() {
-            log::info!("Redoing: {}", action.description);
-            let (_, affected) = index.apply_redo(&action, &nc).await?;
-            affected_vertices.extend(affected);
+    // Sync git repo to Nextcloud (HEAD position changed)
+    {
+        let repo = git_repo.lock().await;
+        let path = repo.local_path().to_path_buf();
+        drop(repo);
+        if let Err(e) = git_undo::sync_to_nextcloud(&path, &nc).await {
+            log::warn!("Failed to sync git repo to Nextcloud after checkout: {}", e);
         }
     }
 
-    // Update undo tree current position
-    undo_tree.set_current(target_action_id);
-
-    // Save changes
-    index.save(&nc).await?;
-    undo_tree.save(&nc).await?;
-
-    // Update state
+    // Update state with new index
     {
         let mut s = state.lock().await;
-        s.index = Some(index.clone());
-        s.undo_tree = Some(undo_tree);
+        s.index = Some(new_index.clone());
     }
 
     // Send success message
     let msg = encode_log_message(action_id, 200, vertex_id, "State restored");
     write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
-    log::info!(
-        "Undo navigation complete: undid {} actions, redid {} actions, {} affected vertices",
-        undo_actions.len(),
-        redo_actions.len(),
-        affected_vertices.len()
-    );
-
-    // Send updates for affected vertices so browser's cache is updated
-    // First send a context for the notes landmark
+    // Send updates for all vertices so browser's cache is updated
     let s = state.lock().await;
     let identity = s.identity.clone().unwrap_or_default();
     drop(s);
@@ -2435,56 +2485,43 @@ where
     let ctx_msg = encode_set_context(action_id, &notes_landmark);
     write.send(AxumWsMessage::Binary(ctx_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
-    // Deduplicate affected vertices
-    let mut unique_affected: Vec<uuid::Uuid> = affected_vertices.clone();
-    unique_affected.sort();
-    unique_affected.dedup();
+    // Send all vertices from the new index (load content from local workdir)
+    for vertex in &new_index.vertices {
+        let vertex_hash = notes::uuid_to_hash(vertex.id);
 
-    for vertex_uuid in unique_affected {
-        let vertex_hash = notes::uuid_to_hash(vertex_uuid);
+        // Load content from local git working directory
+        let local_file = workdir.join(&vertex.file);
+        let content = match std::fs::read(&local_file) {
+            Ok(data) => data,
+            Err(e) => {
+                eprintln!("DEBUG: Failed to load content for {}: {}", vertex.id, e);
+                format!("(failed to load: {})", e).into_bytes()
+            }
+        };
 
-        if let Some(vertex) = index.get_vertex(vertex_uuid).cloned() {
-            // Vertex exists - send its current state
-            eprintln!("DEBUG: Sending updated vertex {} (hash={})", vertex_uuid, vertex_hash);
+        // Send label
+        let label_msg = encode_set_vertex_label(
+            action_id,
+            vertex_hash,
+            &vertex.mime,
+            &content
+        );
+        write.send(AxumWsMessage::Binary(label_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
-            // Load content from file
-            let content = match nc.download(&vertex.file).await {
-                Ok(data) => data,
-                Err(e) => {
-                    eprintln!("DEBUG: Failed to load content for {}: {}", vertex_uuid, e);
-                    format!("(failed to load: {})", e).into_bytes()
-                }
-            };
-
-            // Send label
-            let label_msg = encode_set_vertex_label(
-                action_id,
-                vertex_hash,
-                &vertex.mime,
-                &content
-            );
-            write.send(AxumWsMessage::Binary(label_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-
-            // Build and send edges
-            let edge_array = index.build_edge_array(vertex_uuid);
-            let edges_msg = encode_set_edges(
-                action_id,
-                vertex_hash,
-                edge_array[0], // west
-                edge_array[1], // east
-                edge_array[2], // north
-                edge_array[3], // south
-                edge_array[4], // up
-                edge_array[5], // down
-                0x7F, // All editable
-            );
-            write.send(AxumWsMessage::Binary(edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-        } else {
-            // Vertex was deleted - send deletion signal (all edges = 0, edit_mask = 0)
-            eprintln!("DEBUG: Sending deletion signal for vertex {} (hash={})", vertex_uuid, vertex_hash);
-            let edges_msg = encode_set_edges(action_id, vertex_hash, 0, 0, 0, 0, 0, 0, 0);
-            write.send(AxumWsMessage::Binary(edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-        }
+        // Build and send edges
+        let edge_array = new_index.build_edge_array(vertex.id);
+        let edges_msg = encode_set_edges(
+            action_id,
+            vertex_hash,
+            edge_array[0],
+            edge_array[1],
+            edge_array[2],
+            edge_array[3],
+            edge_array[4],
+            edge_array[5],
+            0x7F,
+        );
+        write.send(AxumWsMessage::Binary(edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
     }
 
     // Resend the undo tree view with updated "Currently at" marker
@@ -2506,3 +2543,4 @@ fn hash_string(s: &str) -> u64 {
 fn router_hash(identity: &str, name: &str) -> u64 {
     hash_string(&format!("router:{}:{}", identity, name))
 }
+
