@@ -59,6 +59,9 @@ env_logger = "0.10"
 # URL parsing
 url = "2.5"
 
+# Git for undo system
+git2 = "0.18"
+
 # XML parsing for WebDAV
 quick-xml = { version = "0.31", features = ["serialize"] }
 

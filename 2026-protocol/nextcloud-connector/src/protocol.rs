@@ -31,6 +31,16 @@ pub const MSG_ELF_CONNECT: u8 = 0xB0;
 pub const MSG_ELF_OUTPUT: u8 = 0xB1;
 pub const MSG_ELF_COMPLETE: u8 = 0xB2;
 
+// HTTP-like status codes for responses
+pub const STATUS_OK: u32 = 200;
+pub const STATUS_ACCEPTED: u32 = 202;  // Operation queued, will complete async
+pub const STATUS_BAD_REQUEST: u32 = 400;
+pub const STATUS_UNAUTHORIZED: u32 = 401;
+pub const STATUS_FORBIDDEN: u32 = 403;
+pub const STATUS_NOT_FOUND: u32 = 404;
+pub const STATUS_CONFLICT: u32 = 409;  // Async operation failed (server sends correct state via SetVertexLabel/SetEdges)
+pub const STATUS_INTERNAL_ERROR: u32 = 500;
+
 // Permission bitmask flags
 pub const PERM_READ: u8 = 0x01;
 pub const PERM_WRITE: u8 = 0x02;
@@ -64,6 +74,20 @@ impl TryFrom<u8> for Direction {
             4 => Ok(Direction::Up),
             5 => Ok(Direction::Down),
             _ => Err(anyhow!("Invalid direction: {}", value)),
+        }
+    }
+}
+
+impl Direction {
+    /// Convert Direction to string representation for notes edge lookup
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Direction::West => "west",
+            Direction::East => "east",
+            Direction::North => "north",
+            Direction::South => "south",
+            Direction::Up => "up",
+            Direction::Down => "down",
         }
     }
 }

@@ -9,7 +9,6 @@ use uuid::Uuid;
 
 use crate::nextcloud::NextcloudClient;
 use crate::protocol::Direction;
-use crate::undo::{UndoAction, UndoOperationType, UndoTree, VertexSnapshot};
 
 const NOTES_DIR: &str = ".gradesta-notes";
 const INDEX_FILE: &str = ".gradesta-notes/index.toml";
@@ -99,6 +98,18 @@ impl NotesIndex {
         toml::from_str(&content).context("Failed to parse index TOML")
     }
 
+    /// Load index from local filesystem path
+    pub fn load_from_path(base_dir: &std::path::Path) -> Result<Self> {
+        let index_path = base_dir.join("index.toml");
+        if !index_path.exists() {
+            return Ok(Self::default());
+        }
+
+        let content = std::fs::read_to_string(&index_path)
+            .context("Failed to read local index file")?;
+        toml::from_str(&content).context("Failed to parse index TOML")
+    }
+
     /// Save index to Nextcloud
     pub async fn save(&self, nc: &NextcloudClient) -> Result<()> {
         // Ensure directories exist
@@ -107,6 +118,18 @@ impl NotesIndex {
 
         let content = toml::to_string_pretty(self).context("Failed to serialize index")?;
         nc.upload(INDEX_FILE, content.as_bytes()).await
+    }
+
+    /// Save index to local filesystem path
+    pub fn save_to_path(&self, base_dir: &std::path::Path) -> Result<()> {
+        // Ensure directories exist
+        let content_dir = base_dir.join("content");
+        std::fs::create_dir_all(&content_dir)?;
+
+        let index_path = base_dir.join("index.toml");
+        let content = toml::to_string_pretty(self).context("Failed to serialize index")?;
+        std::fs::write(&index_path, content)?;
+        Ok(())
     }
 
     /// Get vertex by ID
@@ -501,370 +524,5 @@ impl NotesIndex {
         self.meta.modified = Utc::now();
 
         Ok((files_to_delete, affected_neighbors))
-    }
-
-    /// Create an undo action for a vertex creation
-    /// Call this AFTER create_vertex() and insert_vertex()
-    /// snapshot_path should be provided for redo support
-    pub fn create_undo_for_create(
-        &self,
-        vertex_id: Uuid,
-        from_vertex: Option<Uuid>,
-        direction: Option<Direction>,
-        displaced_vertex: Option<Uuid>,
-        identity: Option<String>,
-        snapshot_path: Option<String>,
-    ) -> UndoAction {
-        let dir_str = direction.map(|d| match d {
-            Direction::West => "west",
-            Direction::East => "east",
-            Direction::North => "north",
-            Direction::South => "south",
-            Direction::Up => "up",
-            Direction::Down => "down",
-        }.to_string());
-
-        let description = if let Some(v) = self.get_vertex(vertex_id) {
-            format!("Created: {}", truncate_for_description(&v.mime))
-        } else {
-            "Created vertex".to_string()
-        };
-
-        UndoAction::new(
-            description,
-            UndoOperationType::CreateVertex {
-                vertex_id,
-                from_vertex,
-                direction: dir_str,
-                displaced_vertex,
-                snapshot_path,
-            },
-            None, // Parent will be set by UndoTree::add_action
-            identity,
-        )
-    }
-
-    /// Prepare undo data for a vertex deletion (before delete_vertex())
-    /// Returns the undo action and the edges that will need to be captured
-    pub fn prepare_undo_for_delete(
-        &self,
-        vertex_id: Uuid,
-        identity: Option<String>,
-    ) -> Option<(UndoAction, Vec<Edge>)> {
-        let vertex = self.get_vertex(vertex_id)?;
-
-        // Capture all edges connected to this vertex
-        let connected_edges: Vec<Edge> = self.edges
-            .iter()
-            .filter(|e| e.from == vertex_id || e.to == vertex_id)
-            .cloned()
-            .collect();
-
-        let description = format!("Deleted: {}", truncate_for_description(&vertex.mime));
-
-        // Note: snapshot_path will be filled in after saving the snapshot
-        let action = UndoAction::new(
-            description,
-            UndoOperationType::DeleteVertex {
-                vertex_id,
-                snapshot_path: String::new(), // Will be updated after saving snapshot
-                connected_edges: connected_edges.clone(),
-            },
-            None,
-            identity,
-        );
-
-        Some((action, connected_edges))
-    }
-
-    /// Create a vertex snapshot for undo (before deletion)
-    pub fn create_vertex_snapshot(&self, vertex_id: Uuid) -> Option<VertexSnapshot> {
-        let vertex = self.get_vertex(vertex_id)?.clone();
-        let edges: Vec<Edge> = self.edges
-            .iter()
-            .filter(|e| e.from == vertex_id || e.to == vertex_id)
-            .cloned()
-            .collect();
-
-        Some(VertexSnapshot { vertex, edges })
-    }
-
-    /// Prepare undo data for a label change (before set_vertex_layer())
-    /// Returns the old content info needed to create the undo action
-    pub fn prepare_undo_for_label(
-        &self,
-        vertex_id: Uuid,
-        layer: u32,
-        identity: Option<String>,
-    ) -> Option<(String, String, UndoAction)> {
-        let vertex = self.get_vertex(vertex_id)?;
-
-        let (old_mime, old_file) = if layer == 0 {
-            (vertex.mime.clone(), vertex.file.clone())
-        } else {
-            let layer_content = vertex.layers.get(&layer)?;
-            (layer_content.mime.clone(), layer_content.file.clone())
-        };
-
-        let description = if layer == 0 {
-            format!("Edited: {}", truncate_for_description(&old_mime))
-        } else {
-            format!("Edited layer {}: {}", layer, truncate_for_description(&old_mime))
-        };
-
-        // snapshot_path will be filled in after saving the content
-        let action = UndoAction::new(
-            description,
-            UndoOperationType::SetVertexLabel {
-                vertex_id,
-                layer,
-                old_snapshot_path: String::new(), // Will be updated after saving
-                old_mime: old_mime.clone(),
-            },
-            None,
-            identity,
-        );
-
-        Some((old_mime, old_file, action))
-    }
-
-    /// Prepare undo data for edge changes (before add_edge() or remove_edge())
-    pub fn prepare_undo_for_edges(
-        &self,
-        vertex_id: Uuid,
-        identity: Option<String>,
-    ) -> UndoAction {
-        // Capture current edge state
-        let mut old_edges: [Option<Uuid>; 6] = [None; 6];
-
-        for (i, dir) in ["west", "east", "north", "south", "up", "down"].iter().enumerate() {
-            old_edges[i] = self.get_neighbor(vertex_id, dir);
-        }
-
-        let description = "Modified edges".to_string();
-
-        UndoAction::new(
-            description,
-            UndoOperationType::SetEdges {
-                vertex_id,
-                old_edges,
-            },
-            None,
-            identity,
-        )
-    }
-
-    /// Apply an undo operation (reverse a previous action)
-    /// Returns files to delete and affected vertices
-    pub async fn apply_undo(
-        &mut self,
-        action: &UndoAction,
-        nc: &NextcloudClient,
-    ) -> Result<(Vec<String>, Vec<Uuid>)> {
-        let mut files_to_delete = Vec::new();
-        let mut affected_vertices = Vec::new();
-
-        match &action.operation {
-            UndoOperationType::CreateVertex { vertex_id, from_vertex, direction, displaced_vertex, snapshot_path: _ } => {
-                // Undo a creation by deleting the vertex
-                // But first, reconnect any displaced vertex
-                if let (Some(from), Some(dir), Some(displaced)) = (from_vertex, direction, displaced_vertex) {
-                    let dir_enum = match dir.as_str() {
-                        "west" => Direction::West,
-                        "east" => Direction::East,
-                        "north" => Direction::North,
-                        "south" => Direction::South,
-                        "up" => Direction::Up,
-                        "down" => Direction::Down,
-                        _ => return Err(anyhow!("Invalid direction in undo")),
-                    };
-                    self.add_edge(*from, *displaced, dir_enum);
-                    affected_vertices.push(*from);
-                    affected_vertices.push(*displaced);
-                }
-
-                // Now delete the created vertex
-                if let Ok((files, neighbors)) = self.delete_vertex(*vertex_id) {
-                    files_to_delete.extend(files);
-                    affected_vertices.extend(neighbors);
-                }
-                affected_vertices.push(*vertex_id);
-            }
-
-            UndoOperationType::DeleteVertex { vertex_id, snapshot_path, connected_edges } => {
-                // Undo a deletion by restoring the vertex
-                let snapshot = VertexSnapshot::load(nc, snapshot_path).await?;
-
-                // Restore the vertex
-                self.vertices.push(snapshot.vertex);
-                affected_vertices.push(*vertex_id);
-
-                // Restore edges
-                for edge in connected_edges {
-                    let dir = match edge.direction.as_str() {
-                        "west" => Direction::West,
-                        "east" => Direction::East,
-                        "north" => Direction::North,
-                        "south" => Direction::South,
-                        "up" => Direction::Up,
-                        "down" => Direction::Down,
-                        _ => continue,
-                    };
-                    self.add_edge(edge.from, edge.to, dir);
-                    affected_vertices.push(edge.from);
-                    affected_vertices.push(edge.to);
-                }
-
-                self.meta.modified = Utc::now();
-            }
-
-            UndoOperationType::SetVertexLabel { vertex_id, layer, old_snapshot_path, old_mime } => {
-                // Restore old content
-                let old_content = crate::undo::load_content_snapshot(nc, old_snapshot_path).await?;
-
-                let vertex = self.vertices
-                    .iter_mut()
-                    .find(|v| v.id == *vertex_id)
-                    .ok_or_else(|| anyhow!("Vertex not found for undo"))?;
-
-                // Get the current file path (we'll overwrite it)
-                let current_file = if *layer == 0 {
-                    vertex.file.clone()
-                } else {
-                    vertex.layers.get(layer)
-                        .map(|l| l.file.clone())
-                        .unwrap_or_default()
-                };
-
-                // Upload old content to the current file path
-                nc.upload(&current_file, &old_content).await?;
-
-                // Update MIME type if needed
-                if *layer == 0 {
-                    vertex.mime = old_mime.clone();
-                } else if let Some(lc) = vertex.layers.get_mut(layer) {
-                    lc.mime = old_mime.clone();
-                }
-
-                vertex.modified = Some(Utc::now());
-                affected_vertices.push(*vertex_id);
-                self.meta.modified = Utc::now();
-            }
-
-            UndoOperationType::SetEdges { vertex_id, old_edges } => {
-                // Restore old edge state
-                // First remove all edges from this vertex
-                self.edges.retain(|e| e.from != *vertex_id);
-
-                // Then add back the old edges
-                for (i, target) in old_edges.iter().enumerate() {
-                    if let Some(to) = target {
-                        let dir = match i {
-                            0 => Direction::West,
-                            1 => Direction::East,
-                            2 => Direction::North,
-                            3 => Direction::South,
-                            4 => Direction::Up,
-                            5 => Direction::Down,
-                            _ => continue,
-                        };
-                        self.add_edge(*vertex_id, *to, dir);
-                    }
-                }
-
-                affected_vertices.push(*vertex_id);
-                self.meta.modified = Utc::now();
-            }
-        }
-
-        Ok((files_to_delete, affected_vertices))
-    }
-
-    /// Apply a redo operation (re-apply a previously undone action)
-    /// This is more complex as we need to re-perform the original operation
-    pub async fn apply_redo(
-        &mut self,
-        action: &UndoAction,
-        nc: &NextcloudClient,
-    ) -> Result<(Vec<String>, Vec<Uuid>)> {
-        let mut files_to_delete = Vec::new();
-        let mut affected_vertices = Vec::new();
-
-        match &action.operation {
-            UndoOperationType::CreateVertex { vertex_id, from_vertex, direction, displaced_vertex, snapshot_path } => {
-                // Redo creation by restoring from snapshot
-                if let Some(path) = snapshot_path {
-                    // Load and restore the vertex from snapshot
-                    let snapshot = VertexSnapshot::load(nc, path).await?;
-                    self.vertices.push(snapshot.vertex);
-                    affected_vertices.push(*vertex_id);
-
-                    // Reconnect edges
-                    if let Some(from) = from_vertex {
-                        if let Some(dir) = direction {
-                            let dir_enum = match dir.as_str() {
-                                "west" => Direction::West,
-                                "east" => Direction::East,
-                                "north" => Direction::North,
-                                "south" => Direction::South,
-                                "up" => Direction::Up,
-                                "down" => Direction::Down,
-                                _ => Direction::South,
-                            };
-                            // Remove edge to displaced vertex if any
-                            if let Some(displaced) = displaced_vertex {
-                                self.edges.retain(|e| !(e.from == *from && e.to == *displaced));
-                                affected_vertices.push(*displaced);
-                            }
-                            // Add edge to the recreated vertex
-                            self.add_edge(*from, *vertex_id, dir_enum);
-                            affected_vertices.push(*from);
-                        }
-                    }
-                    self.meta.modified = Utc::now();
-                } else {
-                    // No snapshot - can't redo (legacy action)
-                    eprintln!("WARNING: Cannot redo CreateVertex - no snapshot available");
-                    affected_vertices.push(*vertex_id);
-                    if let Some(from) = from_vertex {
-                        affected_vertices.push(*from);
-                    }
-                    if let Some(displaced) = displaced_vertex {
-                        affected_vertices.push(*displaced);
-                    }
-                }
-            }
-
-            UndoOperationType::DeleteVertex { vertex_id, .. } => {
-                // Redo deletion = delete the vertex again
-                if let Ok((files, neighbors)) = self.delete_vertex(*vertex_id) {
-                    files_to_delete.extend(files);
-                    affected_vertices.extend(neighbors);
-                }
-                affected_vertices.push(*vertex_id);
-            }
-
-            UndoOperationType::SetVertexLabel { vertex_id, .. } => {
-                // Redo label change - need to restore the "new" content
-                // This requires storing the new content as well, which we don't do currently
-                affected_vertices.push(*vertex_id);
-            }
-
-            UndoOperationType::SetEdges { vertex_id, .. } => {
-                // Redo edge changes - need to restore the "new" edge state
-                affected_vertices.push(*vertex_id);
-            }
-        }
-
-        Ok((files_to_delete, affected_vertices))
-    }
-}
-
-/// Truncate a string for use in descriptions
-fn truncate_for_description(s: &str) -> String {
-    if s.len() > 30 {
-        format!("{}...", &s[..27])
-    } else {
-        s.to_string()
     }
 }

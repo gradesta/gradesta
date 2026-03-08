@@ -13,6 +13,8 @@ mod notes;
 mod protocol;
 mod router;
 mod storage;
+mod sync_worker;
+mod webdav_mount;
 
 use anyhow::{anyhow, Result};
 use axum::{
@@ -82,6 +84,8 @@ struct ConnState {
     poll_endpoint: Option<String>,
     poll_token: Option<String>,
     index: Option<NotesIndex>,
+    /// Shared index for sync worker access
+    shared_index: Option<Arc<Mutex<NotesIndex>>>,
     /// Server-generated action IDs (count UP from 1)
     next_action_id: u64,
     /// Mapping from file entry vertex IDs to file paths (for click handling)
@@ -98,6 +102,10 @@ struct ConnState {
     elf_connection: Option<ElfConnection>,
     /// Git-based undo repo for this session (for notes directory)
     git_undo_repo: Option<std::sync::Arc<tokio::sync::Mutex<git_undo::GitUndoRepo>>>,
+    /// Sender for queuing background sync work items
+    sync_tx: Option<tokio::sync::mpsc::Sender<sync_worker::SyncWorkItem>>,
+    /// WebDAV mount for efficient git push (dropped on disconnect)
+    webdav_mount: Option<webdav_mount::WebDavMount>,
 }
 
 impl Default for ConnState {
@@ -114,6 +122,7 @@ impl Default for ConnState {
             poll_endpoint: None,
             poll_token: None,
             index: None,
+            shared_index: None,
             next_action_id: 1,
             file_entries: HashMap::new(),
             thumbnail_cache: HashMap::new(),
@@ -122,6 +131,8 @@ impl Default for ConnState {
             conn_id: CONN_COUNTER.fetch_add(1, Ordering::SeqCst),
             elf_connection: None,
             git_undo_repo: None,
+            sync_tx: None,
+            webdav_mount: None,
         }
     }
 }
@@ -696,7 +707,7 @@ where
 {
     match msg_type {
         MSG_CLIENT_IDENTIFICATION_RESPONSE => {
-            handle_identification_response(data, state, cred_store, write).await
+            handle_identification_response(data, state, cred_store, connection_manager, write).await
         }
         MSG_CLIENT_IDENTIFICATION_REFUSED => {
             log::info!("Client refused identification");
@@ -795,6 +806,7 @@ async fn handle_identification_response<W>(
     data: &[u8],
     state: &Arc<Mutex<ConnState>>,
     cred_store: &Arc<Mutex<CredentialStore>>,
+    connection_manager: &SharedConnectionManager,
     write: &mut W,
 ) -> Result<()>
 where
@@ -831,18 +843,74 @@ where
 
         // Load notes index
         let index = NotesIndex::load(&nc).await?;
+        let shared_index = Arc::new(Mutex::new(index.clone()));
 
-        // Initialize git-based undo repo
-        // The git repo is stored in Nextcloud via WebDAV and cloned to /tmp/ on connect
-        let git_repo = match git_undo::open_from_nextcloud(&nc).await {
-            Ok(repo) => {
-                log::info!("Git undo repo ready at {}", repo.local_path().display());
-                Some(std::sync::Arc::new(tokio::sync::Mutex::new(repo)))
+        // Try to mount WebDAV for efficient git operations
+        let webdav_mount = match webdav_mount::WebDavMount::mount(
+            &cred.nextcloud_url,
+            &cred.username,
+            &cred.app_password,
+        ) {
+            Ok(mount) => {
+                log::info!("WebDAV mounted at {}", mount.path().display());
+                Some(mount)
             }
             Err(e) => {
-                log::warn!("Failed to initialize git undo repo: {}", e);
+                log::warn!("Failed to mount WebDAV (falling back to direct upload): {}", e);
                 None
             }
+        };
+
+        // Initialize git-based undo repo
+        // If WebDAV is mounted, use git push/pull to bare repo on mount
+        // Otherwise fall back to manual .git directory upload
+        let git_repo = if let Some(ref mount) = webdav_mount {
+            // Use mounted WebDAV with git push/pull
+            let local_path = std::path::PathBuf::from(format!(
+                "/tmp/gradesta-undo-{}",
+                &hash_string(&format!("{}:{}", cred.nextcloud_url, cred.username)).to_string()[..8]
+            ));
+            match git_undo::GitUndoRepo::open_with_remote(&local_path, &mount.bare_repo_path()) {
+                Ok(repo) => {
+                    log::info!("Git undo repo ready with remote at {}", mount.bare_repo_path().display());
+                    Some(std::sync::Arc::new(tokio::sync::Mutex::new(repo)))
+                }
+                Err(e) => {
+                    log::warn!("Failed to initialize git undo repo with remote: {}", e);
+                    None
+                }
+            }
+        } else {
+            // Fall back to old behavior: download/upload .git directory via WebDAV
+            match git_undo::open_from_nextcloud(&nc).await {
+                Ok(repo) => {
+                    log::info!("Git undo repo ready at {}", repo.local_path().display());
+                    Some(std::sync::Arc::new(tokio::sync::Mutex::new(repo)))
+                }
+                Err(e) => {
+                    log::warn!("Failed to initialize git undo repo: {}", e);
+                    None
+                }
+            }
+        };
+
+        // Spawn sync worker if we have git repo
+        // Get conn_id for the sync worker
+        let worker_conn_id = {
+            let s = state.lock().await;
+            s.conn_id
+        };
+        let sync_tx = if let Some(ref git_repo) = git_repo {
+            Some(sync_worker::SyncWorker::spawn(
+                nc.clone(),
+                Arc::clone(git_repo),
+                Arc::clone(&shared_index),
+                Arc::clone(connection_manager),
+                worker_conn_id,
+                identity.clone(),
+            ))
+        } else {
+            None
         };
 
         // Get a server-generated action_id for the router
@@ -851,12 +919,16 @@ where
             s.identity = Some(identity.clone());
             s.nextcloud = Some(nc);
             s.index = Some(index);
+            s.shared_index = Some(shared_index);
             s.git_undo_repo = git_repo;
+            s.sync_tx = sync_tx;
+            s.webdav_mount = webdav_mount;
             s.conn_state = ConnectionState::Browsing;
             s.get_next_action_id()
         };
 
         // Send router (entry point with notes and calendar branches)
+        // Note: Sync worker sends responses through the connection manager's forward channel
         router::send_router(&identity, write, action_id).await?;
     } else {
         log::info!("No credentials for {}, starting auth flow", identity);
@@ -1438,9 +1510,9 @@ where
     let (action_id, vertex_id, layer, mime, content) = parse_client_set_vertex_label(data)?;
     log::info!("SetVertexLabel: action={}, vertex={}, layer={}, mime={}", action_id, vertex_id, layer, mime);
 
-    let (nc, index) = {
+    let (nc, index, sync_tx) = {
         let s = state.lock().await;
-        (s.nextcloud.clone(), s.index.clone())
+        (s.nextcloud.clone(), s.index.clone(), s.sync_tx.clone())
     };
 
     let nc = match nc {
@@ -1451,7 +1523,7 @@ where
             return Ok(());
         }
     };
-    let mut index = match index {
+    let index = match index {
         Some(idx) => idx,
         None => {
             let msg = encode_log_message(action_id, 500, vertex_id, "No index loaded");
@@ -1460,48 +1532,90 @@ where
         }
     };
 
-    // Get identity and git repo for undo
-    let (identity, git_repo) = {
-        let s = state.lock().await;
-        (s.identity.clone(), s.git_undo_repo.clone())
+    // Find vertex by hash
+    let uuid = match notes::hash_to_uuid(&index, vertex_id) {
+        Some(uuid) => uuid,
+        None => {
+            log::warn!("Vertex not found: {}", vertex_id);
+            let msg = encode_log_message(action_id, 404, vertex_id, "Vertex not found");
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            return Ok(());
+        }
     };
 
-    // Find vertex by hash
-    if let Some(uuid) = notes::hash_to_uuid(&index, vertex_id) {
+    let vertex = match index.get_vertex(uuid) {
+        Some(v) => v.clone(),
+        None => {
+            let msg = encode_log_message(action_id, 404, vertex_id, "Vertex not found");
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            return Ok(());
+        }
+    };
+
+    // Check if we have a sync worker for optimistic updates
+    if let Some(sync_tx) = sync_tx {
+        // OPTIMISTIC PATH: Queue work and return 202 immediately
+
+        // Fetch original content for potential rollback
+        let original_content = nc.download(&vertex.file).await.unwrap_or_default();
+        let original_mime = vertex.mime.clone();
+
+        // Queue the work item
+        let work_item = sync_worker::SyncWorkItem {
+            action_id,
+            vertex_id,
+            operation: sync_worker::SyncOperation::EditVertex {
+                uuid,
+                content: content.clone(),
+                file_path: vertex.file.clone(),
+                mime: mime.clone(),
+                layer,
+                original_content,
+                original_mime,
+            },
+        };
+
+        if let Err(e) = sync_tx.send(work_item).await {
+            log::error!("Failed to queue edit work item: {}", e);
+            let msg = encode_log_message(action_id, 500, vertex_id, "Failed to queue operation");
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            return Ok(());
+        }
+
+        // Send immediate 202 Accepted response
+        let msg = encode_log_message(action_id, protocol::STATUS_ACCEPTED, vertex_id, "Accepted");
+        write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+        log::info!("Queued edit for vertex {} (optimistic)", uuid);
+    } else {
+        // SYNCHRONOUS PATH: No sync worker, do everything inline (legacy behavior)
+        let mut index = index;
+
+        // Get identity and git repo for undo
+        let (identity, git_repo) = {
+            let s = state.lock().await;
+            (s.identity.clone(), s.git_undo_repo.clone())
+        };
+
         if layer == 0 {
             // Layer 0: Update primary content
-            let vertex = match index.get_vertex(uuid) {
-                Some(v) => v,
-                None => {
-                    let msg = encode_log_message(action_id, 404, vertex_id, "Vertex not found");
-                    write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-                    return Ok(());
-                }
-            };
-
-            // Upload new content
             if let Err(e) = nc.upload(&vertex.file, &content).await {
                 let msg = encode_log_message(action_id, 500, vertex_id, &format!("Upload failed: {}", e));
                 write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
                 return Ok(());
             }
         } else if layer == 1 {
-            // Layer 1: Transcript - store as text file and update index
+            // Layer 1: Transcript
             let transcript = String::from_utf8_lossy(&content).to_string();
-            log::info!("Received transcript for vertex {}: {}", vertex_id, transcript);
-
-            // Store transcript in index
-            if let Err(e) = index.update_vertex(uuid, Some(transcript.clone())) {
+            if let Err(e) = index.update_vertex(uuid, Some(transcript)) {
                 log::warn!("Failed to update transcript: {}", e);
             }
-
-            // Optionally store transcript to separate file
             let transcript_file = format!("{}/{}_transcript.txt", notes::CONTENT_DIR, uuid);
             if let Err(e) = nc.upload(&transcript_file, content.as_slice()).await {
                 log::warn!("Failed to upload transcript file: {}", e);
             }
         } else {
-            // Other layers: store to layer-specific file
+            // Other layers
             let layer_file = format!("{}/{}_layer{}.{}", notes::CONTENT_DIR, uuid, layer,
                 notes::mime_to_extension(&mime));
             if let Err(e) = nc.upload(&layer_file, &content).await {
@@ -1521,35 +1635,27 @@ where
             return Ok(());
         }
 
-        // Also save to local git working directory and commit
+        // Git commit and sync
         let mut should_sync = false;
         let mut sync_path = None;
         if let Some(git_repo) = &git_repo {
             let repo = git_repo.lock().await;
             if let Some(workdir) = repo.workdir() {
-                // Write index and content to local git working directory
                 if let Err(e) = index.save_to_path(workdir) {
                     log::warn!("Failed to save index to git workdir: {}", e);
                 }
-                // Write content file
-                let vertex = index.get_vertex(uuid);
-                if let Some(v) = vertex {
-                    let local_file = workdir.join(&v.file);
-                    if let Some(parent) = local_file.parent() {
-                        let _ = std::fs::create_dir_all(parent);
-                    }
-                    if let Err(e) = std::fs::write(&local_file, &content) {
-                        log::warn!("Failed to write content to git workdir: {}", e);
-                    }
+                let local_file = workdir.join(&vertex.file);
+                if let Some(parent) = local_file.parent() {
+                    let _ = std::fs::create_dir_all(parent);
                 }
-                // Commit the changes
+                if let Err(e) = std::fs::write(&local_file, &content) {
+                    log::warn!("Failed to write content to git workdir: {}", e);
+                }
                 let author = identity.as_deref().unwrap_or("unknown");
-                let message = format!("Edit vertex: {}", uuid);
-                // If in detached HEAD (after undo navigation), create a new branch
                 if let Err(e) = repo.ensure_on_branch() {
                     log::warn!("Failed to ensure on branch: {}", e);
                 }
-                if let Err(e) = repo.commit_all(&message, author) {
+                if let Err(e) = repo.commit_all(&format!("Edit vertex: {}", uuid), author) {
                     log::warn!("Failed to create git commit: {}", e);
                 } else {
                     should_sync = true;
@@ -1557,7 +1663,6 @@ where
                 }
             }
         }
-        // Sync to Nextcloud after successful commit (outside the lock)
         if should_sync {
             if let Some(path) = sync_path {
                 if let Err(e) = git_undo::sync_to_nextcloud(&path, &nc).await {
@@ -1572,14 +1677,8 @@ where
             s.index = Some(index);
         }
 
-        log::info!("Updated vertex {}", uuid);
-
-        // Send success acknowledgment
+        log::info!("Updated vertex {} (sync)", uuid);
         let msg = encode_log_message(action_id, 200, vertex_id, "OK");
-        write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-    } else {
-        log::warn!("Vertex not found: {}", vertex_id);
-        let msg = encode_log_message(action_id, 404, vertex_id, "Vertex not found");
         write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
     }
 
@@ -1697,9 +1796,16 @@ where
         mime
     );
 
-    let (nc, index, identity, git_repo) = {
+    let (nc, index, identity, git_repo, sync_tx, shared_index) = {
         let s = state.lock().await;
-        (s.nextcloud.clone(), s.index.clone(), s.identity.clone(), s.git_undo_repo.clone())
+        (
+            s.nextcloud.clone(),
+            s.index.clone(),
+            s.identity.clone(),
+            s.git_undo_repo.clone(),
+            s.sync_tx.clone(),
+            s.shared_index.clone(),
+        )
     };
 
     let nc = match nc {
@@ -1725,30 +1831,33 @@ where
     let ext = mime_to_extension(&mime);
     let file_path = format!("{}/{}.{}", notes::CONTENT_DIR, id, ext);
 
-    // Upload content
-    if let Err(e) = nc.upload(&file_path, &content).await {
-        let msg = encode_log_message(action_id, 500, 0, &format!("Upload failed: {}", e));
-        write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-        return Ok(());
-    }
+    // Capture original state for rollback BEFORE modifying index
+    let original_source_edges: Option<(u64, [u64; 6])> = if from_vertex != 0 {
+        notes::hash_to_uuid(&index, from_vertex)
+            .map(|uuid| (from_vertex, index.build_edge_array(uuid)))
+    } else {
+        None
+    };
 
     // Extract transcript for audio
     let transcript = if mime == "audio/ogg" {
-        // For now, transcript should be provided separately or extracted
-        // The browser will do Whisper transcription and include it
         None
     } else {
         None
     };
 
-    // Create vertex
+    // Create vertex in index (optimistic)
     let new_id = index.create_vertex(&mime, &file_path, transcript);
 
-    // Insert vertex into chain (if source provided), maintaining connectivity
-    // If source already has an edge in this direction, the new vertex is inserted between them
-    let displaced_vertex: Option<uuid::Uuid> = if from_vertex != 0 {
+    // Insert into chain and capture displaced vertex
+    let displaced_vertex: Option<(u64, [u64; 6])> = if from_vertex != 0 {
         if let Some(from_uuid) = notes::hash_to_uuid(&index, from_vertex) {
-            index.insert_vertex(from_uuid, new_id, direction)
+            // Capture displaced vertex's edges BEFORE insertion
+            let displaced_uuid = index.get_neighbor(from_uuid, direction.as_str());
+            let displaced_info = displaced_uuid.map(|u| (uuid_to_hash(u), index.build_edge_array(u)));
+
+            index.insert_vertex(from_uuid, new_id, direction);
+            displaced_info
         } else {
             None
         }
@@ -1756,65 +1865,20 @@ where
         None
     };
 
-    // Save index to Nextcloud
-    if let Err(e) = index.save(&nc).await {
-        let msg = encode_log_message(action_id, 500, 0, &format!("Save failed: {}", e));
-        write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-        return Ok(());
+    let vertex_hash = uuid_to_hash(new_id);
+
+    // Update shared index for sync worker
+    if let Some(ref shared) = shared_index {
+        *shared.lock().await = index.clone();
     }
 
-    // Also save to local git working directory and commit
-    let mut should_sync = false;
-    let mut sync_path = None;
-    if let Some(git_repo) = &git_repo {
-        let repo = git_repo.lock().await;
-        if let Some(workdir) = repo.workdir() {
-            // Write index to local git working directory
-            if let Err(e) = index.save_to_path(workdir) {
-                log::warn!("Failed to save index to git workdir: {}", e);
-            }
-            // Write content file
-            let local_file = workdir.join(&file_path);
-            if let Some(parent) = local_file.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            if let Err(e) = std::fs::write(&local_file, &content) {
-                log::warn!("Failed to write content to git workdir: {}", e);
-            }
-            // Commit the changes
-            let author = &identity_str;
-            let message = format!("Create vertex: {}", new_id);
-            // If in detached HEAD (after undo navigation), create a new branch
-            if let Err(e) = repo.ensure_on_branch() {
-                log::warn!("Failed to ensure on branch: {}", e);
-            }
-            if let Err(e) = repo.commit_all(&message, author) {
-                log::warn!("Failed to create git commit: {}", e);
-            } else {
-                should_sync = true;
-                sync_path = Some(repo.local_path().to_path_buf());
-            }
-        }
-    }
-    // Sync to Nextcloud after successful commit (outside the lock)
-    if should_sync {
-        if let Some(path) = sync_path {
-            if let Err(e) = git_undo::sync_to_nextcloud(&path, &nc).await {
-                log::warn!("Failed to sync git repo to Nextcloud: {}", e);
-            }
-        }
-    }
-
-    // Update state
+    // Update state index
     {
         let mut s = state.lock().await;
         s.index = Some(index.clone());
     }
 
-    // Don't send SetVertexLabel for newly created vertices - the client already has the data.
-    // Just send edges and acknowledgment.
-    let vertex_hash = uuid_to_hash(new_id);
-
+    // Send edge updates IMMEDIATELY (optimistic response)
     // Send new vertex edges
     let edge_array = index.build_edge_array(new_id);
     let edges_msg = encode_set_edges(
@@ -1830,11 +1894,10 @@ where
     );
     write.send(AxumWsMessage::Binary(edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
-    // Also send updated edges for source vertex (it now points to new vertex)
+    // Send source vertex edges if applicable
     log::info!("CreateVertex: from_vertex={}, direction={:?}, new_vertex_hash={}", from_vertex, direction, vertex_hash);
     if from_vertex != 0 {
         if let Some(from_uuid) = notes::hash_to_uuid(&index, from_vertex) {
-            // Source is a real vertex in the index - send its updated edges
             let from_edge_array = index.build_edge_array(from_uuid);
             log::info!("Sending updated edges for source vertex {} (uuid={}) -> {:?}", from_vertex, from_uuid, from_edge_array);
             let from_edges_msg = encode_set_edges(
@@ -1851,7 +1914,6 @@ where
             write.send(AxumWsMessage::Binary(from_edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
         } else {
             // Source vertex not in index (e.g., the "empty placeholder")
-            // Send synthetic edges update so browser can navigate to new vertex
             log::info!("Source vertex {} not in index - sending synthetic edge update pointing to new vertex", from_vertex);
             let dir_idx = match direction {
                 Direction::West => 0,
@@ -1873,30 +1935,118 @@ where
         }
     }
 
-    // If we displaced a vertex, send its updated edges too (it now points back to new vertex)
-    if let Some(displaced_uuid) = displaced_vertex {
-        let displaced_hash = uuid_to_hash(displaced_uuid);
-        let displaced_edge_array = index.build_edge_array(displaced_uuid);
-        log::info!("Sending updated edges for displaced vertex {} -> {:?}", displaced_hash, displaced_edge_array);
-        let displaced_edges_msg = encode_set_edges(
-            action_id,
-            displaced_hash,
-            displaced_edge_array[0],
-            displaced_edge_array[1],
-            displaced_edge_array[2],
-            displaced_edge_array[3],
-            displaced_edge_array[4],
-            displaced_edge_array[5],
-            0x7F,
-        );
-        write.send(AxumWsMessage::Binary(displaced_edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+    // Send displaced vertex edges if applicable
+    if let Some((displaced_hash, _)) = &displaced_vertex {
+        if let Some(displaced_uuid) = notes::hash_to_uuid(&index, *displaced_hash) {
+            let displaced_edge_array = index.build_edge_array(displaced_uuid);
+            log::info!("Sending updated edges for displaced vertex {} -> {:?}", displaced_hash, displaced_edge_array);
+            let displaced_edges_msg = encode_set_edges(
+                action_id,
+                *displaced_hash,
+                displaced_edge_array[0],
+                displaced_edge_array[1],
+                displaced_edge_array[2],
+                displaced_edge_array[3],
+                displaced_edge_array[4],
+                displaced_edge_array[5],
+                0x7F,
+            );
+            write.send(AxumWsMessage::Binary(displaced_edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+        }
     }
 
-    // Send success acknowledgment
-    let msg = encode_log_message(action_id, 200, vertex_hash, "Created");
-    write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+    // Check if we have sync worker for async processing
+    if let Some(sync_tx) = sync_tx {
+        // Clone file_path for logging before it's moved
+        let file_path_log = file_path.clone();
 
-    log::info!("Created vertex {} at {}", new_id, file_path);
+        // Queue work to background
+        let work_item = sync_worker::SyncWorkItem {
+            action_id,
+            vertex_id: vertex_hash,
+            operation: sync_worker::SyncOperation::CreateVertex {
+                uuid: new_id,
+                content: content.clone(),
+                file_path,
+                mime: mime.clone(),
+                from_vertex,
+                direction,
+                original_source_edges,
+                displaced_vertex,
+            },
+        };
+        if let Err(e) = sync_tx.send(work_item).await {
+            log::error!("Failed to queue create work: {}", e);
+            let msg = encode_log_message(action_id, 500, vertex_hash, "Failed to queue work");
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            return Ok(());
+        }
+
+        // Send 202 Accepted
+        let msg = encode_log_message(action_id, STATUS_ACCEPTED, vertex_hash, "Accepted");
+        write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+        log::info!("Created vertex {} at {} (async)", new_id, file_path_log);
+    } else {
+        // Synchronous fallback - do WebDAV upload and git commit inline
+        // Upload content
+        if let Err(e) = nc.upload(&file_path, &content).await {
+            let msg = encode_log_message(action_id, 500, 0, &format!("Upload failed: {}", e));
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            return Ok(());
+        }
+
+        // Save index to Nextcloud
+        if let Err(e) = index.save(&nc).await {
+            let msg = encode_log_message(action_id, 500, 0, &format!("Save failed: {}", e));
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            return Ok(());
+        }
+
+        // Also save to local git working directory and commit
+        let mut should_sync = false;
+        let mut sync_path = None;
+        if let Some(git_repo) = &git_repo {
+            let repo = git_repo.lock().await;
+            if let Some(workdir) = repo.workdir() {
+                if let Err(e) = index.save_to_path(workdir) {
+                    log::warn!("Failed to save index to git workdir: {}", e);
+                }
+                let local_file = workdir.join(&file_path);
+                if let Some(parent) = local_file.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                if let Err(e) = std::fs::write(&local_file, &content) {
+                    log::warn!("Failed to write content to git workdir: {}", e);
+                }
+                let author = &identity_str;
+                let message = format!("Create vertex: {}", new_id);
+                if let Err(e) = repo.ensure_on_branch() {
+                    log::warn!("Failed to ensure on branch: {}", e);
+                }
+                if let Err(e) = repo.commit_all(&message, author) {
+                    log::warn!("Failed to create git commit: {}", e);
+                } else {
+                    should_sync = true;
+                    sync_path = Some(repo.local_path().to_path_buf());
+                }
+            }
+        }
+        if should_sync {
+            if let Some(path) = sync_path {
+                if let Err(e) = git_undo::sync_to_nextcloud(&path, &nc).await {
+                    log::warn!("Failed to sync git repo to Nextcloud: {}", e);
+                }
+            }
+        }
+
+        // Send success acknowledgment
+        let msg = encode_log_message(action_id, 200, vertex_hash, "Created");
+        write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+        log::info!("Created vertex {} at {}", new_id, file_path);
+    }
+
     Ok(())
 }
 
@@ -1912,9 +2062,16 @@ where
     let (action_id, vertex_id) = parse_client_delete_vertex(data)?;
     log::info!("DeleteVertex: action={}, vertex={}", action_id, vertex_id);
 
-    let (nc, index, identity, git_repo) = {
+    let (nc, index, identity, git_repo, sync_tx, shared_index) = {
         let s = state.lock().await;
-        (s.nextcloud.clone(), s.index.clone(), s.identity.clone(), s.git_undo_repo.clone())
+        (
+            s.nextcloud.clone(),
+            s.index.clone(),
+            s.identity.clone(),
+            s.git_undo_repo.clone(),
+            s.sync_tx.clone(),
+            s.shared_index.clone(),
+        )
     };
 
     let nc = match nc {
@@ -1945,7 +2102,22 @@ where
         }
     };
 
-    // Delete vertex and get files to delete + affected neighbors
+    // Capture original state BEFORE deletion
+    let vertex = index.get_vertex(vertex_uuid).ok_or_else(|| anyhow!("Vertex not found"))?.clone();
+    let original_edges = index.build_edge_array(vertex_uuid);
+
+    // Capture affected neighbors' original edges before deletion
+    let mut affected_neighbors_original: Vec<(uuid::Uuid, [u64; 6])> = Vec::new();
+    for dir in ["west", "east", "north", "south", "up", "down"] {
+        if let Some(neighbor_uuid) = index.get_neighbor(vertex_uuid, dir) {
+            // Avoid duplicates
+            if !affected_neighbors_original.iter().any(|(u, _)| *u == neighbor_uuid) {
+                affected_neighbors_original.push((neighbor_uuid, index.build_edge_array(neighbor_uuid)));
+            }
+        }
+    }
+
+    // Delete vertex from index (optimistic)
     let (files_to_delete, affected_neighbors) = match index.delete_vertex(vertex_uuid) {
         Ok(result) => result,
         Err(e) => {
@@ -1955,66 +2127,22 @@ where
         }
     };
 
-    // Save updated index to Nextcloud
-    if let Err(e) = index.save(&nc).await {
-        let msg = encode_log_message(action_id, 500, vertex_id, &format!("Save failed: {}", e));
-        write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-        return Ok(());
+    // Update shared index for sync worker
+    if let Some(ref shared) = shared_index {
+        *shared.lock().await = index.clone();
     }
 
-    // Also save to local git working directory and commit
-    let mut should_sync = false;
-    let mut sync_path = None;
-    if let Some(git_repo) = &git_repo {
-        let repo = git_repo.lock().await;
-        if let Some(workdir) = repo.workdir() {
-            // Write index to local git working directory
-            if let Err(e) = index.save_to_path(workdir) {
-                log::warn!("Failed to save index to git workdir: {}", e);
-            }
-            // Delete content files from local working directory
-            for file_path in &files_to_delete {
-                let local_file = workdir.join(file_path);
-                if local_file.exists() {
-                    if let Err(e) = std::fs::remove_file(&local_file) {
-                        log::warn!("Failed to delete {} from git workdir: {}", file_path, e);
-                    }
-                }
-            }
-            // Commit the changes (including deletions)
-            let author = &identity_str;
-            let message = format!("Delete vertex: {}", vertex_uuid);
-            // If in detached HEAD (after undo navigation), create a new branch
-            if let Err(e) = repo.ensure_on_branch() {
-                log::warn!("Failed to ensure on branch: {}", e);
-            }
-            if let Err(e) = repo.commit_all(&message, author) {
-                log::warn!("Failed to create git commit: {}", e);
-            } else {
-                should_sync = true;
-                sync_path = Some(repo.local_path().to_path_buf());
-            }
-        }
-    }
-    // Sync to Nextcloud after successful commit (outside the lock)
-    if should_sync {
-        if let Some(path) = sync_path {
-            if let Err(e) = git_undo::sync_to_nextcloud(&path, &nc).await {
-                log::warn!("Failed to sync git repo to Nextcloud: {}", e);
-            }
-        }
-    }
-
-    // Update state
+    // Update state index
     {
         let mut s = state.lock().await;
         s.index = Some(index.clone());
     }
 
+    // Send edge updates IMMEDIATELY (optimistic response)
     // Send updated edges for all affected neighbors
-    for neighbor_uuid in affected_neighbors {
-        let neighbor_hash = uuid_to_hash(neighbor_uuid);
-        let edge_array = index.build_edge_array(neighbor_uuid);
+    for neighbor_uuid in &affected_neighbors {
+        let neighbor_hash = uuid_to_hash(*neighbor_uuid);
+        let edge_array = index.build_edge_array(*neighbor_uuid);
         log::info!("Sending updated edges for neighbor {} after delete -> {:?}", neighbor_hash, edge_array);
         let edges_msg = encode_set_edges(
             action_id,
@@ -2030,7 +2158,7 @@ where
         write.send(AxumWsMessage::Binary(edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
     }
 
-    // Send edges update for the deleted vertex with all zeros to signal deletion
+    // Send deletion signal for the vertex
     let deleted_edges_msg = encode_set_edges(
         action_id,
         vertex_id,
@@ -2039,11 +2167,95 @@ where
     );
     write.send(AxumWsMessage::Binary(deleted_edges_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
-    // Send success acknowledgment
-    let msg = encode_log_message(action_id, 200, vertex_id, "Deleted");
-    write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+    // Check if we have sync worker for async processing
+    if let Some(sync_tx) = sync_tx {
+        // Queue work to background
+        let work_item = sync_worker::SyncWorkItem {
+            action_id,
+            vertex_id,
+            operation: sync_worker::SyncOperation::DeleteVertex {
+                uuid: vertex_uuid,
+                files_to_delete,
+                original_content: Vec::new(),  // Content is fetched on rollback if needed
+                original_mime: vertex.mime.clone(),
+                original_file: vertex.file.clone(),
+                original_edges,
+                affected_neighbors: affected_neighbors_original,
+            },
+        };
+        if let Err(e) = sync_tx.send(work_item).await {
+            log::error!("Failed to queue delete work: {}", e);
+            let msg = encode_log_message(action_id, 500, vertex_id, "Failed to queue work");
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            return Ok(());
+        }
 
-    log::info!("Deleted vertex {} (uuid={})", vertex_id, vertex_uuid);
+        // Send 202 Accepted
+        let msg = encode_log_message(action_id, STATUS_ACCEPTED, vertex_id, "Accepted");
+        write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+        log::info!("Deleted vertex {} (uuid={}) (async)", vertex_id, vertex_uuid);
+    } else {
+        // Synchronous fallback - do WebDAV delete and git commit inline
+        // Delete files from WebDAV
+        for file_path in &files_to_delete {
+            if let Err(e) = nc.delete(file_path).await {
+                log::warn!("Failed to delete {} from WebDAV: {}", file_path, e);
+            }
+        }
+
+        // Save updated index to Nextcloud
+        if let Err(e) = index.save(&nc).await {
+            let msg = encode_log_message(action_id, 500, vertex_id, &format!("Save failed: {}", e));
+            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            return Ok(());
+        }
+
+        // Also save to local git working directory and commit
+        let mut should_sync = false;
+        let mut sync_path = None;
+        if let Some(git_repo) = &git_repo {
+            let repo = git_repo.lock().await;
+            if let Some(workdir) = repo.workdir() {
+                if let Err(e) = index.save_to_path(workdir) {
+                    log::warn!("Failed to save index to git workdir: {}", e);
+                }
+                for file_path in &files_to_delete {
+                    let local_file = workdir.join(file_path);
+                    if local_file.exists() {
+                        if let Err(e) = std::fs::remove_file(&local_file) {
+                            log::warn!("Failed to delete {} from git workdir: {}", file_path, e);
+                        }
+                    }
+                }
+                let author = &identity_str;
+                let message = format!("Delete vertex: {}", vertex_uuid);
+                if let Err(e) = repo.ensure_on_branch() {
+                    log::warn!("Failed to ensure on branch: {}", e);
+                }
+                if let Err(e) = repo.commit_all(&message, author) {
+                    log::warn!("Failed to create git commit: {}", e);
+                } else {
+                    should_sync = true;
+                    sync_path = Some(repo.local_path().to_path_buf());
+                }
+            }
+        }
+        if should_sync {
+            if let Some(path) = sync_path {
+                if let Err(e) = git_undo::sync_to_nextcloud(&path, &nc).await {
+                    log::warn!("Failed to sync git repo to Nextcloud: {}", e);
+                }
+            }
+        }
+
+        // Send success acknowledgment
+        let msg = encode_log_message(action_id, 200, vertex_id, "Deleted");
+        write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+        log::info!("Deleted vertex {} (uuid={})", vertex_id, vertex_uuid);
+    }
+
     Ok(())
 }
 

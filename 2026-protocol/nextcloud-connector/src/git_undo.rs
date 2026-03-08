@@ -36,6 +36,8 @@ pub const NEXTCLOUD_UNDO_PATH: &str = "Notes/.gradesta-undo";
 pub struct GitUndoRepo {
     repo: Repository,
     local_path: PathBuf,
+    /// Path to bare repo on mounted WebDAV (if using remote)
+    remote_path: Option<PathBuf>,
 }
 
 /// Download git repo from Nextcloud and open it locally in /tmp
@@ -92,7 +94,7 @@ pub async fn open_from_nextcloud(nc: &NextcloudClient) -> Result<GitUndoRepo> {
         repo
     };
 
-    let git_undo = GitUndoRepo { repo, local_path: local_path.clone() };
+    let git_undo = GitUndoRepo { repo, local_path: local_path.clone(), remote_path: None };
 
     // If we created a new repo, upload it to Nextcloud
     if !has_remote_repo {
@@ -190,6 +192,181 @@ async fn upload_dir_recursive(nc: &NextcloudClient, local_path: &Path, remote_pa
 }
 
 impl GitUndoRepo {
+    /// Open or initialize a local repo with a mounted WebDAV remote
+    ///
+    /// This is the preferred method for production use - it uses git push/pull
+    /// to a bare repo on the mounted WebDAV instead of manually uploading .git files.
+    pub fn open_with_remote(local_path: &Path, remote_path: &Path) -> Result<Self> {
+        log::info!("Git undo: opening with remote at {}", remote_path.display());
+
+        // Clean up any existing local directory to ensure fresh state
+        if local_path.exists() {
+            std::fs::remove_dir_all(local_path)
+                .context("Failed to clean up existing temp directory")?;
+        }
+        std::fs::create_dir_all(local_path)
+            .context("Failed to create temp directory")?;
+
+        // Check if remote bare repo exists
+        let remote_head = remote_path.join("HEAD");
+        let has_remote = remote_head.exists();
+
+        log::info!("Git undo: remote bare repo exists = {}", has_remote);
+
+        let repo = if has_remote {
+            // Clone from the bare repo
+            let remote_url = format!("file://{}", remote_path.display());
+            log::info!("Git undo: cloning from {}", remote_url);
+
+            Repository::clone(&remote_url, local_path)
+                .context("Failed to clone from remote bare repo")?
+        } else {
+            // Initialize new local repository
+            let repo = Repository::init(local_path)
+                .context("Failed to initialize git repository")?;
+
+            // Create initial commit so we have a valid HEAD
+            {
+                let sig = Signature::now("gradesta", "gradesta@local")?;
+                let tree_id = {
+                    let mut index = repo.index()?;
+                    index.write_tree()?
+                };
+                let tree = repo.find_tree(tree_id)?;
+                repo.commit(Some("HEAD"), &sig, &sig, "Initial state", &tree, &[])?;
+            }
+
+            // Initialize the remote bare repo
+            Self::init_remote_bare(remote_path)?;
+
+            // Add origin remote
+            let remote_url = format!("file://{}", remote_path.display());
+            repo.remote("origin", &remote_url)?;
+
+            log::info!("Initialized new git repository with remote");
+            repo
+        };
+
+        let git_undo = GitUndoRepo {
+            repo,
+            local_path: local_path.to_path_buf(),
+            remote_path: Some(remote_path.to_path_buf()),
+        };
+
+        // If we just created a new repo, push to remote
+        if !has_remote {
+            git_undo.push()?;
+        }
+
+        Ok(git_undo)
+    }
+
+    /// Initialize a bare git repository at the given path
+    pub fn init_remote_bare(remote_path: &Path) -> Result<()> {
+        if !remote_path.join("HEAD").exists() {
+            // Create parent directory if needed
+            if let Some(parent) = remote_path.parent() {
+                std::fs::create_dir_all(parent)
+                    .context("Failed to create parent directory for bare repo")?;
+            }
+
+            Repository::init_bare(remote_path)
+                .context("Failed to initialize bare repository")?;
+            log::info!("Initialized bare repo at {}", remote_path.display());
+        }
+        Ok(())
+    }
+
+    /// Push all branches to the remote
+    ///
+    /// This replaces sync_to_nextcloud() - uses efficient git push instead of
+    /// manually uploading all .git files.
+    pub fn push(&self) -> Result<()> {
+        let remote_path = self.remote_path.as_ref()
+            .ok_or_else(|| anyhow!("No remote configured"))?;
+
+        log::info!("Git undo: pushing to {}", remote_path.display());
+
+        let mut remote = self.repo.find_remote("origin")
+            .context("Failed to find origin remote")?;
+
+        // Get current branch name
+        let head = self.repo.head()?;
+        let branch_name = if head.is_branch() {
+            head.shorthand().unwrap_or("master").to_string()
+        } else {
+            // Detached HEAD - push to master
+            "master".to_string()
+        };
+
+        // Push current branch
+        let refspec = format!("refs/heads/{}:refs/heads/{}", branch_name, branch_name);
+        remote.push(&[&refspec], None)
+            .context("Failed to push to remote")?;
+
+        log::info!("Git undo: pushed {} to remote", branch_name);
+        Ok(())
+    }
+
+    /// Pull from remote to sync state
+    ///
+    /// Used on connect to get latest state from Nextcloud.
+    pub fn pull(&self) -> Result<()> {
+        let remote_path = self.remote_path.as_ref()
+            .ok_or_else(|| anyhow!("No remote configured"))?;
+
+        log::info!("Git undo: pulling from {}", remote_path.display());
+
+        let mut remote = self.repo.find_remote("origin")
+            .context("Failed to find origin remote")?;
+
+        // Fetch all branches
+        remote.fetch(&["refs/heads/*:refs/remotes/origin/*"], None, None)
+            .context("Failed to fetch from remote")?;
+
+        // Get the remote master branch
+        let fetch_head = match self.repo.find_reference("refs/remotes/origin/master") {
+            Ok(r) => r,
+            Err(_) => {
+                log::info!("Git undo: no remote master branch yet, skipping pull");
+                return Ok(());
+            }
+        };
+
+        let fetch_commit = self.repo.reference_to_annotated_commit(&fetch_head)?;
+
+        // Fast-forward merge if possible
+        let head = self.repo.head()?;
+        if let Some(head_oid) = head.target() {
+            let head_commit = self.repo.find_commit(head_oid)?;
+            let fetch_commit_obj = self.repo.find_commit(fetch_commit.id())?;
+
+            // Check if we can fast-forward
+            if self.repo.graph_descendant_of(fetch_commit.id(), head_oid)? {
+                // Remote is ahead, fast-forward
+                let refname = head.name().unwrap_or("refs/heads/master");
+                self.repo.reference(
+                    refname,
+                    fetch_commit.id(),
+                    true,
+                    "Fast-forward pull",
+                )?;
+
+                // Checkout the new HEAD
+                self.repo.checkout_tree(
+                    fetch_commit_obj.tree()?.as_object(),
+                    Some(git2::build::CheckoutBuilder::new().force()),
+                )?;
+
+                log::info!("Git undo: fast-forwarded to {}", fetch_commit.id());
+            } else {
+                log::info!("Git undo: local and remote have diverged, keeping local state");
+            }
+        }
+
+        Ok(())
+    }
+
     /// Get the local working directory path
     pub fn local_path(&self) -> &Path {
         &self.local_path
@@ -198,6 +375,45 @@ impl GitUndoRepo {
     /// Get the working directory path
     pub fn workdir(&self) -> Option<&Path> {
         self.repo.workdir()
+    }
+
+    /// Check if this repo has a remote configured
+    pub fn has_remote(&self) -> bool {
+        self.remote_path.is_some()
+    }
+
+    /// Open or initialize a local-only git repo (no remote)
+    ///
+    /// Used for tests and fallback when WebDAV mount is unavailable.
+    pub fn open_or_init(local_path: &Path) -> Result<Self> {
+        let repo = if local_path.join(".git").exists() {
+            Repository::open(local_path)
+                .context("Failed to open existing git repository")?
+        } else {
+            std::fs::create_dir_all(local_path)?;
+            let repo = Repository::init(local_path)
+                .context("Failed to initialize git repository")?;
+
+            // Create initial commit so we have a valid HEAD
+            {
+                let sig = Signature::now("gradesta", "gradesta@local")?;
+                let tree_id = {
+                    let mut index = repo.index()?;
+                    index.write_tree()?
+                };
+                let tree = repo.find_tree(tree_id)?;
+                repo.commit(Some("HEAD"), &sig, &sig, "Initial state", &tree, &[])?;
+            }
+
+            log::info!("Initialized new local git repository");
+            repo
+        };
+
+        Ok(GitUndoRepo {
+            repo,
+            local_path: local_path.to_path_buf(),
+            remote_path: None,
+        })
     }
 
     /// Stage all changes and create a commit
