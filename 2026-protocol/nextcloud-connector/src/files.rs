@@ -16,7 +16,7 @@ use tokio::sync::Mutex;
 use axum::extract::ws::Message;
 
 use crate::protocol::*;
-use crate::ConnState;
+use crate::state::ConnState;
 
 /// Max file size to fetch content (10 MB)
 const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
