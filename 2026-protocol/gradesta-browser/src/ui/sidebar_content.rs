@@ -828,7 +828,7 @@ fn render_nav_panel(
         } else {
             let landmark_vertices: Vec<(String, Option<u64>)> = app_state.landmark_history.iter().rev()
                 .map(|landmark| {
-                    let vertex_id = graph.landmark_vertices.get(landmark)
+                    let vertex_id = graph.landmark_mgr.get_landmark_vertices(landmark)
                         .and_then(|vertices| vertices.first().copied());
                     (landmark.clone(), vertex_id)
                 })

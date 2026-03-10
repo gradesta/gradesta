@@ -7,6 +7,7 @@ use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
 
+use crate::landmark::LandmarkWatchManager;
 use crate::state::{LoadingPortalCell, PendingAudioCell, EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
 
 /// Get edge indices prioritized by navigation direction.
@@ -60,10 +61,8 @@ pub struct GraphState {
     pub context_uri: Option<String>,
     /// If set, jump to first non-portal vertex of this context
     pub pending_jump_context: Option<String>,
-    /// Maps landmark URI -> vertices that belong to it
-    pub landmark_vertices: HashMap<String, Vec<u64>>,
-    /// Which landmark we're currently receiving data for
-    pub current_receiving_landmark: Option<String>,
+    /// Centralized landmark watching state
+    pub landmark_mgr: LandmarkWatchManager,
 }
 
 /// Information about a stack of vertices connected via up/down edges
@@ -444,16 +443,11 @@ pub fn build_grid_view(
 
     for (portal_id, portal_pos, landmark_url) in portal_info {
         // Check if this landmark has any non-portal content loaded
-        let has_content = graph.landmark_vertices
-            .get(&landmark_url)
-            .map(|vertices| {
-                vertices.iter().any(|&vid| {
-                    graph.vertices.get(&vid)
-                        .map(|v| v.mime.as_deref() != Some("text/gradesta-url"))
-                        .unwrap_or(false)
-                })
-            })
-            .unwrap_or(false);
+        let has_content = graph.landmark_mgr.has_content(&landmark_url, |vid| {
+            graph.vertices.get(&vid)
+                .map(|v| v.mime.as_deref() == Some("text/gradesta-url"))
+                .unwrap_or(false)
+        });
 
         if !has_content {
             // Try to place shadow in an unoccupied adjacent position

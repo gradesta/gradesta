@@ -189,13 +189,7 @@ fn handle_set_vertex_preview(
     }
 
     // Track which landmark this vertex belongs to
-    if let Some(landmark) = graph.current_receiving_landmark.clone() {
-        if let Some(vertices) = graph.landmark_vertices.get_mut(&landmark) {
-            if !vertices.contains(&vertex_id) {
-                vertices.push(vertex_id);
-            }
-        }
-    }
+    graph.landmark_mgr.track_vertex(vertex_id);
 
     // Handle initial navigation - jump to first non-portal vertex
     if layer == 0 && graph.pending_jump_context.is_some() && mime != "text/gradesta-url" {
@@ -250,25 +244,20 @@ fn handle_set_vertex_content(
     app_state.active_content_watches.insert(key);
 
     // Track which landmark this vertex belongs to
-    if let Some(landmark) = graph.current_receiving_landmark.clone() {
-        if let Some(vertices) = graph.landmark_vertices.get_mut(&landmark) {
-            if !vertices.contains(&vertex_id) {
-                vertices.push(vertex_id);
-            }
-        }
-    }
+    graph.landmark_mgr.track_vertex(vertex_id);
 }
 
 fn handle_set_context(uri: &str, graph: &mut GraphState, app_state: &mut AppState) {
-    graph.current_receiving_landmark = Some(uri.to_string());
-    graph.landmark_vertices.entry(uri.to_string()).or_insert_with(Vec::new);
-    let is_following = app_state.following_portal.as_ref()
-        .map(|p| p == uri)
-        .unwrap_or(false);
+    // Update landmark manager state
+    graph.landmark_mgr.on_set_context(uri);
+
+    // Check if we should auto-navigate to this landmark
+    let is_following = graph.landmark_mgr.should_follow(uri);
     if is_following {
-        app_state.following_portal = None;
+        graph.landmark_mgr.clear_follow(uri);
         graph.pending_jump_context = Some(uri.to_string());
     }
+
     graph.context_uri = Some(uri.to_string());
     app_state.status = format!("Viewing: {uri}");
     let is_initial = app_state.landmark_history.is_empty();
@@ -396,13 +385,7 @@ fn handle_set_vertex_label(
     }
 
     // Track which landmark this vertex belongs to
-    if let Some(landmark) = graph.current_receiving_landmark.clone() {
-        if let Some(vertices) = graph.landmark_vertices.get_mut(&landmark) {
-            if !vertices.contains(&vertex_id) {
-                vertices.push(vertex_id);
-            }
-        }
-    }
+    graph.landmark_mgr.track_vertex(vertex_id);
 
     // If we're waiting to jump to a new context, and this vertex is NOT a portal, jump to it
     if layer == 0 && graph.pending_jump_context.is_some() && mime != "text/gradesta-url" {
@@ -431,9 +414,7 @@ fn handle_set_edges(
     if is_deletion {
         graph.vertices.remove(&vertex_id);
         app_state.history.retain(|&id| id != vertex_id);
-        for vertices in graph.landmark_vertices.values_mut() {
-            vertices.retain(|&id| id != vertex_id);
-        }
+        graph.landmark_mgr.remove_vertex(vertex_id);
         if app_state.current_vertex == Some(vertex_id) {
             app_state.current_vertex = app_state.history.pop();
         }

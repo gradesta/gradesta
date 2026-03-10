@@ -17,6 +17,7 @@ mod gamepad;
 mod graph;
 mod identity;
 mod keybindings;
+mod landmark;
 mod local_services;
 mod media;
 mod network;
@@ -34,6 +35,7 @@ use audio::{AudioPlaybackState, AudioPreloadCache, AudioProcessingChannel, Audio
 use audio::{play_audio_fast, predecode_audio_async, stop_audio};
 use audio_processing::set_audio_speed;
 use graph::{direction_priority_order, GraphState};
+use landmark::build_landmark_url;
 use media::MediaCache;
 use network::{run_ws, NetEventsTx, NetRx, ServerEvent, WsCommand, WsCommandTx};
 use state::{AppState, InputMode, NextcloudLoginState, PlaybackBoostState};
@@ -887,11 +889,9 @@ fn ui_system(
             // Clear graph state for fresh connection
             graph.vertices.clear();
             graph.context_uri = None;
-            graph.current_receiving_landmark = None;
-            graph.landmark_vertices.clear();
+            graph.landmark_mgr.clear();
             app_state.current_vertex = None;
             app_state.history.clear();
-            app_state.requested_landmarks.clear();
 
             // Clear focus from URL bar so user can navigate the graph
             ctx.memory_mut(|mem| mem.surrender_focus(egui::Id::new("server_bar")));
@@ -1173,13 +1173,10 @@ fn ui_system(
         }
         ui::SidebarContentAction::WatchLandmark(landmark) => {
             if let Some(ref tx) = ws_cmd_tx.0 {
-                if !app_state.requested_landmarks.contains(&landmark) {
-                    app_state.requested_landmarks.insert(landmark.clone());
-                    let action_id = app_state.next_action_id;
+                let action_id = app_state.next_action_id;
+                if graph.landmark_mgr.watch_and_follow(&landmark, action_id, tx) {
                     app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
-                    let _ = tx.send(WsCommand::WatchLandmark { action_id, landmark: landmark.clone() });
                 }
-                app_state.following_portal = Some(landmark.clone());
                 app_state.status = format!("Loading: {}", landmark);
             }
         }
@@ -1889,7 +1886,7 @@ fn auto_play_audio_on_navigate(
 /// This pre-loads content so it's ready when user navigates there
 fn auto_expand_nearby_links(
     mut app_state: ResMut<AppState>,
-    graph: Res<GraphState>,
+    mut graph: ResMut<GraphState>,
     ws_cmd_tx: Res<WsCommandTx>,
 ) {
     let Some(current_id) = app_state.current_vertex else { return };
@@ -1899,45 +1896,17 @@ fn auto_expand_nearby_links(
     if !graph.vertices.contains_key(&current_id) {
         // We navigated to a vertex that doesn't exist in our local graph
         // This happens at landmark boundaries - request the data
-        let landmark_url = if let Some(ref base_url) = app_state.base_ws_url {
-            // Extract the base landmark and append vertex ID
-            // The base_ws_url looks like "ws://localhost:8083/ws?landmark=notes://identity/"
-            if let Some(landmark_start) = base_url.find("landmark=") {
-                let landmark_base = &base_url[landmark_start + 9..];
-                // Remove trailing parts after the landmark
-                let landmark_base = landmark_base.split('&').next().unwrap_or(landmark_base);
-                // Append vertex ID to landmark
-                format!("{}{}", landmark_base.trim_end_matches('/'), current_id)
-            } else {
-                format!("vertex/{}", current_id)
-            }
-        } else {
-            format!("vertex/{}", current_id)
-        };
+        let landmark_url = build_landmark_url(current_id, &app_state.base_ws_url);
 
-        if !app_state.requested_landmarks.contains(&landmark_url) {
+        let action_id = app_state.next_action_id;
+        if graph.landmark_mgr.watch_if_needed(&landmark_url, action_id, cmd_tx) {
             eprintln!("Requesting landmark for unknown vertex {}: {}", current_id, landmark_url);
-            app_state.requested_landmarks.insert(landmark_url.clone());
-            let action_id = app_state.next_action_id;
             app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
-            let _ = cmd_tx.send(WsCommand::WatchLandmark { action_id, landmark: landmark_url });
         }
         return;
     }
 
     let Some(current) = graph.vertices.get(&current_id) else { return };
-
-    // Helper to build landmark URL for a vertex ID
-    let build_landmark_url = |vertex_id: u64, base_url: &Option<String>| -> String {
-        if let Some(ref base_url) = base_url {
-            if let Some(landmark_start) = base_url.find("landmark=") {
-                let landmark_base = &base_url[landmark_start + 9..];
-                let landmark_base = landmark_base.split('&').next().unwrap_or(landmark_base);
-                return format!("{}{}", landmark_base.trim_end_matches('/'), vertex_id);
-            }
-        }
-        format!("vertex/{}", vertex_id)
-    };
 
     // FIRST: If we're sitting on a portal, handle it
     // Layer 0 portals (text/gradesta-url as primary): auto-follow immediately (no visible label)
@@ -1952,7 +1921,7 @@ fn auto_expand_nearby_links(
         let landmark_url = String::from_utf8_lossy(&current.label).to_string();
 
         // Check if this landmark was already loaded by looking up vertices associated with it
-        if let Some(vertices) = graph.landmark_vertices.get(&landmark_url) {
+        if let Some(vertices) = graph.landmark_mgr.get_landmark_vertices(&landmark_url) {
             // First, try to find the east neighbor of the portal (preferred direction for content)
             let east_id = current.edges[EDGE_EAST];
             if east_id != 0 {
@@ -1961,7 +1930,7 @@ fn auto_expand_nearby_links(
                         // Found content vertex to the east - jump to it
                         app_state.history.push(current_id);
                         app_state.current_vertex = Some(east_id);
-                        app_state.following_portal = None;
+                        graph.landmark_mgr.clear_follow(&landmark_url);
                         app_state.loading_portal_vertex = None;
                         app_state.loading_portal_cell = None;
                         return;
@@ -1970,13 +1939,14 @@ fn auto_expand_nearby_links(
             }
 
             // Fallback: find the first non-portal vertex in this landmark
-            for &vid in vertices {
+            let vertices_copy = vertices.clone(); // Clone to avoid borrow conflict
+            for &vid in &vertices_copy {
                 if let Some(vertex) = graph.vertices.get(&vid) {
                     if vertex.mime.as_deref() != Some("text/gradesta-url") {
                         // Found a content vertex - jump to it
                         app_state.history.push(current_id);
                         app_state.current_vertex = Some(vid);
-                        app_state.following_portal = None;
+                        graph.landmark_mgr.clear_follow(&landmark_url);
                         app_state.loading_portal_vertex = None;
                         app_state.loading_portal_cell = None;
                         return;
@@ -1985,28 +1955,23 @@ fn auto_expand_nearby_links(
             }
         }
 
-        // Not loaded yet - request it
-        if !app_state.requested_landmarks.contains(&landmark_url) {
-            app_state.requested_landmarks.insert(landmark_url.clone());
-            let action_id = app_state.next_action_id;
+        // Not loaded yet - request it with auto-follow
+        let action_id = app_state.next_action_id;
+        if graph.landmark_mgr.watch_and_follow(&landmark_url, action_id, cmd_tx) {
             app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
-            let _ = cmd_tx.send(WsCommand::WatchLandmark { action_id, landmark: landmark_url.clone() });
         }
 
-        // Set up to jump when it loads
-        if app_state.following_portal.is_none() {
-            app_state.following_portal = Some(landmark_url);
+        // Set up loading indicator
+        if graph.landmark_mgr.should_follow(&landmark_url) {
             app_state.loading_portal_vertex = Some(current_id);
         }
         return;
     } else if let Some(landmark_url) = layer1_portal_url {
         // Layer 1 portal - just preload the landmark, don't auto-follow
         // This allows the user to see the text label and navigate east manually
-        if !app_state.requested_landmarks.contains(&landmark_url) {
-            app_state.requested_landmarks.insert(landmark_url.clone());
-            let action_id = app_state.next_action_id;
+        let action_id = app_state.next_action_id;
+        if graph.landmark_mgr.watch_if_needed(&landmark_url, action_id, cmd_tx) {
             app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
-            let _ = cmd_tx.send(WsCommand::WatchLandmark { action_id, landmark: landmark_url });
         }
         // Don't return - continue to preload neighbors
     }
@@ -2022,12 +1987,10 @@ fn auto_expand_nearby_links(
         if !graph.vertices.contains_key(&edge) {
             // This edge points to a vertex we don't have - request it
             let landmark_url = build_landmark_url(edge, &app_state.base_ws_url);
-            if !app_state.requested_landmarks.contains(&landmark_url) {
+            let action_id = app_state.next_action_id;
+            if graph.landmark_mgr.watch_if_needed(&landmark_url, action_id, cmd_tx) {
                 eprintln!("Preloading nearby unknown vertex {}: {}", edge, landmark_url);
-                app_state.requested_landmarks.insert(landmark_url.clone());
-                let action_id = app_state.next_action_id;
                 app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
-                let _ = cmd_tx.send(WsCommand::WatchLandmark { action_id, landmark: landmark_url });
                 return; // Only one per frame
             }
         }
@@ -2058,12 +2021,10 @@ fn auto_expand_nearby_links(
     for vid in &two_steps_away {
         if !graph.vertices.contains_key(vid) {
             let landmark_url = build_landmark_url(*vid, &app_state.base_ws_url);
-            if !app_state.requested_landmarks.contains(&landmark_url) {
+            let action_id = app_state.next_action_id;
+            if graph.landmark_mgr.watch_if_needed(&landmark_url, action_id, cmd_tx) {
                 eprintln!("Preloading 2-step unknown vertex {}: {}", vid, landmark_url);
-                app_state.requested_landmarks.insert(landmark_url.clone());
-                let action_id = app_state.next_action_id;
                 app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
-                let _ = cmd_tx.send(WsCommand::WatchLandmark { action_id, landmark: landmark_url });
                 return; // Only one per frame
             }
         }
@@ -2086,17 +2047,11 @@ fn auto_expand_nearby_links(
             };
 
             if let Some(landmark_url) = landmark_url {
-                // Skip if already requested
-                if app_state.requested_landmarks.contains(&landmark_url) {
-                    continue;
-                }
-
-                // Mark as requested and send - only one per frame
-                app_state.requested_landmarks.insert(landmark_url.clone());
                 let action_id = app_state.next_action_id;
-                app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
-                let _ = cmd_tx.send(WsCommand::WatchLandmark { action_id, landmark: landmark_url });
-                return; // Only one per frame
+                if graph.landmark_mgr.watch_if_needed(&landmark_url, action_id, cmd_tx) {
+                    app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                    return; // Only one per frame
+                }
             }
         }
     }

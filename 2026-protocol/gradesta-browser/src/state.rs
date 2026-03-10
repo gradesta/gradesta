@@ -584,10 +584,6 @@ pub struct AppState {
     pub last_vertex: Option<u64>,
     pub history: Vec<u64>,
     pub base_ws_url: Option<String>,
-    /// Track which landmarks we've already requested
-    pub requested_landmarks: HashSet<String>,
-    /// If set, we're waiting to jump to this landmark's first vertex
-    pub following_portal: Option<String>,
     /// The vertex ID of the portal we're currently loading (for loading animation)
     pub loading_portal_vertex: Option<u64>,
     /// Placeholder cell shown while a portal is loading
@@ -869,8 +865,6 @@ impl Default for AppState {
             last_vertex: None,
             history: Vec::new(),
             base_ws_url: None,
-            requested_landmarks: HashSet::new(),
-            following_portal: None,
             loading_portal_vertex: None,
             loading_portal_cell: None,
             key_repeat_last_move: None,

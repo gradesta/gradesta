@@ -283,7 +283,7 @@ pub fn execute_commands(
     // GraphReturnFromUndoTree - Return from undo tree to previous position
     if cmds.has(Command::GraphReturnFromUndoTree) && app_state.viewing_undo_tree {
         results.any_command_processed = true;
-        execute_return_from_undo_tree(app_state, ws_cmd_tx);
+        execute_return_from_undo_tree(app_state, graph, ws_cmd_tx);
     }
 
     // Navigation commands
@@ -1112,9 +1112,7 @@ fn execute_delete_vertex(app_state: &mut AppState, graph: &mut GraphState, ws_cm
 
                     // Optimistic delete
                     graph.vertices.remove(&current_id);
-                    for vertices in graph.landmark_vertices.values_mut() {
-                        vertices.retain(|&id| id != current_id);
-                    }
+                    graph.landmark_mgr.remove_vertex(current_id);
                     app_state.history.retain(|&id| id != current_id);
 
                     if let Some(next) = next_vertex {
@@ -1161,7 +1159,7 @@ fn execute_edit_text(app_state: &mut AppState, graph: &GraphState) {
     }
 }
 
-fn execute_show_undo_tree(app_state: &mut AppState, _graph: &GraphState, ws_cmd_tx: &WsCommandTx) {
+fn execute_show_undo_tree(app_state: &mut AppState, graph: &mut GraphState, ws_cmd_tx: &WsCommandTx) {
     // Don't enter undo tree if already viewing it
     if app_state.viewing_undo_tree {
         return;
@@ -1178,23 +1176,18 @@ fn execute_show_undo_tree(app_state: &mut AppState, _graph: &GraphState, ws_cmd_
 
     let undo_landmark = "gradesta://undo".to_string();
 
-    // Set following_portal so browser navigates to the first vertex when data arrives
-    app_state.following_portal = Some(undo_landmark.clone());
-
-    // Send WatchLandmark for the undo tree
+    // Send WatchLandmark for the undo tree with auto-follow
     if let Some(ref tx) = ws_cmd_tx.0 {
         let action_id = app_state.next_action_id;
-        app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
-        let _ = tx.send(WsCommand::WatchLandmark {
-            action_id,
-            landmark: undo_landmark,
-        });
+        if graph.landmark_mgr.watch_and_follow(&undo_landmark, action_id, tx) {
+            app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+        }
     }
 
     app_state.status = "Viewing undo history (Escape to return)".to_string();
 }
 
-fn execute_return_from_undo_tree(app_state: &mut AppState, ws_cmd_tx: &WsCommandTx) {
+fn execute_return_from_undo_tree(app_state: &mut AppState, graph: &mut GraphState, ws_cmd_tx: &WsCommandTx) {
     // Only process if we're actually in the undo tree view
     if !app_state.viewing_undo_tree {
         return;
@@ -1205,11 +1198,9 @@ fn execute_return_from_undo_tree(app_state: &mut AppState, ws_cmd_tx: &WsCommand
         // Send WatchLandmark to return to previous landmark
         if let Some(ref tx) = ws_cmd_tx.0 {
             let action_id = app_state.next_action_id;
-            app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
-            let _ = tx.send(WsCommand::WatchLandmark {
-                action_id,
-                landmark: landmark.clone(),
-            });
+            if graph.landmark_mgr.watch_if_needed(&landmark, action_id, tx) {
+                app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+            }
         }
 
         // Restore current vertex (will be updated when server responds, but set optimistically)
