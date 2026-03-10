@@ -11,7 +11,7 @@ use crate::calendar;
 use crate::connection_manager::SharedConnectionManager;
 use crate::content_store::{path_to_hash, path_to_ext, CONTENT_STORE_DIR};
 use crate::files;
-use crate::notes::{self, uuid_to_hash};
+use crate::notes::{self, uuid_to_hash, ContentRef, mime_to_extension};
 use crate::protocol::*;
 use crate::router;
 use crate::state::ConnState;
@@ -321,35 +321,45 @@ where
                 let preview_msg = encode_set_vertex_preview(action_id, vertex_id, 0, u32::MAX, mime, &[]);
                 write.send(AxumWsMessage::Binary(preview_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
             } else {
-                // Text content - load using content store (with local caching) if available
-                let (content, mime) = if vertex.file.starts_with(CONTENT_STORE_DIR) {
-                    // CAS file - use content store for cached loading
-                    if let (Some(hash), Some(ext), Some(ref cs)) = (path_to_hash(&vertex.file), path_to_ext(&vertex.file), &content_store) {
-                        match cs.get(hash, ext).await {
-                            Ok(data) => (data, vertex.mime.clone()),
-                            Err(e) => {
-                                log::warn!("Failed to load from content store {}: {}", vertex.file, e);
-                                (format!("(failed to load: {})", e).into_bytes(), "text/plain".to_string())
+                // Text content - load using get_vertex_content_ref for proper hash/file handling
+                let content_ref = index.get_vertex_content_ref(vertex.id, 0);
+                let (content, mime) = match content_ref {
+                    Some((mime, ContentRef::Hash(hash))) => {
+                        // CAS content - use content store for cached loading
+                        let ext = mime_to_extension(mime);
+                        if let Some(ref cs) = content_store {
+                            match cs.get(hash, ext).await {
+                                Ok(data) => (data, mime.to_string()),
+                                Err(e) => {
+                                    log::warn!("Failed to load from content store hash={}: {}", hash, e);
+                                    (format!("(failed to load: {})", e).into_bytes(), "text/plain".to_string())
+                                }
+                            }
+                        } else {
+                            // No content store - construct path and download directly
+                            let path = format!("{}/{}.{}", CONTENT_STORE_DIR, hash, ext);
+                            match nc.download(&path).await {
+                                Ok(data) => (data, mime.to_string()),
+                                Err(e) => {
+                                    log::warn!("Failed to load {}: {}", path, e);
+                                    (format!("(failed to load: {})", e).into_bytes(), "text/plain".to_string())
+                                }
                             }
                         }
-                    } else {
-                        // Fall back to direct download
-                        match nc.download(&vertex.file).await {
-                            Ok(data) => (data, vertex.mime.clone()),
+                    }
+                    Some((mime, ContentRef::File(file))) if !file.is_empty() => {
+                        // Legacy file path - direct download
+                        match nc.download(file).await {
+                            Ok(data) => (data, mime.to_string()),
                             Err(e) => {
-                                log::warn!("Failed to load {}: {}", vertex.file, e);
+                                log::warn!("Failed to load {}: {}", file, e);
                                 (format!("(failed to load: {})", e).into_bytes(), "text/plain".to_string())
                             }
                         }
                     }
-                } else {
-                    // Non-CAS file - direct download
-                    match nc.download(&vertex.file).await {
-                        Ok(data) => (data, vertex.mime.clone()),
-                        Err(e) => {
-                            log::warn!("Failed to load {}: {}", vertex.file, e);
-                            (format!("(failed to load: {})", e).into_bytes(), "text/plain".to_string())
-                        }
+                    _ => {
+                        log::warn!("No content reference for vertex {}", vertex.id);
+                        ("(no content)".as_bytes().to_vec(), "text/plain".to_string())
                     }
                 };
 
@@ -531,63 +541,64 @@ where
     let vertex = index.get_vertex(vertex_uuid)
         .ok_or_else(|| anyhow!("Vertex {} not found", vertex_id))?;
 
-    // Load content for the requested layer
-    let (content, mime) = if layer == 0 {
-        // Layer 0 - primary content from file, use content store for caching
-        if vertex.file.starts_with(CONTENT_STORE_DIR) {
-            // CAS file - use content store for cached loading
-            if let (Some(hash), Some(ext), Some(ref cs)) = (path_to_hash(&vertex.file), path_to_ext(&vertex.file), &content_store) {
-                match cs.get(hash, ext).await {
-                    Ok(data) => (data, vertex.mime.clone()),
-                    Err(e) => {
-                        log::warn!("Failed to load from content store {}: {}", vertex.file, e);
-                        let err_msg = encode_log_message(action_id, STATUS_NOT_FOUND, vertex_id,
-                            &format!("Failed to load content: {}", e));
-                        write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-                        return Ok(());
-                    }
-                }
-            } else {
-                // Fall back to direct download
-                match nc.download(&vertex.file).await {
-                    Ok(data) => (data, vertex.mime.clone()),
-                    Err(e) => {
-                        log::warn!("Failed to load {}: {}", vertex.file, e);
-                        let err_msg = encode_log_message(action_id, STATUS_NOT_FOUND, vertex_id,
-                            &format!("Failed to load content: {}", e));
-                        write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-                        return Ok(());
-                    }
-                }
-            }
-        } else {
-            // Non-CAS file - direct download
-            match nc.download(&vertex.file).await {
-                Ok(data) => (data, vertex.mime.clone()),
-                Err(e) => {
-                    log::warn!("Failed to load {}: {}", vertex.file, e);
-                    let err_msg = encode_log_message(action_id, STATUS_NOT_FOUND, vertex_id,
-                        &format!("Failed to load content: {}", e));
-                    write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-                    return Ok(());
-                }
-            }
-        }
-    } else if layer == 1 {
-        // Layer 1 - transcript if available
-        if let Some(ref transcript) = vertex.transcript {
-            (transcript.as_bytes().to_vec(), "text/plain".to_string())
-        } else {
-            let err_msg = encode_log_message(action_id, STATUS_NOT_FOUND, vertex_id,
-                "Layer 1 content not available");
-            write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-            return Ok(());
-        }
+    // Load content for the requested layer using get_vertex_content_ref
+    // This properly handles both content_hash (CAS) and file (legacy) storage
+    let (content, mime) = if layer == 1 && vertex.transcript.is_some() {
+        // Layer 1 transcript - special case
+        (vertex.transcript.as_ref().unwrap().as_bytes().to_vec(), "text/plain".to_string())
     } else {
-        let err_msg = encode_log_message(action_id, STATUS_NOT_FOUND, vertex_id,
-            &format!("Layer {} not supported", layer));
-        write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-        return Ok(());
+        // Use get_vertex_content_ref to handle both hash and file references
+        let content_ref = index.get_vertex_content_ref(vertex_uuid, layer);
+        match content_ref {
+            Some((mime, ContentRef::Hash(hash))) => {
+                // CAS content - use content store for cached loading
+                let ext = mime_to_extension(mime);
+                if let Some(ref cs) = content_store {
+                    match cs.get(hash, ext).await {
+                        Ok(data) => (data, mime.to_string()),
+                        Err(e) => {
+                            log::warn!("Failed to load from content store hash={}: {}", hash, e);
+                            let err_msg = encode_log_message(action_id, STATUS_NOT_FOUND, vertex_id,
+                                &format!("Failed to load content: {}", e));
+                            write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                            return Ok(());
+                        }
+                    }
+                } else {
+                    // No content store - construct path and download directly
+                    let path = format!("{}/{}.{}", CONTENT_STORE_DIR, hash, ext);
+                    match nc.download(&path).await {
+                        Ok(data) => (data, mime.to_string()),
+                        Err(e) => {
+                            log::warn!("Failed to load {}: {}", path, e);
+                            let err_msg = encode_log_message(action_id, STATUS_NOT_FOUND, vertex_id,
+                                &format!("Failed to load content: {}", e));
+                            write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+            Some((mime, ContentRef::File(file))) if !file.is_empty() => {
+                // Legacy file path - direct download
+                match nc.download(file).await {
+                    Ok(data) => (data, mime.to_string()),
+                    Err(e) => {
+                        log::warn!("Failed to load {}: {}", file, e);
+                        let err_msg = encode_log_message(action_id, STATUS_NOT_FOUND, vertex_id,
+                            &format!("Failed to load content: {}", e));
+                        write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                        return Ok(());
+                    }
+                }
+            }
+            _ => {
+                let err_msg = encode_log_message(action_id, STATUS_NOT_FOUND, vertex_id,
+                    &format!("Layer {} content not available", layer));
+                write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                return Ok(());
+            }
+        }
     };
 
     // Send full content

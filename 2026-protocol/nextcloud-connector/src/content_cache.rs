@@ -4,8 +4,6 @@
 //! a configurable size limit. Uses LRU eviction when the cache is full.
 
 use anyhow::Result;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -24,19 +22,18 @@ pub struct ContentCache {
 }
 
 impl ContentCache {
-    /// Create a new content cache for a user
-    pub fn new(url: &str, username: &str) -> Option<Self> {
+    /// Create a new content cache
+    ///
+    /// With CAS, content is identified by hash, so we use a single global cache
+    /// directory. The url/username parameters are ignored (kept for API compat).
+    pub fn new(_url: &str, _username: &str) -> Option<Self> {
         // Only use cache if /data exists (Docker persistent volume)
         if !Path::new("/data").exists() {
             return None;
         }
 
-        let mut hasher = DefaultHasher::new();
-        url.hash(&mut hasher);
-        username.hash(&mut hasher);
-        let hash = format!("{:x}", hasher.finish());
-
-        let cache_dir = PathBuf::from(CONTENT_CACHE_DIR).join(&hash[..8]);
+        // Use flat cache directory - CAS hashes already uniquely identify content
+        let cache_dir = PathBuf::from(CONTENT_CACHE_DIR);
 
         // Create cache directory
         if let Err(e) = std::fs::create_dir_all(&cache_dir) {
