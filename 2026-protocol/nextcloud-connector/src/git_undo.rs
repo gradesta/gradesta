@@ -111,36 +111,115 @@ async fn download_git_dir(nc: &NextcloudClient, local_path: &Path) -> Result<()>
 
     log::info!("Downloading git repo from Nextcloud: {}", remote_base);
 
-    // List all files in the remote .git directory recursively
-    download_dir_recursive(nc, &remote_base, &local_git).await?;
+    // Phase 1: Discover all directories and files in parallel batches
+    let (dirs, files) = discover_git_contents_parallel(nc, &remote_base).await?;
+
+    log::info!("Git repo: discovered {} directories, {} files", dirs.len(), files.len());
+
+    // Phase 2: Create all directories locally
+    for dir in &dirs {
+        let relative = dir.strip_prefix(&remote_base).unwrap_or(dir);
+        let local_dir = local_git.join(relative.trim_start_matches('/'));
+        std::fs::create_dir_all(&local_dir)?;
+    }
+
+    // Phase 3: Download all files in parallel batches
+    download_files_parallel(nc, &files, &remote_base, &local_git).await?;
 
     log::info!("Git repo downloaded successfully");
     Ok(())
 }
 
-/// Recursively download a directory from Nextcloud
-async fn download_dir_recursive(nc: &NextcloudClient, remote_path: &str, local_path: &Path) -> Result<()> {
-    std::fs::create_dir_all(local_path)?;
+/// Discover all directories and files in parallel using breadth-first search
+async fn discover_git_contents_parallel(
+    nc: &NextcloudClient,
+    remote_base: &str,
+) -> Result<(Vec<String>, Vec<(String, String)>)> {
+    use futures_util::future::join_all;
 
-    let entries = nc.list_directory(remote_path).await?;
+    let mut all_dirs = vec![remote_base.to_string()];
+    let mut all_files: Vec<(String, String)> = Vec::new(); // (remote_path, name)
+    let mut dirs_to_explore = vec![remote_base.to_string()];
 
-    for entry in entries {
-        let local_entry_path = local_path.join(&entry.name);
-        let remote_entry_path = format!("{}/{}", remote_path, entry.name);
+    // Process directories in parallel batches
+    const BATCH_SIZE: usize = 10;
 
-        if entry.is_directory {
-            Box::pin(download_dir_recursive(nc, &remote_entry_path, &local_entry_path)).await?;
-        } else {
-            match nc.download(&remote_entry_path).await {
-                Ok(content) => {
-                    std::fs::write(&local_entry_path, &content)?;
-                    log::debug!("Downloaded: {}", remote_entry_path);
+    while !dirs_to_explore.is_empty() {
+        // Take a batch of directories to explore
+        let batch: Vec<_> = dirs_to_explore.drain(..dirs_to_explore.len().min(BATCH_SIZE)).collect();
+
+        // List all directories in parallel
+        let futures: Vec<_> = batch.iter().map(|dir| {
+            let nc = nc.clone();
+            let dir = dir.clone();
+            async move {
+                match nc.list_directory(&dir).await {
+                    Ok(entries) => Some((dir, entries)),
+                    Err(e) => {
+                        log::warn!("Failed to list {}: {}", dir, e);
+                        None
+                    }
                 }
-                Err(e) => {
-                    log::warn!("Failed to download {}: {}", remote_entry_path, e);
+            }
+        }).collect();
+
+        let results = join_all(futures).await;
+
+        for result in results.into_iter().flatten() {
+            let (parent_dir, entries) = result;
+            for entry in entries {
+                let full_path = format!("{}/{}", parent_dir, entry.name);
+                if entry.is_directory {
+                    all_dirs.push(full_path.clone());
+                    dirs_to_explore.push(full_path);
+                } else {
+                    all_files.push((full_path, entry.name));
                 }
             }
         }
+    }
+
+    Ok((all_dirs, all_files))
+}
+
+/// Download files in parallel batches
+async fn download_files_parallel(
+    nc: &NextcloudClient,
+    files: &[(String, String)],
+    remote_base: &str,
+    local_git: &Path,
+) -> Result<()> {
+    use futures_util::future::join_all;
+
+    const DOWNLOAD_BATCH_SIZE: usize = 20;
+
+    for chunk in files.chunks(DOWNLOAD_BATCH_SIZE) {
+        let futures: Vec<_> = chunk.iter().map(|(remote_path, _name)| {
+            let nc = nc.clone();
+            let remote_path = remote_path.clone();
+            let remote_base = remote_base.to_string();
+            let local_git = local_git.to_path_buf();
+
+            async move {
+                match nc.download(&remote_path).await {
+                    Ok(content) => {
+                        let relative = remote_path.strip_prefix(&remote_base).unwrap_or(&remote_path);
+                        let local_path = local_git.join(relative.trim_start_matches('/'));
+                        if let Some(parent) = local_path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        if let Err(e) = std::fs::write(&local_path, &content) {
+                            log::warn!("Failed to write {}: {}", local_path.display(), e);
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to download {}: {}", remote_path, e);
+                    }
+                }
+            }
+        }).collect();
+
+        join_all(futures).await;
     }
 
     Ok(())

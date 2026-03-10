@@ -786,21 +786,34 @@ async fn fetch_month_events(
 
     log::info!("Fetching events for {}-{:02} (days {} to {})", year, month, 1, end_day);
 
-    // Get all calendars and fetch events from each
+    // Get all calendars and fetch events from each IN PARALLEL
     let calendars = nc.list_calendars().await?;
-    let mut all_events = Vec::new();
 
-    for cal in calendars {
-        if cal.supports_events {
-            match nc.fetch_events(&cal.path, start, end).await {
-                Ok(events) => {
-                    log::info!("Got {} events from calendar '{}'", events.len(), cal.name);
-                    all_events.extend(events);
+    // Fetch from all calendars in parallel
+    let futures: Vec<_> = calendars
+        .iter()
+        .filter(|cal| cal.supports_events)
+        .map(|cal| {
+            let nc = nc.clone();
+            let path = cal.path.clone();
+            let name = cal.name.clone();
+            async move {
+                match nc.fetch_events(&path, start, end).await {
+                    Ok(events) => {
+                        log::info!("Got {} events from calendar '{}'", events.len(), name);
+                        events
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to fetch events from {}: {}", name, e);
+                        Vec::new()
+                    }
                 }
-                Err(e) => log::warn!("Failed to fetch events from {}: {}", cal.name, e),
             }
-        }
-    }
+        })
+        .collect();
+
+    let results = futures_util::future::join_all(futures).await;
+    let mut all_events: Vec<_> = results.into_iter().flatten().collect();
 
     // Sort by start time
     all_events.sort_by(|a, b| a.start.cmp(&b.start));
