@@ -137,22 +137,12 @@ where
                 }
             }
         } else if layer == 1 {
-            // Layer 1: Transcript - also use CAS
+            // Layer 1: Transcript - stored directly in index.toml, NOT in CAS
             let transcript = String::from_utf8_lossy(&content).to_string();
             if let Err(e) = index.update_vertex(uuid, Some(transcript)) {
                 log::warn!("Failed to update transcript: {}", e);
             }
-            // Store transcript content in CAS
-            match content_store.put(&content, "txt").await {
-                Ok(hash) => {
-                    if let Err(e) = index.set_vertex_layer_hash(uuid, layer, "text/plain", &hash) {
-                        log::warn!("Failed to update layer 1 hash: {}", e);
-                    }
-                }
-                Err(e) => {
-                    log::warn!("Failed to upload transcript: {}", e);
-                }
-            }
+            // No CAS upload or layer hash update needed - transcript is stored in transcript field
         } else {
             // Other layers - use CAS
             match content_store.put(&content, ext).await {

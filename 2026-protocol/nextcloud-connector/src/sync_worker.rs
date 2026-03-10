@@ -16,7 +16,7 @@ use tokio::sync::{mpsc, Mutex};
 use uuid::Uuid;
 
 use crate::connection_manager::SharedConnectionManager;
-use crate::content_store::{ContentStore, LocalContentStore};
+use crate::content_store::ContentStore;
 use crate::git_undo::GitUndoRepo;
 use crate::nextcloud::NextcloudClient;
 use crate::notes::NotesIndex;
@@ -292,18 +292,27 @@ impl SyncWorker {
             return Err(anyhow!("Invalid operation type"));
         };
 
-        // 1. Upload content via ContentStore (CAS)
-        let content_store = ContentStore::new(self.nc.clone());
-        content_store.put(content, ext).await?;
+        // 1. Upload content via ContentStore (CAS) - but NOT for transcripts (layer 1)
+        // Transcripts are stored directly in index.toml, not in CAS
+        if *layer != 1 {
+            let content_store = ContentStore::new(self.nc.clone());
+            content_store.put(content, ext).await?;
+        }
 
         // 2. Update index with new hash
         {
             let mut index = self.index.lock().await;
+            log::info!("do_edit: uuid={} layer={} mime={} hash={}", uuid, layer, mime, new_hash);
             if *layer == 1 {
                 let transcript = String::from_utf8_lossy(content).to_string();
+                log::info!("do_edit: updating transcript to: {}", &transcript[..transcript.len().min(50)]);
                 index.update_vertex(*uuid, Some(transcript))?;
+                // For layer 1 (transcript), we only update the transcript field, NOT the content_hash
+                // The transcript is stored directly in index.toml, not in CAS
+            } else {
+                // Only call set_vertex_layer_hash for non-transcript layers
+                index.set_vertex_layer_hash(*uuid, *layer, mime, new_hash)?;
             }
-            index.set_vertex_layer_hash(*uuid, *layer, mime, new_hash)?;
         }
 
         // 3. Save index to WebDAV
@@ -313,17 +322,13 @@ impl SyncWorker {
         }
 
         // 4. Write to local git workdir and commit
-        // Note: Only index.toml is committed, not content files
+        // Note: Only index.toml is committed, content is stored in CAS on Nextcloud
         {
             let repo = self.git_repo.lock().await;
             if let Some(workdir) = repo.workdir() {
                 // Write index
                 let index = self.index.lock().await;
                 index.save_to_path(workdir)?;
-
-                // Store content in local content-store (for reference, not tracked by git)
-                let local_store = LocalContentStore::new(workdir);
-                local_store.put(content, ext)?;
 
                 // Commit (only index.toml)
                 drop(index);
@@ -359,16 +364,12 @@ impl SyncWorker {
         }
 
         // 3. Write to local git workdir and commit
-        // Note: Only index.toml is committed, not content files
+        // Note: Only index.toml is committed, content is stored in CAS on Nextcloud
         {
             let repo = self.git_repo.lock().await;
             if let Some(workdir) = repo.workdir() {
                 let index = self.index.lock().await;
                 index.save_to_path(workdir)?;
-
-                // Store content in local content-store (for reference, not tracked by git)
-                let local_store = LocalContentStore::new(workdir);
-                local_store.put(content, ext)?;
 
                 drop(index);
                 repo.ensure_on_branch()?;
