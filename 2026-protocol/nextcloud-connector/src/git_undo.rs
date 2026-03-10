@@ -40,31 +40,33 @@ pub struct GitUndoRepo {
     remote_path: Option<PathBuf>,
 }
 
-/// Persistent cache directory for git repos (mounted volume in Docker)
-const CACHE_BASE_DIR: &str = "/data/git-cache";
+/// Base data directory
+const DATA_DIR: &str = "/data";
+
+/// Compute account hash from URL and username (first 8 chars of hash)
+/// Used to create per-account data directories
+pub fn compute_account_hash(url: &str, username: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    url.hash(&mut hasher);
+    username.hash(&mut hasher);
+    let hash = format!("{:x}", hasher.finish());
+    hash[..8].to_string()
+}
 
 /// Download git repo from Nextcloud and open it locally
 /// Uses persistent cache in /data to avoid re-downloading on every connection
 /// If no repo exists in Nextcloud, creates a new one
 pub async fn open_from_nextcloud(nc: &NextcloudClient) -> Result<GitUndoRepo> {
-    // Create a unique directory for this user
-    let url_hash = {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        let mut hasher = DefaultHasher::new();
-        nc.url.hash(&mut hasher);
-        nc.username.hash(&mut hasher);
-        format!("{:x}", hasher.finish())
-    };
+    let account_hash = compute_account_hash(&nc.url, &nc.username);
 
     // Use persistent cache if /data exists, otherwise fall back to /tmp
-    let cache_base = if Path::new("/data").exists() {
-        PathBuf::from(CACHE_BASE_DIR)
+    let local_path = if Path::new(DATA_DIR).exists() {
+        PathBuf::from(DATA_DIR).join(&account_hash).join("git")
     } else {
-        PathBuf::from("/tmp/gradesta-git-cache")
+        PathBuf::from("/tmp/gradesta").join(&account_hash).join("git")
     };
-
-    let local_path = cache_base.join(&url_hash[..8]);
 
     log::info!("Git undo: local path = {}", local_path.display());
 

@@ -10,8 +10,8 @@ use std::time::SystemTime;
 /// Default cache size limit: 100 MB
 const DEFAULT_CACHE_LIMIT_BYTES: u64 = 100 * 1024 * 1024;
 
-/// Cache directory base path
-const CONTENT_CACHE_DIR: &str = "/data/content-cache";
+/// Base data directory
+const DATA_DIR: &str = "/data";
 
 /// Content cache with LRU eviction
 pub struct ContentCache {
@@ -22,18 +22,19 @@ pub struct ContentCache {
 }
 
 impl ContentCache {
-    /// Create a new content cache
+    /// Create a new content cache for a user account
     ///
-    /// With CAS, content is identified by hash, so we use a single global cache
-    /// directory. The url/username parameters are ignored (kept for API compat).
-    pub fn new(_url: &str, _username: &str) -> Option<Self> {
+    /// Content is cached in /data/{account_hash}/content/ where account_hash
+    /// is derived from url+username to keep per-account data together.
+    pub fn new(url: &str, username: &str) -> Option<Self> {
         // Only use cache if /data exists (Docker persistent volume)
-        if !Path::new("/data").exists() {
+        if !Path::new(DATA_DIR).exists() {
             return None;
         }
 
-        // Use flat cache directory - CAS hashes already uniquely identify content
-        let cache_dir = PathBuf::from(CONTENT_CACHE_DIR);
+        // Create per-account directory using hash of url+username
+        let account_hash = crate::git_undo::compute_account_hash(url, username);
+        let cache_dir = PathBuf::from(DATA_DIR).join(&account_hash).join("content");
 
         // Create cache directory
         if let Err(e) = std::fs::create_dir_all(&cache_dir) {
