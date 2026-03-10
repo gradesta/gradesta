@@ -167,17 +167,25 @@ fn handle_set_vertex_preview(
     let needs_loading = total_length == u32::MAX || (total_length > 255 && preview.len() < total_length as usize);
 
     if layer == 0 {
-        entry.label = preview;
+        // Only overwrite label if content hasn't been loaded yet
+        // This prevents a subsequent preview from clearing already-loaded content
+        if !entry.content_loaded {
+            entry.label = preview;
+            entry.content_length = total_length;
+            entry.content_loaded = !needs_loading;
+        }
         entry.mime = Some(mime.to_string());
-        entry.content_length = total_length;
-        entry.content_loaded = !needs_loading;
     } else {
-        entry.layers.insert(layer, LayerContent {
-            mime: mime.to_string(),
-            data: preview,
-        });
-        entry.layer_lengths.insert(layer, total_length);
-        entry.layer_loaded.insert(layer, !needs_loading);
+        // Same for other layers - don't overwrite loaded content with preview
+        let layer_loaded = entry.layer_loaded.get(&layer).copied().unwrap_or(false);
+        if !layer_loaded {
+            entry.layers.insert(layer, LayerContent {
+                mime: mime.to_string(),
+                data: preview,
+            });
+            entry.layer_lengths.insert(layer, total_length);
+            entry.layer_loaded.insert(layer, !needs_loading);
+        }
     }
 
     // Track which landmark this vertex belongs to

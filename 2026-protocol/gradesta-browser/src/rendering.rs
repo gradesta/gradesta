@@ -32,7 +32,19 @@ pub fn render_vertex_content(
         });
         ui.horizontal(|ui| {
             ui.label("Size:");
-            ui.label(format!("{} bytes", vertex.label.len()));
+            // Use content_length for accurate size (handles case where content not fully loaded)
+            let size = if vertex.content_loaded {
+                vertex.label.len() as u32
+            } else if vertex.content_length != u32::MAX {
+                vertex.content_length
+            } else {
+                0 // Unknown/loading
+            };
+            if size > 0 || vertex.content_loaded {
+                ui.label(format!("{} bytes", size));
+            } else {
+                ui.label("loading...");
+            }
         });
 
         ui.separator();
@@ -135,8 +147,19 @@ pub fn render_vertex_content(
             ui.add_space(4.0);
             ui.label(format!("Type: {}", mime));
 
-            // Show file size
-            ui.label(format!("Size: {} bytes", vertex.label.len()));
+            // Show file size - use content_length for accurate size before full load
+            let size = if vertex.content_loaded {
+                vertex.label.len() as u32
+            } else if vertex.content_length != u32::MAX {
+                vertex.content_length
+            } else {
+                0
+            };
+            if size > 0 || vertex.content_loaded {
+                ui.label(format!("Size: {} bytes", size));
+            } else {
+                ui.label("Size: loading...");
+            }
             ui.add_space(8.0);
 
             // Play button
@@ -173,7 +196,13 @@ pub fn render_vertex_content(
             ui.add_space(8.0);
             ui.label("Video playback requires external player.");
             ui.label(format!("Type: {}", mime));
-            ui.label(format!("Size: {} bytes", vertex.label.len()));
+            let size = if vertex.content_loaded { vertex.label.len() as u32 }
+                else if vertex.content_length != u32::MAX { vertex.content_length } else { 0 };
+            if size > 0 || vertex.content_loaded {
+                ui.label(format!("Size: {} bytes", size));
+            } else {
+                ui.label("Size: loading...");
+            }
             ui.add_space(16.0);
 
             if ui.button("📂 Open with external player").clicked() {
@@ -185,7 +214,13 @@ pub fn render_vertex_content(
             ui.heading("📦 Binary Content");
             ui.add_space(8.0);
             ui.label(format!("Type: {}", mime));
-            ui.label(format!("Size: {} bytes", vertex.label.len()));
+            let size = if vertex.content_loaded { vertex.label.len() as u32 }
+                else if vertex.content_length != u32::MAX { vertex.content_length } else { 0 };
+            if size > 0 || vertex.content_loaded {
+                ui.label(format!("Size: {} bytes", size));
+            } else {
+                ui.label("Size: loading...");
+            }
             ui.add_space(16.0);
 
             if ui.button("📂 Open with system default").clicked() {
