@@ -2,6 +2,7 @@
 
 mod calendar;
 mod connection_manager;
+mod content_cache;
 mod content_store;
 mod elf;
 mod files;

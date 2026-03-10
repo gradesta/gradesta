@@ -96,18 +96,45 @@ impl Default for NotesIndex {
 }
 
 impl NotesIndex {
-    /// Load index from Nextcloud
+    /// Load index from Nextcloud with caching
     pub async fn load(nc: &NextcloudClient) -> Result<Self> {
+        // Try to use cached index first if /data exists
+        let cache_path = get_index_cache_path(nc);
+
         if !nc.exists(INDEX_FILE).await {
             // Create empty index
             let index = Self::default();
             index.save(nc).await?;
+            // Cache it locally
+            if let Some(ref path) = cache_path {
+                let _ = index.save_to_path(path.parent().unwrap_or(path));
+            }
             return Ok(index);
         }
 
+        // Check if we have a valid cache
+        if let Some(ref path) = cache_path {
+            if let Some(cached) = try_load_cached_index(path, nc).await {
+                log::info!("Using cached index from {}", path.display());
+                return Ok(cached);
+            }
+        }
+
+        // Download fresh index
         let data = nc.download(INDEX_FILE).await?;
         let content = String::from_utf8(data).context("Invalid UTF-8 in index")?;
-        toml::from_str(&content).context("Failed to parse index TOML")
+        let index: Self = toml::from_str(&content).context("Failed to parse index TOML")?;
+
+        // Cache it locally
+        if let Some(ref path) = cache_path {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(path, &content);
+            log::info!("Cached index to {}", path.display());
+        }
+
+        Ok(index)
     }
 
     /// Load index from local filesystem path
@@ -665,5 +692,73 @@ impl<'a> ContentRef<'a> {
     /// Check if this is a file reference (legacy)
     pub fn is_file(&self) -> bool {
         matches!(self, ContentRef::File(_))
+    }
+}
+
+// ============ Index Caching ============
+
+/// Cache directory for index files
+const INDEX_CACHE_DIR: &str = "/data/index-cache";
+
+/// Get the cache path for an index file based on user credentials
+fn get_index_cache_path(nc: &NextcloudClient) -> Option<std::path::PathBuf> {
+    // Only use cache if /data exists (Docker persistent volume)
+    if !std::path::Path::new("/data").exists() {
+        return None;
+    }
+
+    let mut hasher = DefaultHasher::new();
+    nc.url.hash(&mut hasher);
+    nc.username.hash(&mut hasher);
+    let hash = format!("{:x}", hasher.finish());
+
+    Some(std::path::PathBuf::from(INDEX_CACHE_DIR).join(&hash[..8]).join("index.toml"))
+}
+
+/// Try to load index from cache, validating against remote modified time
+async fn try_load_cached_index(cache_path: &std::path::Path, nc: &NextcloudClient) -> Option<NotesIndex> {
+    // Check if cache file exists
+    if !cache_path.exists() {
+        return None;
+    }
+
+    // Get local cache modification time
+    let local_modified = std::fs::metadata(cache_path)
+        .ok()?
+        .modified()
+        .ok()?;
+
+    // Try to get remote file info to compare timestamps
+    // For simplicity, we'll just check if the remote file was modified after our cache
+    // This requires a HEAD request or checking the modified header
+    // For now, we'll use a simpler heuristic: cache for 5 seconds to handle quick reconnects
+    let cache_age = std::time::SystemTime::now()
+        .duration_since(local_modified)
+        .unwrap_or(std::time::Duration::MAX);
+
+    // Use cache if it's less than 5 seconds old (quick reconnect case)
+    if cache_age < std::time::Duration::from_secs(5) {
+        let content = std::fs::read_to_string(cache_path).ok()?;
+        return toml::from_str(&content).ok();
+    }
+
+    // For older caches, download and compare
+    // But still use the cache if download fails
+    match nc.download(INDEX_FILE).await {
+        Ok(data) => {
+            let remote_content = String::from_utf8(data).ok()?;
+            let remote_index: NotesIndex = toml::from_str(&remote_content).ok()?;
+
+            // Update cache
+            let _ = std::fs::write(cache_path, &remote_content);
+
+            Some(remote_index)
+        }
+        Err(_) => {
+            // Network error - use cached version
+            log::warn!("Failed to fetch remote index, using cache");
+            let content = std::fs::read_to_string(cache_path).ok()?;
+            toml::from_str(&content).ok()
+        }
     }
 }

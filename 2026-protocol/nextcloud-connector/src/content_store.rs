@@ -10,6 +10,7 @@ use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
+use crate::content_cache::ContentCache;
 use crate::webdav::WebDavClient;
 
 /// Directory where content is stored by hash
@@ -47,15 +48,22 @@ pub fn path_to_ext(path: &str) -> Option<&str> {
     filename.rsplit('.').next()
 }
 
-/// Content-addressable storage backed by WebDAV
+/// Content-addressable storage backed by WebDAV with optional local cache
 pub struct ContentStore<C: WebDavClient> {
     client: C,
+    cache: Option<ContentCache>,
 }
 
 impl<C: WebDavClient> ContentStore<C> {
-    /// Create a new ContentStore with the given WebDAV client
+    /// Create a new ContentStore with the given WebDAV client (no cache)
     pub fn new(client: C) -> Self {
-        Self { client }
+        Self { client, cache: None }
+    }
+
+    /// Create a new ContentStore with local caching
+    pub fn with_cache(client: C, url: &str, username: &str) -> Self {
+        let cache = ContentCache::new(url, username);
+        Self { client, cache }
     }
 
     /// Store content and return its hash
@@ -69,6 +77,10 @@ impl<C: WebDavClient> ContentStore<C> {
         // Check if already exists (content-addressable means same hash = same content)
         if self.client.exists(&path).await {
             log::debug!("Content {} already exists, skipping upload", hash);
+            // Still cache it locally
+            if let Some(ref cache) = self.cache {
+                let _ = cache.put(&hash, ext, content);
+            }
             return Ok(hash);
         }
 
@@ -79,15 +91,36 @@ impl<C: WebDavClient> ContentStore<C> {
         self.client.upload(&path, content).await
             .with_context(|| format!("Failed to upload content {}", hash))?;
 
+        // Cache locally
+        if let Some(ref cache) = self.cache {
+            let _ = cache.put(&hash, ext, content);
+        }
+
         log::info!("Stored content {} ({} bytes)", hash, content.len());
         Ok(hash)
     }
 
-    /// Retrieve content by hash
+    /// Retrieve content by hash (with caching)
     pub async fn get(&self, hash: &str, ext: &str) -> Result<Vec<u8>> {
+        // Check local cache first
+        if let Some(ref cache) = self.cache {
+            if let Some(content) = cache.get(hash, ext) {
+                log::debug!("Content cache hit: {}", hash);
+                return Ok(content);
+            }
+        }
+
+        // Download from remote
         let path = hash_to_path(hash, ext);
-        self.client.download(&path).await
-            .with_context(|| format!("Failed to download content {}", hash))
+        let content = self.client.download(&path).await
+            .with_context(|| format!("Failed to download content {}", hash))?;
+
+        // Cache the downloaded content
+        if let Some(ref cache) = self.cache {
+            let _ = cache.put(hash, ext, &content);
+        }
+
+        Ok(content)
     }
 
     /// Check if content exists

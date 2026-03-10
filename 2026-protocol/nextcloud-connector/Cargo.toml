@@ -71,6 +71,12 @@ clap = { version = "4", features = ["derive"] }
 # Async traits
 async-trait = "0.1"
 
+# File time modification for cache LRU
+filetime = "0.2"
+
+# Hex encoding for hashes
+hex = "0.4"
+
 [dev-dependencies]
 # Temp directories for tests
 tempfile = "3"

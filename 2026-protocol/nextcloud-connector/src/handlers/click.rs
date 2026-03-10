@@ -8,6 +8,7 @@ use anyhow::{anyhow, Result};
 use axum::extract::ws::Message as AxumWsMessage;
 use futures_util::SinkExt;
 
+use crate::content_store::ContentStore;
 use crate::git_undo;
 use crate::http_stream;
 use crate::notes::{self, uuid_to_hash};
@@ -106,10 +107,22 @@ where
         // Check if this is a notes vertex
         if let Some(uuid) = notes::hash_to_uuid(index, vertex_id) {
             if let Some(vertex) = index.get_vertex(uuid) {
-                log::info!("Loading notes vertex content: uuid={}, file={}", uuid, vertex.file);
+                log::info!("Loading notes vertex content: uuid={}, hash={}", uuid, vertex.content_hash);
 
-                // Load content from Nextcloud
-                match nc.download(&vertex.file).await {
+                // Use CAS with caching for content-hash based content
+                let content_result = if !vertex.content_hash.is_empty() {
+                    let ext = notes::mime_to_extension(&vertex.mime);
+                    // Use ContentStore with caching
+                    let content_store = ContentStore::with_cache(nc.clone(), &nc.url, &nc.username);
+                    content_store.get(&vertex.content_hash, ext).await
+                } else if !vertex.file.is_empty() {
+                    // Legacy file-based content (no caching)
+                    nc.download(&vertex.file).await
+                } else {
+                    Err(anyhow!("Vertex has no content"))
+                };
+
+                match content_result {
                     Ok(content) => {
                         log::info!("Loaded notes vertex {} ({} bytes, {})", vertex_id, content.len(), vertex.mime);
                         // Send content as SetVertexLabel (layer 0)

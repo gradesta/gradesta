@@ -40,10 +40,14 @@ pub struct GitUndoRepo {
     remote_path: Option<PathBuf>,
 }
 
-/// Download git repo from Nextcloud and open it locally in /tmp
+/// Persistent cache directory for git repos (mounted volume in Docker)
+const CACHE_BASE_DIR: &str = "/data/git-cache";
+
+/// Download git repo from Nextcloud and open it locally
+/// Uses persistent cache in /data to avoid re-downloading on every connection
 /// If no repo exists in Nextcloud, creates a new one
 pub async fn open_from_nextcloud(nc: &NextcloudClient) -> Result<GitUndoRepo> {
-    // Create a unique temp directory for this session
+    // Create a unique directory for this user
     let url_hash = {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
@@ -53,30 +57,62 @@ pub async fn open_from_nextcloud(nc: &NextcloudClient) -> Result<GitUndoRepo> {
         format!("{:x}", hasher.finish())
     };
 
-    let local_path = PathBuf::from(format!("/tmp/gradesta-undo-{}", &url_hash[..8]));
+    // Use persistent cache if /data exists, otherwise fall back to /tmp
+    let cache_base = if Path::new("/data").exists() {
+        PathBuf::from(CACHE_BASE_DIR)
+    } else {
+        PathBuf::from("/tmp/gradesta-git-cache")
+    };
+
+    let local_path = cache_base.join(&url_hash[..8]);
 
     log::info!("Git undo: local path = {}", local_path.display());
 
-    // Clean up any existing local directory to ensure fresh state
-    if local_path.exists() {
-        std::fs::remove_dir_all(&local_path)
-            .context("Failed to clean up existing temp directory")?;
-    }
-    std::fs::create_dir_all(&local_path)
-        .context("Failed to create temp directory")?;
+    // Check if we have a cached repo
+    let has_local_repo = local_path.join(".git/HEAD").exists();
 
     // Check if repo exists in Nextcloud
     let remote_git_path = format!("{}/.git", NEXTCLOUD_UNDO_PATH);
     let has_remote_repo = nc.exists(&format!("{}/HEAD", remote_git_path)).await;
 
-    log::info!("Git undo: remote repo exists = {}", has_remote_repo);
+    log::info!("Git undo: local cached = {}, remote exists = {}", has_local_repo, has_remote_repo);
 
-    let repo = if has_remote_repo {
-        // Download the git directory from Nextcloud
+    let repo = if has_local_repo && has_remote_repo {
+        // We have both local cache and remote - check if sync needed
+        log::info!("Git undo: Using cached repo, checking for updates...");
+
+        // Compare local and remote HEAD to see if we need to sync
+        let needs_sync = check_needs_sync(nc, &local_path).await;
+
+        if needs_sync {
+            log::info!("Git undo: Remote has changes, syncing...");
+            sync_from_remote(nc, &local_path).await?;
+        } else {
+            log::info!("Git undo: Cache is up to date");
+        }
+
+        Repository::open(&local_path).context("Failed to open cached git repository")?
+    } else if has_remote_repo {
+        // Remote exists but no local cache - full download
+        log::info!("Git undo: No local cache, downloading from remote...");
+
+        // Clean up any partial state
+        if local_path.exists() {
+            std::fs::remove_dir_all(&local_path)
+                .context("Failed to clean up existing directory")?;
+        }
+        std::fs::create_dir_all(&local_path)
+            .context("Failed to create cache directory")?;
+
         download_git_dir(nc, &local_path).await?;
         Repository::open(&local_path).context("Failed to open downloaded git repository")?
     } else {
-        // Initialize new repository
+        // No remote repo - create new one
+        log::info!("Git undo: No remote repo, creating new...");
+
+        std::fs::create_dir_all(&local_path)
+            .context("Failed to create cache directory")?;
+
         let repo = Repository::init(&local_path).context("Failed to initialize git repository")?;
 
         // Create initial commit so we have a valid HEAD
@@ -102,6 +138,176 @@ pub async fn open_from_nextcloud(nc: &NextcloudClient) -> Result<GitUndoRepo> {
     }
 
     Ok(git_undo)
+}
+
+/// Check if local cache needs sync by comparing HEAD references
+async fn check_needs_sync(nc: &NextcloudClient, local_path: &Path) -> bool {
+    // Read local HEAD
+    let local_head = match std::fs::read_to_string(local_path.join(".git/HEAD")) {
+        Ok(h) => h.trim().to_string(),
+        Err(_) => return true, // Can't read local, need sync
+    };
+
+    // If HEAD is a ref, read the actual commit
+    let local_commit = if local_head.starts_with("ref: ") {
+        let ref_path = local_head.strip_prefix("ref: ").unwrap();
+        match std::fs::read_to_string(local_path.join(".git").join(ref_path)) {
+            Ok(c) => c.trim().to_string(),
+            Err(_) => return true,
+        }
+    } else {
+        local_head
+    };
+
+    // Download remote HEAD
+    let remote_head_path = format!("{}/.git/HEAD", NEXTCLOUD_UNDO_PATH);
+    let remote_head = match nc.download(&remote_head_path).await {
+        Ok(data) => String::from_utf8_lossy(&data).trim().to_string(),
+        Err(_) => return true, // Can't read remote, assume need sync
+    };
+
+    // If remote HEAD is a ref, download that too
+    let remote_commit = if remote_head.starts_with("ref: ") {
+        let ref_path = remote_head.strip_prefix("ref: ").unwrap();
+        let ref_file_path = format!("{}/.git/{}", NEXTCLOUD_UNDO_PATH, ref_path);
+        match nc.download(&ref_file_path).await {
+            Ok(data) => String::from_utf8_lossy(&data).trim().to_string(),
+            Err(_) => return true,
+        }
+    } else {
+        remote_head
+    };
+
+    log::debug!("Git sync check: local={} remote={}", local_commit, remote_commit);
+
+    local_commit != remote_commit
+}
+
+/// Sync changes from remote to local cache
+async fn sync_from_remote(nc: &NextcloudClient, local_path: &Path) -> Result<()> {
+    // For simplicity, we download files that are different
+    // A smarter approach would be to only download new objects,
+    // but for now we re-download the refs and any missing objects
+
+    let remote_base = format!("{}/.git", NEXTCLOUD_UNDO_PATH);
+    let local_git = local_path.join(".git");
+
+    // Always refresh refs (small files)
+    download_dir_if_exists(nc, &format!("{}/refs", remote_base), &local_git.join("refs")).await?;
+
+    // Refresh HEAD and other small files
+    for file in &["HEAD", "config", "packed-refs"] {
+        let remote_path = format!("{}/{}", remote_base, file);
+        if let Ok(content) = nc.download(&remote_path).await {
+            let _ = std::fs::write(local_git.join(file), &content);
+        }
+    }
+
+    // Download any new objects
+    // Compare local vs remote objects directories and download missing ones
+    sync_objects(nc, &format!("{}/objects", remote_base), &local_git.join("objects")).await?;
+
+    Ok(())
+}
+
+/// Download a directory if it exists (for refs sync)
+async fn download_dir_if_exists(nc: &NextcloudClient, remote_path: &str, local_path: &Path) -> Result<()> {
+    std::fs::create_dir_all(local_path)?;
+
+    let entries = match nc.list_directory(remote_path).await {
+        Ok(e) => e,
+        Err(_) => return Ok(()), // Directory doesn't exist remotely
+    };
+
+    for entry in entries {
+        let local_entry_path = local_path.join(&entry.name);
+        let remote_entry_path = format!("{}/{}", remote_path, entry.name);
+
+        if entry.is_directory {
+            Box::pin(download_dir_if_exists(nc, &remote_entry_path, &local_entry_path)).await?;
+        } else {
+            if let Ok(content) = nc.download(&remote_entry_path).await {
+                std::fs::write(&local_entry_path, &content)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Sync git objects - only download objects we don't have locally
+async fn sync_objects(nc: &NextcloudClient, remote_objects: &str, local_objects: &Path) -> Result<()> {
+    use futures_util::future::join_all;
+
+    std::fs::create_dir_all(local_objects)?;
+
+    // List remote object directories (00-ff)
+    let remote_dirs = match nc.list_directory(remote_objects).await {
+        Ok(dirs) => dirs,
+        Err(_) => return Ok(()),
+    };
+
+    // Check each object directory in parallel
+    let futures: Vec<_> = remote_dirs
+        .iter()
+        .filter(|d| d.is_directory && d.name.len() == 2) // Only hash prefix dirs
+        .map(|dir| {
+            let nc = nc.clone();
+            let dir_name = dir.name.clone();
+            let remote_dir = format!("{}/{}", remote_objects, dir_name);
+            let local_dir = local_objects.join(&dir_name);
+
+            async move {
+                // List objects in this directory
+                let objects = match nc.list_directory(&remote_dir).await {
+                    Ok(o) => o,
+                    Err(_) => return,
+                };
+
+                let _ = std::fs::create_dir_all(&local_dir);
+
+                // Download objects we don't have
+                for obj in objects {
+                    if obj.is_directory {
+                        continue;
+                    }
+                    let local_obj_path = local_dir.join(&obj.name);
+                    if !local_obj_path.exists() {
+                        let remote_obj_path = format!("{}/{}", remote_dir, obj.name);
+                        if let Ok(content) = nc.download(&remote_obj_path).await {
+                            let _ = std::fs::write(&local_obj_path, &content);
+                            log::debug!("Downloaded new object: {}/{}", dir_name, obj.name);
+                        }
+                    }
+                }
+            }
+        })
+        .collect();
+
+    join_all(futures).await;
+
+    // Also sync pack files if they exist
+    let pack_dir = format!("{}/pack", remote_objects);
+    if let Ok(packs) = nc.list_directory(&pack_dir).await {
+        let local_pack_dir = local_objects.join("pack");
+        let _ = std::fs::create_dir_all(&local_pack_dir);
+
+        for pack in packs {
+            if pack.is_directory {
+                continue;
+            }
+            let local_pack_path = local_pack_dir.join(&pack.name);
+            if !local_pack_path.exists() {
+                let remote_pack_path = format!("{}/{}", pack_dir, pack.name);
+                if let Ok(content) = nc.download(&remote_pack_path).await {
+                    let _ = std::fs::write(&local_pack_path, &content);
+                    log::info!("Downloaded pack file: {}", pack.name);
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Download the .git directory from Nextcloud to local path
