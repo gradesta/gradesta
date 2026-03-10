@@ -33,7 +33,7 @@ mod whisper;
 use audio::{AudioPlaybackState, AudioPreloadCache, AudioProcessingChannel, AudioRecordingSignal};
 use audio::{play_audio_fast, predecode_audio_async, stop_audio};
 use audio_processing::set_audio_speed;
-use graph::GraphState;
+use graph::{direction_priority_order, GraphState};
 use media::MediaCache;
 use network::{run_ws, NetEventsTx, NetRx, ServerEvent, WsCommand, WsCommandTx};
 use state::{AppState, InputMode, NextcloudLoginState, PlaybackBoostState};
@@ -188,6 +188,7 @@ fn main() {
             events::ingest_server_events,
             events::process_audio_results,
             events::update_recording_audio_levels,
+            events::request_content_for_visible_cells,
             process_elf_http_events,
             (handle_navigation, auto_play_audio_on_navigate).chain(),
             auto_expand_nearby_links,
@@ -2011,7 +2012,10 @@ fn auto_expand_nearby_links(
     }
 
     // SECOND: Preload immediate neighbors (1 step away) that we don't have
-    for edge in current.edges {
+    // Prioritize direction of navigation
+    let priority = direction_priority_order(app_state.last_nav_direction);
+    for &idx in &priority {
+        let edge = current.edges[idx];
         if edge == 0 {
             continue;
         }
@@ -2030,17 +2034,20 @@ fn auto_expand_nearby_links(
     }
 
     // THIRD: Collect vertices that are exactly 2 steps away
+    // Prioritize direction of navigation
     let mut two_steps_away: Vec<u64> = Vec::new();
 
     // For each immediate neighbor (1 step)
-    for edge1 in current.edges {
+    for &idx in &priority {
+        let edge1 = current.edges[idx];
         if edge1 == 0 {
             continue;
         }
         if let Some(neighbor) = graph.vertices.get(&edge1) {
             // For each of that neighbor's neighbors (2 steps)
-            for edge2 in neighbor.edges {
-                if edge2 != 0 && edge2 != current_id {
+            for &idx2 in &priority {
+                let edge2 = neighbor.edges[idx2];
+                if edge2 != 0 && edge2 != current_id && !two_steps_away.contains(&edge2) {
                     two_steps_away.push(edge2);
                 }
             }
@@ -2122,21 +2129,25 @@ fn preload_nearby_audio(
         }
     }
 
-    // Preload 1-step neighbors
-    for edge in current.edges.iter() {
-        if *edge == 0 { continue; }
-        if preload_audio_if_needed(*edge, &graph, &mut preload_cache) {
+    // Preload 1-step neighbors - prioritize direction of navigation
+    let priority = direction_priority_order(app_state.last_nav_direction);
+    for &idx in &priority {
+        let edge = current.edges[idx];
+        if edge == 0 { continue; }
+        if preload_audio_if_needed(edge, &graph, &mut preload_cache) {
             return; // One per frame
         }
     }
 
-    // Preload 2-step neighbors
-    for edge1 in current.edges.iter() {
-        if *edge1 == 0 { continue; }
-        if let Some(neighbor) = graph.vertices.get(edge1) {
-            for edge2 in neighbor.edges.iter() {
-                if *edge2 != 0 && *edge2 != current_id {
-                    if preload_audio_if_needed(*edge2, &graph, &mut preload_cache) {
+    // Preload 2-step neighbors - prioritize same direction
+    for &idx in &priority {
+        let edge1 = current.edges[idx];
+        if edge1 == 0 { continue; }
+        if let Some(neighbor) = graph.vertices.get(&edge1) {
+            for &idx2 in &priority {
+                let edge2 = neighbor.edges[idx2];
+                if edge2 != 0 && edge2 != current_id {
+                    if preload_audio_if_needed(edge2, &graph, &mut preload_cache) {
                         return; // One per frame
                     }
                 }

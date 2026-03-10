@@ -6,9 +6,22 @@
 use std::io;
 use std::net::TcpStream;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Context, Result};
+
+/// Get current timestamp with milliseconds for logging
+fn ts() -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now.as_secs() % 86400; // Time of day in seconds
+    let millis = now.subsec_millis();
+    let hours = secs / 3600;
+    let mins = (secs % 3600) / 60;
+    let secs = secs % 60;
+    format!("{:02}:{:02}:{:02}.{:03}", hours, mins, secs, millis)
+}
 use bevy::prelude::*;
 use crossbeam_channel::{Receiver, Sender};
 use tungstenite::{client, Message};
@@ -19,6 +32,8 @@ use url::Url;
 pub const MSG_SERVER_SET_CONTEXT: u8 = 0x01;
 pub const MSG_SERVER_SET_EDGES: u8 = 0x03;
 pub const MSG_SERVER_SET_VERTEX_LABEL: u8 = 0x05;
+pub const MSG_SERVER_SET_VERTEX_PREVIEW: u8 = 0x06;
+pub const MSG_SERVER_SET_VERTEX_CONTENT: u8 = 0x07;
 pub const MSG_SERVER_LOG: u8 = 0x0F;
 pub const MSG_SERVER_REQUEST_IDENTIFICATION: u8 = 0x10;
 pub const MSG_SERVER_INTRODUCTION_TOKEN: u8 = 0x20;
@@ -30,6 +45,8 @@ pub const MSG_CLIENT_CLICK_VERTEX: u8 = 0x84;
 pub const MSG_CLIENT_SET_VERTEX_LABEL: u8 = 0x85;
 pub const MSG_CLIENT_CREATE_VERTEX: u8 = 0x86;
 pub const MSG_CLIENT_DELETE_VERTEX: u8 = 0x87;
+pub const MSG_CLIENT_WATCH_CONTENT: u8 = 0x88;
+pub const MSG_CLIENT_UNWATCH_CONTENT: u8 = 0x89;
 pub const MSG_CLIENT_IDENTIFICATION_RESPONSE: u8 = 0x90;
 pub const MSG_CLIENT_IDENTIFICATION_REFUSED: u8 = 0x91;
 pub const MSG_CLIENT_INTRODUCE_ELF: u8 = 0xA0;
@@ -53,6 +70,21 @@ pub const PERM_DELETE: u8 = 0x08;
 pub enum ServerEvent {
     SetContext { uri: String },
     SetVertexLabel { vertex_id: u64, layer: u32, mime: String, data: Vec<u8> },
+    /// Truncated preview of vertex content (for topology loading)
+    SetVertexPreview {
+        vertex_id: u64,
+        layer: u32,
+        total_length: u32,
+        mime: String,
+        preview: Vec<u8>,
+    },
+    /// Full vertex content (response to WatchContent or push update)
+    SetVertexContent {
+        vertex_id: u64,
+        layer: u32,
+        mime: String,
+        data: Vec<u8>,
+    },
     SetEdges { vertex_id: u64, edges: [u64; 6], edit_mask: u8 },
     Log { action_id: u64, status: u32, vertex_id: u64, message: String },
     Connected { base_url: String },
@@ -136,6 +168,18 @@ pub enum WsCommand {
         permissions: u8,
         params: std::collections::HashMap<String, String>,
     },
+    /// Request full content for a vertex+layer
+    WatchContent {
+        action_id: u64,
+        vertex_id: u64,
+        layer: u32,
+    },
+    /// Stop watching content for a vertex+layer
+    UnwatchContent {
+        action_id: u64,
+        vertex_id: u64,
+        layer: u32,
+    },
 }
 
 /// Resource for receiving server events
@@ -161,7 +205,7 @@ pub fn run_ws(
 
     let stream = TcpStream::connect((host, port)).context("Failed to connect")?;
     let (mut socket, _) = client(url.clone(), stream).context("WebSocket handshake failed")?;
-    eprintln!("Connected!");
+    eprintln!("[{}] Connected!", ts());
 
     let base_url = format!("{}://{}:{}{}", url.scheme(), host, port, url.path());
     let _ = net_tx.send(ServerEvent::Connected { base_url });
@@ -171,7 +215,7 @@ pub fn run_ws(
         .map(|(_, v)| v.to_string())
         .unwrap_or_else(|| url.path().to_string());
 
-    eprintln!("SEND WatchLandmark action=0 uri={:?}", landmark);
+    eprintln!("[{}] SEND WatchLandmark action=0 uri={:?}", ts(), landmark);
     let mut buf = Vec::with_capacity(1 + 8 + landmark.len());
     buf.push(MSG_CLIENT_WATCH_LANDMARK);
     buf.extend_from_slice(&0u64.to_be_bytes());
@@ -185,7 +229,7 @@ pub fn run_ws(
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
                 WsCommand::WatchLandmark { action_id, landmark } => {
-                    eprintln!("SEND WatchLandmark action={} uri={:?}", action_id, landmark);
+                    eprintln!("[{}] SEND WatchLandmark action={} uri={:?}", ts(), action_id, landmark);
                     let mut buf = Vec::with_capacity(1 + 8 + landmark.len());
                     buf.push(MSG_CLIENT_WATCH_LANDMARK);
                     buf.extend_from_slice(&action_id.to_be_bytes());
@@ -193,7 +237,7 @@ pub fn run_ws(
                     socket.send(Message::Binary(buf))?;
                 }
                 WsCommand::ClickVertex { action_id, vertex_id } => {
-                    eprintln!("SEND ClickVertex action={} vertex={}", action_id, vertex_id);
+                    eprintln!("[{}] SEND ClickVertex action={} vertex={}", ts(), action_id, vertex_id);
                     let mut buf = Vec::with_capacity(1 + 8 + 8);
                     buf.push(MSG_CLIENT_CLICK_VERTEX);
                     buf.extend_from_slice(&action_id.to_be_bytes());
@@ -201,7 +245,7 @@ pub fn run_ws(
                     socket.send(Message::Binary(buf))?;
                 }
                 WsCommand::IdentificationResponse { action_id, identity_url, signature } => {
-                    eprintln!("SEND IdentificationResponse action={} url={:?}", action_id, identity_url);
+                    eprintln!("[{}] SEND IdentificationResponse action={} url={:?}", ts(), action_id, identity_url);
                     let mut buf = Vec::with_capacity(1 + 8 + identity_url.len() + 1 + 64);
                     buf.push(MSG_CLIENT_IDENTIFICATION_RESPONSE);
                     buf.extend_from_slice(&action_id.to_be_bytes());
@@ -211,14 +255,14 @@ pub fn run_ws(
                     socket.send(Message::Binary(buf))?;
                 }
                 WsCommand::IdentificationRefused { action_id } => {
-                    eprintln!("SEND IdentificationRefused action={}", action_id);
+                    eprintln!("[{}] SEND IdentificationRefused action={}", ts(), action_id);
                     let mut buf = Vec::with_capacity(1 + 8);
                     buf.push(MSG_CLIENT_IDENTIFICATION_REFUSED);
                     buf.extend_from_slice(&action_id.to_be_bytes());
                     socket.send(Message::Binary(buf))?;
                 }
                 WsCommand::SetVertexLabel { action_id, vertex_id, layer, mime, data } => {
-                    eprintln!("SEND SetVertexLabel action={} vertex={} layer={} mime={:?} len={}", action_id, vertex_id, layer, mime, data.len());
+                    eprintln!("[{}] SEND SetVertexLabel action={} vertex={} layer={} mime={:?} len={}", ts(), action_id, vertex_id, layer, mime, data.len());
                     let mut buf = Vec::with_capacity(1 + 8 + 8 + 4 + mime.len() + 1 + data.len());
                     buf.push(MSG_CLIENT_SET_VERTEX_LABEL);
                     buf.extend_from_slice(&action_id.to_be_bytes());
@@ -230,7 +274,7 @@ pub fn run_ws(
                     socket.send(Message::Binary(buf))?;
                 }
                 WsCommand::CreateVertex { action_id, from_vertex, direction, layer, mime, data } => {
-                    eprintln!("SEND CreateVertex action={} from={} dir={} layer={} mime={:?} len={}", action_id, from_vertex, direction, layer, mime, data.len());
+                    eprintln!("[{}] SEND CreateVertex action={} from={} dir={} layer={} mime={:?} len={}", ts(), action_id, from_vertex, direction, layer, mime, data.len());
                     let mut buf = Vec::with_capacity(1 + 8 + 8 + 1 + 4 + mime.len() + 1 + data.len());
                     buf.push(MSG_CLIENT_CREATE_VERTEX);
                     buf.extend_from_slice(&action_id.to_be_bytes());
@@ -243,7 +287,7 @@ pub fn run_ws(
                     socket.send(Message::Binary(buf))?;
                 }
                 WsCommand::DeleteVertex { action_id, vertex_id } => {
-                    eprintln!("SEND DeleteVertex action={} vertex={}", action_id, vertex_id);
+                    eprintln!("[{}] SEND DeleteVertex action={} vertex={}", ts(), action_id, vertex_id);
                     let mut buf = Vec::with_capacity(1 + 8 + 8);
                     buf.push(MSG_CLIENT_DELETE_VERTEX);
                     buf.extend_from_slice(&action_id.to_be_bytes());
@@ -251,7 +295,7 @@ pub fn run_ws(
                     socket.send(Message::Binary(buf))?;
                 }
                 WsCommand::SetEdges { action_id, vertex_id, edges } => {
-                    eprintln!("SEND SetEdges action={} vertex={} edges={:?}", action_id, vertex_id, edges);
+                    eprintln!("[{}] SEND SetEdges action={} vertex={} edges={:?}", ts(), action_id, vertex_id, edges);
                     let mut buf = Vec::with_capacity(1 + 8 + 8 + 48);
                     buf.push(MSG_CLIENT_SET_EDGES);
                     buf.extend_from_slice(&action_id.to_be_bytes());
@@ -274,7 +318,7 @@ pub fn run_ws(
                     permissions,
                     params,
                 } => {
-                    eprintln!("SEND IntroduceElf action={} elf_url={} command={}", action_id, elf_url, command);
+                    eprintln!("[{}] SEND IntroduceElf action={} elf_url={} command={}", ts(), action_id, elf_url, command);
                     let mut buf = Vec::new();
                     buf.push(MSG_CLIENT_INTRODUCE_ELF);
                     buf.extend_from_slice(&action_id.to_be_bytes());
@@ -301,6 +345,24 @@ pub fn run_ws(
                         buf.extend_from_slice(v.as_bytes());
                         buf.push(0);
                     }
+                    socket.send(Message::Binary(buf))?;
+                }
+                WsCommand::WatchContent { action_id, vertex_id, layer } => {
+                    eprintln!("[{}] SEND WatchContent action={} vertex={} layer={}", ts(), action_id, vertex_id, layer);
+                    let mut buf = Vec::with_capacity(1 + 8 + 8 + 4);
+                    buf.push(MSG_CLIENT_WATCH_CONTENT);
+                    buf.extend_from_slice(&action_id.to_be_bytes());
+                    buf.extend_from_slice(&vertex_id.to_be_bytes());
+                    buf.extend_from_slice(&layer.to_be_bytes());
+                    socket.send(Message::Binary(buf))?;
+                }
+                WsCommand::UnwatchContent { action_id, vertex_id, layer } => {
+                    eprintln!("[{}] SEND UnwatchContent action={} vertex={} layer={}", ts(), action_id, vertex_id, layer);
+                    let mut buf = Vec::with_capacity(1 + 8 + 8 + 4);
+                    buf.push(MSG_CLIENT_UNWATCH_CONTENT);
+                    buf.extend_from_slice(&action_id.to_be_bytes());
+                    buf.extend_from_slice(&vertex_id.to_be_bytes());
+                    buf.extend_from_slice(&layer.to_be_bytes());
                     socket.send(Message::Binary(buf))?;
                 }
             }
@@ -347,7 +409,7 @@ pub fn parse_server_message(data: &[u8]) -> Result<ServerEvent> {
         MSG_SERVER_SET_CONTEXT => {
             let (action_id, rest) = read_u64(&data[1..])?;
             let uri = String::from_utf8(rest.to_vec())?;
-            eprintln!("RECV SetContext action={} uri={:?}", action_id, uri);
+            eprintln!("[{}] RECV SetContext action={} uri={:?}", ts(), action_id, uri);
             Ok(ServerEvent::SetContext { uri })
         }
         MSG_SERVER_SET_VERTEX_LABEL => {
@@ -356,9 +418,32 @@ pub fn parse_server_message(data: &[u8]) -> Result<ServerEvent> {
             let (layer, rest) = read_u32(rest)?;
             let (mime, label) = read_null_terminated(rest)?;
             let label_preview: String = String::from_utf8_lossy(label).chars().take(40).collect();
-            eprintln!("RECV SetVertexLabel action={} vertex={} layer={} mime={:?} label={:?}... ({} bytes)",
-                action_id, vertex_id, layer, mime, label_preview, label.len());
+            eprintln!("[{}] RECV SetVertexLabel action={} vertex={} layer={} mime={:?} label={:?}... ({} bytes)",
+                ts(), action_id, vertex_id, layer, mime, label_preview, label.len());
             Ok(ServerEvent::SetVertexLabel { vertex_id, layer, mime, data: label.to_vec() })
+        }
+        MSG_SERVER_SET_VERTEX_PREVIEW => {
+            // Format: [type:1][action_id:8][vertex_id:8][layer:4][total_length:4][mime\0][preview_data...]
+            let (action_id, rest) = read_u64(&data[1..])?;
+            let (vertex_id, rest) = read_u64(rest)?;
+            let (layer, rest) = read_u32(rest)?;
+            let (total_length, rest) = read_u32(rest)?;
+            let (mime, preview) = read_null_terminated(rest)?;
+            let preview_str: String = String::from_utf8_lossy(preview).chars().take(40).collect();
+            eprintln!("[{}] RECV SetVertexPreview action={} vertex={} layer={} total={} mime={:?} preview={:?}... ({} bytes)",
+                ts(), action_id, vertex_id, layer, total_length, mime, preview_str, preview.len());
+            Ok(ServerEvent::SetVertexPreview { vertex_id, layer, total_length, mime, preview: preview.to_vec() })
+        }
+        MSG_SERVER_SET_VERTEX_CONTENT => {
+            // Format: [type:1][action_id:8][vertex_id:8][layer:4][mime\0][content...]
+            let (action_id, rest) = read_u64(&data[1..])?;
+            let (vertex_id, rest) = read_u64(rest)?;
+            let (layer, rest) = read_u32(rest)?;
+            let (mime, content) = read_null_terminated(rest)?;
+            let content_preview: String = String::from_utf8_lossy(content).chars().take(40).collect();
+            eprintln!("[{}] RECV SetVertexContent action={} vertex={} layer={} mime={:?} content={:?}... ({} bytes)",
+                ts(), action_id, vertex_id, layer, mime, content_preview, content.len());
+            Ok(ServerEvent::SetVertexContent { vertex_id, layer, mime, data: content.to_vec() })
         }
         MSG_SERVER_SET_EDGES => {
             let (action_id, rest) = read_u64(&data[1..])?;
@@ -372,8 +457,8 @@ pub fn parse_server_message(data: &[u8]) -> Result<ServerEvent> {
             }
             // Read edit_mask (1 byte) if present, default to 0x7F (editable)
             let edit_mask = if !slice.is_empty() { slice[0] } else { 0x7F };
-            eprintln!("RECV SetEdges action={} vertex={} W={} E={} N={} S={} U={} D={} edit_mask=0x{:02x}",
-                action_id, vertex_id, edges[0], edges[1], edges[2], edges[3], edges[4], edges[5], edit_mask);
+            eprintln!("[{}] RECV SetEdges action={} vertex={} W={} E={} N={} S={} U={} D={} edit_mask=0x{:02x}",
+                ts(), action_id, vertex_id, edges[0], edges[1], edges[2], edges[3], edges[4], edges[5], edit_mask);
             Ok(ServerEvent::SetEdges { vertex_id, edges, edit_mask })
         }
         MSG_SERVER_LOG => {
@@ -381,7 +466,7 @@ pub fn parse_server_message(data: &[u8]) -> Result<ServerEvent> {
             let (status, rest) = read_u32(rest)?;
             let (vertex_id, rest) = read_u64(rest)?;
             let message = String::from_utf8(rest.to_vec())?;
-            eprintln!("RECV Log action={} status={} vertex={} msg={:?}", action_id, status, vertex_id, message);
+            eprintln!("[{}] RECV Log action={} status={} vertex={} msg={:?}", ts(), action_id, status, vertex_id, message);
             Ok(ServerEvent::Log { action_id, status, vertex_id, message })
         }
         MSG_SERVER_REQUEST_IDENTIFICATION => {
@@ -393,8 +478,8 @@ pub fn parse_server_message(data: &[u8]) -> Result<ServerEvent> {
             nonce.copy_from_slice(&rest[..32]);
             let (timestamp, rest) = read_u64(&rest[32..])?;
             let reason = String::from_utf8(rest.to_vec()).unwrap_or_else(|_| "Unknown".to_string());
-            eprintln!("RECV RequestIdentification action={} nonce={:?}... timestamp={} reason={:?}",
-                action_id, &nonce[..8], timestamp, reason);
+            eprintln!("[{}] RECV RequestIdentification action={} nonce={:?}... timestamp={} reason={:?}",
+                ts(), action_id, &nonce[..8], timestamp, reason);
             Ok(ServerEvent::RequestIdentification { action_id, nonce, timestamp, reason })
         }
         MSG_SERVER_INTRODUCTION_TOKEN => {
@@ -403,12 +488,12 @@ pub fn parse_server_message(data: &[u8]) -> Result<ServerEvent> {
             }
             let (action_id, rest) = read_u64(&data[1..])?;
             let (token, _rest) = read_null_terminated(rest)?;
-            eprintln!("RECV IntroductionToken action={} token={}...",
-                action_id, &token[..std::cmp::min(8, token.len())]);
+            eprintln!("[{}] RECV IntroductionToken action={} token={}...",
+                ts(), action_id, &token[..std::cmp::min(8, token.len())]);
             Ok(ServerEvent::IntroductionToken { action_id, token })
         }
         other => {
-            eprintln!("RECV Unknown message type: 0x{:02x}", other);
+            eprintln!("[{}] RECV Unknown message type: 0x{:02x}", ts(), other);
             Err(anyhow!("unknown message type"))
         }
     }

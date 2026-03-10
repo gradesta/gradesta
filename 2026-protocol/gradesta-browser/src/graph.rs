@@ -9,6 +9,18 @@ use bevy::prelude::*;
 
 use crate::state::{LoadingPortalCell, PendingAudioCell, EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
 
+/// Get edge indices prioritized by navigation direction.
+/// If navigating north/south, prioritize N/S edges first.
+/// If navigating east/west, prioritize E/W edges first.
+pub fn direction_priority_order(last_direction: usize) -> [usize; 6] {
+    match last_direction {
+        EDGE_NORTH | EDGE_SOUTH => [EDGE_NORTH, EDGE_SOUTH, EDGE_WEST, EDGE_EAST, EDGE_UP, EDGE_DOWN],
+        EDGE_WEST | EDGE_EAST => [EDGE_WEST, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_DOWN],
+        _ => // Up/Down - default to north/south priority
+            [EDGE_NORTH, EDGE_SOUTH, EDGE_WEST, EDGE_EAST, EDGE_UP, EDGE_DOWN],
+    }
+}
+
 /// Layer content for a vertex - each layer has its own MIME type and data
 #[derive(Clone, Debug, Default)]
 pub struct LayerContent {
@@ -31,6 +43,14 @@ pub struct Vertex {
     /// Edit mask: bit 0-5 for edge editability, bit 6 for label editability
     /// 0x7F = all editable, 0 = read-only
     pub edit_mask: u8,
+    /// Total length of layer 0 content (for preview/full content loading)
+    pub content_length: u32,
+    /// True if full layer 0 content is loaded (vs just preview)
+    pub content_loaded: bool,
+    /// Total lengths for each layer (layer -> total length)
+    pub layer_lengths: HashMap<u32, u32>,
+    /// Whether each layer has full content loaded (layer -> loaded flag)
+    pub layer_loaded: HashMap<u32, bool>,
 }
 
 /// Graph state resource holding all vertices and context information

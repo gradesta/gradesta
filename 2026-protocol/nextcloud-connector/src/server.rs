@@ -21,7 +21,8 @@ use crate::elf;
 use crate::handlers::{
     handle_click_vertex, handle_create_vertex, handle_delete_vertex,
     handle_elf_connection, handle_identification_response, handle_introduce_elf,
-    handle_set_edges, handle_set_vertex_label, handle_watch_landmark,
+    handle_set_edges, handle_set_vertex_label, handle_watch_content, handle_unwatch_content,
+    handle_watch_landmark,
 };
 use crate::http_stream::{self, JwtSecret};
 use crate::identity::PendingAuth;
@@ -587,6 +588,12 @@ where
         }
         MSG_CLIENT_INTRODUCE_ELF => {
             handle_introduce_elf(data, state, elf_registry, write).await
+        }
+        MSG_CLIENT_WATCH_CONTENT => {
+            handle_watch_content(data, state, connection_manager, write).await
+        }
+        MSG_CLIENT_UNWATCH_CONTENT => {
+            handle_unwatch_content(data, state, connection_manager).await
         }
         _ => {
             log::warn!("Unknown message type: 0x{:02x}", msg_type);

@@ -3,8 +3,22 @@
 //! Handles incoming server events and updates the graph and app state accordingly.
 
 use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use bevy::prelude::*;
+
+/// Get current timestamp with milliseconds for logging
+fn ts() -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now.as_secs() % 86400; // Time of day in seconds
+    let millis = now.subsec_millis();
+    let hours = secs / 3600;
+    let mins = (secs % 3600) / 60;
+    let secs = secs % 60;
+    format!("{:02}:{:02}:{:02}.{:03}", hours, mins, secs, millis)
+}
 
 use crate::audio::{AudioProcessingChannel, AudioProcessingResult};
 use crate::elf_http;
@@ -50,6 +64,18 @@ pub fn ingest_server_events(
                     &mut graph, &mut app_state, &net_tx, &mut media_cache,
                 );
             }
+            ServerEvent::SetVertexPreview { vertex_id, layer, total_length, mime, preview } => {
+                handle_set_vertex_preview(
+                    vertex_id, layer, total_length, &mime, preview,
+                    &mut graph, &mut app_state,
+                );
+            }
+            ServerEvent::SetVertexContent { vertex_id, layer, mime, data } => {
+                handle_set_vertex_content(
+                    vertex_id, layer, &mime, data,
+                    &mut graph, &mut app_state, &mut media_cache,
+                );
+            }
             ServerEvent::SetEdges { vertex_id, edges, edit_mask } => {
                 handle_set_edges(vertex_id, &edges, edit_mask, &mut graph, &mut app_state);
             }
@@ -83,10 +109,10 @@ pub fn ingest_server_events(
                     let elf_url = task.elf_url.clone();
                     let command = task.command.clone();
 
-                    eprintln!("RECV IntroductionToken action={} token={}...",
-                        action_id, &token[..std::cmp::min(8, token.len())]);
-                    eprintln!("  elf_url={}", elf_url);
-                    eprintln!("  command={}", command);
+                    eprintln!("[{}] RECV IntroductionToken action={} token={}...",
+                        ts(), action_id, &token[..std::cmp::min(8, token.len())]);
+                    eprintln!("[{}]   elf_url={}", ts(), elf_url);
+                    eprintln!("[{}]   command={}", ts(), command);
 
                     // Use the browser's own connection URL, not what the server advertises
                     // For elves via local service manager, translate localhost to Docker alias
@@ -102,11 +128,11 @@ pub fn ingest_server_events(
                             base.to_string()
                         }
                     } else {
-                        eprintln!("ERROR: No base_ws_url available for elf connection");
+                        eprintln!("[{}] ERROR: No base_ws_url available for elf connection", ts());
                         return;
                     };
 
-                    eprintln!("Summoning elf {} with ws_url: {}", elf_url, elf_server_ws_url);
+                    eprintln!("[{}] Summoning elf {} with ws_url: {}", ts(), elf_url, elf_server_ws_url);
 
                     elf_http::summon_elf_async(
                         elf_url,
@@ -117,8 +143,109 @@ pub fn ingest_server_events(
                         elf_http_tx.0.clone(),
                     );
                 } else {
-                    eprintln!("ERROR: No pending elf task found for action {}", action_id);
+                    eprintln!("[{}] ERROR: No pending elf task found for action {}", ts(), action_id);
                 }
+            }
+        }
+    }
+}
+
+fn handle_set_vertex_preview(
+    vertex_id: u64,
+    layer: u32,
+    total_length: u32,
+    mime: &str,
+    preview: Vec<u8>,
+    graph: &mut GraphState,
+    app_state: &mut AppState,
+) {
+    let entry = graph.vertices.entry(vertex_id).or_default();
+    entry.id = vertex_id;
+
+    // u32::MAX means "unknown size, needs to be loaded"
+    // Empty preview with u32::MAX means server didn't download content yet
+    let needs_loading = total_length == u32::MAX || (total_length > 255 && preview.len() < total_length as usize);
+
+    if layer == 0 {
+        entry.label = preview;
+        entry.mime = Some(mime.to_string());
+        entry.content_length = total_length;
+        entry.content_loaded = !needs_loading;
+    } else {
+        entry.layers.insert(layer, LayerContent {
+            mime: mime.to_string(),
+            data: preview,
+        });
+        entry.layer_lengths.insert(layer, total_length);
+        entry.layer_loaded.insert(layer, !needs_loading);
+    }
+
+    // Track which landmark this vertex belongs to
+    if let Some(landmark) = graph.current_receiving_landmark.clone() {
+        if let Some(vertices) = graph.landmark_vertices.get_mut(&landmark) {
+            if !vertices.contains(&vertex_id) {
+                vertices.push(vertex_id);
+            }
+        }
+    }
+
+    // Handle initial navigation - jump to first non-portal vertex
+    if layer == 0 && graph.pending_jump_context.is_some() && mime != "text/gradesta-url" {
+        if let Some(current) = app_state.current_vertex {
+            app_state.history.push(current);
+        }
+        app_state.current_vertex = Some(vertex_id);
+        graph.pending_jump_context = None;
+        app_state.loading_portal_vertex = None;
+        app_state.loading_portal_cell = None;
+    } else if layer == 0 && app_state.current_vertex.is_none() {
+        app_state.current_vertex = Some(vertex_id);
+    }
+}
+
+fn handle_set_vertex_content(
+    vertex_id: u64,
+    layer: u32,
+    mime: &str,
+    data: Vec<u8>,
+    graph: &mut GraphState,
+    app_state: &mut AppState,
+    media_cache: &mut MediaCache,
+) {
+    let entry = graph.vertices.entry(vertex_id).or_default();
+    entry.id = vertex_id;
+
+    // Invalidate cached texture/media when content changes
+    if mime.starts_with("image/") || is_image_data(&data) {
+        media_cache.textures.remove(&vertex_id);
+        media_cache.animated_gifs.remove(&vertex_id);
+    }
+
+    if layer == 0 {
+        entry.label = data.clone();
+        entry.mime = Some(mime.to_string());
+        entry.content_length = data.len() as u32;
+        entry.content_loaded = true;
+    } else {
+        entry.layers.insert(layer, LayerContent {
+            mime: mime.to_string(),
+            data: data.clone(),
+        });
+        entry.layer_lengths.insert(layer, data.len() as u32);
+        entry.layer_loaded.insert(layer, true);
+    }
+
+    // Mark the pending request as complete (content received)
+    let key = (vertex_id, layer);
+    app_state.pending_content_requests.remove(&key);
+    // Add to active watches since we're now watching this content
+    app_state.active_content_watches.insert(key);
+
+    // Track which landmark this vertex belongs to
+    if let Some(landmark) = graph.current_receiving_landmark.clone() {
+        if let Some(vertices) = graph.landmark_vertices.get_mut(&landmark) {
+            if !vertices.contains(&vertex_id) {
+                vertices.push(vertex_id);
             }
         }
     }
@@ -171,26 +298,62 @@ fn handle_set_vertex_label(
                 let events_tx = net_tx.0.clone();
 
                 thread::spawn(move || {
-                    eprintln!("HTTP Fetch: Fetching {} from {}", expected_mime, url);
+                    eprintln!("[{}] HTTP Fetch: Fetching {} from {}", ts(), expected_mime, url);
                     match reqwest::blocking::get(&url) {
                         Ok(response) => {
                             if response.status().is_success() {
                                 match response.bytes() {
                                     Ok(bytes) => {
-                                        eprintln!("HTTP Fetch: Got {} bytes for vertex {}", bytes.len(), v_id);
+                                        let ts_str = {
+                                            let now = std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap_or_default();
+                                            let secs = now.as_secs() % 86400;
+                                            let millis = now.subsec_millis();
+                                            format!("{:02}:{:02}:{:02}.{:03}", secs / 3600, (secs % 3600) / 60, secs % 60, millis)
+                                        };
+                                        eprintln!("[{}] HTTP Fetch: Got {} bytes for vertex {}", ts_str, bytes.len(), v_id);
                                         let _ = events_tx.send(ServerEvent::HttpStreamContentFetched {
                                             vertex_id: v_id,
                                             mime: expected_mime,
                                             data: bytes.to_vec(),
                                         });
                                     }
-                                    Err(e) => eprintln!("HTTP Fetch: Failed to read body: {}", e),
+                                    Err(e) => {
+                                        let ts_str = {
+                                            let now = std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap_or_default();
+                                            let secs = now.as_secs() % 86400;
+                                            let millis = now.subsec_millis();
+                                            format!("{:02}:{:02}:{:02}.{:03}", secs / 3600, (secs % 3600) / 60, secs % 60, millis)
+                                        };
+                                        eprintln!("[{}] HTTP Fetch: Failed to read body: {}", ts_str, e);
+                                    }
                                 }
                             } else {
-                                eprintln!("HTTP Fetch: HTTP error: {}", response.status());
+                                let ts_str = {
+                                    let now = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default();
+                                    let secs = now.as_secs() % 86400;
+                                    let millis = now.subsec_millis();
+                                    format!("{:02}:{:02}:{:02}.{:03}", secs / 3600, (secs % 3600) / 60, secs % 60, millis)
+                                };
+                                eprintln!("[{}] HTTP Fetch: HTTP error: {}", ts_str, response.status());
                             }
                         }
-                        Err(e) => eprintln!("HTTP Fetch: Failed to fetch: {}", e),
+                        Err(e) => {
+                            let ts_str = {
+                                let now = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default();
+                                let secs = now.as_secs() % 86400;
+                                let millis = now.subsec_millis();
+                                format!("{:02}:{:02}:{:02}.{:03}", secs / 3600, (secs % 3600) / 60, secs % 60, millis)
+                            };
+                            eprintln!("[{}] HTTP Fetch: Failed to fetch: {}", ts_str, e);
+                        }
                     }
                 });
             }
@@ -210,13 +373,18 @@ fn handle_set_vertex_label(
 
     // Store in appropriate layer
     if layer == 0 {
+        entry.content_length = data.len() as u32;
+        entry.content_loaded = true;
         entry.label = data;
         entry.mime = Some(mime.to_string());
     } else {
+        let data_len = data.len() as u32;
         entry.layers.insert(layer, LayerContent {
             mime: mime.to_string(),
             data,
         });
+        entry.layer_lengths.insert(layer, data_len);
+        entry.layer_loaded.insert(layer, true);
     }
 
     // Track which landmark this vertex belongs to
@@ -261,7 +429,7 @@ fn handle_set_edges(
         if app_state.current_vertex == Some(vertex_id) {
             app_state.current_vertex = app_state.history.pop();
         }
-        eprintln!("Vertex {} deleted from local graph", vertex_id);
+        eprintln!("[{}] Vertex {} deleted from local graph", ts(), vertex_id);
     } else {
         let entry = graph.vertices.entry(vertex_id).or_default();
         entry.id = vertex_id;
@@ -325,7 +493,7 @@ fn handle_log(
             if pending.mime.starts_with("audio/") {
                 app_state.skip_autoplay_vertex = Some(vertex_id);
 
-                eprintln!("Starting async transcription for vertex {} (action={})", vertex_id, action_id);
+                eprintln!("[{}] Starting async transcription for vertex {} (action={})", ts(), vertex_id, action_id);
                 let event_tx = net_tx.0.clone();
                 let target_vertex = vertex_id;
                 let transcript_action_id = app_state.next_action_id;
@@ -335,7 +503,15 @@ fn handle_log(
                     if whisper::is_model_available() {
                         match whisper::transcribe(&pending.samples, pending.sample_rate) {
                             Ok(text) => {
-                                eprintln!("Transcription complete: {}", text);
+                                let ts_str = {
+                                    let now = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default();
+                                    let secs = now.as_secs() % 86400;
+                                    let millis = now.subsec_millis();
+                                    format!("{:02}:{:02}:{:02}.{:03}", secs / 3600, (secs % 3600) / 60, secs % 60, millis)
+                                };
+                                eprintln!("[{}] Transcription complete: {}", ts_str, text);
                                 let _ = event_tx.send(ServerEvent::LocalSetVertexLabel {
                                     action_id: transcript_action_id,
                                     vertex_id: target_vertex,
@@ -345,11 +521,27 @@ fn handle_log(
                                 });
                             }
                             Err(e) => {
-                                eprintln!("Transcription failed: {}", e);
+                                let ts_str = {
+                                    let now = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default();
+                                    let secs = now.as_secs() % 86400;
+                                    let millis = now.subsec_millis();
+                                    format!("{:02}:{:02}:{:02}.{:03}", secs / 3600, (secs % 3600) / 60, secs % 60, millis)
+                                };
+                                eprintln!("[{}] Transcription failed: {}", ts_str, e);
                             }
                         }
                     } else {
-                        eprintln!("Whisper model not available, skipping transcription");
+                        let ts_str = {
+                            let now = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default();
+                            let secs = now.as_secs() % 86400;
+                            let millis = now.subsec_millis();
+                            format!("{:02}:{:02}:{:02}.{:03}", secs / 3600, (secs % 3600) / 60, secs % 60, millis)
+                        };
+                        eprintln!("[{}] Whisper model not available, skipping transcription", ts_str);
                     }
                 });
             }
@@ -445,17 +637,17 @@ fn handle_http_stream_content(
 ) {
     // For MP4 videos, use native video player
     if mime == "video/mp4" {
-        eprintln!("HTTP Fetch: Got MP4 video ({} bytes), starting native player", data.len());
+        eprintln!("[{}] HTTP Fetch: Got MP4 video ({} bytes), starting native player", ts(), data.len());
 
         match VideoPlayer::new(data.clone()) {
             Ok(player) => {
                 media_cache.video_players.insert(vertex_id, player);
                 app_state.video_modal_vertex_id = Some(vertex_id);
                 app_state.show_video_modal = true;
-                eprintln!("HTTP Fetch: Video player started for vertex {}", vertex_id);
+                eprintln!("[{}] HTTP Fetch: Video player started for vertex {}", ts(), vertex_id);
             }
             Err(e) => {
-                eprintln!("HTTP Fetch: Failed to create video player: {}", e);
+                eprintln!("[{}] HTTP Fetch: Failed to create video player: {}", ts(), e);
                 app_state.status = format!("Video error: {}", e);
             }
         }
@@ -464,7 +656,7 @@ fn handle_http_stream_content(
 
     // For other video formats, fall back to external player
     if mime.starts_with("video/") {
-        eprintln!("HTTP Fetch: Got video {} ({} bytes), launching external player", mime, data.len());
+        eprintln!("[{}] HTTP Fetch: Got video {} ({} bytes), launching external player", ts(), mime, data.len());
 
         let ext = match mime {
             "video/webm" => "webm",
@@ -482,28 +674,28 @@ fn handle_http_stream_content(
             Ok(mut temp) => {
                 use std::io::Write;
                 if let Err(e) = temp.write_all(&data) {
-                    eprintln!("HTTP Fetch: Failed to write temp file: {}", e);
+                    eprintln!("[{}] HTTP Fetch: Failed to write temp file: {}", ts(), e);
                 } else {
                     let path = temp.path().to_owned();
                     let (file, file_path) = temp.keep().unwrap_or_else(|e| {
-                        eprintln!("Failed to keep temp file: {}", e);
+                        eprintln!("[{}] Failed to keep temp file: {}", ts(), e);
                         (std::fs::File::create(&path).unwrap(), path.clone())
                     });
                     drop(file);
 
-                    eprintln!("HTTP Fetch: Launching mpv for {}", file_path.display());
+                    eprintln!("[{}] HTTP Fetch: Launching mpv for {}", ts(), file_path.display());
                     if let Err(e) = std::process::Command::new("mpv")
                         .arg(&file_path)
                         .spawn()
                     {
-                        eprintln!("HTTP Fetch: Failed to launch mpv: {}", e);
+                        eprintln!("[{}] HTTP Fetch: Failed to launch mpv: {}", ts(), e);
                         if let Err(e2) = open::that(&file_path) {
-                            eprintln!("HTTP Fetch: Failed to open with xdg-open: {}", e2);
+                            eprintln!("[{}] HTTP Fetch: Failed to open with xdg-open: {}", ts(), e2);
                         }
                     }
                 }
             }
-            Err(e) => eprintln!("HTTP Fetch: Failed to create temp file: {}", e),
+            Err(e) => eprintln!("[{}] HTTP Fetch: Failed to create temp file: {}", ts(), e),
         }
         return;
     }
@@ -522,7 +714,7 @@ fn handle_http_stream_content(
         data,
     });
 
-    eprintln!("HTTP Fetch: Stored {} content in layer 2 for vertex {}", mime, vertex_id);
+    eprintln!("[{}] HTTP Fetch: Stored {} content in layer 2 for vertex {}", ts(), mime, vertex_id);
 }
 
 fn handle_request_identification(
@@ -604,7 +796,8 @@ pub fn process_audio_results(
                 sample_rate,
             } => {
                 eprintln!(
-                    "Audio encoding complete: local_id={} size={} bytes",
+                    "[{}] Audio encoding complete: local_id={} size={} bytes",
+                    ts(),
                     local_id,
                     ogg_data.len()
                 );
@@ -662,14 +855,14 @@ pub fn process_audio_results(
                         );
 
                         eprintln!(
-                            "Sent CreateVertex to server: action_id={} local_id={} from_vertex={} direction={}",
-                            action_id, local_id, pending_cell.from_vertex, dir_byte
+                            "[{}] Sent CreateVertex to server: action_id={} local_id={} from_vertex={} direction={}",
+                            ts(), action_id, local_id, pending_cell.from_vertex, dir_byte
                         );
                     }
                 }
             }
             AudioProcessingResult::EncodingFailed { local_id, error } => {
-                eprintln!("Audio encoding failed: local_id={} error={}", local_id, error);
+                eprintln!("[{}] Audio encoding failed: local_id={} error={}", ts(), local_id, error);
 
                 // Remove the failed pending cell
                 app_state.pending_audio_cells.remove(&local_id);
@@ -681,4 +874,130 @@ pub fn process_audio_results(
             }
         }
     }
+}
+
+use crate::graph::{build_grid_view, direction_priority_order};
+use crate::state::{EDGE_NORTH, EDGE_SOUTH, EDGE_EAST, EDGE_WEST};
+
+/// Request full content for visible cells that only have previews loaded.
+/// Prioritizes cells in the navigation direction (north/south typically).
+pub fn request_content_for_visible_cells(
+    mut app_state: ResMut<AppState>,
+    graph: Res<GraphState>,
+    ws_cmd_tx: Res<WsCommandTx>,
+) {
+    let Some(current_id) = app_state.current_vertex else { return };
+    let Some(cmd_tx) = &ws_cmd_tx.0 else { return };
+
+    // Build grid view to find visible cells
+    let grid = build_grid_view(&graph, Some(current_id), &app_state.pending_audio_cells, app_state.loading_portal_cell.as_ref());
+
+    // Collect cells that need content loaded
+    let mut cells_needing_content: Vec<(u64, u32, i32)> = Vec::new(); // (vertex_id, layer, priority)
+
+    // Get direction priorities based on last navigation direction
+    let priority_order = direction_priority_order(app_state.last_nav_direction);
+
+    for (&pos, &vertex_id) in &grid.cells {
+        if let Some(vertex) = graph.vertices.get(&vertex_id) {
+            // Check layer 0
+            if !vertex.content_loaded && vertex.content_length > 255 {
+                let key = (vertex_id, 0u32);
+                if !app_state.pending_content_requests.contains(&key) &&
+                   !app_state.active_content_watches.contains(&key) {
+                    // Calculate priority based on distance and direction
+                    let distance = pos.0.abs() + pos.1.abs();
+                    let priority = calculate_priority(pos, &priority_order, distance);
+                    cells_needing_content.push((vertex_id, 0, priority));
+                }
+            }
+
+            // Check other layers
+            for (&layer, _content) in &vertex.layers {
+                if layer == 0 { continue; }
+                let loaded = vertex.layer_loaded.get(&layer).copied().unwrap_or(false);
+                let length = vertex.layer_lengths.get(&layer).copied().unwrap_or(0);
+                if !loaded && length > 255 {
+                    let key = (vertex_id, layer);
+                    if !app_state.pending_content_requests.contains(&key) &&
+                       !app_state.active_content_watches.contains(&key) {
+                        let distance = pos.0.abs() + pos.1.abs();
+                        let priority = calculate_priority(pos, &priority_order, distance);
+                        cells_needing_content.push((vertex_id, layer, priority));
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort by priority (lower = higher priority)
+    cells_needing_content.sort_by_key(|&(_, _, priority)| priority);
+
+    // Limit concurrent requests to avoid overwhelming the server
+    const MAX_CONCURRENT_REQUESTS: usize = 5;
+    let available_slots = MAX_CONCURRENT_REQUESTS.saturating_sub(app_state.pending_content_requests.len());
+
+    for (vertex_id, layer, _) in cells_needing_content.into_iter().take(available_slots) {
+        let action_id = app_state.next_action_id;
+        app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+
+        eprintln!("[{}] Requesting content: vertex={} layer={} action={}", ts(), vertex_id, layer, action_id);
+
+        let key = (vertex_id, layer);
+        app_state.pending_content_requests.insert(key);
+
+        let _ = cmd_tx.send(WsCommand::WatchContent { action_id, vertex_id, layer });
+    }
+
+    // Clean up: unwatch content for cells no longer in view
+    let visible_vertices: std::collections::HashSet<u64> = grid.cells.values().copied().collect();
+    let watches_to_remove: Vec<(u64, u32)> = app_state.active_content_watches
+        .iter()
+        .filter(|(vid, _)| !visible_vertices.contains(vid))
+        .copied()
+        .collect();
+
+    for (vertex_id, layer) in watches_to_remove {
+        let action_id = app_state.next_action_id;
+        app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+
+        eprintln!("[{}] Unwatching content: vertex={} layer={} action={}", ts(), vertex_id, layer, action_id);
+
+        app_state.active_content_watches.remove(&(vertex_id, layer));
+        let _ = cmd_tx.send(WsCommand::UnwatchContent { action_id, vertex_id, layer });
+    }
+}
+
+/// Calculate priority for content loading based on position and navigation direction.
+/// Lower priority = load sooner.
+fn calculate_priority(pos: (i32, i32), priority_order: &[usize; 6], distance: i32) -> i32 {
+    // Base priority is distance from cursor
+    let mut priority = distance * 10;
+
+    // Bonus for being in the navigation direction
+    // Check if cell is in the direction we're navigating
+    let (x, y) = pos;
+
+    // priority_order[0] and priority_order[1] are the primary directions
+    let primary_dir = priority_order[0];
+
+    match primary_dir {
+        EDGE_NORTH if y < 0 => priority -= 5, // Cell is north of cursor
+        EDGE_SOUTH if y > 0 => priority -= 5, // Cell is south of cursor
+        EDGE_WEST if x < 0 => priority -= 5,  // Cell is west of cursor
+        EDGE_EAST if x > 0 => priority -= 5,  // Cell is east of cursor
+        _ => {}
+    }
+
+    // Secondary direction bonus
+    let secondary_dir = priority_order[1];
+    match secondary_dir {
+        EDGE_NORTH if y < 0 => priority -= 3,
+        EDGE_SOUTH if y > 0 => priority -= 3,
+        EDGE_WEST if x < 0 => priority -= 3,
+        EDGE_EAST if x > 0 => priority -= 3,
+        _ => {}
+    }
+
+    priority
 }

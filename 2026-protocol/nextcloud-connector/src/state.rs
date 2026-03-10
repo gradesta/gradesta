@@ -8,6 +8,7 @@ use clap::Parser;
 
 use crate::calendar;
 use crate::connection_manager::SharedConnectionManager;
+use crate::content_store::ContentStore;
 use crate::elf::{ElfConnection, SharedElfRegistry};
 use crate::git_undo;
 use crate::http_stream::{JwtSecret, StreamState};
@@ -65,6 +66,8 @@ pub enum ConnectionState {
 pub struct ConnState {
     pub identity: Option<String>,
     pub nextcloud: Option<NextcloudClient>,
+    /// Content-addressable storage with local caching for note content
+    pub content_store: Option<Arc<ContentStore<NextcloudClient>>>,
     /// Local storage client for offline mode
     pub local_storage: Option<local_storage::LocalStorageClient>,
     pub conn_state: ConnectionState,
@@ -104,6 +107,7 @@ impl Default for ConnState {
         Self {
             identity: None,
             nextcloud: None,
+            content_store: None,
             local_storage: None,
             conn_state: ConnectionState::AwaitingFirstMessage,
             pending_auth: None,

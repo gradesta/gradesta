@@ -49,15 +49,25 @@ Client to server
    - Type: 1 byte = 0b1000 0111
    - Action id: 8 bytes
    - Vertex id: 8 bytes
-8. Identification response
+8. Watch content (request full content for vertex+layer)
+   - Type: 1 byte = 0b1000 1000
+   - Action id: 8 bytes
+   - Vertex id: 8 bytes
+   - Layer: 4 bytes (big-endian uint32)
+9. Unwatch content (stop watching content for vertex+layer)
+   - Type: 1 byte = 0b1000 1001
+   - Action id: 8 bytes
+   - Vertex id: 8 bytes
+   - Layer: 4 bytes (big-endian uint32)
+10. Identification response
    - Type: 1 byte = 0b1001 0000
    - Action id: 8 bytes (must match the request)
    - Identity URL: UTF-8 bytes, null-terminated (public share URL of identity.pub)
    - Signature: 64 bytes (ECDSA P-256 signature of nonce || timestamp from request)
-9. Identification refused
+11. Identification refused
    - Type: 1 byte = 0b1001 0001
    - Action id: 8 bytes (must match the request)
-10. Introduce elf
+12. Introduce elf
    - Type: 1 byte = 0b1010 0000
    - Action id: 8 bytes
    - Elf URL: UTF-8 bytes, null-terminated (base URL of the elf service)
@@ -105,7 +115,22 @@ Server to client
    - Nonce: 32 bytes (random, for replay protection)
    - Timestamp: 8 bytes (Unix seconds, big-endian)
    - Reason: UTF-8 bytes to end of message (human-readable explanation)
-6. Introduction token (response to Introduce elf)
+6. Set vertex preview (truncated content with total length)
+   - Type: 1 byte = 0b0000 0110
+   - Action id: 8 bytes
+   - Vertex id: 8 bytes
+   - Layer: 4 bytes (big-endian uint32)
+   - Total length: 4 bytes (big-endian uint32, total content size)
+   - Mime-type: UTF-8 bytes, null-terminated
+   - Preview data: first min(255, total_length) bytes of content
+7. Set vertex content (full content response)
+   - Type: 1 byte = 0b0000 0111
+   - Action id: 8 bytes
+   - Vertex id: 8 bytes
+   - Layer: 4 bytes (big-endian uint32)
+   - Mime-type: UTF-8 bytes, null-terminated
+   - Content: bytes to end of message (full content)
+8. Introduction token (response to Introduce elf)
    - Type: 1 byte = 0b0010 0000
    - Action id: 8 bytes (matches the Introduce elf request)
    - Token: UTF-8 bytes, null-terminated (one-time authentication token for elf)
@@ -113,6 +138,25 @@ Server to client
 Editability bitmask (server Set edges)
 - Bit 0 (LSB): vertex label editable
 - Bits 1-6: edge editable in order west, east, north, south, up, down
+
+Content Loading
+---------------
+The protocol separates topology from content loading for efficiency:
+
+1. When a client watches a landmark, the server sends topology (edges) and truncated previews:
+   - Small content (≤255 bytes): Sent as full SetVertexLabel
+   - Large content (>255 bytes): Sent as SetVertexPreview with first 255 bytes + total length
+
+2. Client can request full content on-demand using WatchContent:
+   - Server responds with SetVertexContent containing full data
+   - Server registers client as content watcher for real-time updates
+
+3. When content changes, server pushes SetVertexContent to all content watchers
+
+4. Client sends UnwatchContent when navigating away to allow server cleanup
+
+This flow enables efficient topology loading while deferring large content (audio, images)
+until the user actually needs it.
 
 Layers
 ------

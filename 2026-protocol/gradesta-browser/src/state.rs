@@ -740,6 +740,12 @@ pub struct AppState {
     pub command_bar_interpretation_selected: usize,
     /// True when navigating the filtered command list (up arrow pressed)
     pub command_bar_in_list: bool,
+
+    // Content watching state (for topology/content separation)
+    /// Active content watches: (vertex_id, layer) pairs we're watching for updates
+    pub active_content_watches: HashSet<(u64, u32)>,
+    /// Pending content requests: (vertex_id, layer) pairs with in-flight requests
+    pub pending_content_requests: HashSet<(u64, u32)>,
 }
 
 /// A generated image waiting to be inserted into a cell
@@ -947,6 +953,8 @@ impl Default for AppState {
             command_bar_interpretations: Vec::new(),
             command_bar_interpretation_selected: 0,
             command_bar_in_list: false,
+            active_content_watches: HashSet::new(),
+            pending_content_requests: HashSet::new(),
         }
     }
 }

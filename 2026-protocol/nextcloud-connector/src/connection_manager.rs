@@ -22,6 +22,10 @@ pub struct ConnectionManager {
     vertex_watchers: HashMap<u64, HashSet<u64>>,
     /// Map from connection ID to set of vertices it's watching (for cleanup)
     connection_watches: HashMap<u64, HashSet<u64>>,
+    /// Map from (vertex_id, layer) to set of connection IDs watching that content
+    content_watchers: HashMap<(u64, u32), HashSet<u64>>,
+    /// Map from connection ID to set of (vertex_id, layer) it's watching (for cleanup)
+    connection_content_watches: HashMap<u64, HashSet<(u64, u32)>>,
 }
 
 impl ConnectionManager {
@@ -48,6 +52,18 @@ impl ConnectionManager {
                     watchers.remove(&conn_id);
                     if watchers.is_empty() {
                         self.vertex_watchers.remove(&vertex_id);
+                    }
+                }
+            }
+        }
+
+        // Clean up content watches for this connection
+        if let Some(content_keys) = self.connection_content_watches.remove(&conn_id) {
+            for key in content_keys {
+                if let Some(watchers) = self.content_watchers.get_mut(&key) {
+                    watchers.remove(&conn_id);
+                    if watchers.is_empty() {
+                        self.content_watchers.remove(&key);
                     }
                 }
             }
@@ -91,6 +107,56 @@ impl ConnectionManager {
         if let Some(watchers) = self.vertex_watchers.get(&vertex_id) {
             for &conn_id in watchers {
                 // Skip excluded connection
+                if exclude == Some(conn_id) {
+                    continue;
+                }
+                if let Some(sender) = self.senders.get(&conn_id) {
+                    if sender.send(msg.to_vec()).is_ok() {
+                        sent_count += 1;
+                    }
+                }
+            }
+        }
+        sent_count
+    }
+
+    /// Register that a connection is watching content for a specific vertex+layer
+    pub fn add_content_watcher(&mut self, conn_id: u64, vertex_id: u64, layer: u32) {
+        let key = (vertex_id, layer);
+        self.content_watchers
+            .entry(key)
+            .or_default()
+            .insert(conn_id);
+        self.connection_content_watches
+            .entry(conn_id)
+            .or_default()
+            .insert(key);
+        log::debug!("ConnectionManager: conn_id={} watching content for vertex={} layer={}", conn_id, vertex_id, layer);
+    }
+
+    /// Unregister a connection from watching content for a specific vertex+layer
+    pub fn remove_content_watcher(&mut self, conn_id: u64, vertex_id: u64, layer: u32) {
+        let key = (vertex_id, layer);
+        if let Some(watchers) = self.content_watchers.get_mut(&key) {
+            watchers.remove(&conn_id);
+            if watchers.is_empty() {
+                self.content_watchers.remove(&key);
+            }
+        }
+        if let Some(watches) = self.connection_content_watches.get_mut(&conn_id) {
+            watches.remove(&key);
+        }
+        log::debug!("ConnectionManager: conn_id={} unwatching content for vertex={} layer={}", conn_id, vertex_id, layer);
+    }
+
+    /// Broadcast a message to all connections watching content for a specific vertex+layer,
+    /// optionally excluding a specific connection
+    /// Returns the number of connections that received the message
+    pub fn broadcast_to_content_watchers(&self, vertex_id: u64, layer: u32, msg: &[u8], exclude: Option<u64>) -> usize {
+        let mut sent_count = 0;
+        let key = (vertex_id, layer);
+        if let Some(watchers) = self.content_watchers.get(&key) {
+            for &conn_id in watchers {
                 if exclude == Some(conn_id) {
                     continue;
                 }

@@ -9,6 +9,7 @@ use axum::extract::ws::Message as AxumWsMessage;
 use futures_util::SinkExt;
 
 use crate::connection_manager::SharedConnectionManager;
+use crate::content_store::ContentStore;
 use crate::elf::SharedElfRegistry;
 use crate::git_undo;
 use crate::identity;
@@ -226,11 +227,15 @@ where
             None
         };
 
+        // Create content store with local caching for fast content loading
+        let content_store = Arc::new(ContentStore::with_cache(nc.clone(), &cred.nextcloud_url, &cred.username));
+
         // Get a server-generated action_id for the router
         let action_id = {
             let mut s = state.lock().await;
             s.identity = Some(identity.clone());
             s.nextcloud = Some(nc);
+            s.content_store = Some(content_store);
             s.index = Some(index);
             s.shared_index = Some(shared_index);
             s.git_undo_repo = git_repo;
@@ -355,9 +360,13 @@ pub async fn poll_for_auth(state: Arc<Mutex<ConnState>>, cred_store: Arc<Mutex<C
                     }
                 };
 
+                // Create content store with local caching
+                let content_store = Arc::new(ContentStore::with_cache(nc.clone(), &result.server, &result.login_name));
+
                 {
                     let mut s = state.lock().await;
                     s.nextcloud = Some(nc);
+                    s.content_store = Some(content_store);
                     s.index = Some(index);
                     s.conn_state = ConnectionState::Browsing;
                     s.poll_endpoint = None;

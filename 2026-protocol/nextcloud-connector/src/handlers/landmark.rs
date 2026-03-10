@@ -9,6 +9,7 @@ use futures_util::SinkExt;
 
 use crate::calendar;
 use crate::connection_manager::SharedConnectionManager;
+use crate::content_store::{path_to_hash, path_to_ext, CONTENT_STORE_DIR};
 use crate::files;
 use crate::notes::{self, uuid_to_hash};
 use crate::protocol::*;
@@ -220,12 +221,13 @@ where
     W: SinkExt<AxumWsMessage> + Unpin,
     W::Error: std::fmt::Debug,
 {
-    let (identity, index, nc) = {
+    let (identity, index, nc, content_store) = {
         let s = state.lock().await;
         (
             s.identity.clone().unwrap_or_default(),
             s.index.clone(),
             s.nextcloud.clone(),
+            s.content_store.clone(),
         )
     };
 
@@ -308,18 +310,63 @@ where
             // Track vertex for watcher registration
             vertex_ids_to_watch.push(vertex_id);
 
-            // Load actual content for layer 0
-            let (content, mime) = match nc.download(&vertex.file).await {
-                Ok(data) => (data, vertex.mime.clone()),
-                Err(e) => {
-                    log::warn!("Failed to load {}: {}", vertex.file, e);
-                    (format!("(failed to load: {})", e).into_bytes(), "text/plain".to_string())
-                }
-            };
+            // Check if this is a large binary type (audio/video) that should be loaded on-demand
+            let mime = &vertex.mime;
+            let is_large_binary = mime.starts_with("audio/") || mime.starts_with("video/") || mime.starts_with("image/");
 
-            // Send vertex label (layer 0 - actual content)
-            let label_msg = encode_set_vertex_label(action_id, vertex_id, &mime, &content);
-            write.send(AxumWsMessage::Binary(label_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            if is_large_binary {
+                // Don't download during landmark loading - send preview with metadata only
+                // Browser will request full content via WatchContent when needed
+                // Use 0xFFFFFFFF as "unknown size" sentinel - browser knows to request content
+                let preview_msg = encode_set_vertex_preview(action_id, vertex_id, 0, u32::MAX, mime, &[]);
+                write.send(AxumWsMessage::Binary(preview_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            } else {
+                // Text content - load using content store (with local caching) if available
+                let (content, mime) = if vertex.file.starts_with(CONTENT_STORE_DIR) {
+                    // CAS file - use content store for cached loading
+                    if let (Some(hash), Some(ext), Some(ref cs)) = (path_to_hash(&vertex.file), path_to_ext(&vertex.file), &content_store) {
+                        match cs.get(hash, ext).await {
+                            Ok(data) => (data, vertex.mime.clone()),
+                            Err(e) => {
+                                log::warn!("Failed to load from content store {}: {}", vertex.file, e);
+                                (format!("(failed to load: {})", e).into_bytes(), "text/plain".to_string())
+                            }
+                        }
+                    } else {
+                        // Fall back to direct download
+                        match nc.download(&vertex.file).await {
+                            Ok(data) => (data, vertex.mime.clone()),
+                            Err(e) => {
+                                log::warn!("Failed to load {}: {}", vertex.file, e);
+                                (format!("(failed to load: {})", e).into_bytes(), "text/plain".to_string())
+                            }
+                        }
+                    }
+                } else {
+                    // Non-CAS file - direct download
+                    match nc.download(&vertex.file).await {
+                        Ok(data) => (data, vertex.mime.clone()),
+                        Err(e) => {
+                            log::warn!("Failed to load {}: {}", vertex.file, e);
+                            (format!("(failed to load: {})", e).into_bytes(), "text/plain".to_string())
+                        }
+                    }
+                };
+
+                // Send vertex preview (truncated to 255 bytes) or full content if small
+                let total_length = content.len() as u32;
+                const MAX_PREVIEW_SIZE: usize = 255;
+                if content.len() <= MAX_PREVIEW_SIZE {
+                    // Small content - send full label directly
+                    let label_msg = encode_set_vertex_label(action_id, vertex_id, &mime, &content);
+                    write.send(AxumWsMessage::Binary(label_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                } else {
+                    // Large content - send truncated preview with total length
+                    let preview = &content[..MAX_PREVIEW_SIZE];
+                    let preview_msg = encode_set_vertex_preview(action_id, vertex_id, 0, total_length, &mime, preview);
+                    write.send(AxumWsMessage::Binary(preview_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                }
+            }
 
             // Send transcript as layer 1 if available
             if let Some(ref transcript) = vertex.transcript {
@@ -446,4 +493,130 @@ pub async fn forward_vertex_update_to_browser(
     if broadcast_count > 0 {
         log::info!("Broadcast vertex {} update to {} watchers", vertex_id, broadcast_count);
     }
+}
+
+/// Handle WatchContent message - client requests full content for a vertex+layer
+pub async fn handle_watch_content<W>(
+    data: &[u8],
+    state: &Arc<Mutex<ConnState>>,
+    connection_manager: &SharedConnectionManager,
+    write: &mut W,
+) -> Result<()>
+where
+    W: SinkExt<AxumWsMessage> + Unpin,
+    W::Error: std::fmt::Debug,
+{
+    let (action_id, vertex_id, layer) = parse_watch_content(data)?;
+    log::info!("WatchContent: vertex={} layer={} (action={})", vertex_id, layer, action_id);
+
+    let (conn_id, index, nc, content_store) = {
+        let s = state.lock().await;
+        (s.conn_id, s.index.clone(), s.nextcloud.clone(), s.content_store.clone())
+    };
+
+    // Register this connection as a content watcher
+    {
+        let mut cm = connection_manager.lock().await;
+        cm.add_content_watcher(conn_id, vertex_id, layer);
+    }
+
+    // Load and send full content
+    let index = index.ok_or_else(|| anyhow!("No index loaded"))?;
+    let nc = nc.ok_or_else(|| anyhow!("No Nextcloud client"))?;
+
+    // Convert vertex_id hash back to UUID
+    let vertex_uuid = notes::hash_to_uuid(&index, vertex_id)
+        .ok_or_else(|| anyhow!("Vertex {} not found in index", vertex_id))?;
+
+    let vertex = index.get_vertex(vertex_uuid)
+        .ok_or_else(|| anyhow!("Vertex {} not found", vertex_id))?;
+
+    // Load content for the requested layer
+    let (content, mime) = if layer == 0 {
+        // Layer 0 - primary content from file, use content store for caching
+        if vertex.file.starts_with(CONTENT_STORE_DIR) {
+            // CAS file - use content store for cached loading
+            if let (Some(hash), Some(ext), Some(ref cs)) = (path_to_hash(&vertex.file), path_to_ext(&vertex.file), &content_store) {
+                match cs.get(hash, ext).await {
+                    Ok(data) => (data, vertex.mime.clone()),
+                    Err(e) => {
+                        log::warn!("Failed to load from content store {}: {}", vertex.file, e);
+                        let err_msg = encode_log_message(action_id, STATUS_NOT_FOUND, vertex_id,
+                            &format!("Failed to load content: {}", e));
+                        write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                        return Ok(());
+                    }
+                }
+            } else {
+                // Fall back to direct download
+                match nc.download(&vertex.file).await {
+                    Ok(data) => (data, vertex.mime.clone()),
+                    Err(e) => {
+                        log::warn!("Failed to load {}: {}", vertex.file, e);
+                        let err_msg = encode_log_message(action_id, STATUS_NOT_FOUND, vertex_id,
+                            &format!("Failed to load content: {}", e));
+                        write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                        return Ok(());
+                    }
+                }
+            }
+        } else {
+            // Non-CAS file - direct download
+            match nc.download(&vertex.file).await {
+                Ok(data) => (data, vertex.mime.clone()),
+                Err(e) => {
+                    log::warn!("Failed to load {}: {}", vertex.file, e);
+                    let err_msg = encode_log_message(action_id, STATUS_NOT_FOUND, vertex_id,
+                        &format!("Failed to load content: {}", e));
+                    write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                    return Ok(());
+                }
+            }
+        }
+    } else if layer == 1 {
+        // Layer 1 - transcript if available
+        if let Some(ref transcript) = vertex.transcript {
+            (transcript.as_bytes().to_vec(), "text/plain".to_string())
+        } else {
+            let err_msg = encode_log_message(action_id, STATUS_NOT_FOUND, vertex_id,
+                "Layer 1 content not available");
+            write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+            return Ok(());
+        }
+    } else {
+        let err_msg = encode_log_message(action_id, STATUS_NOT_FOUND, vertex_id,
+            &format!("Layer {} not supported", layer));
+        write.send(AxumWsMessage::Binary(err_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+        return Ok(());
+    };
+
+    // Send full content
+    let content_msg = encode_set_vertex_content(action_id, vertex_id, layer, &mime, &content);
+    write.send(AxumWsMessage::Binary(content_msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+
+    log::info!("Sent full content for vertex={} layer={} ({} bytes)", vertex_id, layer, content.len());
+    Ok(())
+}
+
+/// Handle UnwatchContent message - client stops watching content for a vertex+layer
+pub async fn handle_unwatch_content(
+    data: &[u8],
+    state: &Arc<Mutex<ConnState>>,
+    connection_manager: &SharedConnectionManager,
+) -> Result<()> {
+    let (action_id, vertex_id, layer) = parse_unwatch_content(data)?;
+    log::info!("UnwatchContent: vertex={} layer={} (action={})", vertex_id, layer, action_id);
+
+    let conn_id = {
+        let s = state.lock().await;
+        s.conn_id
+    };
+
+    // Remove this connection from content watchers
+    {
+        let mut cm = connection_manager.lock().await;
+        cm.remove_content_watcher(conn_id, vertex_id, layer);
+    }
+
+    Ok(())
 }

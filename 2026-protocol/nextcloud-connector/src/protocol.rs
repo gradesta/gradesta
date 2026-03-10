@@ -7,6 +7,8 @@ use std::collections::HashMap;
 pub const MSG_SERVER_SET_CONTEXT: u8 = 0x01;
 pub const MSG_SERVER_SET_EDGES: u8 = 0x03;
 pub const MSG_SERVER_SET_VERTEX_LABEL: u8 = 0x05;
+pub const MSG_SERVER_SET_VERTEX_PREVIEW: u8 = 0x06;
+pub const MSG_SERVER_SET_VERTEX_CONTENT: u8 = 0x07;
 pub const MSG_SERVER_LOG_MESSAGE: u8 = 0x0F;
 pub const MSG_SERVER_REQUEST_IDENTIFICATION: u8 = 0x10;
 pub const MSG_SERVER_INTRODUCTION_TOKEN: u8 = 0x20;
@@ -20,6 +22,8 @@ pub const MSG_CLIENT_CLICK_VERTEX: u8 = 0x84;
 pub const MSG_CLIENT_SET_VERTEX_LABEL: u8 = 0x85;
 pub const MSG_CLIENT_CREATE_VERTEX: u8 = 0x86;
 pub const MSG_CLIENT_DELETE_VERTEX: u8 = 0x87;
+pub const MSG_CLIENT_WATCH_CONTENT: u8 = 0x88;
+pub const MSG_CLIENT_UNWATCH_CONTENT: u8 = 0x89;
 pub const MSG_CLIENT_IDENTIFICATION_RESPONSE: u8 = 0x90;
 pub const MSG_CLIENT_IDENTIFICATION_REFUSED: u8 = 0x91;
 
@@ -117,6 +121,61 @@ pub fn encode_set_vertex_label_layer(action_id: u64, vertex_id: u64, layer: u32,
     msg.push(0); // null terminator
     msg.extend_from_slice(label);
     msg
+}
+
+/// Encode SetVertexPreview message (truncated content with total length)
+/// Format: [type:1][action_id:8][vertex_id:8][layer:4][total_length:4][mime\0][preview_data...]
+pub fn encode_set_vertex_preview(action_id: u64, vertex_id: u64, layer: u32, total_length: u32, mime_type: &str, preview: &[u8]) -> Vec<u8> {
+    let mut msg = Vec::with_capacity(1 + 8 + 8 + 4 + 4 + mime_type.len() + 1 + preview.len());
+    msg.push(MSG_SERVER_SET_VERTEX_PREVIEW);
+    msg.extend_from_slice(&action_id.to_be_bytes());
+    msg.extend_from_slice(&vertex_id.to_be_bytes());
+    msg.extend_from_slice(&layer.to_be_bytes());
+    msg.extend_from_slice(&total_length.to_be_bytes());
+    msg.extend_from_slice(mime_type.as_bytes());
+    msg.push(0); // null terminator
+    msg.extend_from_slice(preview);
+    msg
+}
+
+/// Encode SetVertexContent message (full content response)
+/// Format: [type:1][action_id:8][vertex_id:8][layer:4][mime\0][content...]
+pub fn encode_set_vertex_content(action_id: u64, vertex_id: u64, layer: u32, mime_type: &str, content: &[u8]) -> Vec<u8> {
+    let mut msg = Vec::with_capacity(1 + 8 + 8 + 4 + mime_type.len() + 1 + content.len());
+    msg.push(MSG_SERVER_SET_VERTEX_CONTENT);
+    msg.extend_from_slice(&action_id.to_be_bytes());
+    msg.extend_from_slice(&vertex_id.to_be_bytes());
+    msg.extend_from_slice(&layer.to_be_bytes());
+    msg.extend_from_slice(mime_type.as_bytes());
+    msg.push(0); // null terminator
+    msg.extend_from_slice(content);
+    msg
+}
+
+/// Parse WatchContent message from client
+/// Format: [type:1][action_id:8][vertex_id:8][layer:4]
+/// Returns: (action_id, vertex_id, layer)
+pub fn parse_watch_content(msg: &[u8]) -> Result<(u64, u64, u32)> {
+    if msg.len() < 1 + 8 + 8 + 4 {
+        return Err(anyhow!("WatchContent message too short"));
+    }
+    let action_id = u64::from_be_bytes(msg[1..9].try_into()?);
+    let vertex_id = u64::from_be_bytes(msg[9..17].try_into()?);
+    let layer = u32::from_be_bytes(msg[17..21].try_into()?);
+    Ok((action_id, vertex_id, layer))
+}
+
+/// Parse UnwatchContent message from client
+/// Format: [type:1][action_id:8][vertex_id:8][layer:4]
+/// Returns: (action_id, vertex_id, layer)
+pub fn parse_unwatch_content(msg: &[u8]) -> Result<(u64, u64, u32)> {
+    if msg.len() < 1 + 8 + 8 + 4 {
+        return Err(anyhow!("UnwatchContent message too short"));
+    }
+    let action_id = u64::from_be_bytes(msg[1..9].try_into()?);
+    let vertex_id = u64::from_be_bytes(msg[9..17].try_into()?);
+    let layer = u32::from_be_bytes(msg[17..21].try_into()?);
+    Ok((action_id, vertex_id, layer))
 }
 
 /// Encode SetEdges message
