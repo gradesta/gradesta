@@ -16,6 +16,7 @@ use tokio::sync::{mpsc, Mutex};
 use uuid::Uuid;
 
 use crate::connection_manager::SharedConnectionManager;
+use crate::content_store::{ContentStore, LocalContentStore};
 use crate::git_undo::GitUndoRepo;
 use crate::nextcloud::NextcloudClient;
 use crate::notes::NotesIndex;
@@ -35,18 +36,24 @@ pub enum SyncOperation {
     EditVertex {
         uuid: Uuid,
         content: Vec<u8>,
-        file_path: String,
+        /// New content hash (computed before queueing)
+        new_hash: String,
+        /// File extension for content store
+        ext: String,
         mime: String,
         layer: u32,
-        /// Original content before edit (for rollback)
-        original_content: Vec<u8>,
+        /// Original content hash before edit (for rollback)
+        original_hash: String,
         /// Original mime type
         original_mime: String,
     },
     CreateVertex {
         uuid: Uuid,
         content: Vec<u8>,
-        file_path: String,
+        /// Content hash (computed before queueing)
+        content_hash: String,
+        /// File extension for content store
+        ext: String,
         mime: String,
         from_vertex: u64,
         direction: Direction,
@@ -57,11 +64,11 @@ pub enum SyncOperation {
     },
     DeleteVertex {
         uuid: Uuid,
-        files_to_delete: Vec<String>,
+        /// Content hash (for potential future GC, not deleted immediately)
+        content_hashes_to_gc: String,
         /// Original vertex data for rollback
-        original_content: Vec<u8>,
         original_mime: String,
-        original_file: String,
+        original_hash: String,
         /// Original edges for rollback
         original_edges: [u64; 6],
         /// Neighbors that were updated (need rollback too)
@@ -130,7 +137,8 @@ struct PendingAction {
 enum RollbackData {
     Edit {
         layer: u32,
-        original_content: Vec<u8>,
+        /// Original content hash (for CAS lookup on rollback)
+        original_hash: String,
         original_mime: String,
     },
     Create {
@@ -141,7 +149,8 @@ enum RollbackData {
         displaced_vertex: Option<(u64, [u64; 6])>,
     },
     Delete {
-        original_content: Vec<u8>,
+        /// Original content hash (for CAS lookup on rollback)
+        original_hash: String,
         original_mime: String,
         original_edges: [u64; 6],
         affected_neighbors: Vec<(u64, [u64; 6])>,  // vertex_hash -> original edges
@@ -277,20 +286,24 @@ impl SyncWorker {
     /// Execute edit operation
     async fn do_edit(&mut self, item: &SyncWorkItem) -> Result<Option<RollbackData>> {
         let SyncOperation::EditVertex {
-            uuid, content, file_path, mime, layer,
-            original_content, original_mime,
+            uuid, content, new_hash, ext, mime, layer,
+            original_hash, original_mime,
         } = &item.operation else {
             return Err(anyhow!("Invalid operation type"));
         };
 
-        // 1. Upload content via WebDAV
-        self.nc.upload(file_path, content).await?;
+        // 1. Upload content via ContentStore (CAS)
+        let content_store = ContentStore::new(self.nc.clone());
+        content_store.put(content, ext).await?;
 
-        // 2. Update index if needed (for layer 1 transcripts, etc.)
-        if *layer == 1 {
-            let transcript = String::from_utf8_lossy(content).to_string();
+        // 2. Update index with new hash
+        {
             let mut index = self.index.lock().await;
-            index.update_vertex(*uuid, Some(transcript))?;
+            if *layer == 1 {
+                let transcript = String::from_utf8_lossy(content).to_string();
+                index.update_vertex(*uuid, Some(transcript))?;
+            }
+            index.set_vertex_layer_hash(*uuid, *layer, mime, new_hash)?;
         }
 
         // 3. Save index to WebDAV
@@ -300,6 +313,7 @@ impl SyncWorker {
         }
 
         // 4. Write to local git workdir and commit
+        // Note: Only index.toml is committed, not content files
         {
             let repo = self.git_repo.lock().await;
             if let Some(workdir) = repo.workdir() {
@@ -307,14 +321,11 @@ impl SyncWorker {
                 let index = self.index.lock().await;
                 index.save_to_path(workdir)?;
 
-                // Write content file
-                let local_file = workdir.join(file_path);
-                if let Some(parent) = local_file.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                std::fs::write(&local_file, content)?;
+                // Store content in local content-store (for reference, not tracked by git)
+                let local_store = LocalContentStore::new(workdir);
+                local_store.put(content, ext)?;
 
-                // Commit
+                // Commit (only index.toml)
                 drop(index);
                 repo.ensure_on_branch()?;
                 repo.commit_all(&format!("Edit vertex: {}", uuid), &self.identity)?;
@@ -323,7 +334,7 @@ impl SyncWorker {
 
         Ok(Some(RollbackData::Edit {
             layer: *layer,
-            original_content: original_content.clone(),
+            original_hash: original_hash.clone(),
             original_mime: original_mime.clone(),
         }))
     }
@@ -331,14 +342,15 @@ impl SyncWorker {
     /// Execute create operation
     async fn do_create(&mut self, item: &SyncWorkItem) -> Result<Option<RollbackData>> {
         let SyncOperation::CreateVertex {
-            uuid, content, file_path, mime, from_vertex, direction,
+            uuid, content, content_hash: _, ext, mime: _, from_vertex: _, direction: _,
             original_source_edges, displaced_vertex,
         } = &item.operation else {
             return Err(anyhow!("Invalid operation type"));
         };
 
-        // 1. Upload content via WebDAV
-        self.nc.upload(file_path, content).await?;
+        // 1. Upload content via ContentStore (CAS)
+        let content_store = ContentStore::new(self.nc.clone());
+        content_store.put(content, ext).await?;
 
         // 2. Save index to WebDAV (index already updated optimistically)
         {
@@ -347,17 +359,16 @@ impl SyncWorker {
         }
 
         // 3. Write to local git workdir and commit
+        // Note: Only index.toml is committed, not content files
         {
             let repo = self.git_repo.lock().await;
             if let Some(workdir) = repo.workdir() {
                 let index = self.index.lock().await;
                 index.save_to_path(workdir)?;
 
-                let local_file = workdir.join(file_path);
-                if let Some(parent) = local_file.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                std::fs::write(&local_file, content)?;
+                // Store content in local content-store (for reference, not tracked by git)
+                let local_store = LocalContentStore::new(workdir);
+                local_store.put(content, ext)?;
 
                 drop(index);
                 repo.ensure_on_branch()?;
@@ -376,40 +387,33 @@ impl SyncWorker {
     /// Execute delete operation
     async fn do_delete(&mut self, item: &SyncWorkItem) -> Result<Option<RollbackData>> {
         let SyncOperation::DeleteVertex {
-            uuid, files_to_delete,
-            original_content, original_mime, original_file,
+            uuid, content_hashes_to_gc: _,
+            original_mime, original_hash,
             original_edges, affected_neighbors,
         } = &item.operation else {
             return Err(anyhow!("Invalid operation type"));
         };
 
-        // 1. Delete files from WebDAV
-        for file_path in files_to_delete {
-            if let Err(e) = self.nc.delete(file_path).await {
-                log::warn!("Failed to delete {}: {}", file_path, e);
-            }
-        }
+        // Note: With CAS, we DON'T delete content files immediately
+        // Content files are immutable and may be referenced by old commits
+        // Garbage collection handles cleanup of unreferenced hashes
 
-        // 2. Save updated index to WebDAV
+        // 1. Save updated index to WebDAV
         {
             let index = self.index.lock().await;
             index.save(&self.nc).await?;
         }
 
-        // 3. Update local git workdir and commit
+        // 2. Update local git workdir and commit
+        // Note: Only index.toml is committed, content files are NOT deleted
         {
             let repo = self.git_repo.lock().await;
             if let Some(workdir) = repo.workdir() {
                 let index = self.index.lock().await;
                 index.save_to_path(workdir)?;
 
-                // Delete content files
-                for file_path in files_to_delete {
-                    let local_file = workdir.join(file_path);
-                    if local_file.exists() {
-                        let _ = std::fs::remove_file(&local_file);
-                    }
-                }
+                // Note: We don't delete content from local store
+                // GC will clean up unreferenced hashes
 
                 drop(index);
                 repo.ensure_on_branch()?;
@@ -423,7 +427,7 @@ impl SyncWorker {
             .collect();
 
         Ok(Some(RollbackData::Delete {
-            original_content: original_content.clone(),
+            original_hash: original_hash.clone(),
             original_mime: original_mime.clone(),
             original_edges: *original_edges,
             affected_neighbors: neighbor_rollbacks,
@@ -492,19 +496,24 @@ impl SyncWorker {
         self.send_to_browser(msg);
 
         // Send rollback state based on operation type
+        // Note: For CAS, we use content hashes. The browser will need to re-fetch
+        // content from the server if it wants to display the restored state.
         match &item.operation {
             SyncOperation::EditVertex {
-                original_content, original_mime, layer, ..
+                original_hash, original_mime, layer, ext, ..
             } => {
-                // Restore original content
-                let restore_msg = protocol::encode_set_vertex_label_layer(
-                    item.action_id,
-                    item.vertex_id,
-                    *layer,
-                    original_mime,
-                    original_content,
-                );
-                self.send_to_browser(restore_msg);
+                // For rollback, fetch original content from CAS and send it
+                let content_store = ContentStore::new(self.nc.clone());
+                if let Ok(original_content) = content_store.get(original_hash, ext).await {
+                    let restore_msg = protocol::encode_set_vertex_label_layer(
+                        item.action_id,
+                        item.vertex_id,
+                        *layer,
+                        original_mime,
+                        &original_content,
+                    );
+                    self.send_to_browser(restore_msg);
+                }
             }
             SyncOperation::CreateVertex { original_source_edges, displaced_vertex, .. } => {
                 // Signal vertex doesn't exist by sending empty edges with edit_mask=0
@@ -541,16 +550,22 @@ impl SyncWorker {
                 }
             }
             SyncOperation::DeleteVertex {
-                original_content, original_mime, original_edges, affected_neighbors, ..
+                original_hash, original_mime, original_edges, affected_neighbors, ..
             } => {
-                // Restore deleted vertex
-                let restore_label = protocol::encode_set_vertex_label(
-                    item.action_id,
-                    item.vertex_id,
-                    original_mime,
-                    original_content,
-                );
-                self.send_to_browser(restore_label);
+                // For rollback, fetch original content from CAS
+                // Note: Content should still exist since we don't delete on delete_vertex
+                let ext = crate::notes::mime_to_extension(original_mime);
+                let content_store = ContentStore::new(self.nc.clone());
+                if let Ok(original_content) = content_store.get(original_hash, ext).await {
+                    // Restore deleted vertex
+                    let restore_label = protocol::encode_set_vertex_label(
+                        item.action_id,
+                        item.vertex_id,
+                        original_mime,
+                        &original_content,
+                    );
+                    self.send_to_browser(restore_label);
+                }
 
                 // Restore edges
                 let restore_edges = protocol::encode_set_edges(
@@ -596,17 +611,23 @@ impl SyncWorker {
         self.send_to_browser(msg);
 
         // Send rollback state if available
+        // Note: For CAS, we need to fetch content from store using hash
         if let Some(rollback) = rollback {
             match rollback {
-                RollbackData::Edit { layer, original_content, original_mime } => {
-                    let restore_msg = protocol::encode_set_vertex_label_layer(
-                        action_id,
-                        vertex_id,
-                        layer,
-                        &original_mime,
-                        &original_content,
-                    );
-                    self.send_to_browser(restore_msg);
+                RollbackData::Edit { layer, original_hash, original_mime } => {
+                    // Fetch original content from CAS
+                    let ext = crate::notes::mime_to_extension(&original_mime);
+                    let content_store = ContentStore::new(self.nc.clone());
+                    if let Ok(original_content) = content_store.get(&original_hash, ext).await {
+                        let restore_msg = protocol::encode_set_vertex_label_layer(
+                            action_id,
+                            vertex_id,
+                            layer,
+                            &original_mime,
+                            &original_content,
+                        );
+                        self.send_to_browser(restore_msg);
+                    }
                 }
                 RollbackData::Create { new_vertex_hash, original_source_edges, displaced_vertex } => {
                     // Signal vertex doesn't exist
@@ -642,15 +663,20 @@ impl SyncWorker {
                         self.send_to_browser(restore_displaced_msg);
                     }
                 }
-                RollbackData::Delete { original_content, original_mime, original_edges, affected_neighbors } => {
-                    // Restore vertex
-                    let restore_label = protocol::encode_set_vertex_label(
-                        action_id,
-                        vertex_id,
-                        &original_mime,
-                        &original_content,
-                    );
-                    self.send_to_browser(restore_label);
+                RollbackData::Delete { original_hash, original_mime, original_edges, affected_neighbors } => {
+                    // Fetch original content from CAS
+                    let ext = crate::notes::mime_to_extension(&original_mime);
+                    let content_store = ContentStore::new(self.nc.clone());
+                    if let Ok(original_content) = content_store.get(&original_hash, ext).await {
+                        // Restore vertex
+                        let restore_label = protocol::encode_set_vertex_label(
+                            action_id,
+                            vertex_id,
+                            &original_mime,
+                            &original_content,
+                        );
+                        self.send_to_browser(restore_label);
+                    }
 
                     let restore_edges = protocol::encode_set_edges(
                         action_id,

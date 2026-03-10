@@ -419,14 +419,18 @@ impl GitUndoRepo {
     /// Stage all changes and create a commit
     /// Returns the new commit's Oid
     /// Note: Call sync_to_nextcloud() after this to persist the commit
+    ///
+    /// IMPORTANT: Only stages index.toml, NOT content-store directory.
+    /// Content files are stored by hash outside git for efficiency.
     pub fn commit_all(&self, message: &str, author: &str) -> Result<Oid> {
         log::info!("commit_all: Starting commit for '{}' by '{}'", message, author);
 
         let mut index = self.repo.index()?;
 
-        // Add all changes (including new files, modifications, and deletions)
-        index.add_all(["*"].iter(), IndexAddOption::DEFAULT, None)?;
-        index.update_all(["*"].iter(), None)?; // Handle deletions
+        // Only add index.toml (not content-store directory)
+        // This keeps git history small by not tracking binary content
+        index.add_all(["index.toml"].iter(), IndexAddOption::DEFAULT, None)?;
+        index.update_all(["index.toml"].iter(), None)?; // Handle deletions
 
         // Log what we're staging
         let statuses = self.repo.statuses(None)?;

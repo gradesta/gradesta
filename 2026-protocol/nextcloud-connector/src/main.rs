@@ -2,8 +2,11 @@
 
 mod calendar;
 mod connection_manager;
+mod content_store;
 mod elf;
 mod files;
+mod garbage_collect;
+mod migration;
 mod git_undo;
 mod handlers;
 mod http_stream;

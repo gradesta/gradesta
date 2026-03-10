@@ -7,6 +7,7 @@ use anyhow::{anyhow, Result};
 use axum::extract::ws::Message as AxumWsMessage;
 use futures_util::SinkExt;
 
+use crate::content_store::{self, ContentStore};
 use crate::git_undo;
 use crate::notes::{self, mime_to_extension, uuid_to_hash};
 use crate::protocol::*;
@@ -67,12 +68,16 @@ where
         }
     };
 
+    // Compute new content hash
+    let ext = mime_to_extension(&mime);
+    let new_content_hash = content_store::compute_hash(&content);
+
     // Check if we have a sync worker for optimistic updates
     if let Some(sync_tx) = sync_tx {
         // OPTIMISTIC PATH: Queue work and return 202 immediately
 
-        // Fetch original content for potential rollback
-        let original_content = nc.download(&vertex.file).await.unwrap_or_default();
+        // Store original hash for potential rollback
+        let original_hash = vertex.content_hash.clone();
         let original_mime = vertex.mime.clone();
 
         // Queue the work item
@@ -82,10 +87,11 @@ where
             operation: sync_worker::SyncOperation::EditVertex {
                 uuid,
                 content: content.clone(),
-                file_path: vertex.file.clone(),
+                new_hash: new_content_hash.clone(),
+                ext: ext.to_string(),
                 mime: mime.clone(),
                 layer,
-                original_content,
+                original_hash,
                 original_mime,
             },
         };
@@ -101,9 +107,9 @@ where
         let msg = encode_log_message(action_id, STATUS_ACCEPTED, vertex_id, "Accepted");
         write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
-        log::info!("Queued edit for vertex {} (optimistic)", uuid);
+        log::info!("Queued edit for vertex {} with new hash {} (optimistic)", uuid, new_content_hash);
     } else {
-        // SYNCHRONOUS PATH: No sync worker, do everything inline (legacy behavior)
+        // SYNCHRONOUS PATH: No sync worker, do everything inline
         let mut index = index;
 
         // Get identity and git repo for undo
@@ -112,34 +118,54 @@ where
             (s.identity.clone(), s.git_undo_repo.clone())
         };
 
+        // Use ContentStore for all layers
+        let content_store = ContentStore::new(nc.clone());
+
         if layer == 0 {
-            // Layer 0: Update primary content
-            if let Err(e) = nc.upload(&vertex.file, &content).await {
-                let msg = encode_log_message(action_id, 500, vertex_id, &format!("Upload failed: {}", e));
-                write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-                return Ok(());
+            // Layer 0: Update primary content via CAS
+            match content_store.put(&content, ext).await {
+                Ok(stored_hash) => {
+                    debug_assert_eq!(stored_hash, new_content_hash);
+                    if let Err(e) = index.set_vertex_layer_hash(uuid, layer, &mime, &new_content_hash) {
+                        log::warn!("Failed to update layer hash: {}", e);
+                    }
+                }
+                Err(e) => {
+                    let msg = encode_log_message(action_id, 500, vertex_id, &format!("Upload failed: {}", e));
+                    write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                    return Ok(());
+                }
             }
         } else if layer == 1 {
-            // Layer 1: Transcript
+            // Layer 1: Transcript - also use CAS
             let transcript = String::from_utf8_lossy(&content).to_string();
             if let Err(e) = index.update_vertex(uuid, Some(transcript)) {
                 log::warn!("Failed to update transcript: {}", e);
             }
-            let transcript_file = format!("{}/{}_transcript.txt", notes::CONTENT_DIR, uuid);
-            if let Err(e) = nc.upload(&transcript_file, content.as_slice()).await {
-                log::warn!("Failed to upload transcript file: {}", e);
+            // Store transcript content in CAS
+            match content_store.put(&content, "txt").await {
+                Ok(hash) => {
+                    if let Err(e) = index.set_vertex_layer_hash(uuid, layer, "text/plain", &hash) {
+                        log::warn!("Failed to update layer 1 hash: {}", e);
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Failed to upload transcript: {}", e);
+                }
             }
         } else {
-            // Other layers
-            let layer_file = format!("{}/{}_layer{}.{}", notes::CONTENT_DIR, uuid, layer,
-                mime_to_extension(&mime));
-            if let Err(e) = nc.upload(&layer_file, &content).await {
-                let msg = encode_log_message(action_id, 500, vertex_id, &format!("Upload failed: {}", e));
-                write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-                return Ok(());
-            }
-            if let Err(e) = index.set_vertex_layer(uuid, layer, &mime, &layer_file) {
-                log::warn!("Failed to set layer: {}", e);
+            // Other layers - use CAS
+            match content_store.put(&content, ext).await {
+                Ok(hash) => {
+                    if let Err(e) = index.set_vertex_layer_hash(uuid, layer, &mime, &hash) {
+                        log::warn!("Failed to set layer hash: {}", e);
+                    }
+                }
+                Err(e) => {
+                    let msg = encode_log_message(action_id, 500, vertex_id, &format!("Upload failed: {}", e));
+                    write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                    return Ok(());
+                }
             }
         }
 
@@ -150,21 +176,20 @@ where
             return Ok(());
         }
 
-        // Git commit and sync
+        // Git commit and sync (only index.toml, not content)
         let mut should_sync = false;
         let mut sync_path = None;
         if let Some(git_repo) = &git_repo {
             let repo = git_repo.lock().await;
             if let Some(workdir) = repo.workdir() {
+                // Save index to git workdir
                 if let Err(e) = index.save_to_path(workdir) {
                     log::warn!("Failed to save index to git workdir: {}", e);
                 }
-                let local_file = workdir.join(&vertex.file);
-                if let Some(parent) = local_file.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                if let Err(e) = std::fs::write(&local_file, &content) {
-                    log::warn!("Failed to write content to git workdir: {}", e);
+                // Store content in local content-store (for reference, not tracked by git)
+                let local_store = content_store::LocalContentStore::new(workdir);
+                if let Err(e) = local_store.put(&content, ext) {
+                    log::warn!("Failed to write content to local store: {}", e);
                 }
                 let author = identity.as_deref().unwrap_or("unknown");
                 if let Err(e) = repo.ensure_on_branch() {
@@ -192,7 +217,7 @@ where
             s.index = Some(index);
         }
 
-        log::info!("Updated vertex {} (sync)", uuid);
+        log::info!("Updated vertex {} with hash {} (sync)", uuid, new_content_hash);
         let msg = encode_log_message(action_id, 200, vertex_id, "OK");
         write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
     }
@@ -340,10 +365,9 @@ where
     };
     let identity_str = identity.clone().unwrap_or_default();
 
-    // Generate UUID and file path
-    let id = uuid::Uuid::new_v4();
+    // Compute content hash for CAS
     let ext = mime_to_extension(&mime);
-    let file_path = format!("{}/{}.{}", notes::CONTENT_DIR, id, ext);
+    let content_hash = content_store::compute_hash(&content);
 
     // Capture original state for rollback BEFORE modifying index
     let original_source_edges: Option<(u64, [u64; 6])> = if from_vertex != 0 {
@@ -360,8 +384,8 @@ where
         None
     };
 
-    // Create vertex in index (optimistic)
-    let new_id = index.create_vertex(&mime, &file_path, transcript);
+    // Create vertex in index with content hash (optimistic)
+    let new_id = index.create_vertex_with_hash(&mime, &content_hash, transcript);
 
     // Insert into chain and capture displaced vertex
     let displaced_vertex: Option<(u64, [u64; 6])> = if from_vertex != 0 {
@@ -475,9 +499,6 @@ where
 
     // Check if we have sync worker for async processing
     if let Some(sync_tx) = sync_tx {
-        // Clone file_path for logging before it's moved
-        let file_path_log = file_path.clone();
-
         // Queue work to background
         let work_item = sync_worker::SyncWorkItem {
             action_id,
@@ -485,7 +506,8 @@ where
             operation: sync_worker::SyncOperation::CreateVertex {
                 uuid: new_id,
                 content: content.clone(),
-                file_path,
+                content_hash: content_hash.clone(),
+                ext: ext.to_string(),
                 mime: mime.clone(),
                 from_vertex,
                 direction,
@@ -504,15 +526,21 @@ where
         let msg = encode_log_message(action_id, STATUS_ACCEPTED, vertex_hash, "Accepted");
         write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
-        log::info!("Created vertex {} at {} (async)", new_id, file_path_log);
+        log::info!("Created vertex {} with hash {} (async)", new_id, content_hash);
     } else {
-        // Synchronous fallback - do WebDAV upload and git commit inline
-        // Upload content
-        if let Err(e) = nc.upload(&file_path, &content).await {
-            let msg = encode_log_message(action_id, 500, 0, &format!("Upload failed: {}", e));
-            write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
-            return Ok(());
-        }
+        // Synchronous fallback - use ContentStore for upload
+        let content_store = ContentStore::new(nc.clone());
+        let stored_hash = match content_store.put(&content, ext).await {
+            Ok(h) => h,
+            Err(e) => {
+                let msg = encode_log_message(action_id, 500, 0, &format!("Upload failed: {}", e));
+                write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
+                return Ok(());
+            }
+        };
+
+        // Verify hash matches what we computed
+        debug_assert_eq!(stored_hash, content_hash);
 
         // Save index to Nextcloud
         if let Err(e) = index.save(&nc).await {
@@ -522,20 +550,20 @@ where
         }
 
         // Also save to local git working directory and commit
+        // Note: Content is stored via ContentStore, git only tracks index.toml
         let mut should_sync = false;
         let mut sync_path = None;
         if let Some(git_repo) = &git_repo {
             let repo = git_repo.lock().await;
             if let Some(workdir) = repo.workdir() {
+                // Save index to git workdir
                 if let Err(e) = index.save_to_path(workdir) {
                     log::warn!("Failed to save index to git workdir: {}", e);
                 }
-                let local_file = workdir.join(&file_path);
-                if let Some(parent) = local_file.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                if let Err(e) = std::fs::write(&local_file, &content) {
-                    log::warn!("Failed to write content to git workdir: {}", e);
+                // Store content in local content-store (for reference, not tracked by git)
+                let local_store = content_store::LocalContentStore::new(workdir);
+                if let Err(e) = local_store.put(&content, ext) {
+                    log::warn!("Failed to write content to local store: {}", e);
                 }
                 let author = &identity_str;
                 let message = format!("Create vertex: {}", new_id);
@@ -562,7 +590,7 @@ where
         let msg = encode_log_message(action_id, 200, vertex_hash, "Created");
         write.send(AxumWsMessage::Binary(msg)).await.map_err(|e| anyhow!("{:?}", e))?;
 
-        log::info!("Created vertex {} at {}", new_id, file_path);
+        log::info!("Created vertex {} with hash {}", new_id, content_hash);
     }
 
     Ok(())
@@ -636,7 +664,8 @@ where
     }
 
     // Delete vertex from index (optimistic)
-    let (files_to_delete, affected_neighbors) = match index.delete_vertex(vertex_uuid) {
+    // Note: With CAS, files_to_delete is legacy - we don't delete content immediately
+    let (_files_to_delete, affected_neighbors) = match index.delete_vertex(vertex_uuid) {
         Ok(result) => result,
         Err(e) => {
             let msg = encode_log_message(action_id, 500, vertex_id, &format!("Delete failed: {}", e));
@@ -688,15 +717,17 @@ where
     // Check if we have sync worker for async processing
     if let Some(sync_tx) = sync_tx {
         // Queue work to background
+        // Note: Content hashes are NOT deleted immediately - GC handles cleanup
         let work_item = sync_worker::SyncWorkItem {
             action_id,
             vertex_id,
             operation: sync_worker::SyncOperation::DeleteVertex {
                 uuid: vertex_uuid,
-                files_to_delete,
-                original_content: Vec::new(),  // Content is fetched on rollback if needed
+                // For CAS, we don't delete content files immediately
+                // GC will clean up unreferenced hashes later
+                content_hashes_to_gc: vertex.content_hash.clone(),
                 original_mime: vertex.mime.clone(),
-                original_file: vertex.file.clone(),
+                original_hash: vertex.content_hash.clone(),
                 original_edges,
                 affected_neighbors: affected_neighbors_original,
             },
@@ -714,13 +745,9 @@ where
 
         log::info!("Deleted vertex {} (uuid={}) (async)", vertex_id, vertex_uuid);
     } else {
-        // Synchronous fallback - do WebDAV delete and git commit inline
-        // Delete files from WebDAV
-        for file_path in &files_to_delete {
-            if let Err(e) = nc.delete(file_path).await {
-                log::warn!("Failed to delete {} from WebDAV: {}", file_path, e);
-            }
-        }
+        // Synchronous fallback
+        // Note: With CAS, we DON'T delete content files immediately
+        // GC handles cleanup of unreferenced hashes
 
         // Save updated index to Nextcloud
         if let Err(e) = index.save(&nc).await {
@@ -730,6 +757,7 @@ where
         }
 
         // Also save to local git working directory and commit
+        // Content store files are NOT deleted - GC handles that
         let mut should_sync = false;
         let mut sync_path = None;
         if let Some(git_repo) = &git_repo {
@@ -738,14 +766,8 @@ where
                 if let Err(e) = index.save_to_path(workdir) {
                     log::warn!("Failed to save index to git workdir: {}", e);
                 }
-                for file_path in &files_to_delete {
-                    let local_file = workdir.join(file_path);
-                    if local_file.exists() {
-                        if let Err(e) = std::fs::remove_file(&local_file) {
-                            log::warn!("Failed to delete {} from git workdir: {}", file_path, e);
-                        }
-                    }
-                }
+                // Note: We don't delete content from local store
+                // GC will clean up unreferenced hashes
                 let author = &identity_str;
                 let message = format!("Delete vertex: {}", vertex_uuid);
                 if let Err(e) = repo.ensure_on_branch() {

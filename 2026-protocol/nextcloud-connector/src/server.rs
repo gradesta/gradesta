@@ -34,12 +34,20 @@ use crate::storage::CredentialStore;
 
 use crate::connection_manager::SharedConnectionManager;
 use crate::elf::SharedElfRegistry;
+use crate::git_undo::GitUndoRepo;
+use crate::migration::Migrator;
+use crate::nextcloud::NextcloudClient;
 
 #[tokio::main]
 pub async fn main() -> Result<()> {
     env_logger::init();
 
     let args = Args::parse();
+
+    // Handle migration mode
+    if args.migrate {
+        return run_migration(&args).await;
+    }
 
     let addr = format!("{}:{}", args.bind, args.port);
 
@@ -90,6 +98,217 @@ pub async fn main() -> Result<()> {
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, app).await?;
+
+    Ok(())
+}
+
+/// Run migration to convert old file-based repos to CAS format
+async fn run_migration(args: &Args) -> Result<()> {
+    println!("Gradesta Migration Tool");
+    println!("=======================");
+    println!();
+
+    // For migration, we need either local mode or Nextcloud credentials
+    if let Some(ref local_path) = args.local {
+        run_local_migration(local_path, args.cleanup_after_migrate).await
+    } else {
+        // Need Nextcloud credentials - load from stored credentials
+        let cred_store = CredentialStore::load().unwrap_or_default();
+
+        if cred_store.credentials.is_empty() {
+            println!("ERROR: No stored Nextcloud credentials found.");
+            println!();
+            println!("To migrate a Nextcloud-connected repository:");
+            println!("  1. First run the connector normally and authenticate");
+            println!("  2. Then run: nextcloud-connector --migrate");
+            println!();
+            println!("Or for local-only migration:");
+            println!("  nextcloud-connector --migrate --local /path/to/notes");
+            return Err(anyhow!("No credentials available for migration"));
+        }
+
+        // Use the first stored credential
+        let (_identity, cred) = cred_store.credentials.iter().next().unwrap();
+        println!("Using stored credentials for: {}", cred.nextcloud_url);
+        println!("Username: {}", cred.username);
+        println!();
+
+        run_nextcloud_migration(&cred.nextcloud_url, &cred.username, &cred.app_password, args.cleanup_after_migrate).await
+    }
+}
+
+/// Run migration for local-only mode
+async fn run_local_migration(path: &str, _cleanup: bool) -> Result<()> {
+    let path = std::path::PathBuf::from(path);
+    let notes_dir = path.join(".gradesta-notes");
+
+    println!("Migrating local repository at: {}", notes_dir.display());
+
+    if !notes_dir.exists() {
+        println!("No .gradesta-notes directory found. Nothing to migrate.");
+        return Ok(());
+    }
+
+    // Open or create git repo
+    let git_repo = GitUndoRepo::open_or_init(&notes_dir)?;
+
+    // Check if migration is needed
+    let index = notes::NotesIndex::load_from_path(&notes_dir)?;
+    if !crate::migration::needs_migration(&index) {
+        println!("Repository already using CAS format. No migration needed.");
+        return Ok(());
+    }
+
+    let savings = crate::migration::estimate_savings(&index);
+    println!("Estimated space savings: {} MB", savings / 1024 / 1024);
+    println!();
+
+    // For local mode, we create a mock client that uses the filesystem
+    println!("Note: Local-only migration will convert index.toml format");
+    println!("      but cannot rewrite git history without WebDAV access.");
+    println!();
+
+    // Just update the index format
+    let mut index = index;
+    for vertex in &mut index.vertices {
+        if !vertex.file.is_empty() && vertex.content_hash.is_empty() {
+            // Read the file, compute hash, and update
+            let file_path = notes_dir.join(&vertex.file);
+            if file_path.exists() {
+                let content = std::fs::read(&file_path)?;
+                let hash = crate::content_store::compute_hash(&content);
+                let ext = notes::mime_to_extension(&vertex.mime);
+
+                // Write to content-store
+                let store = crate::content_store::LocalContentStore::new(&notes_dir);
+                store.put(&content, ext)?;
+
+                println!("  Migrated: {} -> {}", vertex.file, hash);
+                vertex.content_hash = hash;
+                vertex.file.clear();
+            }
+        }
+    }
+
+    // Update version
+    index.meta.version = notes::CURRENT_INDEX_VERSION;
+
+    // Save
+    index.save_to_path(&notes_dir)?;
+
+    // Commit
+    git_repo.ensure_on_branch()?;
+    git_repo.commit_all("Migrate to CAS format", "migration")?;
+
+    println!();
+    println!("Running git gc to reclaim space...");
+    run_git_gc(&notes_dir)?;
+
+    println!();
+    println!("Migration complete!");
+
+    Ok(())
+}
+
+/// Run git gc to reclaim space after migration
+fn run_git_gc(workdir: &std::path::Path) -> Result<()> {
+    // Remove reflogs
+    let git_dir = workdir.join(".git");
+    let reflog_dir = git_dir.join("logs");
+    if reflog_dir.exists() {
+        let _ = std::fs::remove_dir_all(&reflog_dir);
+    }
+
+    // Expire reflog
+    let _ = std::process::Command::new("git")
+        .args(["reflog", "expire", "--expire=now", "--all"])
+        .current_dir(workdir)
+        .output();
+
+    // Run git gc
+    println!("  Running git gc --aggressive --prune=now...");
+    let output = std::process::Command::new("git")
+        .args(["gc", "--aggressive", "--prune=now"])
+        .current_dir(workdir)
+        .output();
+
+    match output {
+        Ok(result) => {
+            if result.status.success() {
+                println!("  Git gc completed successfully");
+            } else {
+                let stderr = String::from_utf8_lossy(&result.stderr);
+                println!("  Git gc finished with warnings: {}", stderr);
+            }
+        }
+        Err(e) => {
+            println!("  Warning: Failed to run git gc: {}", e);
+        }
+    }
+
+    Ok(())
+}
+
+/// Run migration for Nextcloud-connected repository
+async fn run_nextcloud_migration(url: &str, username: &str, password: &str, cleanup: bool) -> Result<()> {
+    println!("Connecting to Nextcloud...");
+
+    let nc = NextcloudClient::new(url, username, password);
+
+    // Check if notes exist
+    if !nc.exists(".gradesta-notes/index.toml").await {
+        println!("No .gradesta-notes found on Nextcloud. Nothing to migrate.");
+        return Ok(());
+    }
+
+    println!("Loading index...");
+    let index = notes::NotesIndex::load(&nc).await?;
+
+    if !crate::migration::needs_migration(&index) {
+        println!("Repository already using CAS format. No migration needed.");
+        return Ok(());
+    }
+
+    let savings = crate::migration::estimate_savings(&index);
+    println!("Estimated space savings: {} MB", savings / 1024 / 1024);
+    println!();
+
+    // Create local temp directory for git operations
+    let temp_dir = std::env::temp_dir().join(format!("gradesta-migrate-{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir)?;
+
+    println!("Using temp directory: {}", temp_dir.display());
+
+    // Open git repo from Nextcloud
+    let git_repo = crate::git_undo::open_from_nextcloud(&nc).await?;
+
+    println!("Running migration...");
+    let migrator = Migrator::new(&nc, &git_repo);
+    let stats = migrator.migrate_full().await?;
+
+    println!();
+    println!("Migration complete!");
+    println!("  Vertices migrated: {}", stats.vertices_migrated);
+    println!("  Layers migrated: {}", stats.layers_migrated);
+    println!("  Commits rewritten: {}", stats.commits_rewritten);
+    println!("  Estimated bytes saved: {}", stats.bytes_saved_estimate);
+
+    if cleanup && !stats.old_files_to_delete.is_empty() {
+        println!();
+        println!("Cleaning up {} old content files...", stats.old_files_to_delete.len());
+        let deleted = migrator.cleanup_old_files(&stats.old_files_to_delete).await?;
+        println!("  Deleted {} files", deleted);
+    } else if !stats.old_files_to_delete.is_empty() {
+        println!();
+        println!("Old content files were not deleted. Run with --cleanup-after-migrate to remove them.");
+        println!("  {} files can be deleted", stats.old_files_to_delete.len());
+    }
+
+    // Cleanup temp directory
+    let _ = std::fs::remove_dir_all(&temp_dir);
+
+    println!();
+    println!("Done!");
 
     Ok(())
 }

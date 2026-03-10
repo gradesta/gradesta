@@ -14,10 +14,15 @@ const NOTES_DIR: &str = ".gradesta-notes";
 const INDEX_FILE: &str = ".gradesta-notes/index.toml";
 pub const CONTENT_DIR: &str = ".gradesta-notes/content";
 
-/// Layer content - each layer has its own MIME type and file
+/// Layer content - each layer has its own MIME type and content hash
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LayerContent {
     pub mime: String,
+    /// Content hash for CAS (content-addressable storage)
+    #[serde(default)]
+    pub content_hash: String,
+    /// DEPRECATED: Legacy file path (for migration only)
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub file: String,
 }
 
@@ -25,15 +30,19 @@ pub struct LayerContent {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Vertex {
     pub id: Uuid,
-    /// Primary layer mime type (for backwards compatibility)
+    /// Primary layer mime type
     pub mime: String,
-    /// Primary layer file (for backwards compatibility)
+    /// Content hash for CAS (content-addressable storage)
+    #[serde(default)]
+    pub content_hash: String,
+    /// DEPRECATED: Legacy file path (for migration only)
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub file: String,
     /// Legacy transcript field (migrated to layers)
     #[serde(default)]
     pub transcript: Option<String>,
     /// Additional layers (layer_id -> content)
-    /// Layer 0 is implicit (mime, file fields)
+    /// Layer 0 is implicit (mime, content_hash fields)
     /// Layer 1+ stored here
     #[serde(default)]
     pub layers: HashMap<u32, LayerContent>,
@@ -68,12 +77,15 @@ pub struct NotesIndex {
     pub edges: Vec<Edge>,
 }
 
+/// Current index version (bumped when format changes)
+pub const CURRENT_INDEX_VERSION: u32 = 2;
+
 impl Default for NotesIndex {
     fn default() -> Self {
         let now = Utc::now();
         Self {
             meta: IndexMeta {
-                version: 1,
+                version: CURRENT_INDEX_VERSION,
                 created: now,
                 modified: now,
             },
@@ -178,13 +190,33 @@ impl NotesIndex {
         None
     }
 
-    /// Create a new vertex
+    /// Create a new vertex with content hash
+    pub fn create_vertex_with_hash(&mut self, mime: &str, content_hash: &str, transcript: Option<String>) -> Uuid {
+        let id = Uuid::new_v4();
+        let now = Utc::now();
+        self.vertices.push(Vertex {
+            id,
+            mime: mime.to_string(),
+            content_hash: content_hash.to_string(),
+            file: String::new(), // Deprecated, not used
+            transcript,
+            layers: HashMap::new(),
+            created: now,
+            modified: None,
+        });
+        self.meta.modified = now;
+        id
+    }
+
+    /// Create a new vertex (legacy - uses file path)
+    /// DEPRECATED: Use create_vertex_with_hash instead
     pub fn create_vertex(&mut self, mime: &str, file: &str, transcript: Option<String>) -> Uuid {
         let id = Uuid::new_v4();
         let now = Utc::now();
         self.vertices.push(Vertex {
             id,
             mime: mime.to_string(),
+            content_hash: String::new(),
             file: file.to_string(),
             transcript,
             layers: HashMap::new(),
@@ -195,7 +227,33 @@ impl NotesIndex {
         id
     }
 
-    /// Set a layer on a vertex
+    /// Set a layer on a vertex using content hash
+    /// Layer 0 updates mime/content_hash, Layer 1+ goes into layers map
+    pub fn set_vertex_layer_hash(&mut self, id: Uuid, layer: u32, mime: &str, content_hash: &str) -> Result<()> {
+        let vertex = self
+            .vertices
+            .iter_mut()
+            .find(|v| v.id == id)
+            .ok_or_else(|| anyhow!("Vertex not found"))?;
+
+        if layer == 0 {
+            vertex.mime = mime.to_string();
+            vertex.content_hash = content_hash.to_string();
+            vertex.file.clear(); // Clear deprecated field
+        } else {
+            vertex.layers.insert(layer, LayerContent {
+                mime: mime.to_string(),
+                content_hash: content_hash.to_string(),
+                file: String::new(),
+            });
+        }
+        vertex.modified = Some(Utc::now());
+        self.meta.modified = Utc::now();
+        Ok(())
+    }
+
+    /// Set a layer on a vertex (legacy - uses file path)
+    /// DEPRECATED: Use set_vertex_layer_hash instead
     /// Layer 0 updates mime/file, Layer 1+ goes into layers map
     pub fn set_vertex_layer(&mut self, id: Uuid, layer: u32, mime: &str, file: &str) -> Result<()> {
         let vertex = self
@@ -210,6 +268,7 @@ impl NotesIndex {
         } else {
             vertex.layers.insert(layer, LayerContent {
                 mime: mime.to_string(),
+                content_hash: String::new(),
                 file: file.to_string(),
             });
         }
@@ -218,13 +277,47 @@ impl NotesIndex {
         Ok(())
     }
 
-    /// Get a layer from a vertex
+    /// Get a layer from a vertex (returns mime, content_hash)
+    pub fn get_vertex_layer_hash(&self, id: Uuid, layer: u32) -> Option<(&str, &str)> {
+        let vertex = self.vertices.iter().find(|v| v.id == id)?;
+        if layer == 0 {
+            Some((&vertex.mime, &vertex.content_hash))
+        } else {
+            vertex.layers.get(&layer).map(|l| (l.mime.as_str(), l.content_hash.as_str()))
+        }
+    }
+
+    /// Get a layer from a vertex (legacy - returns mime, file)
+    /// DEPRECATED: Use get_vertex_layer_hash instead
     pub fn get_vertex_layer(&self, id: Uuid, layer: u32) -> Option<(&str, &str)> {
         let vertex = self.vertices.iter().find(|v| v.id == id)?;
         if layer == 0 {
             Some((&vertex.mime, &vertex.file))
         } else {
             vertex.layers.get(&layer).map(|l| (l.mime.as_str(), l.file.as_str()))
+        }
+    }
+
+    /// Get content reference for a vertex (prefers hash, falls back to file path)
+    /// Returns (mime, ContentRef)
+    pub fn get_vertex_content_ref(&self, id: Uuid, layer: u32) -> Option<(&str, ContentRef)> {
+        let vertex = self.vertices.iter().find(|v| v.id == id)?;
+        if layer == 0 {
+            let content_ref = if !vertex.content_hash.is_empty() {
+                ContentRef::Hash(vertex.content_hash.as_str())
+            } else {
+                ContentRef::File(vertex.file.as_str())
+            };
+            Some((&vertex.mime, content_ref))
+        } else {
+            vertex.layers.get(&layer).map(|l| {
+                let content_ref = if !l.content_hash.is_empty() {
+                    ContentRef::Hash(l.content_hash.as_str())
+                } else {
+                    ContentRef::File(l.file.as_str())
+                };
+                (l.mime.as_str(), content_ref)
+            })
         }
     }
 
@@ -524,5 +617,53 @@ impl NotesIndex {
         self.meta.modified = Utc::now();
 
         Ok((files_to_delete, affected_neighbors))
+    }
+
+    /// Get content hashes to delete for a vertex
+    /// Returns hashes (not file paths) for content-store based vertices
+    pub fn get_vertex_content_hashes(&self, vertex_id: Uuid) -> Vec<(String, String)> {
+        let vertex = match self.vertices.iter().find(|v| v.id == vertex_id) {
+            Some(v) => v,
+            None => return Vec::new(),
+        };
+
+        let mut hashes = Vec::new();
+
+        // Primary content
+        if !vertex.content_hash.is_empty() {
+            let ext = mime_to_extension(&vertex.mime);
+            hashes.push((vertex.content_hash.clone(), ext.to_string()));
+        }
+
+        // Layer content
+        for layer_content in vertex.layers.values() {
+            if !layer_content.content_hash.is_empty() {
+                let ext = mime_to_extension(&layer_content.mime);
+                hashes.push((layer_content.content_hash.clone(), ext.to_string()));
+            }
+        }
+
+        hashes
+    }
+}
+
+/// Reference to content - either by hash (CAS) or file path (legacy)
+#[derive(Debug, Clone)]
+pub enum ContentRef<'a> {
+    /// Content-addressable storage hash
+    Hash(&'a str),
+    /// Legacy file path
+    File(&'a str),
+}
+
+impl<'a> ContentRef<'a> {
+    /// Check if this is a hash reference
+    pub fn is_hash(&self) -> bool {
+        matches!(self, ContentRef::Hash(_))
+    }
+
+    /// Check if this is a file reference (legacy)
+    pub fn is_file(&self) -> bool {
+        matches!(self, ContentRef::File(_))
     }
 }

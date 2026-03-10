@@ -36,6 +36,17 @@ pub struct Args {
     /// Provide the path to use for local storage
     #[arg(short, long)]
     pub local: Option<String>,
+
+    /// Run migration to convert old file-based repos to CAS format.
+    /// This will rewrite git history to remove binary content.
+    /// Requires --local to specify the repo path.
+    #[arg(long)]
+    pub migrate: bool,
+
+    /// After migration, delete old content files from storage.
+    /// Only effective with --migrate.
+    #[arg(long)]
+    pub cleanup_after_migrate: bool,
 }
 
 /// Connection states

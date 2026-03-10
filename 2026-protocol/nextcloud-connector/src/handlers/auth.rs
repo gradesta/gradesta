@@ -12,6 +12,7 @@ use crate::connection_manager::SharedConnectionManager;
 use crate::elf::SharedElfRegistry;
 use crate::git_undo;
 use crate::identity;
+use crate::migration;
 use crate::nextcloud::NextcloudClient;
 use crate::notes::NotesIndex;
 use crate::protocol::*;
@@ -115,8 +116,8 @@ where
         let nc = NextcloudClient::new(&cred.nextcloud_url, &cred.username, &cred.app_password);
 
         // Load notes index
-        let index = NotesIndex::load(&nc).await?;
-        let shared_index = Arc::new(Mutex::new(index.clone()));
+        let mut index = NotesIndex::load(&nc).await?;
+        let mut shared_index = Arc::new(Mutex::new(index.clone()));
 
         // Try to mount WebDAV for efficient git operations
         let webdav_mount = match webdav_mount::WebDavMount::mount(
@@ -166,6 +167,45 @@ where
                 }
             }
         };
+
+        // Check if migration is needed and run it automatically
+        if migration::needs_migration(&index) {
+            if let Some(ref git_repo) = git_repo {
+                // Get workdir path from git repo (quick lock, no await)
+                let workdir = {
+                    let git_guard = git_repo.lock().await;
+                    git_guard.workdir().map(|p| p.to_path_buf())
+                };
+
+                if let Some(workdir) = workdir {
+                    log::info!("Old index format detected, running automatic migration to CAS");
+                    // auto_migrate takes owned types, safe to await without holding git mutex
+                    match migration::auto_migrate(workdir, nc.clone()).await {
+                        Ok(_stats) => {
+                            log::info!("Migration complete, reloading index");
+                            // Reload the index after migration
+                            match NotesIndex::load(&nc).await {
+                                Ok(new_index) => {
+                                    index = new_index.clone();
+                                    shared_index = Arc::new(Mutex::new(new_index));
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to reload index after migration: {}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Migration failed: {}", e);
+                            // Continue with old index - it should still work
+                        }
+                    }
+                } else {
+                    log::warn!("Migration needed but git repo has no workdir");
+                }
+            } else {
+                log::warn!("Migration needed but no git repo available");
+            }
+        }
 
         // Spawn sync worker if we have git repo
         // Get conn_id for the sync worker

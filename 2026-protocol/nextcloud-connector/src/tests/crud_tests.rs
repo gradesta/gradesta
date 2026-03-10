@@ -140,6 +140,7 @@ async fn test_create_vertex_file_path() {
     index.vertices.push(crate::notes::Vertex {
         id: uuid,
         mime: "text/plain".to_string(),
+        content_hash: String::new(),
         file: expected_file.clone(),
         transcript: None,
         layers: std::collections::HashMap::new(),
