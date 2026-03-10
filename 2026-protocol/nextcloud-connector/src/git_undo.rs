@@ -1,7 +1,7 @@
 //! Git-based undo system for notes
 //!
 //! Uses git2 (libgit2 Rust bindings) for undo history.
-//! The git repository is stored in Nextcloud via WebDAV at `Notes/.gradesta-undo/`
+//! The git repository is stored in Nextcloud via WebDAV at `.gradesta-notes/.git/`
 //! and cloned to `/tmp/` on connect. Changes are pushed back to Nextcloud after
 //! every commit for persistence across sessions and devices.
 //!
@@ -29,8 +29,8 @@ pub struct CommitInfo {
     pub parent_oids: Vec<Oid>,
 }
 
-/// Path in Nextcloud where the git repo is stored
-pub const NEXTCLOUD_UNDO_PATH: &str = "Notes/.gradesta-undo";
+/// Path in Nextcloud where the git working directory is (same as notes)
+pub const NEXTCLOUD_UNDO_PATH: &str = ".gradesta-notes";
 
 /// Git repository wrapper for undo operations
 pub struct GitUndoRepo {

@@ -108,9 +108,9 @@ impl WebDavMount {
 
     /// Get the path to the bare git repo within the mount
     ///
-    /// Returns `{mount}/Notes/.gradesta-undo.git/`
+    /// Returns `{mount}/.gradesta-notes/.git/`
     pub fn bare_repo_path(&self) -> PathBuf {
-        self.mount_point.join("Notes/.gradesta-undo.git")
+        self.mount_point.join(".gradesta-notes/.git")
     }
 
     /// Check if the mount is currently active
@@ -222,7 +222,7 @@ mod tests {
 
         assert_eq!(
             mount.bare_repo_path(),
-            PathBuf::from("/tmp/gradesta-webdav-12345678/Notes/.gradesta-undo.git")
+            PathBuf::from("/tmp/gradesta-webdav-12345678/.gradesta-notes/.git")
         );
     }
 }
