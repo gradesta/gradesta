@@ -1906,24 +1906,33 @@ fn auto_expand_nearby_links(
         return;
     }
 
-    let Some(current) = graph.vertices.get(&current_id) else { return };
+    // Extract data we need from the current vertex to avoid borrow conflicts
+    let (is_layer0_portal, layer1_portal_url, layer0_label, current_edges) = {
+        let Some(current) = graph.vertices.get(&current_id) else { return };
+        let is_layer0_portal = current.mime.as_deref() == Some("text/gradesta-url");
+        let layer1_portal_url = current.layers.get(&1)
+            .filter(|l| l.mime == "text/gradesta-url")
+            .map(|l| String::from_utf8_lossy(&l.data).to_string());
+        let layer0_label = if is_layer0_portal {
+            Some(String::from_utf8_lossy(&current.label).to_string())
+        } else {
+            None
+        };
+        (is_layer0_portal, layer1_portal_url, layer0_label, current.edges)
+    };
 
     // FIRST: If we're sitting on a portal, handle it
     // Layer 0 portals (text/gradesta-url as primary): auto-follow immediately (no visible label)
     // Layer 1 portals (text/plain primary, gradesta-url on layer 1): just preload, don't auto-follow (has visible label)
-    let is_layer0_portal = current.mime.as_deref() == Some("text/gradesta-url");
-    let layer1_portal_url = current.layers.get(&1)
-        .filter(|l| l.mime == "text/gradesta-url")
-        .map(|l| String::from_utf8_lossy(&l.data).to_string());
 
     if is_layer0_portal {
         // Layer 0 portal - auto-follow
-        let landmark_url = String::from_utf8_lossy(&current.label).to_string();
+        let landmark_url = layer0_label.unwrap();
 
         // Check if this landmark was already loaded by looking up vertices associated with it
         if let Some(vertices) = graph.landmark_mgr.get_landmark_vertices(&landmark_url) {
             // First, try to find the east neighbor of the portal (preferred direction for content)
-            let east_id = current.edges[EDGE_EAST];
+            let east_id = current_edges[EDGE_EAST];
             if east_id != 0 {
                 if let Some(vertex) = graph.vertices.get(&east_id) {
                     if vertex.mime.as_deref() != Some("text/gradesta-url") {
@@ -1980,7 +1989,7 @@ fn auto_expand_nearby_links(
     // Prioritize direction of navigation
     let priority = direction_priority_order(app_state.last_nav_direction);
     for &idx in &priority {
-        let edge = current.edges[idx];
+        let edge = current_edges[idx];
         if edge == 0 {
             continue;
         }
@@ -2002,7 +2011,7 @@ fn auto_expand_nearby_links(
 
     // For each immediate neighbor (1 step)
     for &idx in &priority {
-        let edge1 = current.edges[idx];
+        let edge1 = current_edges[idx];
         if edge1 == 0 {
             continue;
         }
