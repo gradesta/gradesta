@@ -32,7 +32,9 @@ Client to server
    - Vertex id: 8 bytes
 5. Set vertex label
    - Type: 1 byte = 0b1000 0101
+   - Action id: 8 bytes
    - Vertex id: 8 bytes
+   - Layer: 4 bytes (big-endian uint32)
    - Mime-type: UTF-8 bytes, null-terminated
    - Label/media: bytes to end of message
 6. Create vertex
@@ -82,6 +84,7 @@ Server to client
    - Type: 1 byte = 0b0000 0101
    - Action id: 8 bytes
    - Vertex id: 8 bytes
+   - Layer: 4 bytes (big-endian uint32)
    - Mime-type: UTF-8 bytes, null-terminated
    - Label/media: bytes to end of message
 3. Set edges
