@@ -301,7 +301,8 @@ pub enum InputMode {
     /// vertex_id: The vertex being edited
     /// is_new: If true, cancellation deletes the vertex
     /// submitting: If true, we're waiting for server confirmation (don't show edit UI)
-    InlineEdit { vertex_id: u64, is_new: bool, submitting: bool },
+    /// layer: Which layer is being edited (loaded from server)
+    InlineEdit { vertex_id: u64, is_new: bool, submitting: bool, layer: u32 },
     /// Recording audio to create new vertex in the given direction
     Recording { direction: usize },
     /// Voice command mode (L2+R2 held on gamepad)

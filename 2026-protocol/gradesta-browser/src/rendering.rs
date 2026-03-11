@@ -14,6 +14,7 @@ use crate::media::{
 };
 
 /// Render vertex content in the sidebar panel
+/// Iterates through all layers and renders each one
 pub fn render_vertex_content(
     ui: &mut egui::Ui,
     vertex: &Vertex,
@@ -22,67 +23,70 @@ pub fn render_vertex_content(
     ctx: &egui::Context,
     playback_state: &AudioPlaybackState,
 ) {
-    let label = String::from_utf8_lossy(&vertex.label);
+    if vertex.layers.is_empty() {
+        ui.label("No content");
+        return;
+    }
 
-    if let Some(mime) = &vertex.mime {
-        // Show type and size for all content
+    // Get sorted layer numbers for consistent ordering
+    let mut layer_nums: Vec<_> = vertex.layers.keys().copied().collect();
+    layer_nums.sort();
+
+    for (idx, &layer_num) in layer_nums.iter().enumerate() {
+        let layer = vertex.layers.get(&layer_num).unwrap();
+        let mime = &layer.mime;
+        let data = &layer.data;
+
+        if idx > 0 {
+            ui.separator();
+        }
+
+        // Show layer info
         ui.horizontal(|ui| {
-            ui.label("Type:");
+            ui.label(format!("Layer {}:", layer_num));
             ui.monospace(mime);
         });
         ui.horizontal(|ui| {
             ui.label("Size:");
-            // Use content_length for accurate size (handles case where content not fully loaded)
-            let size = if vertex.content_loaded {
-                vertex.label.len() as u32
-            } else if vertex.content_length != u32::MAX {
-                vertex.content_length
+            let size = if vertex.is_layer_loaded(layer_num) {
+                data.len() as u32
             } else {
-                0 // Unknown/loading
+                let len = vertex.layer_length(layer_num);
+                if len != u32::MAX { len } else { 0 }
             };
-            if size > 0 || vertex.content_loaded {
+            if size > 0 || vertex.is_layer_loaded(layer_num) {
                 ui.label(format!("{} bytes", size));
             } else {
                 ui.label("loading...");
             }
         });
 
-        ui.separator();
+        ui.add_space(4.0);
 
         if mime == "text/gradesta-url" {
-            // Portal to another landmark - should be auto-loading
-            ui.heading("🌀 Loading...");
-            let url = String::from_utf8_lossy(&vertex.label);
+            // Portal to another landmark
+            ui.heading("🌀 Portal");
+            let url = String::from_utf8_lossy(data);
             ui.spinner();
-            ui.add_space(8.0);
             let url_display: String = url.chars().take(60).collect();
             ui.label(format!("Loading: {}", url_display));
 
         } else if mime == "text/x-url" {
-            // External URL - file too large to inline, open externally
+            // External URL
             ui.heading("📎 External Content");
-            ui.add_space(8.0);
-            let url = String::from_utf8_lossy(&vertex.label);
+            let url = String::from_utf8_lossy(data);
             ui.label("This file is too large to display inline.");
-            ui.add_space(4.0);
             ui.monospace(&*url);
-            ui.add_space(8.0);
             if ui.button("🔗 Open with system handler").clicked() {
-                let url_str = url.to_string();
                 let _ = std::process::Command::new("xdg-open")
-                    .arg(&url_str)
+                    .arg(url.to_string())
                     .spawn();
             }
 
         } else if mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url" {
-            // Text content - show in constrained scroll area
-            ui.heading("📄 Text Content");
-            ui.add_space(4.0);
-            ui.label("Ctrl+Enter to open in modal");
-            ui.add_space(4.0);
-
-            let text = String::from_utf8_lossy(&vertex.label);
-            let available_height = ui.available_height().min(400.0).max(100.0);
+            // Text content
+            let text = String::from_utf8_lossy(data);
+            let available_height = ui.available_height().min(300.0).max(80.0);
 
             egui::ScrollArea::vertical()
                 .max_height(available_height)
@@ -91,25 +95,18 @@ pub fn render_vertex_content(
                     ui.add(
                         egui::TextEdit::multiline(&mut text.to_string())
                             .desired_width(ui.available_width())
-                            .desired_rows(10)
+                            .desired_rows(6)
                             .font(egui::TextStyle::Monospace)
                             .interactive(false)
                     );
                 });
 
-        } else if mime.starts_with("image/") || is_image_data(&vertex.label) {
+        } else if mime.starts_with("image/") || is_image_data(data) {
             // Image content
-            ui.heading("🖼 Image");
-            ui.add_space(4.0);
-            ui.label("Ctrl+Enter to view full size");
-            ui.add_space(4.0);
-
-            let is_gif = mime == "image/gif" || (vertex.label.len() >= 6 && &vertex.label[0..6] == b"GIF89a" || vertex.label.len() >= 6 && &vertex.label[0..6] == b"GIF87a");
+            let is_gif = mime == "image/gif" || (data.len() >= 6 && (&data[0..6] == b"GIF89a" || &data[0..6] == b"GIF87a"));
 
             if is_gif {
-                // Animated GIF
-                if let Some(animated) = get_or_load_animated_gif(vertex_id, &vertex.label, media_cache, ctx) {
-                    // Update animation
+                if let Some(animated) = get_or_load_animated_gif(vertex_id, data, media_cache, ctx) {
                     let now = Instant::now();
                     if now.duration_since(animated.last_switch) >= animated.delays[animated.current_frame] {
                         animated.current_frame = (animated.current_frame + 1) % animated.frames.len();
@@ -118,19 +115,17 @@ pub fn render_vertex_content(
 
                     let tex = &animated.frames[animated.current_frame];
                     let size = tex.size_vec2();
-                    let max_size = egui::vec2(380.0, 400.0);
+                    let max_size = egui::vec2(380.0, 300.0);
                     let scale = (max_size.x / size.x).min(max_size.y / size.y).min(1.0);
                     ui.image((tex.id(), size * scale));
-
                     ui.label(format!("Frame {}/{}", animated.current_frame + 1, animated.frames.len()));
-                    ctx.request_repaint(); // Keep animating
+                    ctx.request_repaint();
                 }
             } else {
-                // Static image
-                match get_or_load_texture(vertex_id, &vertex.label, mime, media_cache, ctx) {
+                match get_or_load_texture(vertex_id, data, mime, media_cache, ctx) {
                     Some(tex) => {
                         let size = tex.size_vec2();
-                        let max_size = egui::vec2(380.0, 400.0);
+                        let max_size = egui::vec2(380.0, 300.0);
                         let scale = (max_size.x / size.x).min(max_size.y / size.y).min(1.0);
                         ui.image((tex.id(), size * scale));
                         ui.label(format!("{}x{}", size.x as u32, size.y as u32));
@@ -142,107 +137,53 @@ pub fn render_vertex_content(
             }
 
         } else if mime.starts_with("audio/") {
-            // Audio content - inline playback
-            ui.heading("🔊 Audio");
-            ui.add_space(4.0);
-            ui.label(format!("Type: {}", mime));
-
-            // Show file size - use content_length for accurate size before full load
-            let size = if vertex.content_loaded {
-                vertex.label.len() as u32
-            } else if vertex.content_length != u32::MAX {
-                vertex.content_length
-            } else {
-                0
-            };
-            if size > 0 || vertex.content_loaded {
-                ui.label(format!("Size: {} bytes", size));
-            } else {
-                ui.label("Size: loading...");
-            }
-            ui.add_space(8.0);
-
-            // Play button
+            // Audio content
             if ui.button("▶ Play").clicked() {
-                play_audio(&vertex.label, mime, vertex_id, playback_state);
+                play_audio(data, mime, vertex_id, playback_state);
             }
 
-            // Check for transcript
+            // Check for transcript in other layers
             let transcript = vertex.layers.values()
-                .find(|layer| layer.mime == "text/plain")
-                .and_then(|layer| String::from_utf8(layer.data.clone()).ok())
-                .or_else(|| extract_transcript(&vertex.label, mime));
+                .find(|l| l.mime == "text/plain")
+                .and_then(|l| String::from_utf8(l.data.clone()).ok())
+                .or_else(|| extract_transcript(data, mime));
 
             if let Some(transcript) = transcript {
-                ui.add_space(8.0);
                 ui.separator();
                 ui.heading("📝 Transcript");
-                ui.add_space(4.0);
                 egui::ScrollArea::vertical()
-                    .max_height(200.0)
+                    .max_height(150.0)
                     .show(ui, |ui| {
                         ui.label(&transcript);
                     });
             }
 
-            ui.add_space(8.0);
             if ui.button("📂 Open with external player").clicked() {
-                open_with_external(&vertex.label, mime);
+                open_with_external(data, mime);
             }
 
         } else if mime.starts_with("video/") {
-            // Video - offer to open externally
-            ui.heading("🎬 Video");
-            ui.add_space(8.0);
+            // Video content
             ui.label("Video playback requires external player.");
-            ui.label(format!("Type: {}", mime));
-            let size = if vertex.content_loaded { vertex.label.len() as u32 }
-                else if vertex.content_length != u32::MAX { vertex.content_length } else { 0 };
-            if size > 0 || vertex.content_loaded {
-                ui.label(format!("Size: {} bytes", size));
-            } else {
-                ui.label("Size: loading...");
-            }
-            ui.add_space(16.0);
-
             if ui.button("📂 Open with external player").clicked() {
-                open_with_external(&vertex.label, mime);
+                open_with_external(data, mime);
             }
 
         } else {
             // Other binary content
-            ui.heading("📦 Binary Content");
-            ui.add_space(8.0);
-            ui.label(format!("Type: {}", mime));
-            let size = if vertex.content_loaded { vertex.label.len() as u32 }
-                else if vertex.content_length != u32::MAX { vertex.content_length } else { 0 };
-            if size > 0 || vertex.content_loaded {
-                ui.label(format!("Size: {} bytes", size));
-            } else {
-                ui.label("Size: loading...");
-            }
-            ui.add_space(16.0);
-
-            if ui.button("📂 Open with system default").clicked() {
-                open_with_external(&vertex.label, mime);
-            }
-
-            // Show hex preview
-            ui.add_space(16.0);
             ui.label("Hex preview:");
-            let hex_preview: String = vertex.label.iter()
+            let hex_preview: String = data.iter()
                 .take(64)
                 .map(|b| format!("{:02x} ", b))
                 .collect();
             ui.monospace(&hex_preview);
-            if vertex.label.len() > 64 {
+            if data.len() > 64 {
                 ui.label("...");
             }
+            if ui.button("📂 Open with system default").clicked() {
+                open_with_external(data, mime);
+            }
         }
-    } else {
-        ui.label("No content type specified");
-        ui.add_space(8.0);
-        ui.label(&*label);
     }
 }
 
@@ -260,22 +201,30 @@ pub fn render_vertex_card(
     ctx: &egui::Context,
     graph: &GraphState,
 ) {
-    let mime = vertex.mime.as_deref().unwrap_or("");
-    let primary_is_image = mime.starts_with("image/") || is_image_data(&vertex.label);
-    let primary_is_audio = mime.starts_with("audio/");
-
-    // Collect all content types present
-    let mut has_image = primary_is_image;
-    let mut has_audio = primary_is_audio;
-    let mut has_text = mime.starts_with("text/") && !mime.contains("gradesta-url");
+    // Collect all content types present across all layers
+    let mut has_image = false;
+    let mut has_audio = false;
+    let mut has_text = false;
+    let mut has_portal = false;
     let mut text_content: Option<String> = None;
+    let mut image_layer: Option<&crate::graph::LayerContent> = None;
+    let mut audio_layer: Option<&crate::graph::LayerContent> = None;
+    let mut portal_url: Option<String> = None;
 
-    // Check additional layers for images, audio, text
     for layer in vertex.layers.values() {
-        if layer.mime.starts_with("image/") || is_image_data(&layer.data) {
+        if layer.mime == "text/gradesta-url" {
+            has_portal = true;
+            portal_url = Some(String::from_utf8_lossy(&layer.data).to_string());
+        } else if layer.mime.starts_with("image/") || is_image_data(&layer.data) {
             has_image = true;
+            if image_layer.is_none() {
+                image_layer = Some(layer);
+            }
         } else if layer.mime.starts_with("audio/") {
             has_audio = true;
+            if audio_layer.is_none() {
+                audio_layer = Some(layer);
+            }
         } else if layer.mime.starts_with("text/") && !layer.mime.contains("gradesta-url") {
             has_text = true;
             if text_content.is_none() {
@@ -284,15 +233,10 @@ pub fn render_vertex_card(
         }
     }
 
-    // For primary text content
-    if mime.starts_with("text/") && !mime.contains("gradesta-url") && text_content.is_none() {
-        text_content = String::from_utf8(vertex.label.clone()).ok();
-    }
-
     // Different colors based on content type (same as grid cells)
     let (bg_color, border_color) = if is_current {
         (egui::Color32::from_rgb(50, 100, 70), egui::Color32::from_rgb(100, 200, 120))
-    } else if mime == "text/gradesta-url" {
+    } else if has_portal {
         (egui::Color32::from_rgb(60, 60, 90), egui::Color32::from_rgb(100, 100, 150))
     } else if has_image {
         (egui::Color32::from_rgb(40, 40, 45), egui::Color32::from_rgb(140, 100, 140))
@@ -367,22 +311,18 @@ pub fn render_vertex_card(
             egui::vec2(inner_rect.width(), section_height),
         );
 
-        // Try primary layer first, then additional layers
-        let (img_data, img_mime) = if primary_is_image {
-            (&vertex.label, mime)
-        } else {
-            vertex.layers.values()
-                .find(|l| l.mime.starts_with("image/") || is_image_data(&l.data))
-                .map(|l| (&l.data, l.mime.as_str()))
-                .unwrap_or((&vertex.label, mime))
-        };
+        // Get image data from whichever layer has an image
+        if let Some(img_layer) = image_layer {
+            let img_data = &img_layer.data;
+            let img_mime = img_layer.mime.as_str();
 
-        if let Some(tex) = get_or_load_texture(vertex_id, img_data, img_mime, media_cache, ctx) {
-            let tex_size = tex.size_vec2();
-            let scale = (section_rect.width() / tex_size.x).min(section_rect.height() / tex_size.y);
-            let scaled_size = tex_size * scale;
-            let img_rect = egui::Rect::from_center_size(section_rect.center(), scaled_size);
-            painter.image(tex.id(), img_rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE);
+            if let Some(tex) = get_or_load_texture(vertex_id, img_data, img_mime, media_cache, ctx) {
+                let tex_size = tex.size_vec2();
+                let scale = (section_rect.width() / tex_size.x).min(section_rect.height() / tex_size.y);
+                let scaled_size = tex_size * scale;
+                let img_rect = egui::Rect::from_center_size(section_rect.center(), scaled_size);
+                painter.image(tex.id(), img_rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE);
+            }
         }
         y_offset += section_height;
     }
@@ -397,15 +337,11 @@ pub fn render_vertex_card(
         let num_bars = (section_rect.width() / (3.0 * zoom)) as usize;
         let num_bars = num_bars.max(10).min(64);
 
-        // Get audio data from primary or layers
-        let audio_data = if primary_is_audio {
-            &vertex.label
-        } else {
-            vertex.layers.values()
-                .find(|l| l.mime.starts_with("audio/"))
-                .map(|l| &l.data)
-                .unwrap_or(&vertex.label)
-        };
+        // Get audio data from whichever layer has audio
+        let empty_vec: Vec<u8> = Vec::new();
+        let audio_data = audio_layer
+            .map(|l| &l.data)
+            .unwrap_or(&empty_vec);
 
         if let Some(waveform) = get_or_generate_waveform(vertex_id, audio_data, media_cache, num_bars) {
             let waveform_color = if is_current {
@@ -500,21 +436,24 @@ pub fn render_vertex_card(
 
     // If no content at all, show placeholder
     if !has_image && !has_audio && !has_text {
-        let icon = if mime == "text/gradesta-url" {
+        // Determine icon based on what content types exist
+        let has_video = vertex.layers.values().any(|l| l.mime.starts_with("video/"));
+        let has_url = vertex.layers.values().any(|l| l.mime == "text/x-url");
+
+        let icon = if has_portal {
             "🌀"
-        } else if mime == "text/x-url" {
+        } else if has_url {
             "📎"
-        } else if mime.starts_with("video/") {
+        } else if has_video {
             "🎬"
-        } else if !mime.is_empty() {
+        } else if !vertex.layers.is_empty() {
             "📦"
         } else {
             "◻"
         };
 
         // For portals, also show destination
-        let display = if mime == "text/gradesta-url" {
-            let url = String::from_utf8_lossy(&vertex.label);
+        let display = if let Some(ref url) = portal_url {
             let short_url: String = url.chars().take(20).collect();
             format!("{} {}", icon, if url.len() > 20 { format!("{}…", short_url) } else { short_url })
         } else {

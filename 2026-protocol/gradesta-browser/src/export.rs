@@ -162,51 +162,53 @@ fn offset_position(pos: (i32, i32, i32), dir: Direction) -> (i32, i32, i32) {
 }
 
 fn extract_content(vertex: &Vertex) -> ExportContent {
-    let mime = vertex.mime.as_deref().unwrap_or("text/plain");
-
-    // Check for portal
-    if mime == "text/gradesta-url" {
-        return ExportContent::Portal(String::from_utf8_lossy(&vertex.label).to_string());
+    // Check for portal in any layer
+    for layer in vertex.layers.values() {
+        if layer.mime == "text/gradesta-url" {
+            return ExportContent::Portal(String::from_utf8_lossy(&layer.data).to_string());
+        }
     }
 
-    // Check for audio with transcript
-    if mime.starts_with("audio/") {
-        let transcript = vertex.layers.get(&1)
-            .filter(|l| l.mime.starts_with("text/"))
-            .map(|l| String::from_utf8_lossy(&l.data).to_string());
+    // Check for audio with transcript - find audio and text layers
+    let audio_layer = vertex.layers.values().find(|l| l.mime.starts_with("audio/"));
+    let text_layer = vertex.layers.values().find(|l| l.mime.starts_with("text/") && l.mime != "text/gradesta-url" && l.mime != "text/x-url");
+
+    if let Some(audio) = audio_layer {
+        let transcript = text_layer.map(|l| String::from_utf8_lossy(&l.data).to_string());
         return ExportContent::Audio {
-            mime: mime.to_string(),
-            data: vertex.label.clone(),
+            mime: audio.mime.clone(),
+            data: audio.data.clone(),
             transcript,
         };
     }
 
-    // Check for image (prefer layer 2 full-res if available)
-    if mime.starts_with("image/") {
-        if let Some(layer2) = vertex.layers.get(&2) {
-            if layer2.mime.starts_with("image/") {
-                return ExportContent::Image {
-                    mime: layer2.mime.clone(),
-                    data: layer2.data.clone(),
-                };
-            }
-        }
+    // Check for image (prefer largest image data)
+    let image_layer = vertex.layers.values()
+        .filter(|l| l.mime.starts_with("image/"))
+        .max_by_key(|l| l.data.len());
+
+    if let Some(image) = image_layer {
         return ExportContent::Image {
-            mime: mime.to_string(),
-            data: vertex.label.clone(),
+            mime: image.mime.clone(),
+            data: image.data.clone(),
         };
     }
 
     // Check for text
-    if mime.starts_with("text/") && mime != "text/x-url" {
-        return ExportContent::Text(String::from_utf8_lossy(&vertex.label).to_string());
+    if let Some(text) = text_layer {
+        return ExportContent::Text(String::from_utf8_lossy(&text.data).to_string());
     }
 
-    // Other content
-    ExportContent::Other {
-        mime: mime.to_string(),
-        data: vertex.label.clone(),
+    // Other content - take first non-portal layer
+    if let Some(layer) = vertex.layers.values().find(|l| l.mime != "text/gradesta-url") {
+        return ExportContent::Other {
+            mime: layer.mime.clone(),
+            data: layer.data.clone(),
+        };
     }
+
+    // Empty vertex
+    ExportContent::Text(String::new())
 }
 
 /// Generate standalone HTML from export data

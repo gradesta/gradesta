@@ -91,12 +91,17 @@ fn render_fullscreen_image(
 ) {
     if let Some(vertex_id) = app_state.image_modal_vertex_id {
         if let Some(vertex) = graph.vertices.get(&vertex_id) {
-            // Prefer layer 2 content (full image) over layer 0 (thumbnail/label)
-            let (image_data, mime): (&[u8], &str) = if let Some(layer2) = vertex.layers.get(&2) {
-                (&layer2.data, &layer2.mime)
-            } else {
-                (&vertex.label, vertex.mime.as_deref().unwrap_or(""))
+            // Find the image layer with most data (prefer larger/full images)
+            let image_layer = vertex.layers.values()
+                .filter(|l| l.mime.starts_with("image/") || crate::media::is_image_data(&l.data))
+                .max_by_key(|l| l.data.len());
+
+            let Some(layer) = image_layer else {
+                ui.label("No image content");
+                return;
             };
+            let image_data = &layer.data;
+            let mime = &layer.mime;
 
             egui::ScrollArea::both()
                 .auto_shrink([false, false])

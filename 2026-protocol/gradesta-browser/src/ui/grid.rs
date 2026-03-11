@@ -38,23 +38,17 @@ fn calculate_cell_height(
     let padding = 8.0 * zoom;
     let content_width = cell_width - padding * 2.0;
 
-    let mime = vertex.mime.as_deref().unwrap_or("");
-    let primary_is_image = mime.starts_with("image/") || is_image_data(&vertex.label);
-    let primary_is_audio = mime.starts_with("audio/");
-    let primary_is_text = mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url";
-
-    // Count content sections (same logic as rendering.rs)
-    let mut has_image = primary_is_image;
-    let mut has_audio = primary_is_audio;
-    let mut has_text = primary_is_text || inline_edit_content.is_some();
+    // Count content sections by checking all layers
+    let mut has_image = false;
+    let mut has_audio = false;
+    let mut has_text = inline_edit_content.is_some();
     let mut text_content: Option<String> = None;
 
     // If inline editing, use that content for text sizing
     if let Some(content) = inline_edit_content {
         text_content = Some(content.to_string());
-        has_text = true;
     } else {
-        // Check additional layers
+        // Check all layers
         for layer in vertex.layers.values() {
             if layer.mime.starts_with("image/") || is_image_data(&layer.data) {
                 has_image = true;
@@ -66,11 +60,6 @@ fn calculate_cell_height(
                     text_content = String::from_utf8(layer.data.clone()).ok();
                 }
             }
-        }
-
-        // For primary text content
-        if primary_is_text && text_content.is_none() {
-            text_content = String::from_utf8(vertex.label.clone()).ok();
         }
     }
 
@@ -408,7 +397,7 @@ pub fn render_grid_view(
 
         // Render inline text edit overlay if in InlineEdit mode (but not when submitting)
         // When submitting, the placeholder cell is still shown for centering, but we skip the edit UI
-        if let InputMode::InlineEdit { vertex_id, is_new, submitting: false } = app_state.input_mode {
+        if let InputMode::InlineEdit { vertex_id, is_new, submitting: false, .. } = app_state.input_mode {
             // Find the cell position - check placeholders first for new cells, then regular positions
             let cell_position = if is_new {
                 // For new cells, vertex_id is actually a local_id - find in placeholder_cells

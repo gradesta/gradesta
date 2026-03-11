@@ -1411,7 +1411,10 @@ fn ui_system(
                         });
                         // Update local graph state optimistically
                         if let Some(vertex) = graph.vertices.get_mut(&vertex_id) {
-                            vertex.label = text_bytes;
+                            vertex.layers.insert(0, crate::graph::LayerContent {
+                                mime: "text/plain".to_string(),
+                                data: text_bytes,
+                            });
                         }
                         app_state.status = "Saved".to_string();
                     }
@@ -1859,20 +1862,28 @@ fn auto_play_audio_on_navigate(
             }
 
             if let Some(vertex) = graph.vertices.get(&vertex_id) {
-                if let Some(mime) = &vertex.mime {
-                    if mime.starts_with("audio/") && !vertex.label.is_empty() {
+                // Check all layers for audio to auto-play
+                for layer in vertex.layers.values() {
+                    if layer.mime.starts_with("audio/") && !layer.data.is_empty() {
                         // Auto-play the audio using fast path with preload cache
-                        play_audio_fast(vertex_id, &vertex.label, mime, &preload_cache, &playback_state);
-                    } else if app_state.tts_mode
-                        && mime.starts_with("text/")
-                        && mime != "text/gradesta-url"
-                        && !vertex.label.is_empty()
-                    {
-                        // TTS mode: read text cells aloud
-                        if let Ok(text) = String::from_utf8(vertex.label.clone()) {
-                            let text = text.trim();
-                            if !text.is_empty() {
-                                tts::speak(text);
+                        play_audio_fast(vertex_id, &layer.data, &layer.mime, &preload_cache, &playback_state);
+                        return;
+                    }
+                }
+
+                // TTS mode: find text in any layer and read aloud
+                if app_state.tts_mode {
+                    for layer in vertex.layers.values() {
+                        if layer.mime.starts_with("text/")
+                            && layer.mime != "text/gradesta-url"
+                            && !layer.data.is_empty()
+                        {
+                            if let Ok(text) = String::from_utf8(layer.data.clone()) {
+                                let text = text.trim();
+                                if !text.is_empty() {
+                                    tts::speak(text);
+                                    return;
+                                }
                             }
                         }
                     }
@@ -1907,82 +1918,86 @@ fn auto_expand_nearby_links(
     }
 
     // Extract data we need from the current vertex to avoid borrow conflicts
-    let (is_layer0_portal, layer1_portal_url, layer0_label, current_edges) = {
+    let (portal_url, current_edges) = {
         let Some(current) = graph.vertices.get(&current_id) else { return };
-        let is_layer0_portal = current.mime.as_deref() == Some("text/gradesta-url");
-        let layer1_portal_url = current.layers.get(&1)
-            .filter(|l| l.mime == "text/gradesta-url")
+        // Find any layer with text/gradesta-url mime type
+        let portal_url = current.layers.values()
+            .find(|l| l.mime == "text/gradesta-url")
             .map(|l| String::from_utf8_lossy(&l.data).to_string());
-        let layer0_label = if is_layer0_portal {
-            Some(String::from_utf8_lossy(&current.label).to_string())
-        } else {
-            None
-        };
-        (is_layer0_portal, layer1_portal_url, layer0_label, current.edges)
+        (portal_url, current.edges)
     };
 
     // FIRST: If we're sitting on a portal, handle it
-    // Layer 0 portals (text/gradesta-url as primary): auto-follow immediately (no visible label)
-    // Layer 1 portals (text/plain primary, gradesta-url on layer 1): just preload, don't auto-follow (has visible label)
+    // A portal is any vertex containing text/gradesta-url in any layer
+    // If the vertex is ONLY a portal (no other content), auto-follow
+    // If it has other content too, just preload the landmark
 
-    if is_layer0_portal {
-        // Layer 0 portal - auto-follow
-        let landmark_url = layer0_label.unwrap();
+    if let Some(ref landmark_url) = portal_url {
+        // Check if this is a "pure" portal (only has portal URL, no other meaningful content)
+        let is_pure_portal = {
+            let Some(current) = graph.vertices.get(&current_id) else { return };
+            current.layers.values().all(|l| l.mime == "text/gradesta-url")
+        };
 
-        // Check if this landmark was already loaded by looking up vertices associated with it
-        if let Some(vertices) = graph.landmark_mgr.get_landmark_vertices(&landmark_url) {
-            // First, try to find the east neighbor of the portal (preferred direction for content)
-            let east_id = current_edges[EDGE_EAST];
-            if east_id != 0 {
-                if let Some(vertex) = graph.vertices.get(&east_id) {
-                    if vertex.mime.as_deref() != Some("text/gradesta-url") {
-                        // Found content vertex to the east - jump to it
-                        app_state.history.push(current_id);
-                        app_state.current_vertex = Some(east_id);
-                        graph.landmark_mgr.clear_follow(&landmark_url);
-                        app_state.loading_portal_vertex = None;
-                        app_state.loading_portal_cell = None;
-                        return;
+        if is_pure_portal {
+            // Pure portal - auto-follow
+            // Check if this landmark was already loaded by looking up vertices associated with it
+            if let Some(vertices) = graph.landmark_mgr.get_landmark_vertices(landmark_url) {
+                // First, try to find the east neighbor of the portal (preferred direction for content)
+                let east_id = current_edges[EDGE_EAST];
+                if east_id != 0 {
+                    if let Some(vertex) = graph.vertices.get(&east_id) {
+                        // Check if neighbor has any non-portal content
+                        let has_non_portal = vertex.layers.values().any(|l| l.mime != "text/gradesta-url");
+                        if has_non_portal {
+                            // Found content vertex to the east - jump to it
+                            app_state.history.push(current_id);
+                            app_state.current_vertex = Some(east_id);
+                            graph.landmark_mgr.clear_follow(landmark_url);
+                            app_state.loading_portal_vertex = None;
+                            app_state.loading_portal_cell = None;
+                            return;
+                        }
+                    }
+                }
+
+                // Fallback: find the first non-portal vertex in this landmark
+                let vertices_copy = vertices.clone(); // Clone to avoid borrow conflict
+                for &vid in &vertices_copy {
+                    if let Some(vertex) = graph.vertices.get(&vid) {
+                        let has_non_portal = vertex.layers.values().any(|l| l.mime != "text/gradesta-url");
+                        if has_non_portal {
+                            // Found a content vertex - jump to it
+                            app_state.history.push(current_id);
+                            app_state.current_vertex = Some(vid);
+                            graph.landmark_mgr.clear_follow(landmark_url);
+                            app_state.loading_portal_vertex = None;
+                            app_state.loading_portal_cell = None;
+                            return;
+                        }
                     }
                 }
             }
 
-            // Fallback: find the first non-portal vertex in this landmark
-            let vertices_copy = vertices.clone(); // Clone to avoid borrow conflict
-            for &vid in &vertices_copy {
-                if let Some(vertex) = graph.vertices.get(&vid) {
-                    if vertex.mime.as_deref() != Some("text/gradesta-url") {
-                        // Found a content vertex - jump to it
-                        app_state.history.push(current_id);
-                        app_state.current_vertex = Some(vid);
-                        graph.landmark_mgr.clear_follow(&landmark_url);
-                        app_state.loading_portal_vertex = None;
-                        app_state.loading_portal_cell = None;
-                        return;
-                    }
-                }
+            // Not loaded yet - request it with auto-follow
+            let action_id = app_state.next_action_id;
+            if graph.landmark_mgr.watch_and_follow(landmark_url, action_id, cmd_tx) {
+                app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
             }
-        }
 
-        // Not loaded yet - request it with auto-follow
-        let action_id = app_state.next_action_id;
-        if graph.landmark_mgr.watch_and_follow(&landmark_url, action_id, cmd_tx) {
-            app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+            // Set up loading indicator
+            if graph.landmark_mgr.should_follow(landmark_url) {
+                app_state.loading_portal_vertex = Some(current_id);
+            }
+            return;
+        } else {
+            // Has other content - just preload the landmark, don't auto-follow
+            let action_id = app_state.next_action_id;
+            if graph.landmark_mgr.watch_if_needed(landmark_url, action_id, cmd_tx) {
+                app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+            }
+            // Don't return - continue to preload neighbors
         }
-
-        // Set up loading indicator
-        if graph.landmark_mgr.should_follow(&landmark_url) {
-            app_state.loading_portal_vertex = Some(current_id);
-        }
-        return;
-    } else if let Some(landmark_url) = layer1_portal_url {
-        // Layer 1 portal - just preload the landmark, don't auto-follow
-        // This allows the user to see the text label and navigate east manually
-        let action_id = app_state.next_action_id;
-        if graph.landmark_mgr.watch_if_needed(&landmark_url, action_id, cmd_tx) {
-            app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
-        }
-        // Don't return - continue to preload neighbors
     }
 
     // SECOND: Preload immediate neighbors (1 step away) that we don't have
@@ -2042,18 +2057,10 @@ fn auto_expand_nearby_links(
     // Also check for portal vertices 2 steps away
     for vid in two_steps_away {
         if let Some(vertex) = graph.vertices.get(&vid) {
-            // Check both layer 0 and layer 1 for gradesta-url
-            let landmark_url = if vertex.mime.as_deref() == Some("text/gradesta-url") {
-                Some(String::from_utf8_lossy(&vertex.label).to_string())
-            } else if let Some(layer1) = vertex.layers.get(&1) {
-                if layer1.mime == "text/gradesta-url" {
-                    Some(String::from_utf8_lossy(&layer1.data).to_string())
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
+            // Check all layers for gradesta-url
+            let landmark_url = vertex.layers.values()
+                .find(|l| l.mime == "text/gradesta-url")
+                .map(|l| String::from_utf8_lossy(&l.data).to_string());
 
             if let Some(landmark_url) = landmark_url {
                 let action_id = app_state.next_action_id;
@@ -2132,17 +2139,18 @@ fn preload_audio_if_needed(
     }
 
     if let Some(vertex) = graph.vertices.get(&vertex_id) {
-        if let Some(ref mime) = vertex.mime {
-            if mime.starts_with("audio/") && !vertex.label.is_empty() {
+        // Check all layers for audio content
+        for layer in vertex.layers.values() {
+            if layer.mime.starts_with("audio/") && !layer.data.is_empty() {
                 // Skip large files (>5MB) to avoid memory bloat
-                if vertex.label.len() > 5_000_000 {
+                if layer.data.len() > 5_000_000 {
                     return false;
                 }
 
                 cache.pending.insert(vertex_id);
                 predecode_audio_async(
                     vertex_id,
-                    vertex.label.clone(),
+                    layer.data.clone(),
                     cache.decoded_tx.clone(),
                 );
                 return true;

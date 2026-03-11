@@ -363,6 +363,7 @@ pub fn execute_commands(
                 vertex_id: local_id, // Using local_id as the "vertex_id" for new cells
                 is_new: true,
                 submitting: false,
+                layer: 0, // New text cells always start at layer 0
             };
 
             app_state.status = "Editing new cell (Ctrl+Enter to save, Esc to cancel)".to_string();
@@ -487,7 +488,7 @@ pub fn execute_commands(
             app_state.input_mode = InputMode::Normal;
             app_state.text_input_buffer.clear();
             app_state.status = "Text input cancelled".to_string();
-        } else if let InputMode::InlineEdit { vertex_id, is_new, submitting } = app_state.input_mode {
+        } else if let InputMode::InlineEdit { vertex_id, is_new, submitting, layer } = app_state.input_mode {
             // Don't allow cancel while submitting - wait for server response
             if submitting {
                 return results;
@@ -502,7 +503,9 @@ pub fn execute_commands(
                 if let Some(original) = app_state.inline_edit_original.take() {
                     // Restore original content to the graph (no server call needed since we never saved)
                     if let Some(vertex) = graph.vertices.get_mut(&vertex_id) {
-                        vertex.label = original.into_bytes();
+                        if let Some(layer_content) = vertex.layers.get_mut(&layer) {
+                            layer_content.data = original.into_bytes();
+                        }
                     }
                 }
             }
@@ -558,16 +561,35 @@ pub fn execute_commands(
                             });
                             app_state.status = "Creating new note...".to_string();
                         } else {
-                            // Edit existing vertex - send to layer based on mime type
+                            // Edit existing vertex - find which layer has editable text
                             let layer = if let Some(vertex) = graph.vertices.get(&current_id) {
-                                let mime = vertex.mime.as_deref().unwrap_or("");
-                                if mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url" {
-                                    0 // Primary is text, update layer 0
-                                } else {
-                                    1 // Primary is not text, add/update as layer 1
+                                // Find the first text layer that's not a portal or URL
+                                let mut layer_nums: Vec<_> = vertex.layers.keys().copied().collect();
+                                layer_nums.sort();
+                                let mut found_layer = None;
+                                for layer_num in layer_nums {
+                                    if let Some(layer_content) = vertex.layers.get(&layer_num) {
+                                        if layer_content.mime.starts_with("text/")
+                                            && layer_content.mime != "text/gradesta-url"
+                                            && layer_content.mime != "text/x-url"
+                                        {
+                                            found_layer = Some(layer_num);
+                                            break;
+                                        }
+                                    }
                                 }
+                                // If no text layer found, create one in the first available layer
+                                found_layer.unwrap_or_else(|| {
+                                    // Find first unused layer number
+                                    for i in 0..100 {
+                                        if !vertex.layers.contains_key(&i) {
+                                            return i;
+                                        }
+                                    }
+                                    0
+                                })
                             } else {
-                                0 // Fallback to layer 0
+                                0 // Fallback
                             };
                             let action_id = app_state.next_action_id;
                             app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
@@ -588,7 +610,7 @@ pub fn execute_commands(
             app_state.text_input_buffer.clear();
         }
         // Handle inline edit mode submission
-        else if let InputMode::InlineEdit { vertex_id, is_new, submitting } = app_state.input_mode {
+        else if let InputMode::InlineEdit { vertex_id, is_new, submitting, layer } = app_state.input_mode {
             // Don't resubmit if already submitting
             if submitting {
                 return results;
@@ -623,7 +645,7 @@ pub fn execute_commands(
                             action_id,
                             from_vertex,
                             direction: dir_byte,
-                            layer: 0,
+                            layer,
                             mime: "text/plain".to_string(),
                             data: text_bytes.clone(),
                         });
@@ -651,25 +673,29 @@ pub fn execute_commands(
                             vertex_id: local_id,
                             is_new: true,
                             submitting: true,
+                            layer,
                         };
                         app_state.text_input_buffer.clear();
                         return results;
                     }
                 } else {
-                    // Existing cell: send SetVertexLabel
+                    // Existing cell: send SetVertexLabel to the correct layer
                     let action_id = app_state.next_action_id;
                     app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
                     let text_bytes = text.into_bytes();
                     let _ = tx.send(WsCommand::SetVertexLabel {
                         action_id,
                         vertex_id,
-                        layer: 0,
+                        layer,
                         mime: "text/plain".to_string(),
                         data: text_bytes.clone(),
                     });
                     // Update local graph state optimistically
                     if let Some(vertex) = graph.vertices.get_mut(&vertex_id) {
-                        vertex.label = text_bytes;
+                        vertex.layers.insert(layer, crate::graph::LayerContent {
+                            mime: "text/plain".to_string(),
+                            data: text_bytes,
+                        });
                     }
                     app_state.status = "Saved".to_string();
                 }
@@ -946,29 +972,21 @@ fn execute_toggle_fullscreen(app_state: &mut AppState, graph: &GraphState) {
         app_state.sidebar.fullscreen = true;
     } else if let Some(current_id) = app_state.current_vertex {
         if let Some(vertex) = graph.vertices.get(&current_id) {
-            let mime = vertex.mime.as_deref().unwrap_or("");
-            let primary_is_image = mime.starts_with("image/") || is_image_data(&vertex.label);
-            let primary_is_text = mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url";
-
-            let has_layer_image = vertex.layers.values()
+            // Check all layers for content types
+            let has_image = vertex.layers.values()
                 .any(|l| l.mime.starts_with("image/") || is_image_data(&l.data));
 
-            // Check for text in layers (e.g., transcript on audio cells)
-            let layer_text = vertex.layers.values()
-                .find(|l| l.mime.starts_with("text/") && l.mime != "text/gradesta-url")
+            // Check for text in any layer (excluding portals/URLs)
+            let text_content = vertex.layers.values()
+                .find(|l| l.mime.starts_with("text/") && l.mime != "text/gradesta-url" && l.mime != "text/x-url")
                 .and_then(|l| String::from_utf8(l.data.clone()).ok());
 
-            if primary_is_text {
-                // Primary text content - expand it
-                app_state.text_modal_content = String::from_utf8_lossy(&vertex.label).to_string();
-                app_state.show_text_modal = true;
-                app_state.sidebar.fullscreen = true;
-            } else if let Some(text) = layer_text {
-                // Text in a layer (e.g., transcript) - expand that
+            if let Some(text) = text_content {
+                // Found text content - expand it
                 app_state.text_modal_content = text;
                 app_state.show_text_modal = true;
                 app_state.sidebar.fullscreen = true;
-            } else if primary_is_image || has_layer_image {
+            } else if has_image {
                 app_state.image_modal_vertex_id = Some(current_id);
                 app_state.show_image_modal = true;
                 app_state.sidebar.fullscreen = true;
@@ -1133,29 +1151,38 @@ fn execute_delete_vertex(app_state: &mut AppState, graph: &mut GraphState, ws_cm
 fn execute_edit_text(app_state: &mut AppState, graph: &GraphState) {
     if let Some(current_id) = app_state.current_vertex {
         if let Some(vertex) = graph.vertices.get(&current_id) {
-            let mime = vertex.mime.as_deref().unwrap_or("");
-            if let Some(layer1) = vertex.layers.get(&1) {
-                if layer1.mime.starts_with("text/") {
-                    app_state.text_input_buffer = String::from_utf8_lossy(&layer1.data).to_string();
-                } else {
-                    app_state.text_input_buffer.clear();
+            // Find which layer has editable text content (sorted by layer number)
+            let mut layer_nums: Vec<_> = vertex.layers.keys().copied().collect();
+            layer_nums.sort();
+
+            let mut found: Option<(u32, String)> = None;
+            for layer_num in layer_nums {
+                if let Some(layer_data) = vertex.layers.get(&layer_num) {
+                    if layer_data.mime.starts_with("text/")
+                        && layer_data.mime != "text/gradesta-url"
+                        && layer_data.mime != "text/x-url"
+                    {
+                        found = Some((layer_num, String::from_utf8_lossy(&layer_data.data).to_string()));
+                        break;
+                    }
                 }
-            } else if mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url" {
-                app_state.text_input_buffer = String::from_utf8_lossy(&vertex.label).to_string();
-            } else {
-                app_state.text_input_buffer.clear();
             }
+
+            let Some((layer, text)) = found else {
+                return; // No editable text
+            };
+
+            app_state.text_input_buffer = text;
+            app_state.inline_edit_original = Some(app_state.text_input_buffer.clone());
+            super::text_edit::reset_text_edit_state(app_state);
+            app_state.input_mode = InputMode::InlineEdit {
+                vertex_id: current_id,
+                is_new: false,
+                submitting: false,
+                layer,
+            };
+            app_state.status = "Editing cell (Ctrl+Enter to save, Esc to cancel)".to_string();
         }
-        // Save original content for restore on cancel
-        app_state.inline_edit_original = Some(app_state.text_input_buffer.clone());
-        super::text_edit::reset_text_edit_state(app_state);
-        // Use inline edit mode instead of sidebar
-        app_state.input_mode = InputMode::InlineEdit {
-            vertex_id: current_id,
-            is_new: false, // Existing vertex
-            submitting: false,
-        };
-        app_state.status = "Editing cell (Ctrl+Enter to save, Esc to cancel)".to_string();
     }
 }
 
@@ -1862,10 +1889,12 @@ pub fn execute_voice_action(
 
 
 fn get_current_cell_mime(app_state: &AppState, graph: &GraphState) -> String {
+    // Get the first mime type from any layer
     app_state
         .current_vertex
         .and_then(|id| graph.vertices.get(&id))
-        .and_then(|v| v.mime.clone())
+        .and_then(|v| v.layers.values().next())
+        .map(|l| l.mime.clone())
         .unwrap_or_else(|| "text/plain".to_string())
 }
 
@@ -1881,13 +1910,13 @@ fn get_cell_content_at(app_state: &AppState, graph: &GraphState, direction: Opti
     };
 
     let vertex = graph.vertices.get(&vertex_id)?;
-    let mime = vertex.mime.as_deref().unwrap_or("");
 
-    // Only return text content
-    if mime.starts_with("text/") && mime != "text/gradesta-url" {
-        Some(String::from_utf8_lossy(&vertex.label).to_string())
-    } else {
-        None
+    // Find text content in any layer (excluding portals)
+    for layer in vertex.layers.values() {
+        if layer.mime.starts_with("text/") && layer.mime != "text/gradesta-url" {
+            return Some(String::from_utf8_lossy(&layer.data).to_string());
+        }
     }
+    None
 }
 

@@ -33,25 +33,69 @@ pub struct LayerContent {
 #[derive(Clone, Debug, Default)]
 pub struct Vertex {
     pub id: u64,
-    /// Primary layer data (layer 0) for backwards compatibility
-    pub label: Vec<u8>,
-    /// Layer 0 MIME type
-    pub mime: Option<String>,
     /// Edges: [West, East, North, South, Up, Down]
     pub edges: [u64; 6],
-    /// Additional layers (layer_id -> content), each with its own MIME type
+    /// All layers (layer_id -> content), each with its own MIME type
+    /// Layer 0 is the primary content layer
     pub layers: HashMap<u32, LayerContent>,
     /// Edit mask: bit 0-5 for edge editability, bit 6 for label editability
     /// 0x7F = all editable, 0 = read-only
     pub edit_mask: u8,
-    /// Total length of layer 0 content (for preview/full content loading)
-    pub content_length: u32,
-    /// True if full layer 0 content is loaded (vs just preview)
-    pub content_loaded: bool,
     /// Total lengths for each layer (layer -> total length)
     pub layer_lengths: HashMap<u32, u32>,
     /// Whether each layer has full content loaded (layer -> loaded flag)
     pub layer_loaded: HashMap<u32, bool>,
+}
+
+impl Vertex {
+    /// Get a layer by number
+    pub fn get_layer(&self, n: u32) -> Option<&LayerContent> {
+        self.layers.get(&n)
+    }
+
+    /// Get a mutable reference to a layer by number
+    pub fn get_layer_mut(&mut self, n: u32) -> Option<&mut LayerContent> {
+        self.layers.get_mut(&n)
+    }
+
+    /// Get the MIME type for a layer
+    pub fn layer_mime(&self, n: u32) -> Option<&str> {
+        self.layers.get(&n).map(|l| l.mime.as_str())
+    }
+
+    /// Get the data for a layer
+    pub fn layer_data(&self, n: u32) -> Option<&[u8]> {
+        self.layers.get(&n).map(|l| l.data.as_slice())
+    }
+
+    /// Check if layer content is fully loaded
+    pub fn is_layer_loaded(&self, n: u32) -> bool {
+        self.layer_loaded.get(&n).copied().unwrap_or(false)
+    }
+
+    /// Get layer content length
+    pub fn layer_length(&self, n: u32) -> u32 {
+        self.layer_lengths.get(&n).copied().unwrap_or(0)
+    }
+
+    /// Get the text layer and its content, if any text content exists.
+    /// Returns (layer_number, text_string).
+    /// Finds the first text layer (by layer number order).
+    pub fn get_text_layer(&self) -> Option<(u32, String)> {
+        // Get sorted layer numbers for consistent ordering
+        let mut layer_nums: Vec<_> = self.layers.keys().copied().collect();
+        layer_nums.sort();
+
+        for layer_num in layer_nums {
+            if let Some(layer) = self.layers.get(&layer_num) {
+                let mime = &layer.mime;
+                if mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url" {
+                    return Some((layer_num, String::from_utf8_lossy(&layer.data).to_string()));
+                }
+            }
+        }
+        None
+    }
 }
 
 /// Graph state resource holding all vertices and context information
@@ -421,19 +465,14 @@ pub fn build_grid_view(
 
     // Add shadow cells for all portals pointing to unloaded landmarks
     // Collect portal info first to avoid borrow issues
-    // Check both layer 0 portals (mime == text/gradesta-url) and layer 1 portals
+    // Check all layers for text/gradesta-url portals
     let portal_info: Vec<(u64, (i32, i32), String)> = grid.positions.iter()
         .filter_map(|(&vertex_id, &pos)| {
             let vertex = graph.vertices.get(&vertex_id)?;
-            // Layer 0 portal: primary mime is text/gradesta-url
-            if vertex.mime.as_deref() == Some("text/gradesta-url") {
-                let landmark_url = String::from_utf8_lossy(&vertex.label).to_string();
-                return Some((vertex_id, pos, landmark_url));
-            }
-            // Layer 1 portal: has text/gradesta-url in layer 1
-            if let Some(layer1) = vertex.layers.get(&1) {
-                if layer1.mime == "text/gradesta-url" {
-                    let landmark_url = String::from_utf8_lossy(&layer1.data).to_string();
+            // Find first layer that is a portal
+            for (&_layer_num, layer) in &vertex.layers {
+                if layer.mime == "text/gradesta-url" {
+                    let landmark_url = String::from_utf8_lossy(&layer.data).to_string();
                     return Some((vertex_id, pos, landmark_url));
                 }
             }
@@ -443,9 +482,13 @@ pub fn build_grid_view(
 
     for (portal_id, portal_pos, landmark_url) in portal_info {
         // Check if this landmark has any non-portal content loaded
+        // A vertex is a "portal-only" vertex if all its layers are portals
         let has_content = graph.landmark_mgr.has_content(&landmark_url, |vid| {
             graph.vertices.get(&vid)
-                .map(|v| v.mime.as_deref() == Some("text/gradesta-url"))
+                .map(|v| {
+                    // Check if this vertex is portal-only (all layers are gradesta-url)
+                    !v.layers.is_empty() && v.layers.values().all(|l| l.mime == "text/gradesta-url")
+                })
                 .unwrap_or(false)
         });
 

@@ -114,16 +114,34 @@ fn submit_edit_vertex(
     current_id: u64,
     text: String,
 ) {
-    // Determine which layer to save to
+    // Determine which layer to save to - find existing text layer or create new
     let layer = if let Some(vertex) = graph.vertices.get(&current_id) {
-        let mime = vertex.mime.as_deref().unwrap_or("");
-        if mime.starts_with("text/") && mime != "text/gradesta-url" && mime != "text/x-url" {
-            0 // Primary is text, update layer 0
-        } else {
-            1 // Primary is not text, add/update as layer 1
+        // Find existing text layer (excluding portals/URLs)
+        let mut layer_nums: Vec<_> = vertex.layers.keys().copied().collect();
+        layer_nums.sort();
+        let mut found_layer = None;
+        for layer_num in layer_nums {
+            if let Some(layer_content) = vertex.layers.get(&layer_num) {
+                if layer_content.mime.starts_with("text/")
+                    && layer_content.mime != "text/gradesta-url"
+                    && layer_content.mime != "text/x-url"
+                {
+                    found_layer = Some(layer_num);
+                    break;
+                }
+            }
         }
+        // If no text layer found, find first unused layer
+        found_layer.unwrap_or_else(|| {
+            for i in 0..100 {
+                if !vertex.layers.contains_key(&i) {
+                    return i;
+                }
+            }
+            0
+        })
     } else {
-        0 // Fallback to layer 0
+        0 // Fallback
     };
 
     let action_id = app_state.next_action_id;

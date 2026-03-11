@@ -166,25 +166,21 @@ fn handle_set_vertex_preview(
     // Empty preview with u32::MAX means server didn't download content yet
     let needs_loading = total_length == u32::MAX || (total_length > 255 && preview.len() < total_length as usize);
 
-    if layer == 0 {
-        // Only overwrite label if content hasn't been loaded yet
-        // This prevents a subsequent preview from clearing already-loaded content
-        if !entry.content_loaded {
-            entry.label = preview;
-            entry.content_length = total_length;
-            entry.content_loaded = !needs_loading;
-        }
-        entry.mime = Some(mime.to_string());
+    // Unified handling for all layers - don't overwrite loaded content with preview
+    let layer_loaded = entry.layer_loaded.get(&layer).copied().unwrap_or(false);
+    if !layer_loaded {
+        entry.layers.insert(layer, LayerContent {
+            mime: mime.to_string(),
+            data: preview,
+        });
+        entry.layer_lengths.insert(layer, total_length);
+        entry.layer_loaded.insert(layer, !needs_loading);
     } else {
-        // Same for other layers - don't overwrite loaded content with preview
-        let layer_loaded = entry.layer_loaded.get(&layer).copied().unwrap_or(false);
-        if !layer_loaded {
-            entry.layers.insert(layer, LayerContent {
-                mime: mime.to_string(),
-                data: preview,
-            });
-            entry.layer_lengths.insert(layer, total_length);
-            entry.layer_loaded.insert(layer, !needs_loading);
+        // Even if content is loaded, update the mime type (might have been unknown)
+        if let Some(layer_content) = entry.layers.get_mut(&layer) {
+            if layer_content.mime.is_empty() {
+                layer_content.mime = mime.to_string();
+            }
         }
     }
 
@@ -223,19 +219,14 @@ fn handle_set_vertex_content(
         media_cache.animated_gifs.remove(&vertex_id);
     }
 
-    if layer == 0 {
-        entry.label = data.clone();
-        entry.mime = Some(mime.to_string());
-        entry.content_length = data.len() as u32;
-        entry.content_loaded = true;
-    } else {
-        entry.layers.insert(layer, LayerContent {
-            mime: mime.to_string(),
-            data: data.clone(),
-        });
-        entry.layer_lengths.insert(layer, data.len() as u32);
-        entry.layer_loaded.insert(layer, true);
-    }
+    // Unified handling for all layers
+    let data_len = data.len() as u32;
+    entry.layers.insert(layer, LayerContent {
+        mime: mime.to_string(),
+        data,
+    });
+    entry.layer_lengths.insert(layer, data_len);
+    entry.layer_loaded.insert(layer, true);
 
     // Mark the pending request as complete (content received)
     let key = (vertex_id, layer);
@@ -368,21 +359,14 @@ fn handle_set_vertex_label(
         media_cache.animated_gifs.remove(&vertex_id);
     }
 
-    // Store in appropriate layer
-    if layer == 0 {
-        entry.content_length = data.len() as u32;
-        entry.content_loaded = true;
-        entry.label = data;
-        entry.mime = Some(mime.to_string());
-    } else {
-        let data_len = data.len() as u32;
-        entry.layers.insert(layer, LayerContent {
-            mime: mime.to_string(),
-            data,
-        });
-        entry.layer_lengths.insert(layer, data_len);
-        entry.layer_loaded.insert(layer, true);
-    }
+    // Unified handling for all layers
+    let data_len = data.len() as u32;
+    entry.layers.insert(layer, LayerContent {
+        mime: mime.to_string(),
+        data,
+    });
+    entry.layer_lengths.insert(layer, data_len);
+    entry.layer_loaded.insert(layer, true);
 
     // Track which landmark this vertex belongs to
     graph.landmark_mgr.track_vertex(vertex_id);
@@ -476,8 +460,13 @@ fn handle_log(
 
             let entry = graph.vertices.entry(vertex_id).or_default();
             entry.id = vertex_id;
-            entry.label = pending.data.clone();
-            entry.mime = Some(pending.mime.clone());
+            // Store pending data in layer 0
+            entry.layers.insert(0, LayerContent {
+                mime: pending.mime.clone(),
+                data: pending.data.clone(),
+            });
+            entry.layer_lengths.insert(0, pending.data.len() as u32);
+            entry.layer_loaded.insert(0, true);
 
             if pending.mime.starts_with("audio/") {
                 app_state.skip_autoplay_vertex = Some(vertex_id);
@@ -595,15 +584,10 @@ fn handle_local_set_vertex_label(
 ) {
     let entry = graph.vertices.entry(vertex_id).or_default();
     entry.id = vertex_id;
-    if layer == 0 {
-        entry.label = data.clone();
-        entry.mime = Some(mime.to_string());
-    } else {
-        entry.layers.insert(layer, LayerContent {
-            mime: mime.to_string(),
-            data: data.clone(),
-        });
-    }
+    entry.layers.insert(layer, LayerContent {
+        mime: mime.to_string(),
+        data: data.clone(),
+    });
 
     if let Some(ref tx) = ws_cmd_tx.0 {
         let _ = tx.send(WsCommand::SetVertexLabel {
@@ -889,23 +873,10 @@ pub fn request_content_for_visible_cells(
 
     for (&pos, &vertex_id) in &grid.cells {
         if let Some(vertex) = graph.vertices.get(&vertex_id) {
-            // Check layer 0
-            if !vertex.content_loaded && vertex.content_length > 255 {
-                let key = (vertex_id, 0u32);
-                if !app_state.pending_content_requests.contains(&key) &&
-                   !app_state.active_content_watches.contains(&key) {
-                    // Calculate priority based on distance and direction
-                    let distance = pos.0.abs() + pos.1.abs();
-                    let priority = calculate_priority(pos, &priority_order, distance);
-                    cells_needing_content.push((vertex_id, 0, priority));
-                }
-            }
-
-            // Check other layers
+            // Check all layers uniformly
             for (&layer, _content) in &vertex.layers {
-                if layer == 0 { continue; }
-                let loaded = vertex.layer_loaded.get(&layer).copied().unwrap_or(false);
-                let length = vertex.layer_lengths.get(&layer).copied().unwrap_or(0);
+                let loaded = vertex.is_layer_loaded(layer);
+                let length = vertex.layer_length(layer);
                 if !loaded && length > 255 {
                     let key = (vertex_id, layer);
                     if !app_state.pending_content_requests.contains(&key) &&
