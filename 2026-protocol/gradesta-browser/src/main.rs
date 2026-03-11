@@ -1839,8 +1839,9 @@ fn auto_play_audio_on_navigate(
 
     // Update last_vertex tracking
     if current_id != last_id {
-        // Stop any playing audio when leaving a cell
+        // Stop any playing audio/TTS when leaving a cell
         stop_audio(&playback_state);
+        tts::stop();
 
         // Clear image modal when navigating away from the image's vertex
         if app_state.show_image_modal {
