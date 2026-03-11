@@ -16,7 +16,7 @@ use crate::graph::GraphState;
 use crate::media::MediaCache;
 use crate::network::{WsCommand, WsCommandTx};
 use crate::sidebar::SidebarMode;
-use crate::state::{AppState, InputMode, PendingCell, PendingCellKind, PendingAudioStatus, PendingVertexCreation, PlaybackBoostState};
+use crate::state::{AppState, InputMode, PendingCell, PendingCellKind, PendingAudioStatus, PendingVertexCreation, PlaybackBoostState, TranscriptionMode};
 use crate::state::{EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
 use crate::state::{ZOOM_MAX, ZOOM_MIN, ZOOM_STEP};
 use crate::tts;
@@ -376,6 +376,17 @@ pub fn execute_commands(
         execute_start_recording(app_state, audio_signal, playback_state);
     }
 
+    // GlobalCycleTranscriptionMode - Cycle through transcription modes
+    if cmds.has(Command::GlobalCycleTranscriptionMode) {
+        results.any_command_processed = true;
+        app_state.transcription_mode = app_state.transcription_mode.next();
+        app_state.status = format!("Transcription: {}", app_state.transcription_mode.label());
+        // Persist to config
+        let mut config = voice_command::VoiceCommandConfig::load();
+        config.transcription_mode = app_state.transcription_mode;
+        let _ = config.save();
+    }
+
     // RecordingSave - Check for recording key release (push-to-talk stop)
     if let InputMode::Recording { .. } = &app_state.input_mode {
         if cmds.has(Command::RecordingSave) {
@@ -558,6 +569,8 @@ pub fn execute_commands(
                                 data: text_bytes,
                                 mime: "text/plain".to_string(),
                                 local_placeholder_id: None,
+                                transcription_mode: TranscriptionMode::Off,
+                                cloud_transcript: None,
                             });
                             app_state.status = "Creating new note...".to_string();
                         } else {
@@ -657,6 +670,8 @@ pub fn execute_commands(
                             data: text_bytes,
                             mime: "text/plain".to_string(),
                             local_placeholder_id: Some(local_id),
+                            transcription_mode: TranscriptionMode::Off,
+                            cloud_transcript: None,
                         });
 
                         // Update the placeholder with action_id so we can match server response
@@ -1251,6 +1266,7 @@ fn execute_start_recording(
     stop_audio(playback_state);
 
     let direction = app_state.last_nav_direction;
+    let transcription_mode = app_state.transcription_mode;
 
     // Clear samples and reset stop signal
     if let Ok(mut samples) = app_state.audio_samples.lock() {
@@ -1259,6 +1275,21 @@ fn execute_start_recording(
     if let Ok(mut stop) = audio_signal.should_stop.lock() {
         *stop = false;
     }
+
+    // For Cloud mode, set up live transcription (no voice command events)
+    let live_transcript = if transcription_mode == TranscriptionMode::Cloud {
+        let transcript = Arc::new(Mutex::new(String::new()));
+        // Start Soniox WebSocket for audio note transcription (no voice command modal)
+        let ws_audio_tx = voice_command::start_audio_note_transcription(transcript.clone());
+        if ws_audio_tx.is_none() {
+            eprintln!("Failed to start cloud transcription - no Soniox API key");
+            None
+        } else {
+            Some((transcript, ws_audio_tx))
+        }
+    } else {
+        None
+    };
 
     // Create placeholder cell immediately when recording starts
     if let Some(current_id) = app_state.current_vertex {
@@ -1276,14 +1307,15 @@ fn execute_start_recording(
                 status: PendingAudioStatus::Recording,
                 waveform: Vec::new(),
                 current_audio_level: 0.0,
+                live_transcript: live_transcript.as_ref().map(|(t, _)| t.clone()),
             },
         };
 
         app_state.pending_audio_cells.insert(local_id, pending_cell);
         app_state.recording_placeholder_id = Some(local_id);
         eprintln!(
-            "Created recording placeholder: local_id={} direction={} from_vertex={}",
-            local_id, direction, current_id
+            "Created recording placeholder: local_id={} direction={} from_vertex={} cloud={}",
+            local_id, direction, current_id, live_transcript.is_some()
         );
     }
 
@@ -1291,15 +1323,38 @@ fn execute_start_recording(
     let samples_clone = app_state.audio_samples.clone();
     let stop_signal = audio_signal.should_stop.clone();
     let sample_rate_out = audio_signal.actual_sample_rate.clone();
-    thread::spawn(move || {
-        if let Err(e) = run_audio_recording(samples_clone, stop_signal, sample_rate_out) {
-            eprintln!("Audio recording error: {}", e);
-        }
-    });
+
+    if let Some((_, ws_audio_tx)) = live_transcript {
+        // Cloud mode: stream audio to WebSocket for live transcription
+        let audio_level = Arc::new(Mutex::new(0.0f32));
+        thread::spawn(move || {
+            if let Err(e) = run_voice_recording_with_streaming(
+                samples_clone,
+                stop_signal,
+                sample_rate_out,
+                ws_audio_tx,
+                audio_level,
+            ) {
+                eprintln!("Audio recording error: {}", e);
+            }
+        });
+    } else {
+        // Local or Off mode: standard recording
+        thread::spawn(move || {
+            if let Err(e) = run_audio_recording(samples_clone, stop_signal, sample_rate_out) {
+                eprintln!("Audio recording error: {}", e);
+            }
+        });
+    }
 
     app_state.recording_start = Some(Instant::now());
     app_state.input_mode = InputMode::Recording { direction };
-    app_state.status = "🔴 Recording... (release key to save)".to_string();
+    let mode_label = match transcription_mode {
+        TranscriptionMode::Off => "(no transcription)",
+        TranscriptionMode::Local => "(Whisper after)",
+        TranscriptionMode::Cloud => "(live transcription)",
+    };
+    app_state.status = format!("🔴 Recording {} (release key to save)", mode_label);
 }
 
 // ============================================================================
@@ -1856,6 +1911,8 @@ pub fn execute_voice_action(
                                                 data,
                                                 mime,
                                                 local_placeholder_id: None,
+                                                transcription_mode: TranscriptionMode::Off,
+                                                cloud_transcript: None,
                                             });
 
                                             app_state.status = format!("Creating image cell {}...", direction_name(direction));

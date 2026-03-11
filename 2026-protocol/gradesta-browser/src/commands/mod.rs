@@ -95,6 +95,8 @@ pub enum Command {
     GlobalToggleDebugPanel,
     /// Toggle the identity panel
     GlobalToggleIdentityPanel,
+    /// Cycle transcription mode (Off/Local/Cloud)
+    GlobalCycleTranscriptionMode,
 
     // === Graph Context Commands ===
     /// Show the undo tree for navigation
@@ -265,6 +267,7 @@ impl Command {
             Command::GlobalOpenContextMenu => "global.open_context_menu",
             Command::GlobalToggleDebugPanel => "global.toggle_debug_panel",
             Command::GlobalToggleIdentityPanel => "global.toggle_identity_panel",
+            Command::GlobalCycleTranscriptionMode => "global.cycle_transcription_mode",
             // Graph
             Command::GraphShowUndoTree => "graph.show_undo_tree",
             Command::GraphReturnFromUndoTree => "graph.return_from_undo_tree",
@@ -364,6 +367,7 @@ impl Command {
             "global.open_context_menu" => Some(Command::GlobalOpenContextMenu),
             "global.toggle_debug_panel" => Some(Command::GlobalToggleDebugPanel),
             "global.toggle_identity_panel" => Some(Command::GlobalToggleIdentityPanel),
+            "global.cycle_transcription_mode" => Some(Command::GlobalCycleTranscriptionMode),
             // Graph
             "graph.show_undo_tree" => Some(Command::GraphShowUndoTree),
             "graph.return_from_undo_tree" => Some(Command::GraphReturnFromUndoTree),
@@ -464,6 +468,7 @@ impl Command {
             Command::GlobalOpenContextMenu => "Open context menu",
             Command::GlobalToggleDebugPanel => "Toggle debug panel",
             Command::GlobalToggleIdentityPanel => "Toggle identity panel",
+            Command::GlobalCycleTranscriptionMode => "Cycle transcription mode",
             // Graph
             Command::GraphShowUndoTree => "Show undo history tree",
             Command::GraphReturnFromUndoTree => "Return from undo tree view",
@@ -561,7 +566,8 @@ impl Command {
             | Command::GlobalToggleVoiceSettings
             | Command::GlobalOpenContextMenu
             | Command::GlobalToggleDebugPanel
-            | Command::GlobalToggleIdentityPanel => Context::Global,
+            | Command::GlobalToggleIdentityPanel
+            | Command::GlobalCycleTranscriptionMode => Context::Global,
 
             Command::GraphShowUndoTree
             | Command::GraphReturnFromUndoTree
@@ -661,6 +667,7 @@ impl Command {
             Command::GlobalOpenContextMenu,
             Command::GlobalToggleDebugPanel,
             Command::GlobalToggleIdentityPanel,
+            Command::GlobalCycleTranscriptionMode,
             // Graph
             Command::GraphShowUndoTree,
             Command::GraphReturnFromUndoTree,
@@ -835,6 +842,7 @@ impl Command {
             Command::GlobalOpenContextMenu => &["context menu", "open menu", "menu"],
             Command::GlobalToggleDebugPanel => &["debug panel", "toggle debug", "show debug"],
             Command::GlobalToggleIdentityPanel => &["identity panel", "toggle identity", "show identity"],
+            Command::GlobalCycleTranscriptionMode => &["transcription mode", "cycle transcription"],
             Command::GlobalZoomIn => &["zoom in", "bigger", "magnify"],
             Command::GlobalZoomOut => &["zoom out", "smaller", "shrink"],
             Command::GlobalZoomReset => &["reset zoom", "normal zoom", "zoom 100"],

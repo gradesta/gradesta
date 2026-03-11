@@ -252,6 +252,51 @@ pub fn generate_waveform(data: &[u8], num_bars: usize) -> Option<Vec<f32>> {
     Some(waveform)
 }
 
+/// Generate waveform from raw f32 samples (for live recording visualization)
+/// Uses the same algorithm as generate_waveform but works with raw samples.
+/// Applies visual normalization to match the post-encoding normalized waveform.
+pub fn generate_waveform_from_samples(samples: &[f32], num_bars: usize) -> Vec<f32> {
+    if samples.is_empty() || num_bars == 0 {
+        return vec![0.0; num_bars];
+    }
+
+    // Take absolute values
+    let abs_samples: Vec<f32> = samples.iter().map(|s| s.abs()).collect();
+
+    // Downsample to num_bars by taking max amplitude in each chunk
+    let chunk_size = abs_samples.len() / num_bars;
+    if chunk_size == 0 {
+        // Not enough samples yet - pad with zeros
+        let mut waveform: Vec<f32> = abs_samples.clone();
+        waveform.resize(num_bars, 0.0);
+        return waveform;
+    }
+
+    let waveform: Vec<f32> = abs_samples
+        .chunks(chunk_size)
+        .take(num_bars)
+        .map(|chunk| {
+            chunk.iter().cloned().fold(0.0f32, |a, b| a.max(b))
+        })
+        .collect();
+
+    // Pad if we don't have enough chunks
+    let mut result = waveform;
+    result.resize(num_bars, 0.0);
+
+    // Apply visual normalization - scale so the peak is at ~0.8
+    // This matches the effect of audio normalization that happens during encoding
+    let max_val = result.iter().cloned().fold(0.0f32, |a, b| a.max(b));
+    if max_val > 0.001 {
+        let scale = 0.8 / max_val;
+        for v in &mut result {
+            *v *= scale;
+        }
+    }
+
+    result
+}
+
 /// Get or generate waveform for an audio vertex
 pub fn get_or_generate_waveform<'a>(
     vertex_id: u64,

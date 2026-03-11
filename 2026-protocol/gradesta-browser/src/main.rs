@@ -136,6 +136,10 @@ fn main() {
     let mut app_state = AppState::default();
     sync_all_identities(&mut app_state);
 
+    // Load transcription mode from config
+    let voice_config = VoiceCommandConfig::load();
+    app_state.transcription_mode = voice_config.transcription_mode;
+
     // Initialize debug log file
     let debug_log_path = debug_log::init_debug_log();
     eprintln!("Debug log: {}", debug_log_path.display());
@@ -963,6 +967,19 @@ fn ui_system(
                     }
                 }
                 ui.separator();
+                // Transcription mode button
+                let trans_label = app_state.transcription_mode.label();
+                if ui.button(trans_label)
+                    .on_hover_text("Cycle transcription mode (Off/Local/Cloud)")
+                    .clicked()
+                {
+                    app_state.transcription_mode = app_state.transcription_mode.next();
+                    // Persist to config
+                    let mut config = voice_command::VoiceCommandConfig::load();
+                    config.transcription_mode = app_state.transcription_mode;
+                    let _ = config.save();
+                }
+                ui.separator();
                 // Debug panel toggle
                 let debug_label = if app_state.show_debug_panel { "🐛 Debug ON" } else { "🐛 Debug" };
                 if ui.button(debug_label).on_hover_text("Toggle debug log panel").clicked() {
@@ -1386,6 +1403,8 @@ fn ui_system(
                                 data: text_bytes,
                                 mime: "text/plain".to_string(),
                                 local_placeholder_id: Some(local_id),
+                                transcription_mode: state::TranscriptionMode::Off,
+                                cloud_transcript: None,
                             });
 
                             // Update the placeholder with action_id

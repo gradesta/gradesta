@@ -207,9 +207,25 @@ pub fn render_grid_view(
             return;
         };
 
-        let grid = build_grid_view(graph, Some(current_id), &app_state.pending_audio_cells, app_state.loading_portal_cell.as_ref());
-
+        // Update live waveform for any recording cells
         let zoom = app_state.zoom_level;
+        let cell_width = 320.0f32 * zoom;
+        let num_bars = ((cell_width - 8.0) / 3.0) as usize;
+        let num_bars = num_bars.max(10).min(64);
+
+        if let Ok(samples) = app_state.audio_samples.lock() {
+            if !samples.is_empty() {
+                let live_waveform = crate::media::generate_waveform_from_samples(&samples, num_bars);
+                // Update all recording placeholders with the live waveform
+                for pending_cell in app_state.pending_audio_cells.values_mut() {
+                    if pending_cell.is_recording() {
+                        pending_cell.set_waveform(live_waveform.clone());
+                    }
+                }
+            }
+        }
+
+        let grid = build_grid_view(graph, Some(current_id), &app_state.pending_audio_cells, app_state.loading_portal_cell.as_ref());
         let cell_width = 320.0f32 * zoom;
         let padding = 4.0f32 * zoom;
         let font_size = 13.0f32 * zoom;
@@ -663,6 +679,7 @@ fn render_portal_shadow(
 }
 
 /// Render a placeholder cell for a pending audio recording
+/// Layout matches final audio cell: waveform on top half, text on bottom half
 fn render_placeholder_cell(
     painter: &egui::Painter,
     rect: egui::Rect,
@@ -671,36 +688,18 @@ fn render_placeholder_cell(
     font_size: f32,
     is_current: bool,
 ) {
-    let corner_radius = 8.0 * zoom;
+    let corner_radius = 4.0 * zoom; // Same as rendering.rs
     let is_recording = placeholder.pending_cell.is_recording();
     let is_text = placeholder.pending_cell.is_text();
 
-    // Background color based on kind and status
-    let bg_color = if is_text {
-        egui::Color32::from_rgba_unmultiplied(40, 50, 70, 230) // Blue-ish for text
+    // Use exact same colors as audio cells in rendering.rs
+    let (bg_color, border_color) = if is_current {
+        (egui::Color32::from_rgb(50, 100, 70), egui::Color32::from_rgb(100, 200, 120))
     } else {
-        match placeholder.pending_cell.audio_status() {
-            Some(PendingAudioStatus::Recording) => egui::Color32::from_rgba_unmultiplied(80, 40, 40, 230),
-            Some(PendingAudioStatus::Encoding) => egui::Color32::from_rgba_unmultiplied(60, 60, 80, 220),
-            Some(PendingAudioStatus::Uploading) => egui::Color32::from_rgba_unmultiplied(60, 80, 60, 220),
-            Some(PendingAudioStatus::Transcribing) => egui::Color32::from_rgba_unmultiplied(80, 60, 80, 220),
-            Some(PendingAudioStatus::Complete) => egui::Color32::from_rgba_unmultiplied(60, 80, 80, 220),
-            None => egui::Color32::from_rgba_unmultiplied(50, 50, 60, 220),
-        }
+        // Audio cell colors
+        (egui::Color32::from_rgb(70, 60, 50), egui::Color32::from_rgb(140, 120, 100))
     };
 
-    // Border color - current cell gets highlight, recording pulses red
-    let elapsed = placeholder.pending_cell.created_at.elapsed().as_secs_f32();
-    let pulse = ((elapsed * 3.0).sin() * 0.5 + 0.5) as u8;
-    let border_color = if is_recording {
-        egui::Color32::from_rgba_unmultiplied(220 + pulse / 8, 100 + pulse / 2, 100, 255)
-    } else if is_current {
-        egui::Color32::from_rgb(100, 200, 255) // Same highlight as current vertex cells
-    } else {
-        egui::Color32::from_rgba_unmultiplied(100 + pulse / 2, 150 + pulse / 2, 200, 200)
-    };
-
-    // Border thickness - thicker when current (same as vertex cards)
     let border_thickness = if is_current { 3.0 } else { 2.0 };
 
     // Draw background
@@ -712,118 +711,177 @@ fn render_placeholder_cell(
         egui::StrokeKind::Outside,
     );
 
-    // Text cells don't need any content rendered here - the TextEdit overlay handles it
+    // Text cells don't need any content rendered here
     if is_text {
         return;
     }
 
-    if is_recording {
-        // Draw live audio level meter for recording
-        draw_audio_level_meter(
-            painter,
-            rect,
-            placeholder.pending_cell.audio_level(),
-            zoom,
-        );
-    } else {
-        // Draw waveform visualization for processing states
-        if let Some(waveform) = placeholder.pending_cell.waveform() {
-            if !waveform.is_empty() {
-                let waveform_rect = egui::Rect::from_min_size(
-                    rect.min + egui::vec2(8.0 * zoom, rect.height() * 0.3),
-                    egui::vec2(rect.width() - 16.0 * zoom, rect.height() * 0.4),
-                );
-                draw_waveform(painter, waveform_rect, waveform, zoom, border_color);
-            }
+    // Inner rect with padding (same as rendering.rs)
+    let inner_rect = rect.shrink(4.0 * zoom);
+    let section_height = inner_rect.height() / 2.0;
+
+    // === TOP SECTION: Waveform/level visualization ===
+    let waveform_rect = egui::Rect::from_min_size(
+        inner_rect.min,
+        egui::vec2(inner_rect.width(), section_height),
+    ).shrink(2.0 * zoom);
+
+    // Draw waveform - same rendering for recording and finished states
+    if let Some(waveform) = placeholder.pending_cell.waveform() {
+        if !waveform.is_empty() {
+            let waveform_color = if is_current {
+                egui::Color32::from_rgb(100, 200, 255)
+            } else {
+                egui::Color32::from_rgb(140, 120, 100)
+            };
+            crate::media::draw_waveform(painter, waveform_rect, waveform, waveform_color, egui::Color32::TRANSPARENT);
         }
+    } else if is_recording {
+        // Fallback: draw animated bars if no waveform data yet (first few frames)
+        let level = placeholder.pending_cell.audio_level();
+        draw_live_waveform_bars(painter, waveform_rect, level, is_current, zoom);
     }
 
-    // Draw status text for audio cells
-    let status_text = match placeholder.pending_cell.audio_status() {
-        Some(PendingAudioStatus::Recording) => "🔴 Recording...",
-        Some(PendingAudioStatus::Encoding) => "Encoding...",
-        Some(PendingAudioStatus::Uploading) => "Uploading...",
-        Some(PendingAudioStatus::Transcribing) => "Transcribing...",
-        Some(PendingAudioStatus::Complete) => "Complete",
-        None => return, // Text cells don't show status here
-    };
+    // Draw speaker/mic icon in top-left (same position as final cell)
+    let icon = if is_recording { "🔴" } else { "🔊" };
+    painter.text(
+        egui::pos2(waveform_rect.left() + 2.0 * zoom, waveform_rect.top() + 2.0 * zoom),
+        egui::Align2::LEFT_TOP,
+        icon,
+        egui::FontId::proportional(font_size * 0.6),
+        egui::Color32::from_rgba_unmultiplied(255, 255, 255, 150),
+    );
 
-    let status_pos = egui::pos2(rect.center().x, rect.max.y - 12.0 * zoom);
-    let status_color = if is_recording {
-        egui::Color32::from_rgb(255, 150, 150)
+    // === BOTTOM SECTION: Text (live transcript or status) ===
+    let text_rect = egui::Rect::from_min_size(
+        inner_rect.min + egui::vec2(0.0, section_height),
+        egui::vec2(inner_rect.width(), section_height),
+    );
+
+    // Get live transcript if available
+    let transcript_text = placeholder.pending_cell.live_transcript()
+        .and_then(|t| t.lock().ok().map(|s| s.clone()))
+        .filter(|s| !s.is_empty());
+
+    if let Some(text) = transcript_text {
+        // Draw transcript in the same style as final text
+        let text_font_size = font_size * 0.9;
+        let char_width = text_font_size * 0.5;
+        let line_height = text_font_size * 1.2;
+        let chars_per_line = ((text_rect.width() - 4.0 * zoom) / char_width) as usize;
+        let chars_per_line = chars_per_line.max(5);
+        let max_lines = ((text_rect.height() - 4.0 * zoom) / line_height) as usize;
+        let max_lines = max_lines.max(1);
+
+        // Word wrap
+        let max_chars = 280.min(chars_per_line * max_lines);
+        let text_to_wrap: String = text.chars().take(max_chars).collect();
+
+        let mut lines: Vec<String> = Vec::new();
+        let mut current_line = String::new();
+
+        for word in text_to_wrap.split_whitespace() {
+            if current_line.is_empty() {
+                current_line = word.to_string();
+            } else if current_line.chars().count() + 1 + word.chars().count() <= chars_per_line {
+                current_line.push(' ');
+                current_line.push_str(word);
+            } else {
+                lines.push(current_line);
+                current_line = word.to_string();
+                if lines.len() >= max_lines {
+                    break;
+                }
+            }
+        }
+        if !current_line.is_empty() && lines.len() < max_lines {
+            lines.push(current_line);
+        }
+
+        // Draw each line (same as rendering.rs - centered)
+        let total_text_height = lines.len() as f32 * line_height;
+        let start_y = text_rect.center().y - total_text_height / 2.0 + line_height / 2.0;
+
+        for (i, line) in lines.iter().enumerate() {
+            painter.text(
+                egui::pos2(text_rect.center().x, start_y + i as f32 * line_height),
+                egui::Align2::CENTER_CENTER,
+                line,
+                egui::FontId::proportional(text_font_size),
+                egui::Color32::WHITE,
+            );
+        }
     } else {
-        egui::Color32::from_rgb(180, 180, 200)
-    };
-    painter.text(
-        status_pos,
-        egui::Align2::CENTER_CENTER,
-        status_text,
-        egui::FontId::proportional(font_size * 0.85),
-        status_color,
-    );
+        // No transcript yet - show status in the text area
+        let status_text = match placeholder.pending_cell.audio_status() {
+            Some(PendingAudioStatus::Recording) => "Recording...",
+            Some(PendingAudioStatus::Encoding) => "Encoding...",
+            Some(PendingAudioStatus::Uploading) => "Uploading...",
+            Some(PendingAudioStatus::Transcribing) => "Transcribing...",
+            Some(PendingAudioStatus::Complete) => "",
+            None => "",
+        };
 
-    // Draw audio icon at top
-    let icon_pos = egui::pos2(rect.center().x, rect.min.y + 16.0 * zoom);
-    painter.text(
-        icon_pos,
-        egui::Align2::CENTER_CENTER,
-        "🎤",
-        egui::FontId::proportional(font_size * 1.2),
-        egui::Color32::WHITE,
-    );
+        if !status_text.is_empty() {
+            painter.text(
+                text_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                status_text,
+                egui::FontId::proportional(font_size * 0.8),
+                egui::Color32::from_rgb(150, 150, 170),
+            );
+        }
+    }
 }
 
-/// Draw a live audio level meter (vertical bar that responds to microphone input)
-fn draw_audio_level_meter(
+/// Draw live waveform-style bars that animate based on audio level
+/// Uses exactly the same rendering as media::draw_waveform for visual consistency
+fn draw_live_waveform_bars(
     painter: &egui::Painter,
     rect: egui::Rect,
     level: f32,
-    zoom: f32,
+    is_current: bool,
+    _zoom: f32,
 ) {
-    let meter_width = 30.0 * zoom;
-    let meter_height = rect.height() * 0.5;
-    let meter_rect = egui::Rect::from_center_size(
-        egui::pos2(rect.center().x, rect.center().y - 5.0 * zoom),
-        egui::vec2(meter_width, meter_height),
-    );
+    // Match the number of bars that will be in the final waveform
+    let num_bars = (rect.width() / 3.0) as usize;
+    let num_bars = num_bars.max(10).min(64);
 
-    // Background
-    painter.rect_filled(
-        meter_rect,
-        4.0 * zoom,
-        egui::Color32::from_rgb(40, 40, 50),
-    );
+    let bar_width = rect.width() / num_bars as f32;
+    let center_y = rect.center().y;
+    let half_height = rect.height() * 0.4; // Same as media::draw_waveform
 
-    // Level bar (grows from bottom)
-    let level_height = meter_height * level.clamp(0.0, 1.0);
-    if level_height > 0.0 {
-        let level_rect = egui::Rect::from_min_max(
-            egui::pos2(meter_rect.min.x, meter_rect.max.y - level_height),
-            meter_rect.max,
+    // Use current time to animate bars
+    let time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f32();
+
+    // Use exactly the same colors as rendering.rs for audio cells
+    let color = if is_current {
+        egui::Color32::from_rgb(100, 200, 255)
+    } else {
+        egui::Color32::from_rgb(140, 120, 100)
+    };
+
+    for i in 0..num_bars {
+        let x = rect.left() + i as f32 * bar_width;
+
+        // Each bar has a different phase for wave effect
+        let phase = i as f32 * 0.4;
+        let wave = ((time * 6.0 + phase).sin() * 0.5 + 0.5) * level;
+        let bar_height = wave * half_height;
+
+        // Draw bar from center up and down (mirrored, same as media::draw_waveform)
+        let bar_rect = egui::Rect::from_min_max(
+            egui::pos2(x, center_y - bar_height),
+            egui::pos2(x + bar_width * 0.8, center_y + bar_height),
         );
-
-        // Color gradient based on level (green -> yellow -> red)
-        let color = if level < 0.5 {
-            egui::Color32::from_rgb(80, 200, 80)
-        } else if level < 0.8 {
-            egui::Color32::from_rgb(200, 200, 80)
-        } else {
-            egui::Color32::from_rgb(200, 80, 80)
-        };
-
-        painter.rect_filled(level_rect, 4.0 * zoom, color);
+        painter.rect_filled(bar_rect, 1.0, color);
     }
-
-    // Border
-    painter.rect_stroke(
-        meter_rect,
-        4.0 * zoom,
-        egui::Stroke::new(1.0 * zoom, egui::Color32::from_rgb(100, 100, 120)),
-        egui::StrokeKind::Outside,
-    );
 }
 
-/// Draw a waveform visualization from amplitude data
+/// Draw a waveform visualization from amplitude data (legacy, kept for compatibility)
 fn draw_waveform(
     painter: &egui::Painter,
     rect: egui::Rect,

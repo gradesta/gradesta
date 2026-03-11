@@ -8,7 +8,7 @@ use crate::audio::AudioRecordingSignal;
 use crate::graph::GraphState;
 use crate::identity;
 use crate::network::{NetEventsTx, ServerEvent, WsCommand, WsCommandTx};
-use crate::state::{AppState, IdentificationAction, InputMode, PendingVertexCreation};
+use crate::state::{AppState, IdentificationAction, InputMode, PendingVertexCreation, TranscriptionMode};
 use crate::state::{EDGE_DOWN, EDGE_EAST, EDGE_NORTH, EDGE_SOUTH, EDGE_UP, EDGE_WEST};
 use super::input::CapturedCommands;
 
@@ -102,6 +102,8 @@ fn submit_new_vertex(
         data: text_bytes,
         mime: "text/plain".to_string(),
         local_placeholder_id: None,
+        transcription_mode: TranscriptionMode::Off,
+        cloud_transcript: None,
     });
     app_state.status = "Creating new note...".to_string();
 }

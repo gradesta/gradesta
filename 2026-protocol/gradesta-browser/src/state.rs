@@ -16,6 +16,43 @@ use crate::keybindings::{KeybindingResolver, KeybindingsConfig};
 use crate::local_services::LocalServices;
 use crate::sidebar::{KeybindingsEditorState, SidebarState};
 use crate::voice_command::VoiceCommandState;
+use serde::{Deserialize, Serialize};
+
+// ============================================================================
+// Transcription Mode
+// ============================================================================
+
+/// Transcription mode for audio notes
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum TranscriptionMode {
+    /// No transcription
+    Off,
+    /// Use Whisper after recording (existing behavior)
+    #[default]
+    Local,
+    /// Use Soniox with live transcription (words appear as you speak)
+    Cloud,
+}
+
+impl TranscriptionMode {
+    /// Cycle to the next transcription mode
+    pub fn next(self) -> Self {
+        match self {
+            TranscriptionMode::Off => TranscriptionMode::Local,
+            TranscriptionMode::Local => TranscriptionMode::Cloud,
+            TranscriptionMode::Cloud => TranscriptionMode::Off,
+        }
+    }
+
+    /// Get the display label for this mode
+    pub fn label(self) -> &'static str {
+        match self {
+            TranscriptionMode::Off => "Transcribe OFF",
+            TranscriptionMode::Local => "Transcribe Local",
+            TranscriptionMode::Cloud => "Transcribe Cloud",
+        }
+    }
+}
 
 // ============================================================================
 // Elf System Types
@@ -329,6 +366,10 @@ pub struct PendingVertexCreation {
     pub mime: String,
     /// Local placeholder ID (if this was an async audio cell)
     pub local_placeholder_id: Option<u64>,
+    /// Transcription mode used for this recording
+    pub transcription_mode: TranscriptionMode,
+    /// Final transcript from cloud transcription (if available)
+    pub cloud_transcript: Option<String>,
 }
 
 /// Kind-specific data for pending cells
@@ -342,6 +383,8 @@ pub enum PendingCellKind {
         waveform: Vec<f32>,
         /// Current audio level (0.0-1.0) for live recording visualization
         current_audio_level: f32,
+        /// Live transcript for cloud transcription mode (updated in real-time as user speaks)
+        live_transcript: Option<Arc<Mutex<String>>>,
     },
     /// Text being edited inline
     Text,
@@ -424,6 +467,14 @@ impl PendingCell {
     pub fn set_waveform(&mut self, new_waveform: Vec<f32>) {
         if let PendingCellKind::Audio { waveform, .. } = &mut self.kind {
             *waveform = new_waveform;
+        }
+    }
+
+    /// Get live transcript if this is an audio cell with cloud transcription
+    pub fn live_transcript(&self) -> Option<&Arc<Mutex<String>>> {
+        match &self.kind {
+            PendingCellKind::Audio { live_transcript, .. } => live_transcript.as_ref(),
+            _ => None,
         }
     }
 
@@ -668,6 +719,8 @@ pub struct AppState {
     pub keybindings: KeybindingResolver,
     /// Text-to-speech mode - read text cells aloud on navigation
     pub tts_mode: bool,
+    /// Transcription mode for audio notes (Off/Local/Cloud)
+    pub transcription_mode: TranscriptionMode,
     // Command bar state
     pub show_command_bar: bool,
     pub command_bar_input: String,
@@ -914,6 +967,7 @@ impl Default for AppState {
             sidebar: SidebarState::default(),
             keybindings: KeybindingResolver::new(&KeybindingsConfig::load().unwrap_or_default()),
             tts_mode: true,
+            transcription_mode: TranscriptionMode::default(),
             show_command_bar: false,
             command_bar_input: String::new(),
             command_bar_selected: 0,

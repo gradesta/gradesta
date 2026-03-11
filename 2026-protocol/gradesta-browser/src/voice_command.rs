@@ -17,6 +17,7 @@ use tungstenite::{connect, Message};
 use tungstenite::stream::MaybeTlsStream;
 
 use crate::commands::Command;
+use crate::state::TranscriptionMode;
 
 // ============================================================================
 // Configuration
@@ -45,6 +46,9 @@ pub struct VoiceCommandConfig {
     /// Soniox API key (optional - falls back to file if not set)
     #[serde(default)]
     pub soniox_api_key: String,
+    /// Transcription mode for audio notes (Off/Local/Cloud)
+    #[serde(default)]
+    pub transcription_mode: TranscriptionMode,
 }
 
 impl Default for VoiceCommandConfig {
@@ -54,6 +58,7 @@ impl Default for VoiceCommandConfig {
             stt_provider: "soniox".to_string(),
             requesty_api_key: String::new(),
             soniox_api_key: String::new(),
+            transcription_mode: TranscriptionMode::default(),
         }
     }
 }
@@ -378,6 +383,183 @@ pub fn start_realtime_transcription(
     });
 
     Some(audio_tx)
+}
+
+/// Start real-time transcription for audio notes (no voice command events)
+/// Returns a channel to send audio chunks to. The live_transcript is updated in real-time.
+/// When the audio channel is dropped (recording stops), the WebSocket thread finishes cleanly
+/// without triggering any voice command modals.
+pub fn start_audio_note_transcription(
+    live_transcript: Arc<Mutex<String>>,
+) -> Option<Sender<Vec<u8>>> {
+    let api_key = match load_soniox_api_key() {
+        Some(key) => {
+            eprintln!("Soniox API key loaded for audio note ({} chars)", key.len());
+            key
+        }
+        None => {
+            eprintln!("No Soniox API key found for audio note transcription");
+            return None;
+        }
+    };
+
+    // Channel for sending audio chunks to the WebSocket thread
+    let (audio_tx, audio_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = unbounded();
+
+    thread::spawn(move || {
+        if let Err(e) = run_soniox_websocket_audio_note(api_key, audio_rx, live_transcript) {
+            eprintln!("Soniox audio note WebSocket error: {}", e);
+        }
+    });
+
+    Some(audio_tx)
+}
+
+/// Soniox WebSocket handler for audio notes - just updates live_transcript, no events
+fn run_soniox_websocket_audio_note(
+    api_key: String,
+    audio_rx: Receiver<Vec<u8>>,
+    live_transcript: Arc<Mutex<String>>,
+) -> Result<(), String> {
+    let url = "wss://stt-rt.soniox.com/transcribe-websocket";
+    eprintln!("Connecting to Soniox WebSocket for audio note: {}", url);
+
+    let (mut ws, _response) = connect(url)
+        .map_err(|e| format!("WebSocket connection failed: {}", e))?;
+
+    eprintln!("Soniox WebSocket connected for audio note, sending config...");
+
+    let config = serde_json::json!({
+        "api_key": api_key,
+        "model": "stt-rt-preview",
+        "audio_format": "s16le",
+        "sample_rate": 16000,
+        "num_channels": 1,
+        "language_hints": ["en"]
+    });
+
+    ws.send(Message::Text(config.to_string()))
+        .map_err(|e| format!("Failed to send config: {}", e))?;
+
+    // Set non-blocking mode
+    match ws.get_ref() {
+        MaybeTlsStream::Plain(stream) => {
+            stream.set_nonblocking(true).ok();
+        }
+        MaybeTlsStream::NativeTls(tls_stream) => {
+            tls_stream.get_ref().set_nonblocking(true).ok();
+        }
+        _ => {}
+    }
+
+    let mut final_transcript = String::new();
+    let mut interim_transcript = String::new();
+    let mut end_of_stream_sent = false;
+    let mut end_of_stream_time: Option<std::time::Instant> = None;
+    let mut audio_chunks_sent = 0usize;
+    let mut total_bytes_sent = 0usize;
+
+    loop {
+        // Timeout after end-of-stream
+        if let Some(eos_time) = end_of_stream_time {
+            if eos_time.elapsed() > std::time::Duration::from_millis(500) {
+                eprintln!("Audio note transcription complete");
+                // Final update to live_transcript
+                let final_text = format!("{}{}", final_transcript, interim_transcript);
+                if let Ok(mut t) = live_transcript.lock() {
+                    *t = final_text;
+                }
+                return Ok(());
+            }
+        }
+
+        // Receive audio chunks
+        if !end_of_stream_sent {
+            match audio_rx.try_recv() {
+                Ok(chunk) => {
+                    let chunk_len = chunk.len();
+                    if let Err(e) = ws.send(Message::Binary(chunk)) {
+                        eprintln!("Failed to send audio: {}", e);
+                        break;
+                    }
+                    audio_chunks_sent += 1;
+                    total_bytes_sent += chunk_len;
+                    if audio_chunks_sent % 10 == 1 {
+                        eprintln!("Audio note: sent {} chunks ({} bytes)", audio_chunks_sent, total_bytes_sent);
+                    }
+                }
+                Err(crossbeam_channel::TryRecvError::Empty) => {}
+                Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                    eprintln!("Audio note recording stopped after {} chunks ({} bytes), sending end-of-stream", audio_chunks_sent, total_bytes_sent);
+                    let _ = ws.send(Message::Binary(vec![]));
+                    end_of_stream_sent = true;
+                    end_of_stream_time = Some(std::time::Instant::now());
+                }
+            }
+        }
+
+        // Read WebSocket responses
+        match ws.read() {
+            Ok(Message::Text(text)) => {
+                eprintln!("Audio note Soniox response: {}", text);
+                if let Ok(response) = serde_json::from_str::<SonioxResponse>(&text) {
+                    if let Some(error) = response.error {
+                        eprintln!("Audio note Soniox error: {}", error);
+                        return Err(error);
+                    }
+
+                    if let Some(tokens) = response.tokens {
+                        interim_transcript.clear();
+                        for token in &tokens {
+                            if token.is_final {
+                                final_transcript.push_str(&token.text);
+                            } else {
+                                interim_transcript.push_str(&token.text);
+                            }
+                        }
+
+                        // Update live transcript (no events sent)
+                        let display = format!("{}{}", final_transcript, interim_transcript);
+                        eprintln!("Audio note live transcript: \"{}\"", display);
+                        if let Ok(mut t) = live_transcript.lock() {
+                            *t = display.clone();
+                        }
+                    }
+
+                    if response.finished == Some(true) {
+                        let final_text = format!("{}{}", final_transcript, interim_transcript);
+                        if let Ok(mut t) = live_transcript.lock() {
+                            *t = final_text;
+                        }
+                        return Ok(());
+                    }
+                }
+            }
+            Ok(Message::Close(_)) => {
+                let final_text = format!("{}{}", final_transcript, interim_transcript);
+                if let Ok(mut t) = live_transcript.lock() {
+                    *t = final_text;
+                }
+                return Ok(());
+            }
+            Err(tungstenite::Error::Io(ref e)) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(e) => {
+                if matches!(e, tungstenite::Error::ConnectionClosed | tungstenite::Error::AlreadyClosed) {
+                    let final_text = format!("{}{}", final_transcript, interim_transcript);
+                    if let Ok(mut t) = live_transcript.lock() {
+                        *t = final_text;
+                    }
+                    return Ok(());
+                }
+                return Err(format!("WebSocket read error: {}", e));
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
 }
 
 fn run_soniox_websocket(

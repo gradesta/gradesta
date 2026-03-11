@@ -25,7 +25,7 @@ use crate::elf_http;
 use crate::graph::{GraphState, LayerContent};
 use crate::media::{is_image_data, MediaCache};
 use crate::network::{NetEventsTx, NetRx, ServerEvent, WsCommand, WsCommandTx};
-use crate::state::{AppState, InputMode, PendingAudioStatus, PendingIdentification, PendingVertexCreation};
+use crate::state::{AppState, InputMode, PendingAudioStatus, PendingIdentification, PendingVertexCreation, TranscriptionMode};
 use crate::video_player::VideoPlayer;
 use crate::whisper;
 use crate::ElfHttpTx;
@@ -471,34 +471,75 @@ fn handle_log(
             if pending.mime.starts_with("audio/") {
                 app_state.skip_autoplay_vertex = Some(vertex_id);
 
-                eprintln!("[{}] Starting async transcription for vertex {} (action={})", ts(), vertex_id, action_id);
-                let event_tx = net_tx.0.clone();
-                let target_vertex = vertex_id;
-                let transcript_action_id = app_state.next_action_id;
-                app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+                // Handle transcription based on mode
+                match pending.transcription_mode {
+                    TranscriptionMode::Off => {
+                        eprintln!("[{}] Transcription disabled for vertex {} (action={})", ts(), vertex_id, action_id);
+                    }
+                    TranscriptionMode::Cloud => {
+                        // For cloud mode, transcript was captured during recording
+                        if let Some(transcript) = pending.cloud_transcript {
+                            if !transcript.is_empty() {
+                                eprintln!("[{}] Using cloud transcript for vertex {}: {}", ts(), vertex_id, transcript);
+                                let transcript_action_id = app_state.next_action_id;
+                                app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
 
-                thread::spawn(move || {
-                    if whisper::is_model_available() {
-                        match whisper::transcribe(&pending.samples, pending.sample_rate) {
-                            Ok(text) => {
-                                let ts_str = {
-                                    let now = std::time::SystemTime::now()
-                                        .duration_since(std::time::UNIX_EPOCH)
-                                        .unwrap_or_default();
-                                    let secs = now.as_secs() % 86400;
-                                    let millis = now.subsec_millis();
-                                    format!("{:02}:{:02}:{:02}.{:03}", secs / 3600, (secs % 3600) / 60, secs % 60, millis)
-                                };
-                                eprintln!("[{}] Transcription complete: {}", ts_str, text);
-                                let _ = event_tx.send(ServerEvent::LocalSetVertexLabel {
+                                // Send to server immediately
+                                let _ = net_tx.0.send(ServerEvent::LocalSetVertexLabel {
                                     action_id: transcript_action_id,
-                                    vertex_id: target_vertex,
+                                    vertex_id,
                                     layer: 1,
                                     mime: "text/plain".to_string(),
-                                    data: text.into_bytes(),
+                                    data: transcript.into_bytes(),
                                 });
+                            } else {
+                                eprintln!("[{}] Cloud transcript is empty for vertex {}", ts(), vertex_id);
                             }
-                            Err(e) => {
+                        } else {
+                            eprintln!("[{}] No cloud transcript available for vertex {}", ts(), vertex_id);
+                        }
+                    }
+                    TranscriptionMode::Local => {
+                        eprintln!("[{}] Starting local Whisper transcription for vertex {} (action={})", ts(), vertex_id, action_id);
+                        let event_tx = net_tx.0.clone();
+                        let target_vertex = vertex_id;
+                        let transcript_action_id = app_state.next_action_id;
+                        app_state.next_action_id = app_state.next_action_id.wrapping_sub(1);
+
+                        thread::spawn(move || {
+                            if whisper::is_model_available() {
+                                match whisper::transcribe(&pending.samples, pending.sample_rate) {
+                                    Ok(text) => {
+                                        let ts_str = {
+                                            let now = std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap_or_default();
+                                            let secs = now.as_secs() % 86400;
+                                            let millis = now.subsec_millis();
+                                            format!("{:02}:{:02}:{:02}.{:03}", secs / 3600, (secs % 3600) / 60, secs % 60, millis)
+                                        };
+                                        eprintln!("[{}] Transcription complete: {}", ts_str, text);
+                                        let _ = event_tx.send(ServerEvent::LocalSetVertexLabel {
+                                            action_id: transcript_action_id,
+                                            vertex_id: target_vertex,
+                                            layer: 1,
+                                            mime: "text/plain".to_string(),
+                                            data: text.into_bytes(),
+                                        });
+                                    }
+                                    Err(e) => {
+                                        let ts_str = {
+                                            let now = std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap_or_default();
+                                            let secs = now.as_secs() % 86400;
+                                            let millis = now.subsec_millis();
+                                            format!("{:02}:{:02}:{:02}.{:03}", secs / 3600, (secs % 3600) / 60, secs % 60, millis)
+                                        };
+                                        eprintln!("[{}] Transcription failed: {}", ts_str, e);
+                                    }
+                                }
+                            } else {
                                 let ts_str = {
                                     let now = std::time::SystemTime::now()
                                         .duration_since(std::time::UNIX_EPOCH)
@@ -507,36 +548,28 @@ fn handle_log(
                                     let millis = now.subsec_millis();
                                     format!("{:02}:{:02}:{:02}.{:03}", secs / 3600, (secs % 3600) / 60, secs % 60, millis)
                                 };
-                                eprintln!("[{}] Transcription failed: {}", ts_str, e);
+                                eprintln!("[{}] Whisper model not available, skipping transcription", ts_str);
                             }
-                        }
-                    } else {
-                        let ts_str = {
-                            let now = std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default();
-                            let secs = now.as_secs() % 86400;
-                            let millis = now.subsec_millis();
-                            format!("{:02}:{:02}:{:02}.{:03}", secs / 3600, (secs % 3600) / 60, secs % 60, millis)
-                        };
-                        eprintln!("[{}] Whisper model not available, skipping transcription", ts_str);
+                        });
                     }
-                });
+                }
             }
         }
     } else if status == 202 {
         // 202 Accepted - request is being processed
-        // For text cells, navigate IMMEDIATELY on 202 (edges are already set up by now)
-        // For audio cells, we'll wait for 200 to handle transcription
+        // Navigate IMMEDIATELY on 202 for both text and audio cells (edges are already set up)
+        // Transcription handling still happens on 200 for audio
         if let Some(pending) = app_state.pending_creations.get(&action_id) {
-            if !pending.mime.starts_with("audio/") && vertex_id != 0 {
-                // Text cell - navigate immediately and clean up
+            if vertex_id != 0 {
                 // Clean up the local placeholder
                 if let Some(local_id) = pending.local_placeholder_id {
                     app_state.pending_audio_cells.remove(&local_id);
+                    if app_state.recording_placeholder_id == Some(local_id) {
+                        app_state.recording_placeholder_id = None;
+                    }
                 }
 
-                // Switch from submitting mode to Normal
+                // Switch from submitting mode to Normal (for text cells)
                 if let InputMode::InlineEdit { submitting: true, .. } = app_state.input_mode {
                     app_state.input_mode = InputMode::Normal;
                 }
@@ -550,9 +583,35 @@ fn handle_log(
                 } else {
                     app_state.current_vertex = Some(vertex_id);
                 }
+
+                // For audio cells, populate the vertex data so it displays immediately
+                if pending.mime.starts_with("audio/") {
+                    let entry = graph.vertices.entry(vertex_id).or_default();
+                    entry.id = vertex_id;
+                    entry.layers.insert(0, LayerContent {
+                        mime: pending.mime.clone(),
+                        data: pending.data.clone(),
+                    });
+                    entry.layer_lengths.insert(0, pending.data.len() as u32);
+                    entry.layer_loaded.insert(0, true);
+                    app_state.skip_autoplay_vertex = Some(vertex_id);
+
+                    // Also add the cloud transcript immediately so text is visible during transition
+                    if let Some(ref transcript) = pending.cloud_transcript {
+                        if !transcript.is_empty() {
+                            let transcript_bytes = transcript.as_bytes().to_vec();
+                            entry.layers.insert(1, LayerContent {
+                                mime: "text/plain".to_string(),
+                                data: transcript_bytes.clone(),
+                            });
+                            entry.layer_lengths.insert(1, transcript_bytes.len() as u32);
+                            entry.layer_loaded.insert(1, true);
+                        }
+                    }
+                }
             }
         }
-        // Don't remove pending_creation - wait for the final 200 status for cleanup
+        // Don't remove pending_creation - wait for the final 200 status for transcription
     } else {
 
         // If this was an async recording or text cell that failed, remove the placeholder
@@ -804,6 +863,14 @@ pub fn process_audio_results(
                         _ => 3, // default south
                     };
 
+                    // Extract transcription mode and cloud transcript from pending cell
+                    let (transcription_mode, cloud_transcript) = if let Some(transcript) = pending_cell.live_transcript() {
+                        let text = transcript.lock().ok().map(|t| t.clone()).filter(|t| !t.is_empty());
+                        (TranscriptionMode::Cloud, text)
+                    } else {
+                        (app_state.transcription_mode, None)
+                    };
+
                     // Send to server
                     if let Some(ref tx) = ws_cmd_tx.0 {
                         let _ = tx.send(WsCommand::CreateVertex {
@@ -824,12 +891,14 @@ pub fn process_audio_results(
                                 data: ogg_data,
                                 mime: "audio/ogg".to_string(),
                                 local_placeholder_id: Some(local_id),
+                                transcription_mode,
+                                cloud_transcript,
                             },
                         );
 
                         eprintln!(
-                            "[{}] Sent CreateVertex to server: action_id={} local_id={} from_vertex={} direction={}",
-                            ts(), action_id, local_id, pending_cell.from_vertex, dir_byte
+                            "[{}] Sent CreateVertex to server: action_id={} local_id={} from_vertex={} direction={} mode={:?}",
+                            ts(), action_id, local_id, pending_cell.from_vertex, dir_byte, transcription_mode
                         );
                     }
                 }
