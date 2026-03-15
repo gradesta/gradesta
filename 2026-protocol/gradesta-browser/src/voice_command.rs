@@ -460,10 +460,10 @@ fn run_soniox_websocket_audio_note(
     let mut total_bytes_sent = 0usize;
 
     loop {
-        // Timeout after end-of-stream
+        // Timeout after end-of-stream - give Soniox time to process final audio
         if let Some(eos_time) = end_of_stream_time {
-            if eos_time.elapsed() > std::time::Duration::from_millis(500) {
-                eprintln!("Audio note transcription complete");
+            if eos_time.elapsed() > std::time::Duration::from_millis(2000) {
+                eprintln!("Audio note transcription complete (timeout)");
                 // Final update to live_transcript
                 let final_text = format!("{}{}", final_transcript, interim_transcript);
                 if let Ok(mut t) = live_transcript.lock() {
@@ -473,27 +473,32 @@ fn run_soniox_websocket_audio_note(
             }
         }
 
-        // Receive audio chunks
+        // Drain ALL available audio chunks before processing WebSocket responses
         if !end_of_stream_sent {
-            match audio_rx.try_recv() {
-                Ok(chunk) => {
-                    let chunk_len = chunk.len();
-                    if let Err(e) = ws.send(Message::Binary(chunk)) {
-                        eprintln!("Failed to send audio: {}", e);
+            loop {
+                match audio_rx.try_recv() {
+                    Ok(chunk) => {
+                        let chunk_len = chunk.len();
+                        if let Err(e) = ws.send(Message::Binary(chunk)) {
+                            eprintln!("Failed to send audio: {}", e);
+                            break;
+                        }
+                        audio_chunks_sent += 1;
+                        total_bytes_sent += chunk_len;
+                        if audio_chunks_sent % 10 == 1 {
+                            eprintln!("Audio note: sent {} chunks ({} bytes)", audio_chunks_sent, total_bytes_sent);
+                        }
+                    }
+                    Err(crossbeam_channel::TryRecvError::Empty) => break,
+                    Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                        eprintln!("Audio note recording stopped after {} chunks ({} bytes), sending end-of-stream and finalize", audio_chunks_sent, total_bytes_sent);
+                        let _ = ws.send(Message::Binary(vec![]));
+                        // Send finalize message to force immediate token finalization
+                        let _ = ws.send(Message::Text(r#"{"type": "finalize"}"#.to_string()));
+                        end_of_stream_sent = true;
+                        end_of_stream_time = Some(std::time::Instant::now());
                         break;
                     }
-                    audio_chunks_sent += 1;
-                    total_bytes_sent += chunk_len;
-                    if audio_chunks_sent % 10 == 1 {
-                        eprintln!("Audio note: sent {} chunks ({} bytes)", audio_chunks_sent, total_bytes_sent);
-                    }
-                }
-                Err(crossbeam_channel::TryRecvError::Empty) => {}
-                Err(crossbeam_channel::TryRecvError::Disconnected) => {
-                    eprintln!("Audio note recording stopped after {} chunks ({} bytes), sending end-of-stream", audio_chunks_sent, total_bytes_sent);
-                    let _ = ws.send(Message::Binary(vec![]));
-                    end_of_stream_sent = true;
-                    end_of_stream_time = Some(std::time::Instant::now());
                 }
             }
         }
@@ -511,6 +516,10 @@ fn run_soniox_websocket_audio_note(
                     if let Some(tokens) = response.tokens {
                         interim_transcript.clear();
                         for token in &tokens {
+                            // Skip special tokens like <fin>
+                            if token.text == "<fin>" {
+                                continue;
+                            }
                             if token.is_final {
                                 final_transcript.push_str(&token.text);
                             } else {
@@ -629,10 +638,10 @@ fn run_soniox_websocket(
     let mut end_of_stream_time: Option<std::time::Instant> = None;
 
     loop {
-        // Timeout: if we've sent end-of-stream and been waiting > 500ms, consider complete
-        // Soniox doesn't reliably send "finished: true", so we use a short timeout
+        // Timeout: if we've sent end-of-stream and been waiting > 2s, consider complete
+        // Soniox doesn't reliably send "finished: true", so we use a timeout
         if let Some(eos_time) = end_of_stream_time {
-            if eos_time.elapsed() > std::time::Duration::from_millis(500) {
+            if eos_time.elapsed() > std::time::Duration::from_millis(2000) {
                 eprintln!("Transcription complete (timeout after end-of-stream)");
                 let final_text = format!("{}{}", final_transcript, interim_transcript);
                 let _ = result_tx.send(VoiceCommandEvent::TranscriptionComplete {
@@ -641,35 +650,39 @@ fn run_soniox_websocket(
                 return Ok(());
             }
         }
-        // Try to receive audio chunk (non-blocking) - only if we haven't sent end-of-stream
+        // Drain ALL available audio chunks before processing WebSocket responses
         if !end_of_stream_sent {
-            match audio_rx.try_recv() {
-                Ok(chunk) => {
-                    let chunk_size = chunk.len();
-                    // Send audio as binary frame
-                    if let Err(e) = ws.send(Message::Binary(chunk)) {
-                        eprintln!("Failed to send audio: {}", e);
+            loop {
+                match audio_rx.try_recv() {
+                    Ok(chunk) => {
+                        let chunk_size = chunk.len();
+                        // Send audio as binary frame
+                        if let Err(e) = ws.send(Message::Binary(chunk)) {
+                            eprintln!("Failed to send audio: {}", e);
+                            break;
+                        }
+                        audio_chunks_sent += 1;
+                        total_bytes_sent += chunk_size;
+                        if audio_chunks_sent % 10 == 1 {
+                            eprintln!("Sent {} audio chunks ({} bytes total)", audio_chunks_sent, total_bytes_sent);
+                        }
+                    }
+                    Err(crossbeam_channel::TryRecvError::Empty) => break,
+                    Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                        // Recording stopped - send empty frame to signal end of audio
+                        // Per Soniox docs: send empty frame, then wait for "finished" response
+                        eprintln!("Audio channel closed after {} chunks ({} bytes), sending end-of-stream and finalize", audio_chunks_sent, total_bytes_sent);
+                        if let Err(e) = ws.send(Message::Binary(vec![])) {
+                            eprintln!("Failed to send end-of-stream: {}", e);
+                        }
+                        // Send finalize message to force immediate token finalization
+                        if let Err(e) = ws.send(Message::Text(r#"{"type": "finalize"}"#.to_string())) {
+                            eprintln!("Failed to send finalize: {}", e);
+                        }
+                        end_of_stream_sent = true;
+                        end_of_stream_time = Some(std::time::Instant::now());
                         break;
                     }
-                    audio_chunks_sent += 1;
-                    total_bytes_sent += chunk_size;
-                    if audio_chunks_sent % 10 == 1 {
-                        eprintln!("Sent {} audio chunks ({} bytes total)", audio_chunks_sent, total_bytes_sent);
-                    }
-                }
-                Err(crossbeam_channel::TryRecvError::Empty) => {
-                    // No audio available, continue to check for responses
-                }
-                Err(crossbeam_channel::TryRecvError::Disconnected) => {
-                    // Recording stopped - send empty frame to signal end of audio
-                    // Per Soniox docs: send empty frame, then wait for "finished" response
-                    eprintln!("Audio channel closed after {} chunks ({} bytes), sending end-of-stream", audio_chunks_sent, total_bytes_sent);
-                    if let Err(e) = ws.send(Message::Binary(vec![])) {
-                        eprintln!("Failed to send end-of-stream: {}", e);
-                    }
-                    end_of_stream_sent = true;
-                    end_of_stream_time = Some(std::time::Instant::now());
-                    // Continue loop to receive final transcription
                 }
             }
         }
@@ -687,6 +700,10 @@ fn run_soniox_websocket(
                         // Build transcript from tokens
                         interim_transcript.clear();
                         for token in &tokens {
+                            // Skip special tokens like <fin>
+                            if token.text == "<fin>" {
+                                continue;
+                            }
                             if token.is_final {
                                 final_transcript.push_str(&token.text);
                             } else {
