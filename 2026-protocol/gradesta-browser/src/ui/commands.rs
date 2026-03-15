@@ -1455,13 +1455,6 @@ fn run_voice_recording_with_streaming(
     let stream = device.build_input_stream(
         &config,
         move |data: &[f32], _: &cpal::InputCallbackInfo| {
-            // Check if we should stop
-            if let Ok(stop) = stop_for_callback.lock() {
-                if *stop {
-                    return;
-                }
-            }
-
             // Calculate RMS audio level for the meter
             if !data.is_empty() {
                 let sum_sq: f32 = data.iter().map(|&s| s * s).sum();
@@ -1479,7 +1472,19 @@ fn run_voice_recording_with_streaming(
                 s.extend_from_slice(data);
             }
 
-            // Also buffer for WebSocket streaming
+            // Check if we should stop - but only AFTER accumulating samples
+            // This ensures we don't lose any audio data
+            if let Ok(stop) = stop_for_callback.lock() {
+                if *stop {
+                    // Still need to buffer for WebSocket even when stopping
+                    if let Ok(mut buf) = chunk_buffer_for_callback.lock() {
+                        buf.extend_from_slice(data);
+                    }
+                    return;
+                }
+            }
+
+            // Buffer for WebSocket streaming
             if let Ok(mut buf) = chunk_buffer_for_callback.lock() {
                 buf.extend_from_slice(data);
 
@@ -1517,10 +1522,17 @@ fn run_voice_recording_with_streaming(
         thread::sleep(Duration::from_millis(10));
     }
 
-    // Send any remaining buffered samples
+    // Drop the stream FIRST to stop new audio callbacks
+    drop(stream);
+
+    // Small delay to ensure any in-flight callbacks complete
+    thread::sleep(Duration::from_millis(20));
+
+    // Now send any remaining buffered samples
     if let Some(ref tx) = ws_audio_tx {
         if let Ok(buf) = chunk_buffer.lock() {
             if !buf.is_empty() {
+                eprintln!("Sending {} remaining audio samples to transcription", buf.len());
                 let pcm: Vec<u8> = buf.iter()
                     .flat_map(|&s| {
                         let sample = (s * 32767.0).clamp(-32768.0, 32767.0) as i16;
@@ -1531,9 +1543,6 @@ fn run_voice_recording_with_streaming(
             }
         }
     }
-
-    // Drop the stream to stop recording
-    drop(stream);
 
     Ok(())
 }
