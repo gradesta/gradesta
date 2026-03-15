@@ -464,19 +464,27 @@ fn run_soniox_websocket_audio_note(
         if let Some(eos_time) = end_of_stream_time {
             if eos_time.elapsed() > std::time::Duration::from_millis(2000) {
                 eprintln!("Audio note transcription complete (timeout)");
-                // Final update to live_transcript
+                // Final update to live_transcript - preserve existing if accumulated is empty
                 let final_text = format!("{}{}", final_transcript, interim_transcript);
                 if let Ok(mut t) = live_transcript.lock() {
-                    *t = final_text;
+                    if final_text.trim().is_empty() && !t.trim().is_empty() {
+                        eprintln!("Keeping existing transcript: \"{}\"", *t);
+                    } else {
+                        *t = final_text;
+                    }
                 }
                 return Ok(());
             }
         }
 
         // Drain ALL available audio chunks before processing WebSocket responses
+        // Use recv_timeout to ensure we get audio even for very short recordings
+        // where the audio might arrive after the WebSocket connection is established
         if !end_of_stream_sent {
             loop {
-                match audio_rx.try_recv() {
+                // Use a short timeout to wait for audio - important for short recordings
+                // where audio might still be in transit when we start receiving
+                match audio_rx.recv_timeout(std::time::Duration::from_millis(50)) {
                     Ok(chunk) => {
                         let chunk_len = chunk.len();
                         if let Err(e) = ws.send(Message::Binary(chunk)) {
@@ -489,8 +497,8 @@ fn run_soniox_websocket_audio_note(
                             eprintln!("Audio note: sent {} chunks ({} bytes)", audio_chunks_sent, total_bytes_sent);
                         }
                     }
-                    Err(crossbeam_channel::TryRecvError::Empty) => break,
-                    Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                    Err(crossbeam_channel::RecvTimeoutError::Timeout) => break,
+                    Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
                         eprintln!("Audio note recording stopped after {} chunks ({} bytes), sending end-of-stream and finalize", audio_chunks_sent, total_bytes_sent);
                         let _ = ws.send(Message::Binary(vec![]));
                         // Send finalize message to force immediate token finalization
@@ -514,31 +522,42 @@ fn run_soniox_websocket_audio_note(
                     }
 
                     if let Some(tokens) = response.tokens {
-                        interim_transcript.clear();
-                        for token in &tokens {
-                            // Skip special tokens like <fin>
-                            if token.text == "<fin>" {
-                                continue;
-                            }
-                            if token.is_final {
-                                final_transcript.push_str(&token.text);
-                            } else {
-                                interim_transcript.push_str(&token.text);
-                            }
-                        }
+                        // Filter out special tokens like <fin>
+                        let real_tokens: Vec<_> = tokens.iter()
+                            .filter(|t| t.text != "<fin>")
+                            .collect();
 
-                        // Update live transcript (no events sent)
-                        let display = format!("{}{}", final_transcript, interim_transcript);
-                        eprintln!("Audio note live transcript: \"{}\"", display);
-                        if let Ok(mut t) = live_transcript.lock() {
-                            *t = display.clone();
+                        // Only update if we have actual tokens - don't clear on empty responses
+                        if !real_tokens.is_empty() {
+                            interim_transcript.clear();
+                            for token in real_tokens {
+                                if token.is_final {
+                                    final_transcript.push_str(&token.text);
+                                } else {
+                                    interim_transcript.push_str(&token.text);
+                                }
+                            }
+
+                            // Update live transcript (no events sent)
+                            let display = format!("{}{}", final_transcript, interim_transcript);
+                            eprintln!("Audio note live transcript: \"{}\"", display);
+                            if let Ok(mut t) = live_transcript.lock() {
+                                *t = display.clone();
+                            }
                         }
                     }
 
                     if response.finished == Some(true) {
+                        // Use current live_transcript if our accumulated text is empty
+                        // (Soniox might have sent all tokens as interim then cleared them)
                         let final_text = format!("{}{}", final_transcript, interim_transcript);
                         if let Ok(mut t) = live_transcript.lock() {
-                            *t = final_text;
+                            if final_text.trim().is_empty() && !t.trim().is_empty() {
+                                // Keep existing transcript - don't overwrite with empty
+                                eprintln!("Keeping existing transcript: \"{}\"", *t);
+                            } else {
+                                *t = final_text;
+                            }
                         }
                         return Ok(());
                     }
@@ -644,16 +663,32 @@ fn run_soniox_websocket(
             if eos_time.elapsed() > std::time::Duration::from_millis(2000) {
                 eprintln!("Transcription complete (timeout after end-of-stream)");
                 let final_text = format!("{}{}", final_transcript, interim_transcript);
+                // Preserve existing transcript if accumulated is empty
+                let transcript_to_send = if final_text.trim().is_empty() {
+                    if let Ok(t) = live_transcript.lock() {
+                        if !t.trim().is_empty() {
+                            eprintln!("Keeping existing transcript: \"{}\"", *t);
+                            t.clone()
+                        } else {
+                            final_text
+                        }
+                    } else {
+                        final_text
+                    }
+                } else {
+                    final_text
+                };
                 let _ = result_tx.send(VoiceCommandEvent::TranscriptionComplete {
-                    transcript: final_text,
+                    transcript: transcript_to_send,
                 });
                 return Ok(());
             }
         }
         // Drain ALL available audio chunks before processing WebSocket responses
+        // Use recv_timeout to ensure we get audio even for very short recordings
         if !end_of_stream_sent {
             loop {
-                match audio_rx.try_recv() {
+                match audio_rx.recv_timeout(std::time::Duration::from_millis(50)) {
                     Ok(chunk) => {
                         let chunk_size = chunk.len();
                         // Send audio as binary frame
@@ -667,8 +702,8 @@ fn run_soniox_websocket(
                             eprintln!("Sent {} audio chunks ({} bytes total)", audio_chunks_sent, total_bytes_sent);
                         }
                     }
-                    Err(crossbeam_channel::TryRecvError::Empty) => break,
-                    Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                    Err(crossbeam_channel::RecvTimeoutError::Timeout) => break,
+                    Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
                         // Recording stopped - send empty frame to signal end of audio
                         // Per Soniox docs: send empty frame, then wait for "finished" response
                         eprintln!("Audio channel closed after {} chunks ({} bytes), sending end-of-stream and finalize", audio_chunks_sent, total_bytes_sent);
@@ -697,38 +732,55 @@ fn run_soniox_websocket(
                     }
 
                     if let Some(tokens) = response.tokens {
-                        // Build transcript from tokens
-                        interim_transcript.clear();
-                        for token in &tokens {
-                            // Skip special tokens like <fin>
-                            if token.text == "<fin>" {
-                                continue;
-                            }
-                            if token.is_final {
-                                final_transcript.push_str(&token.text);
-                            } else {
-                                interim_transcript.push_str(&token.text);
-                            }
-                        }
+                        // Filter out special tokens like <fin>
+                        let real_tokens: Vec<_> = tokens.iter()
+                            .filter(|t| t.text != "<fin>")
+                            .collect();
 
-                        // Update live transcript (final + interim)
-                        let display = format!("{}{}", final_transcript, interim_transcript);
-                        if let Ok(mut t) = live_transcript.lock() {
-                            *t = display.clone();
-                        }
+                        // Only update if we have actual tokens - don't clear on empty responses
+                        if !real_tokens.is_empty() {
+                            interim_transcript.clear();
+                            for token in real_tokens {
+                                if token.is_final {
+                                    final_transcript.push_str(&token.text);
+                                } else {
+                                    interim_transcript.push_str(&token.text);
+                                }
+                            }
 
-                        // Send update event
-                        let _ = result_tx.send(VoiceCommandEvent::TranscriptUpdate {
-                            text: display,
-                            is_final: false,
-                        });
+                            // Update live transcript (final + interim)
+                            let display = format!("{}{}", final_transcript, interim_transcript);
+                            if let Ok(mut t) = live_transcript.lock() {
+                                *t = display.clone();
+                            }
+
+                            // Send update event
+                            let _ = result_tx.send(VoiceCommandEvent::TranscriptUpdate {
+                                text: display,
+                                is_final: false,
+                            });
+                        }
                     }
 
                     if response.finished == Some(true) {
-                        // Transcription complete
+                        // Transcription complete - keep existing if accumulated is empty
                         let final_text = format!("{}{}", final_transcript, interim_transcript);
+                        let transcript_to_send = if final_text.trim().is_empty() {
+                            if let Ok(t) = live_transcript.lock() {
+                                if !t.trim().is_empty() {
+                                    eprintln!("Keeping existing transcript: \"{}\"", *t);
+                                    t.clone()
+                                } else {
+                                    final_text
+                                }
+                            } else {
+                                final_text
+                            }
+                        } else {
+                            final_text
+                        };
                         let _ = result_tx.send(VoiceCommandEvent::TranscriptionComplete {
-                            transcript: final_text,
+                            transcript: transcript_to_send,
                         });
                         return Ok(());
                     }
